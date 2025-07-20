@@ -1,0 +1,31 @@
+name: Deploy Traveloure Backend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy over SSH
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ${{secrets.SERVER_USER}}@${{ secrets.SERVER_HOST }} << 'EOF'
+            cd traveloure-backend/
+            git pull origin main
+            docker-compose up --build -d
+            sudo systemctl reload nginx
+          EOF
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
