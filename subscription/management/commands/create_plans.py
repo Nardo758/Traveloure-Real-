@@ -1,23 +1,33 @@
 from django.core.management.base import BaseCommand
-from subscription.models import Plan
+from subscription.models import Wallet
+from authentication.models import User
 
 class Command(BaseCommand):
-    help = 'Creates a default Free plan if it does not already exist.'
+    help = 'Creates default wallets for users who do not have one.'
 
     def handle(self, *args, **kwargs):
-        plan_name = "Free"
+        # Get all users who don't have a wallet
+        users_without_wallet = User.objects.filter(wallet__isnull=True)
+        
+        wallets_created = 0
+        for user in users_without_wallet:
+            wallet, created = Wallet.objects.get_or_create(
+                user=user,
+                defaults={
+                    "balance": 0.00,
+                }
+            )
+            if created:
+                wallets_created += 1
+                self.stdout.write(
+                    self.style.SUCCESS(f"Created wallet for user: {user.email}")
+                )
 
-        plan, created = Plan.objects.get_or_create(
-            plan_name=plan_name,
-            defaults={
-                "amount": 0.00,
-                "manual_itineraries": 10,
-                "ai_itineraries": 2,
-                "is_active": True,
-            }
-        )
-
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"Default '{plan_name}' plan created successfully."))
+        if wallets_created > 0:
+            self.stdout.write(
+                self.style.SUCCESS(f"Successfully created {wallets_created} wallet(s).")
+            )
         else:
-            self.stdout.write(self.style.WARNING(f" '{plan_name}' plan already exists."))
+            self.stdout.write(
+                self.style.WARNING("All users already have wallets.")
+            )

@@ -1,0 +1,160 @@
+[
+  {
+    "country": "India",
+    "city": "Delhi",
+    "place": "Red Fort",
+    "description": "A majestic 17th-century Mughal fort, a UNESCO World Heritage site.",
+    "latitude": 28.656,
+    "longitude": 77.241,
+    "activities": [
+      "Explore the palaces and museums within the fort",
+      "Witness the flag hoisting ceremony",
+      "Enjoy sound and light show"
+    ],
+    "festivals": ["Independence Day celebrations"],
+    "category": "Historical",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Red_Fort_Delhi.jpg/1280px-Red_Fort_Delhi.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Agra",
+    "place": "Taj Mahal",
+    "description": "An ivory-white marble mausoleum, one of the New7Wonders of the World.",
+    "latitude": 27.1751,
+    "longitude": 78.0421,
+    "activities": [
+      "Admire the architecture at sunrise or sunset",
+      "Explore the surrounding gardens",
+      "Learn about its history"
+    ],
+    "festivals": ["Taj Mahotsav"],
+    "category": "Historical",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/82/Taj_Mahal_sunset.jpg/1280px-Taj_Mahal_sunset.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Jaipur",
+    "place": "Amber Fort",
+    "description": "A majestic hilltop fort with stunning views and intricate architecture.",
+    "latitude": 27.15,
+    "longitude": 75.9167,
+    "activities": [
+      "Explore the palaces and courtyards",
+      "Enjoy an elephant ride up to the fort",
+      "Experience the sound and light show"
+    ],
+    "festivals": ["Teej Festival", "Gangaur Festival"],
+    "category": "Historical",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Amer_Fort_Jaipur.jpg/1280px-Amer_Fort_Jaipur.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Varanasi",
+    "place": "Ghats",
+    "description": "Sacred ghats along the Ganges River, a significant pilgrimage site.",
+    "latitude": 25.3176,
+    "longitude": 82.9739,
+    "activities": [
+      "Witness the Ganga Aarti ceremony",
+      "Take a boat ride on the Ganges",
+      "Explore the narrow lanes of the old city"
+    ],
+    "festivals": ["Kumbh Mela", "Dev Deepawali"],
+    "category": "Religious",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/33/Ghats_of_Varanasi_at_sunrise.jpg/1280px-Ghats_of_Varanasi_at_sunrise.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Goa",
+    "place": "Beaches (Palolem, Calangute, Baga)",
+    "description": "Beautiful beaches known for their golden sands and vibrant nightlife.",
+    "latitude": 15.4986,
+    "longitude": 74.1122,
+    "activities": ["Swimming, sunbathing", "Watersports", "Nightlife"],
+    "festivals": ["Carnival"],
+    "category": "Beach",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/Palolem_beach.jpg/1280px-Palolem_beach.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Mumbai",
+    "place": "Gateway of India",
+    "description": "A historical monument and a prominent landmark of Mumbai.",
+    "latitude": 18.922,
+    "longitude": 72.8347,
+    "activities": [
+      "Visit the monument",
+      "Enjoy a ferry ride",
+      "Explore the surrounding area"
+    ],
+    "festivals": ["Ganesh Chaturthi"],
+    "category": "Historical",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/Gateway_of_India_Mumbai.jpg/1280px-Gateway_of_India_Mumbai.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Kerala",
+    "place": "Backwaters",
+    "description": "Network of lakes, lagoons, and canals ideal for houseboat stays.",
+    "latitude": 10.0,
+    "longitude": 76.0,
+    "activities": ["Houseboat cruise", "Kayaking", "Fishing"],
+    "festivals": ["Onam"],
+    "category": "Nature",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Kerala_Backwaters_Alleppey.jpg/1280px-Kerala_Backwaters_Alleppey.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Kolkata",
+    "place": "Howrah Bridge",
+    "description": "Iconic cantilever bridge over the Hooghly River.",
+    "latitude": 22.5937,
+    "longitude": 88.335,
+    "activities": [
+      "Walk across the bridge",
+      "Enjoy the river views",
+      "Explore the city's colonial architecture"
+    ],
+    "festivals": ["Durga Puja"],
+    "category": "Historical",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/Howrah_Bridge_Kolkata.jpg/1280px-Howrah_Bridge_Kolkata.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Chennai",
+    "place": "Marina Beach",
+    "description": "One of the longest urban beaches in the world.",
+    "latitude": 13.0827,
+    "longitude": 80.2707,
+    "activities": ["Beach walks", "Horseback riding", "Street food"],
+    "festivals": ["Pongal"],
+    "category": "Beach",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Marina_Beach_Chennai.jpg/1280px-Marina_Beach_Chennai.jpg"
+  },
+  {
+    "country": "India",
+    "city": "Amritsar",
+    "place": "Golden Temple",
+    "description": "A sacred gurdwara and one of the holiest sites for Sikhs.",
+    "latitude": 31.634,
+    "longitude": 74.8723,
+    "activities": [
+      "Visit the Golden Temple",
+      "Attend the Palki Sahib ceremony",
+      "Enjoy Langar (community meal)"
+    ],
+    "festivals": ["Baisakhi"],
+    "category": "Religious",
+    "best_months": "October - March",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Golden_Temple_Amritsar_%28cropped%29.jpg/1280px-Golden_Temple_Amritsar_%28cropped%29.jpg"
+  }
+]

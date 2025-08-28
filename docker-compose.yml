@@ -23,7 +23,7 @@ services:
     volumes:
       - traveldna_db_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"  # corrected port mapping: 5432 in container
+      - "5432:5432"
     env_file:
       - .env
     healthcheck:

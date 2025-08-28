@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resend Email Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            background-color: #f9f9f9;
+            color: #333;
+            margin: 0;
+            padding: 0;
+        }
+        .email-container {
+            max-width: 600px;
+            margin: 20px auto;
+            background: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .email-header {
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .email-header h1 {
+            color: #007bff;
+            font-size: 24px;
+            margin: 0;
+        }
+        .email-body {
+            margin-bottom: 20px;
+        }
+        .email-body p {
+            margin: 0 0 10px;
+        }
+        .email-footer {
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+        }
+        .verification-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .verification-link:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="email-header">
+            <h1>{{ subject }}</h1>
+        </div>
+        <div class="email-body">
+            <p>Hi {{ user.first_name }},</p>
+            <p>Thank you for signing up! Please verify your email address by clicking the link below:</p>
+            <a href="{{ verification_link }}" class="verification-link">Verify Email</a>
+            <p>If you didn't request this email, you can safely ignore it.</p>
+        </div>
+        <div class="email-footer">
+            
+        </div>
+    </div>
+</body>
+</html>
