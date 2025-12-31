@@ -2,7 +2,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowRight,
@@ -17,9 +16,7 @@ import {
   Compass,
   Handshake,
   Plane,
-  MapPin,
   Star,
-  TrendingUp,
   Quote
 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -69,20 +66,20 @@ const accordionSections = [
 ];
 
 const featureCards = [
-  { icon: Bot, title: "Let Our AI Plan Your Trip", color: "text-primary" },
-  { icon: Users, title: "Travel Experts To Help", color: "text-blue-600" },
-  { icon: Sparkles, title: "AI Optimization – Perfectly Tailored for You", color: "text-purple-600" },
-  { icon: Compass, title: "Discover New Destinations", color: "text-green-600" },
-  { icon: Handshake, title: "Partner With Us", color: "text-orange-600" },
+  { icon: Bot, title: "Let Our AI Plan Your Trip" },
+  { icon: Users, title: "Travel Experts To Help" },
+  { icon: Sparkles, title: "AI Optimization – Perfectly Tailored for You" },
+  { icon: Compass, title: "Discover New Destinations" },
+  { icon: Handshake, title: "Partner With Us" },
 ];
 
 const impactStats = [
-  { value: "8M+", label: "Trips Planned", description: "Trusted by travellers worldwide.", details: "Join the millions who've used Wanderlog to seamlessly plan their journeys—whether it's a weekend getaway or a month-long adventure." },
-  { value: "500K+", label: "Custom Itineraries Generated", description: "Trusted by travellers worldwide.", details: "Half a million unique, tailored itineraries built using real-time preferences and constraints—no two plans are the same." },
-  { value: "$500+", label: "Saved on Multi-City Trips", description: "Trusted by travellers worldwide.", details: "All route optimization and bundled planning reduce spend dramatically, especially for longer or multi-destination travel." },
-  { value: "33K+", label: "Reviews Received", description: "Trusted by travellers worldwide.", details: "With tens of thousands of 5-star reviews, our platform is trusted by travelers worldwide." },
-  { value: "200M+", label: "Miles Traveled", description: "Trusted by travellers worldwide.", details: "Our users have collectively covered over 200 million miles, exploring the world one trip at a time." },
-  { value: "100K+", label: "Destinations Explored", description: "Trusted by travellers worldwide.", details: "From iconic landmarks to hidden gems, our platform has guided travelers to over 100,000 unique destinations." },
+  { value: "8M+", label: "Trips Planned", description: "Join the millions who've used our platform to seamlessly plan their journeys—whether it's a weekend getaway or a month-long adventure." },
+  { value: "500K+", label: "Custom Itineraries Generated", description: "Half a million unique, tailored itineraries built using real-time preferences and constraints—no two plans are the same." },
+  { value: "$500+", label: "Saved on Multi-City Trips", description: "All route optimization and bundled planning reduce spend dramatically, especially for longer or multi-destination travel." },
+  { value: "33K+", label: "Reviews Received", description: "With tens of thousands of 5-star reviews, our platform is trusted by travelers worldwide." },
+  { value: "200M+", label: "Miles Traveled", description: "Our users have collectively covered over 200 million miles, exploring the world one trip at a time." },
+  { value: "100K+", label: "Destinations Explored", description: "From iconic landmarks to hidden gems, our platform has guided travelers to over 100,000 unique destinations." },
 ];
 
 const testimonials = [
@@ -120,7 +117,7 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col font-body">
       {/* Coral Gradient Announcement Banner */}
       {showBanner && (
         <div className="bg-gradient-to-r from-[#FF6B6B] via-[#FF8E53] to-[#FF6B6B] text-white py-3 px-4 relative">
@@ -181,7 +178,7 @@ export default function LandingPage() {
               <span className="text-gray-600 dark:text-gray-400">VERSION</span>
             </div>
 
-            <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
+            <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 dark:text-white leading-tight font-display">
               Revolutionized Your<br />
               Travel Planning With<br />
               AI & <span className="text-primary">Travel</span> Experts
@@ -205,7 +202,7 @@ export default function LandingPage() {
             <div className="flex flex-wrap gap-3 mt-8">
               <Link href="/api/login">
                 <Button 
-                  className="bg-primary hover:bg-primary-hover text-white rounded-lg px-6 py-3 font-semibold shadow-sm hover:shadow-md transition-all"
+                  className="bg-primary hover:bg-primary/90 text-white rounded-lg px-6 font-semibold shadow-sm transition-all"
                   data-testid="button-create-trip"
                 >
                   Create a New Trip <ArrowRight className="w-4 h-4 ml-2" />
@@ -214,7 +211,7 @@ export default function LandingPage() {
               <Link href="/explore">
                 <Button
                   variant="outline"
-                  className="rounded-lg px-6 py-3 font-semibold border-2 border-gray-300 hover:border-gray-400 text-gray-700 dark:text-gray-200 dark:border-gray-600 transition-colors"
+                  className="rounded-lg px-6 font-medium border border-gray-300 text-gray-700 dark:text-gray-200 dark:border-gray-600"
                   data-testid="button-build-expert"
                 >
                   Build with an Expert
@@ -223,7 +220,7 @@ export default function LandingPage() {
               <Link href="/explore">
                 <Button
                   variant="outline"
-                  className="rounded-lg px-6 py-3 font-semibold border-2 border-gray-300 hover:border-gray-400 text-gray-700 dark:text-gray-200 dark:border-gray-600 transition-colors"
+                  className="rounded-lg px-6 font-medium border border-gray-300 text-gray-700 dark:text-gray-200 dark:border-gray-600"
                   data-testid="button-help-decide"
                 >
                   Help Me Decide
@@ -241,7 +238,7 @@ export default function LandingPage() {
           >
             <div className="relative max-w-lg w-full">
               {/* Image Carousel */}
-              <div className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
+              <div className="relative rounded-2xl overflow-hidden">
                 <AnimatePresence mode="wait">
                   <motion.img
                     key={currentImageIndex}
@@ -277,74 +274,57 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Feature Icon Cards Section */}
-      <section className="py-12 md:py-16 bg-gray-50 dark:bg-gray-800">
-        <div className="container mx-auto px-4 max-w-7xl">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+      {/* Feature Icon Cards Section - Simple horizontal layout */}
+      <section className="py-10 md:py-14 bg-white dark:bg-gray-900 border-y border-gray-100 dark:border-gray-800">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="flex flex-wrap justify-center gap-6 md:gap-10">
             {featureCards.map((feature, index) => (
               <motion.div
                 key={feature.title}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
+                className="flex flex-col items-center text-center group cursor-pointer"
+                data-testid={`card-feature-${index}`}
               >
-                <Card 
-                  className="bg-white dark:bg-gray-900 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700 h-full"
-                  data-testid={`card-feature-${index}`}
-                >
-                  <CardContent className="p-6 flex flex-col items-center text-center">
-                    <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center mb-4 bg-gray-100 dark:bg-gray-800 group-hover:scale-110 transition-transform", feature.color)}>
-                      <feature.icon className="w-6 h-6" />
-                    </div>
-                    <h3 className="font-semibold text-sm text-gray-900 dark:text-white leading-tight">
-                      {feature.title}
-                    </h3>
-                  </CardContent>
-                </Card>
+                <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-3 group-hover:bg-primary/10 transition-colors">
+                  <feature.icon className="w-6 h-6 text-gray-600 dark:text-gray-400 group-hover:text-primary transition-colors" />
+                </div>
+                <h3 className="font-medium text-sm text-gray-700 dark:text-gray-300 max-w-[140px] leading-tight">
+                  {feature.title}
+                </h3>
               </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Impact Numbers Section */}
-      <section className="py-16 md:py-24 bg-white dark:bg-gray-900">
-        <div className="container mx-auto px-4 max-w-7xl">
+      {/* Impact Numbers Section - Clean flat design */}
+      <section className="py-16 md:py-20 bg-gray-50 dark:bg-gray-800">
+        <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white font-display">
               Our Impact In Numbers
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-gray-600 dark:text-gray-400 mt-3 max-w-xl mx-auto">
               Plan your perfect trip with personalized suggestions, easy itineraries, and real-time travel tips.
             </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
             {impactStats.map((stat, index) => (
               <motion.div
                 key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: index * 0.1 }}
+                transition={{ duration: 0.4, delay: index * 0.08 }}
+                className="text-center md:text-left"
+                data-testid={`stat-${index}`}
               >
-                <Card 
-                  className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all border border-gray-200 dark:border-gray-700 h-full"
-                  data-testid={`card-stat-${index}`}
-                >
-                  <CardContent className="p-6">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                        <TrendingUp className="w-6 h-6 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-3xl font-bold text-primary">{stat.value}</p>
-                        <h3 className="font-semibold text-gray-900 dark:text-white mt-1">{stat.label}</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.description}</p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">{stat.details}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <p className="text-4xl md:text-5xl font-bold text-primary font-display">{stat.value}</p>
+                <h3 className="font-semibold text-gray-900 dark:text-white mt-2 text-lg">{stat.label}</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Trusted by travellers worldwide.</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">{stat.description}</p>
               </motion.div>
             ))}
           </div>
@@ -352,70 +332,61 @@ export default function LandingPage() {
       </section>
 
       {/* Customer Success Stories / Testimonials Section */}
-      <section className="py-16 md:py-24 bg-gray-50 dark:bg-gray-800">
-        <div className="container mx-auto px-4 max-w-7xl">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+      <section className="py-16 md:py-20 bg-white dark:bg-gray-900">
+        <div className="container mx-auto px-4 max-w-5xl">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white font-display">
               Customer Success Stories
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-gray-600 dark:text-gray-400 mt-3">
               Hear from travelers who have transformed their travel experiences with our platform.
             </p>
           </div>
           
-          <div className="relative max-w-4xl mx-auto">
+          <div className="relative">
             {/* Testimonial Card */}
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentTestimonialIndex}
-                initial={{ opacity: 0, x: 50 }}
+                initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -50 }}
+                exit={{ opacity: 0, x: -30 }}
                 transition={{ duration: 0.3 }}
+                className="bg-gray-50 dark:bg-gray-800 rounded-xl p-8 md:p-10"
               >
-                <Card className="bg-white dark:bg-gray-900 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
-                  <CardContent className="p-8 md:p-12">
-                    <Quote className="w-10 h-10 text-primary/30 mb-4" />
-                    <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
-                      {testimonials[currentTestimonialIndex].text}
+                <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed italic">
+                  "{testimonials[currentTestimonialIndex].text}"
+                </p>
+                <div className="flex items-center gap-4 mt-6">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-primary font-bold text-lg font-display">
+                      {testimonials[currentTestimonialIndex].name.charAt(0)}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-900 dark:text-white">
+                      {testimonials[currentTestimonialIndex].name}
                     </p>
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-primary font-bold text-lg">
-                          {testimonials[currentTestimonialIndex].name.charAt(0)}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900 dark:text-white">
-                          {testimonials[currentTestimonialIndex].name}
-                        </p>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                          {testimonials[currentTestimonialIndex].location}
-                        </p>
-                      </div>
-                      <div className="ml-auto flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star key={star} className="w-5 h-5 text-yellow-400 fill-current" />
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {testimonials[currentTestimonialIndex].location}
+                    </p>
+                  </div>
+                </div>
               </motion.div>
             </AnimatePresence>
 
             {/* Navigation Arrows */}
-            <div className="flex justify-center gap-4 mt-6">
+            <div className="flex justify-center items-center gap-4 mt-6">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 onClick={prevTestimonial}
-                className="rounded-full border-gray-300 hover:border-primary hover:text-primary"
+                className="rounded-full text-gray-500 hover:text-primary"
                 data-testid="button-prev-testimonial"
               >
                 <ChevronLeft className="w-5 h-5" />
               </Button>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {testimonials.map((_, index) => (
                   <button
                     key={index}
@@ -423,7 +394,7 @@ export default function LandingPage() {
                     className={cn(
                       "w-2 h-2 rounded-full transition-all",
                       currentTestimonialIndex === index 
-                        ? "bg-primary w-4" 
+                        ? "bg-primary w-5" 
                         : "bg-gray-300 dark:bg-gray-600 hover:bg-gray-400"
                     )}
                     data-testid={`button-testimonial-indicator-${index}`}
@@ -431,10 +402,10 @@ export default function LandingPage() {
                 ))}
               </div>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon"
                 onClick={nextTestimonial}
-                className="rounded-full border-gray-300 hover:border-primary hover:text-primary"
+                className="rounded-full text-gray-500 hover:text-primary"
                 data-testid="button-next-testimonial"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -445,7 +416,7 @@ export default function LandingPage() {
       </section>
 
       {/* Accordion Sections - Flat Style */}
-      <section className="py-12 md:py-16 bg-white dark:bg-gray-900">
+      <section className="py-10 md:py-14 bg-gray-50 dark:bg-gray-800">
         <div className="container mx-auto px-4 max-w-4xl">
           <Accordion
             type="single"
@@ -484,42 +455,38 @@ export default function LandingPage() {
       </section>
 
       {/* Bottom CTA Section with Graphics */}
-      <section className="py-16 md:py-24 bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 relative overflow-hidden">
+      <section className="py-16 md:py-24 bg-white dark:bg-gray-900 relative overflow-hidden">
         {/* Decorative Mountain Graphics */}
-        <div className="absolute bottom-0 left-0 w-full h-32 opacity-20">
-          <svg viewBox="0 0 1440 120" className="w-full h-full fill-gray-400 dark:fill-gray-600">
+        <div className="absolute bottom-0 left-0 w-full h-24 opacity-10">
+          <svg viewBox="0 0 1440 120" className="w-full h-full fill-gray-500 dark:fill-gray-600">
             <path d="M0,120 L0,80 L200,40 L400,80 L600,20 L800,60 L1000,30 L1200,70 L1440,40 L1440,120 Z" />
           </svg>
         </div>
         
-        <div className="container mx-auto px-4 max-w-4xl text-center relative z-10">
-          {/* Decorative Cloud Icons */}
-          <div className="absolute top-0 left-10 opacity-30">
-            <div className="w-16 h-8 bg-gray-300 dark:bg-gray-600 rounded-full" />
-          </div>
-          <div className="absolute top-10 right-20 opacity-20">
-            <div className="w-24 h-10 bg-gray-300 dark:bg-gray-600 rounded-full" />
-          </div>
+        {/* Decorative Cloud shapes */}
+        <div className="absolute top-10 left-[10%] w-20 h-8 bg-gray-200 dark:bg-gray-700 rounded-full opacity-30" />
+        <div className="absolute top-20 right-[15%] w-28 h-10 bg-gray-200 dark:bg-gray-700 rounded-full opacity-20" />
 
+        <div className="container mx-auto px-4 max-w-3xl text-center relative z-10">
           {/* Logo/Brand Mark */}
-          <div className="flex justify-center mb-8">
-            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
-              <Plane className="w-10 h-10 text-primary" />
+          <div className="flex justify-center mb-6">
+            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+              <Plane className="w-8 h-8 text-primary" />
             </div>
           </div>
 
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+          <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white font-display leading-tight">
             Tired Of Complicated Travel Plans?<br />
             Let AI Handle The Hard Part For You
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-8">
+          <p className="text-gray-600 dark:text-gray-400 mt-4 max-w-xl mx-auto">
             From bookings to hidden gems — experience a new way to travel with our intelligent assistant.
           </p>
           
           <Link href="/api/login">
             <Button 
               size="lg"
-              className="bg-primary hover:bg-primary-hover text-white rounded-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl transition-all text-lg"
+              className="mt-8 bg-primary hover:bg-primary/90 text-white rounded-lg px-8 font-semibold shadow-md transition-all"
               data-testid="button-bottom-cta"
             >
               Create a New Trip
