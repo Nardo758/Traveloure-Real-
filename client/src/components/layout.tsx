@@ -60,7 +60,7 @@ const authNavItems = [
   { href: "/chat", label: "Expert Chat", icon: MessageSquare },
 ];
 
-function DesktopDropdown({ item }: { item: typeof navItems[0] }) {
+function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -85,7 +85,12 @@ function DesktopDropdown({ item }: { item: typeof navItems[0] }) {
     return (
       <Link
         href={item.href || "#"}
-        className="text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-3 py-2"
+        className={cn(
+          "text-sm font-medium transition-colors px-3 py-2 relative",
+          isActive 
+            ? "text-primary after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-primary after:rounded-full" 
+            : "text-muted-foreground hover:text-primary"
+        )}
         data-testid={`link-nav-${slugify(item.name)}`}
       >
         {item.name}
@@ -152,12 +157,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               {/* Logo */}
-              <Link href="/" className="flex-shrink-0 flex items-center gap-2" data-testid="link-logo">
-                <div className="bg-primary p-2 rounded-lg">
-                  <Compass className="h-5 w-5 text-white" />
+              <Link href="/" className="flex-shrink-0 flex items-center gap-3" data-testid="link-logo">
+                <div className="flex items-center gap-1.5">
+                  <Compass className="h-6 w-6 text-primary" />
+                  <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white uppercase">
+                    Traveloure
+                  </span>
                 </div>
-                <span className="font-display font-bold text-xl text-slate-900 dark:text-white tracking-tight">
-                  Traveloure
+                <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20">
+                  BETA
                 </span>
               </Link>
               
@@ -182,7 +190,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   ))
                 ) : (
                   navItems.map((item) => (
-                    <DesktopDropdown key={item.name} item={item} />
+                    <DesktopDropdown key={item.name} item={item} isActive={item.href === location} />
                   ))
                 )}
               </div>
@@ -224,11 +232,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Link href="/api/login">
-                  <Button className="bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/25" data-testid="button-sign-in">
-                    Sign In
-                  </Button>
-                </Link>
+                <div className="flex items-center gap-3">
+                  <Link href="/api/login">
+                    <Button variant="outline" className="rounded-full px-4" data-testid="button-login">
+                      Login
+                    </Button>
+                  </Link>
+                  <Link href="/api/login">
+                    <Button className="bg-primary hover:bg-primary/90 text-white rounded-full px-4" data-testid="button-sign-up">
+                      Sign Up
+                    </Button>
+                  </Link>
+                </div>
               )}
             </div>
 
