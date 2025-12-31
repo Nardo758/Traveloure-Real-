@@ -8,7 +8,7 @@ import {
   ChevronUp,
   X
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -59,16 +59,6 @@ export default function LandingPage() {
   const [, setLocation] = useLocation();
   const [showBanner, setShowBanner] = useState(true);
   const [activeAccordion, setActiveAccordion] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    if (user) {
-      setLocation("/dashboard");
-    }
-  }, [user, setLocation]);
-
-  if (user) {
-    return null;
-  }
 
   return (
     <div className="flex flex-col">
