@@ -13,6 +13,9 @@ export const expertAdvisorStatusEnum = ["pending", "accepted", "rejected"] as co
 export const itineraryStatusEnum = ["pending", "generated", "failed"] as const;
 export const platformEnum = ["hotel", "car", "flight"] as const;
 export const feedbackStatusEnum = ["pending", "accepted", "rejected"] as const;
+export const eventTypeEnum = ["vacation", "wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate", "adventure", "cultural", "other"] as const;
+export const vendorStatusEnum = ["active", "inactive", "pending_approval"] as const;
+export const vendorAssignmentStatusEnum = ["pending", "confirmed", "completed", "cancelled"] as const;
 
 // === Tables ===
 
@@ -48,12 +51,15 @@ export const trips = pgTable("trips", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }).default("My Trip"),
+  eventType: varchar("event_type", { length: 30 }).default("vacation"), // Enum: eventTypeEnum
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   destination: varchar("destination", { length: 255 }).notNull(),
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
   numberOfTravelers: integer("number_of_travelers").default(1),
+  budget: decimal("budget", { precision: 10, scale: 2 }),
   preferences: jsonb("preferences").default({}),
+  eventDetails: jsonb("event_details").default({}),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -228,6 +234,53 @@ export const affiliatePlatforms = pgTable("affiliate_platforms", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Vendors & Coordination ===
+
+export const vendors = pgTable("vendors", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 255 }).notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  description: text("description"),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  website: varchar("website", { length: 500 }),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  rating: decimal("rating", { precision: 3, scale: 2 }),
+  priceRange: varchar("price_range", { length: 50 }),
+  imageUrl: varchar("image_url", { length: 1000 }),
+  status: varchar("status", { length: 30 }).default("active"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const vendorAssignments = pgTable("vendor_assignments", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  vendorId: varchar("vendor_id").notNull().references(() => vendors.id, { onDelete: "cascade" }),
+  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  status: varchar("status", { length: 30 }).default("pending"),
+  notes: text("notes"),
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === AI Blueprints ===
+
+export const aiBlueprints = pgTable("ai_blueprints", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  eventType: varchar("event_type", { length: 30 }).notNull(),
+  destination: varchar("destination", { length: 255 }),
+  blueprintData: jsonb("blueprint_data").default({}),
+  status: varchar("status", { length: 30 }).default("generated"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const userAndExpertContracts = pgTable("user_and_expert_contracts", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   title: varchar("title", { length: 255 }).notNull(),
@@ -290,6 +343,9 @@ export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({
 export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats).omit({ id: true, createdAt: true });
 export const insertTouristPlaceResultSchema = createInsertSchema(touristPlaceResults).omit({ id: true });
 export const insertHelpGuideTripSchema = createInsertSchema(helpGuideTrips).omit({ id: true, userId: true, createdAt: true });
+export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
 // === Types ===
 export type Trip = typeof trips.$inferSelect;
@@ -300,3 +356,9 @@ export type ReviewRating = typeof reviewRatings.$inferSelect;
 export type UserAndExpertChat = typeof userAndExpertChats.$inferSelect;
 export type TouristPlaceResult = typeof touristPlaceResults.$inferSelect;
 export type HelpGuideTrip = typeof helpGuideTrips.$inferSelect;
+export type Vendor = typeof vendors.$inferSelect;
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
+export type VendorAssignment = typeof vendorAssignments.$inferSelect;
+export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;
+export type AiBlueprint = typeof aiBlueprints.$inferSelect;
+export type InsertAiBlueprint = z.infer<typeof insertAiBlueprintSchema>;
