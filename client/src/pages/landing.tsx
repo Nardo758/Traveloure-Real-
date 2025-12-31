@@ -2,13 +2,27 @@ import { useAuth } from "@/hooks/use-auth";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { motion } from "framer-motion";
+import { Card, CardContent } from "@/components/ui/card";
+import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowRight,
   ChevronUp,
-  X
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Rocket,
+  Bot,
+  Users,
+  Sparkles,
+  Compass,
+  Handshake,
+  Plane,
+  MapPin,
+  Star,
+  TrendingUp,
+  Quote
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Accordion,
   AccordionContent,
@@ -54,11 +68,56 @@ const accordionSections = [
   },
 ];
 
+const featureCards = [
+  { icon: Bot, title: "Let Our AI Plan Your Trip", color: "text-primary" },
+  { icon: Users, title: "Travel Experts To Help", color: "text-blue-600" },
+  { icon: Sparkles, title: "AI Optimization – Perfectly Tailored for You", color: "text-purple-600" },
+  { icon: Compass, title: "Discover New Destinations", color: "text-green-600" },
+  { icon: Handshake, title: "Partner With Us", color: "text-orange-600" },
+];
+
+const impactStats = [
+  { value: "8M+", label: "Trips Planned", description: "Trusted by travellers worldwide.", details: "Join the millions who've used Wanderlog to seamlessly plan their journeys—whether it's a weekend getaway or a month-long adventure." },
+  { value: "500K+", label: "Custom Itineraries Generated", description: "Trusted by travellers worldwide.", details: "Half a million unique, tailored itineraries built using real-time preferences and constraints—no two plans are the same." },
+  { value: "$500+", label: "Saved on Multi-City Trips", description: "Trusted by travellers worldwide.", details: "All route optimization and bundled planning reduce spend dramatically, especially for longer or multi-destination travel." },
+  { value: "33K+", label: "Reviews Received", description: "Trusted by travellers worldwide.", details: "With tens of thousands of 5-star reviews, our platform is trusted by travelers worldwide." },
+  { value: "200M+", label: "Miles Traveled", description: "Trusted by travellers worldwide.", details: "Our users have collectively covered over 200 million miles, exploring the world one trip at a time." },
+  { value: "100K+", label: "Destinations Explored", description: "Trusted by travellers worldwide.", details: "From iconic landmarks to hidden gems, our platform has guided travelers to over 100,000 unique destinations." },
+];
+
+const testimonials = [
+  { name: "Sarah Johnson", location: "New York, USA", text: "The travel expert recommendations made our trip to Portugal truly special. We discovered places we would have never found on our own!" },
+  { name: "David Chen", location: "Toronto, Canada", text: "The AI itinerary planning saved me hours of research. It perfectly balanced tourist spots with authentic local experiences." },
+  { name: "Maria Rodriguez", location: "Madrid, Spain", text: "As someone who was unsure where to go, the 'Help Me Decide' feature was a game-changer. I ended up with the perfect vacation!" },
+  { name: "Liam O'Brien", location: "Dublin, Ireland", text: "The support team helped me even while I was on my trip. That kind of service is rare. Thank you!" },
+  { name: "Akira Tanaka", location: "Tokyo, Japan", text: "Affordable, smart, and so easy to use. I don't think I'll ever plan a trip manually again!" },
+  { name: "Emma Wilson", location: "London, UK", text: "From booking to exploring, everything was seamless. Best travel planning experience I've ever had!" },
+];
+
+const heroImages = [lakeImage, lakeImage, lakeImage, lakeImage];
+
 export default function LandingPage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [showBanner, setShowBanner] = useState(true);
   const [activeAccordion, setActiveAccordion] = useState<string | undefined>(undefined);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [currentTestimonialIndex, setCurrentTestimonialIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentImageIndex((prev) => (prev + 1) % heroImages.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const nextTestimonial = () => {
+    setCurrentTestimonialIndex((prev) => (prev + 1) % testimonials.length);
+  };
+
+  const prevTestimonial = () => {
+    setCurrentTestimonialIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
+  };
 
   return (
     <div className="flex flex-col">
@@ -115,6 +174,13 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="max-w-xl"
           >
+            {/* BETA VERSION Badge */}
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-sm mb-6">
+              <Rocket className="w-4 h-4 text-primary" />
+              <span className="font-semibold text-primary">BETA</span>
+              <span className="text-gray-600 dark:text-gray-400">VERSION</span>
+            </div>
+
             <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
               Revolutionized Your<br />
               Travel Planning With<br />
@@ -166,22 +232,215 @@ export default function LandingPage() {
             </div>
           </motion.div>
 
-          {/* Right Image - Static Lake Image */}
+          {/* Right Image - Image Carousel */}
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
             className="relative w-full flex justify-center lg:justify-end"
           >
-            <div className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700 max-w-lg w-full">
-              <img
-                src={lakeImage}
-                alt="Beautiful turquoise lake with boats and mountains"
-                className="w-full h-[300px] md:h-[400px] object-cover"
-                data-testid="img-hero"
-              />
+            <div className="relative max-w-lg w-full">
+              {/* Image Carousel */}
+              <div className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
+                <AnimatePresence mode="wait">
+                  <motion.img
+                    key={currentImageIndex}
+                    src={heroImages[currentImageIndex]}
+                    alt={`Travel destination ${currentImageIndex + 1}`}
+                    className="w-full h-[300px] md:h-[400px] object-cover"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5 }}
+                    data-testid="img-hero"
+                  />
+                </AnimatePresence>
+              </div>
+              {/* Image Indicators */}
+              <div className="flex justify-center gap-2 mt-4">
+                {heroImages.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentImageIndex(index)}
+                    className={cn(
+                      "w-2 h-2 rounded-full transition-all",
+                      currentImageIndex === index 
+                        ? "bg-primary w-6" 
+                        : "bg-gray-300 dark:bg-gray-600 hover:bg-gray-400"
+                    )}
+                    data-testid={`button-image-indicator-${index}`}
+                  />
+                ))}
+              </div>
             </div>
           </motion.div>
+        </div>
+      </section>
+
+      {/* Feature Icon Cards Section */}
+      <section className="py-12 md:py-16 bg-gray-50 dark:bg-gray-800">
+        <div className="container mx-auto px-4 max-w-7xl">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+            {featureCards.map((feature, index) => (
+              <motion.div
+                key={feature.title}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+              >
+                <Card 
+                  className="bg-white dark:bg-gray-900 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700 h-full"
+                  data-testid={`card-feature-${index}`}
+                >
+                  <CardContent className="p-6 flex flex-col items-center text-center">
+                    <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center mb-4 bg-gray-100 dark:bg-gray-800 group-hover:scale-110 transition-transform", feature.color)}>
+                      <feature.icon className="w-6 h-6" />
+                    </div>
+                    <h3 className="font-semibold text-sm text-gray-900 dark:text-white leading-tight">
+                      {feature.title}
+                    </h3>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Impact Numbers Section */}
+      <section className="py-16 md:py-24 bg-white dark:bg-gray-900">
+        <div className="container mx-auto px-4 max-w-7xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Our Impact In Numbers
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Plan your perfect trip with personalized suggestions, easy itineraries, and real-time travel tips.
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {impactStats.map((stat, index) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.1 }}
+              >
+                <Card 
+                  className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all border border-gray-200 dark:border-gray-700 h-full"
+                  data-testid={`card-stat-${index}`}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <TrendingUp className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold text-primary">{stat.value}</p>
+                        <h3 className="font-semibold text-gray-900 dark:text-white mt-1">{stat.label}</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{stat.description}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">{stat.details}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Customer Success Stories / Testimonials Section */}
+      <section className="py-16 md:py-24 bg-gray-50 dark:bg-gray-800">
+        <div className="container mx-auto px-4 max-w-7xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              Customer Success Stories
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Hear from travelers who have transformed their travel experiences with our platform.
+            </p>
+          </div>
+          
+          <div className="relative max-w-4xl mx-auto">
+            {/* Testimonial Card */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentTestimonialIndex}
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -50 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Card className="bg-white dark:bg-gray-900 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
+                  <CardContent className="p-8 md:p-12">
+                    <Quote className="w-10 h-10 text-primary/30 mb-4" />
+                    <p className="text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
+                      {testimonials[currentTestimonialIndex].text}
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <span className="text-primary font-bold text-lg">
+                          {testimonials[currentTestimonialIndex].name.charAt(0)}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-900 dark:text-white">
+                          {testimonials[currentTestimonialIndex].name}
+                        </p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          {testimonials[currentTestimonialIndex].location}
+                        </p>
+                      </div>
+                      <div className="ml-auto flex gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Star key={star} className="w-5 h-5 text-yellow-400 fill-current" />
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </AnimatePresence>
+
+            {/* Navigation Arrows */}
+            <div className="flex justify-center gap-4 mt-6">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={prevTestimonial}
+                className="rounded-full border-gray-300 hover:border-primary hover:text-primary"
+                data-testid="button-prev-testimonial"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+              <div className="flex items-center gap-2">
+                {testimonials.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentTestimonialIndex(index)}
+                    className={cn(
+                      "w-2 h-2 rounded-full transition-all",
+                      currentTestimonialIndex === index 
+                        ? "bg-primary w-4" 
+                        : "bg-gray-300 dark:bg-gray-600 hover:bg-gray-400"
+                    )}
+                    data-testid={`button-testimonial-indicator-${index}`}
+                  />
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={nextTestimonial}
+                className="rounded-full border-gray-300 hover:border-primary hover:text-primary"
+                data-testid="button-next-testimonial"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -221,6 +480,51 @@ export default function LandingPage() {
               </AccordionItem>
             ))}
           </Accordion>
+        </div>
+      </section>
+
+      {/* Bottom CTA Section with Graphics */}
+      <section className="py-16 md:py-24 bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 relative overflow-hidden">
+        {/* Decorative Mountain Graphics */}
+        <div className="absolute bottom-0 left-0 w-full h-32 opacity-20">
+          <svg viewBox="0 0 1440 120" className="w-full h-full fill-gray-400 dark:fill-gray-600">
+            <path d="M0,120 L0,80 L200,40 L400,80 L600,20 L800,60 L1000,30 L1200,70 L1440,40 L1440,120 Z" />
+          </svg>
+        </div>
+        
+        <div className="container mx-auto px-4 max-w-4xl text-center relative z-10">
+          {/* Decorative Cloud Icons */}
+          <div className="absolute top-0 left-10 opacity-30">
+            <div className="w-16 h-8 bg-gray-300 dark:bg-gray-600 rounded-full" />
+          </div>
+          <div className="absolute top-10 right-20 opacity-20">
+            <div className="w-24 h-10 bg-gray-300 dark:bg-gray-600 rounded-full" />
+          </div>
+
+          {/* Logo/Brand Mark */}
+          <div className="flex justify-center mb-8">
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
+              <Plane className="w-10 h-10 text-primary" />
+            </div>
+          </div>
+
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            Tired Of Complicated Travel Plans?<br />
+            Let AI Handle The Hard Part For You
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-8">
+            From bookings to hidden gems — experience a new way to travel with our intelligent assistant.
+          </p>
+          
+          <Link href="/api/login">
+            <Button 
+              size="lg"
+              className="bg-primary hover:bg-primary-hover text-white rounded-lg px-8 py-4 font-semibold shadow-lg hover:shadow-xl transition-all text-lg"
+              data-testid="button-bottom-cta"
+            >
+              Create a New Trip
+            </Button>
+          </Link>
         </div>
       </section>
     </div>
