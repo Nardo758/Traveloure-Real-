@@ -11,6 +11,9 @@ import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
 import Explore from "@/pages/explore";
 import Chat from "@/pages/chat";
+import AIAssistant from "@/pages/ai-assistant";
+import Vendors from "@/pages/vendors";
+import ExecutiveAssistant from "@/pages/executive-assistant";
 import HowItWorks from "@/pages/how-it-works";
 import Pricing from "@/pages/pricing";
 import About from "@/pages/about";
@@ -55,6 +58,15 @@ function Router() {
         </Route>
         <Route path="/chat">
           {() => <ProtectedRoute component={Chat} />}
+        </Route>
+        <Route path="/ai-assistant">
+          {() => <ProtectedRoute component={AIAssistant} />}
+        </Route>
+        <Route path="/vendors">
+          {() => <ProtectedRoute component={Vendors} />}
+        </Route>
+        <Route path="/executive-assistant">
+          {() => <ProtectedRoute component={ExecutiveAssistant} />}
         </Route>
 
         {/* Public Routes */}

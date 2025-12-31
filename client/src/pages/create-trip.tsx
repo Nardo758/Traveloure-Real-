@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarIcon, Loader2, MapPin, Users, Calendar, Sparkles, Check, ArrowLeft, ArrowRight, Mountain, Palmtree, Landmark, UtensilsCrossed, TreePine, Moon } from "lucide-react";
+import { CalendarIcon, Loader2, MapPin, Users, Calendar, Sparkles, Check, ArrowLeft, ArrowRight, Mountain, Palmtree, Landmark, UtensilsCrossed, TreePine, Moon, Heart, Plane, Gift, Briefcase, Star, PartyPopper } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -29,12 +29,25 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+const eventTypes = [
+  { id: "vacation", label: "Vacation", icon: Plane, description: "Leisure travel and exploration" },
+  { id: "wedding", label: "Wedding", icon: Heart, description: "Destination wedding planning" },
+  { id: "honeymoon", label: "Honeymoon", icon: Heart, description: "Romantic getaway for newlyweds" },
+  { id: "proposal", label: "Proposal", icon: Gift, description: "Plan the perfect proposal" },
+  { id: "anniversary", label: "Anniversary", icon: Star, description: "Celebrate your special day" },
+  { id: "birthday", label: "Birthday", icon: PartyPopper, description: "Birthday celebration trip" },
+  { id: "corporate", label: "Corporate", icon: Briefcase, description: "Business travel and retreats" },
+  { id: "adventure", label: "Adventure", icon: Mountain, description: "Thrill-seeking experiences" },
+];
+
 const formSchema = insertTripSchema.extend({
   title: z.string().min(1, "Title is required"),
   destination: z.string().min(1, "Destination is required"),
+  eventType: z.string().default("vacation"),
   startDate: z.date({ required_error: "Start date is required" }),
   endDate: z.date({ required_error: "End date is required" }),
   numberOfTravelers: z.coerce.number().min(1, "At least 1 traveler required"),
+  budget: z.string().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -55,10 +68,11 @@ const budgetOptions = [
 ];
 
 const steps = [
-  { id: 1, title: "Destination", description: "Where do you want to go?" },
-  { id: 2, title: "Dates", description: "When are you traveling?" },
-  { id: 3, title: "Preferences", description: "Customize your experience" },
-  { id: 4, title: "Review", description: "Confirm your trip details" },
+  { id: 1, title: "Event Type", description: "What kind of trip is this?" },
+  { id: 2, title: "Destination", description: "Where do you want to go?" },
+  { id: 3, title: "Dates", description: "When are you traveling?" },
+  { id: 4, title: "Preferences", description: "Customize your experience" },
+  { id: 5, title: "Review", description: "Confirm your trip details" },
 ];
 
 export default function CreateTrip() {
@@ -67,14 +81,17 @@ export default function CreateTrip() {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [selectedBudget, setSelectedBudget] = useState<string>("moderate");
+  const [selectedEventType, setSelectedEventType] = useState<string>("vacation");
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       title: "",
       destination: "",
+      eventType: "vacation",
       numberOfTravelers: 1,
       status: "draft",
+      budget: "moderate",
     },
   });
 
@@ -95,12 +112,14 @@ export default function CreateTrip() {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return destination && destination.length > 0;
+        return selectedEventType && selectedEventType.length > 0;
       case 2:
-        return startDate && endDate;
+        return destination && destination.length > 0;
       case 3:
-        return true;
+        return startDate && endDate;
       case 4:
+        return true;
+      case 5:
         return title && title.length > 0;
       default:
         return false;
@@ -108,7 +127,7 @@ export default function CreateTrip() {
   };
 
   const nextStep = () => {
-    if (currentStep < 4 && canProceed()) {
+    if (currentStep < 5 && canProceed()) {
       setCurrentStep(prev => prev + 1);
     }
   };
@@ -193,10 +212,56 @@ export default function CreateTrip() {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)}>
                 <AnimatePresence mode="wait">
-                  {/* Step 1: Destination */}
+                  {/* Step 1: Event Type */}
                   {currentStep === 1 && (
                     <motion.div
                       key="step1"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      className="space-y-6"
+                    >
+                      <div className="text-center mb-8">
+                        <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
+                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">What kind of trip is this?</h2>
+                        <p className="text-muted-foreground mt-2">Select your event type for personalized recommendations</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {eventTypes.map((event) => {
+                          const IconComponent = event.icon;
+                          return (
+                            <div
+                              key={event.id}
+                              onClick={() => {
+                                setSelectedEventType(event.id);
+                                form.setValue("eventType", event.id);
+                              }}
+                              className={cn(
+                                "p-4 rounded-lg border-2 cursor-pointer transition-all text-center",
+                                selectedEventType === event.id
+                                  ? "border-primary bg-primary/10"
+                                  : "border-muted bg-white dark:bg-slate-700"
+                              )}
+                              data-testid={`card-event-${event.id}`}
+                            >
+                              <IconComponent className={cn(
+                                "w-8 h-8 mx-auto mb-2",
+                                selectedEventType === event.id ? "text-primary" : "text-muted-foreground"
+                              )} />
+                              <h3 className="font-semibold text-sm">{event.label}</h3>
+                              <p className="text-xs text-muted-foreground mt-1">{event.description}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Step 2: Destination */}
+                  {currentStep === 2 && (
+                    <motion.div
+                      key="step2"
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
@@ -264,10 +329,10 @@ export default function CreateTrip() {
                     </motion.div>
                   )}
 
-                  {/* Step 2: Dates */}
-                  {currentStep === 2 && (
+                  {/* Step 3: Dates */}
+                  {currentStep === 3 && (
                     <motion.div
-                      key="step2"
+                      key="step3"
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
@@ -370,10 +435,10 @@ export default function CreateTrip() {
                     </motion.div>
                   )}
 
-                  {/* Step 3: Preferences */}
-                  {currentStep === 3 && (
+                  {/* Step 4: Preferences */}
+                  {currentStep === 4 && (
                     <motion.div
-                      key="step3"
+                      key="step4"
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
@@ -420,7 +485,10 @@ export default function CreateTrip() {
                             <button
                               key={budget.id}
                               type="button"
-                              onClick={() => setSelectedBudget(budget.id)}
+                              onClick={() => {
+                                setSelectedBudget(budget.id);
+                                form.setValue("budget", budget.id);
+                              }}
                               className={cn(
                                 "p-4 rounded-xl border-2 text-center transition-all",
                                 selectedBudget === budget.id
@@ -438,10 +506,10 @@ export default function CreateTrip() {
                     </motion.div>
                   )}
 
-                  {/* Step 4: Review */}
-                  {currentStep === 4 && (
+                  {/* Step 5: Review */}
+                  {currentStep === 5 && (
                     <motion.div
-                      key="step4"
+                      key="step5"
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
@@ -476,6 +544,10 @@ export default function CreateTrip() {
                       <div className="bg-muted/50 rounded-xl p-6 space-y-4">
                         <h3 className="font-semibold text-slate-900 dark:text-white">Trip Summary</h3>
                         <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Event Type</span>
+                            <p className="font-medium capitalize">{selectedEventType}</p>
+                          </div>
                           <div>
                             <span className="text-muted-foreground">Destination</span>
                             <p className="font-medium">{destination || "Not set"}</p>
@@ -532,7 +604,7 @@ export default function CreateTrip() {
                     Back
                   </Button>
 
-                  {currentStep < 4 ? (
+                  {currentStep < 5 ? (
                     <Button
                       type="button"
                       onClick={nextStep}

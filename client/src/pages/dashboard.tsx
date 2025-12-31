@@ -2,7 +2,7 @@ import { useTrips } from "@/hooks/use-trips";
 import { TripCard } from "@/components/trip-card";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Plane, Map, Calendar, Sparkles } from "lucide-react";
+import { Plus, Loader2, Plane, Map, Calendar, Sparkles, Bot, Building2, BarChart3 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,7 +57,7 @@ export default function Dashboard() {
 
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
           <Link href="/create-trip" data-testid="link-create-ai">
             <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-create-ai">
               <CardContent className="p-6 flex items-center gap-4">
@@ -65,8 +65,21 @@ export default function Dashboard() {
                   <Sparkles className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Create with AI</h3>
-                  <p className="text-sm text-muted-foreground">Get personalized itineraries</p>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">Create Trip</h3>
+                  <p className="text-sm text-muted-foreground">Plan your adventure</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/ai-assistant" data-testid="link-ai-assistant">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-ai-assistant">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center group-hover:from-primary/20 group-hover:to-accent/20 transition-colors">
+                  <Bot className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">AI Assistant</h3>
+                  <p className="text-sm text-muted-foreground">Get AI-powered help</p>
                 </div>
               </CardContent>
             </Card>
@@ -79,7 +92,33 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-slate-900 dark:text-white">Talk to Experts</h3>
-                  <p className="text-sm text-muted-foreground">Get local insider tips</p>
+                  <p className="text-sm text-muted-foreground">Local insider tips</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/vendors" data-testid="link-vendors">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-vendors">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-900/50 transition-colors">
+                  <Building2 className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">Vendors</h3>
+                  <p className="text-sm text-muted-foreground">Service providers</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/executive-assistant" data-testid="link-executive-assistant">
+            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-executive-assistant">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                  <BarChart3 className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">Overview</h3>
+                  <p className="text-sm text-muted-foreground">Trip management</p>
                 </div>
               </CardContent>
             </Card>
@@ -91,8 +130,8 @@ export default function Dashboard() {
                   <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Explore Deals</h3>
-                  <p className="text-sm text-muted-foreground">Find amazing packages</p>
+                  <h3 className="font-semibold text-slate-900 dark:text-white">Explore</h3>
+                  <p className="text-sm text-muted-foreground">Amazing packages</p>
                 </div>
               </CardContent>
             </Card>

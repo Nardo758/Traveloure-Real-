@@ -4,9 +4,15 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
-import { users, helpGuideTrips, touristPlaceResults, touristPlacesSearches } from "@shared/schema";
+import { users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, aiBlueprints, vendors, insertVendorSchema } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
 
 export async function registerRoutes(
   httpServer: Server,
@@ -151,6 +157,126 @@ export async function registerRoutes(
     res.json(trip);
   });
 
+  // AI Blueprint Generation API
+  app.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
+    try {
+      const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
+      const userId = (req.user as any).claims.sub;
+
+      const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
+      
+Event Type: ${eventType || 'vacation'}
+Destination: ${destination || 'To be determined'}
+Number of Travelers: ${travelers || 2}
+Dates: ${startDate || 'flexible'} to ${endDate || 'flexible'}
+Budget: ${budget || 'moderate'}
+Special Preferences: ${JSON.stringify(preferences || {})}
+
+Please provide a comprehensive travel blueprint in JSON format with this structure:
+{
+  "title": "Trip title",
+  "overview": "Brief trip overview",
+  "estimatedBudget": { "min": number, "max": number, "currency": "USD" },
+  "recommendedDuration": { "days": number, "nights": number },
+  "highlights": ["highlight1", "highlight2", ...],
+  "itinerary": [
+    {
+      "day": 1,
+      "title": "Day title",
+      "description": "Day overview",
+      "activities": [
+        { "time": "9:00 AM", "title": "Activity", "description": "Description", "estimatedCost": 50 }
+      ],
+      "meals": { "breakfast": "suggestion", "lunch": "suggestion", "dinner": "suggestion" },
+      "accommodation": "Hotel recommendation"
+    }
+  ],
+  "packingList": ["item1", "item2"],
+  "travelTips": ["tip1", "tip2"],
+  "recommendedVendors": [
+    { "type": "hotel", "name": "Hotel Name", "reason": "Why recommended" }
+  ]
+}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "You are a professional travel planning assistant. Always respond with valid JSON." },
+          { role: "user", content: prompt }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4000,
+      });
+
+      const blueprintContent = completion.choices[0]?.message?.content;
+      const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
+
+      const [blueprint] = await db.insert(aiBlueprints).values({
+        userId,
+        eventType: eventType || 'vacation',
+        destination,
+        blueprintData,
+        status: 'generated',
+      }).returning();
+
+      res.status(201).json(blueprint);
+    } catch (error) {
+      console.error("Error generating blueprint:", error);
+      res.status(500).json({ message: "Failed to generate blueprint" });
+    }
+  });
+
+  // AI Chat Endpoint for Trip Planning
+  app.post("/api/ai/chat", isAuthenticated, async (req, res) => {
+    try {
+      const { messages, tripContext } = req.body;
+
+      const systemPrompt = `You are an expert travel advisor assistant for Traveloure. 
+You help users plan trips, answer questions about destinations, provide recommendations for hotels, restaurants, activities, and help with wedding/honeymoon/special event planning.
+${tripContext ? `Current trip context: ${JSON.stringify(tripContext)}` : ''}
+Be friendly, helpful, and provide specific actionable advice. If recommending specific places, provide names and brief descriptions.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...messages
+        ],
+        max_tokens: 1500,
+      });
+
+      const response = completion.choices[0]?.message?.content || "I'm sorry, I couldn't process your request.";
+      res.json({ response });
+    } catch (error) {
+      console.error("Error in AI chat:", error);
+      res.status(500).json({ message: "Failed to process chat request" });
+    }
+  });
+
+  // Vendors Routes
+  app.get("/api/vendors", async (req, res) => {
+    const { category, city } = req.query;
+    const vendorList = await storage.getVendors(
+      category as string | undefined, 
+      city as string | undefined
+    );
+    res.json(vendorList);
+  });
+
+  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const input = insertVendorSchema.parse(req.body);
+      const vendor = await storage.createVendor(input);
+      res.status(201).json(vendor);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating vendor:", err);
+      res.status(500).json({ message: "Failed to create vendor" });
+    }
+  });
+
   // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
 
@@ -187,8 +313,8 @@ export async function seedDatabase() {
         days: 5,
         nights: 4,
         price: "1500.00",
-        startDate: new Date("2024-04-01"),
-        endDate: new Date("2024-04-05"),
+        startDate: "2024-04-01",
+        endDate: "2024-04-05",
         inclusive: "Hotel, Breakfast",
         exclusive: "Flights, Dinner"
       },
@@ -203,8 +329,8 @@ export async function seedDatabase() {
          days: 3,
          nights: 2,
          price: "1200.00",
-         startDate: new Date("2024-05-10"),
-         endDate: new Date("2024-05-13"),
+         startDate: "2024-05-10",
+         endDate: "2024-05-13",
          inclusive: "Hotel, Breakfast, Cruise ticket",
          exclusive: "Flights, Lunch, Dinner"
       }

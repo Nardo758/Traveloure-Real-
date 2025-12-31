@@ -1,11 +1,12 @@
 import { db } from "./db";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
-  userAndExpertChats, helpGuideTrips,
+  userAndExpertChats, helpGuideTrips, vendors,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
-  type UserAndExpertChat, type HelpGuideTrip
+  type UserAndExpertChat, type HelpGuideTrip,
+  type Vendor, type InsertVendor
 } from "@shared/schema";
 import { eq, ilike } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -14,7 +15,7 @@ export interface IStorage {
   // Trips
   getTrips(userId?: string): Promise<Trip[]>;
   getTrip(id: string): Promise<Trip | undefined>;
-  createTrip(trip: InsertTrip): Promise<Trip>;
+  createTrip(trip: InsertTrip & { userId: string }): Promise<Trip>;
   updateTrip(id: string, trip: Partial<InsertTrip>): Promise<Trip | undefined>;
   deleteTrip(id: string): Promise<void>;
 
@@ -27,11 +28,16 @@ export interface IStorage {
 
   // Chats
   getChats(userId: string): Promise<UserAndExpertChat[]>;
-  createChat(chat: any): Promise<UserAndExpertChat>; // using any for now as schema is complex
+  createChat(chat: any): Promise<UserAndExpertChat>;
 
   // Help Guide Trips
   getHelpGuideTrips(): Promise<HelpGuideTrip[]>;
   getHelpGuideTrip(id: string): Promise<HelpGuideTrip | undefined>;
+
+  // Vendors
+  getVendors(category?: string, city?: string): Promise<Vendor[]>;
+  getVendor(id: string): Promise<Vendor | undefined>;
+  createVendor(vendor: InsertVendor): Promise<Vendor>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -46,7 +52,7 @@ export class DatabaseStorage implements IStorage {
     return trip;
   }
 
-  async createTrip(trip: InsertTrip): Promise<Trip> {
+  async createTrip(trip: InsertTrip & { userId: string }): Promise<Trip> {
     const [newTrip] = await db.insert(trips).values(trip).returning();
     return newTrip;
   }
@@ -105,6 +111,28 @@ export class DatabaseStorage implements IStorage {
   async getHelpGuideTrip(id: string): Promise<HelpGuideTrip | undefined> {
     const [trip] = await db.select().from(helpGuideTrips).where(eq(helpGuideTrips.id, id));
     return trip;
+  }
+
+  // Vendors
+  async getVendors(category?: string, city?: string): Promise<Vendor[]> {
+    let result = await db.select().from(vendors);
+    if (category) {
+      result = result.filter(v => v.category === category);
+    }
+    if (city) {
+      result = result.filter(v => v.city === city);
+    }
+    return result;
+  }
+
+  async getVendor(id: string): Promise<Vendor | undefined> {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
+    return vendor;
+  }
+
+  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+    const [newVendor] = await db.insert(vendors).values(vendor).returning();
+    return newVendor;
   }
 }
 

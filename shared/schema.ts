@@ -6,6 +6,7 @@ import { users } from "./models/auth";
 
 // Re-export auth models
 export * from "./models/auth";
+export * from "./models/chat";
 
 // === Enums ===
 export const tripStatusEnum = ["draft", "planning", "confirmed", "completed", "cancelled"] as const;
