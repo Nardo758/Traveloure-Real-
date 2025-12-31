@@ -142,6 +142,8 @@ export default function CreateTrip() {
     createTrip.mutate(
       {
         ...data,
+        startDate: data.startDate.toISOString(),
+        endDate: data.endDate.toISOString(),
       },
       {
         onSuccess: (trip) => {
@@ -152,23 +154,23 @@ export default function CreateTrip() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 py-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="container mx-auto px-4 max-w-4xl">
         {/* Header */}
         <div className="mb-8">
           <Button 
             variant="ghost" 
             onClick={() => setLocation("/dashboard")}
-            className="mb-4"
+            className="mb-4 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
             data-testid="button-back-dashboard"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
-          <h1 className="text-3xl md:text-4xl font-display font-bold text-slate-900 dark:text-white">
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
             Plan Your Perfect Trip
           </h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-gray-600 dark:text-gray-400 mt-2">
             Let's create an amazing travel experience tailored just for you.
           </p>
         </div>
@@ -186,12 +188,12 @@ export default function CreateTrip() {
                         ? "bg-accent text-white" 
                         : currentStep === step.id 
                           ? "bg-primary text-white" 
-                          : "bg-muted text-muted-foreground"
+                          : "bg-muted text-gray-600 dark:text-gray-400"
                     )}
                   >
                     {currentStep > step.id ? <Check className="w-5 h-5" /> : step.id}
                   </div>
-                  <span className="text-xs mt-2 text-muted-foreground hidden md:block">{step.title}</span>
+                  <span className="text-xs mt-2 text-gray-600 dark:text-gray-400 hidden md:block">{step.title}</span>
                 </div>
                 {index < steps.length - 1 && (
                   <div 
@@ -207,7 +209,7 @@ export default function CreateTrip() {
         </div>
 
         {/* Form Card */}
-        <Card className="border-none shadow-xl bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+        <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
           <CardContent className="p-6 md:p-8">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -223,8 +225,8 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">What kind of trip is this?</h2>
-                        <p className="text-muted-foreground mt-2">Select your event type for personalized recommendations</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">What kind of trip is this?</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">Select your event type for personalized recommendations</p>
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -241,16 +243,16 @@ export default function CreateTrip() {
                                 "p-4 rounded-lg border-2 cursor-pointer transition-all text-center",
                                 selectedEventType === event.id
                                   ? "border-primary bg-primary/10"
-                                  : "border-muted bg-white dark:bg-slate-700"
+                                  : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700"
                               )}
                               data-testid={`card-event-${event.id}`}
                             >
                               <IconComponent className={cn(
                                 "w-8 h-8 mx-auto mb-2",
-                                selectedEventType === event.id ? "text-primary" : "text-muted-foreground"
+                                selectedEventType === event.id ? "text-primary" : "text-gray-600 dark:text-gray-400"
                               )} />
                               <h3 className="font-semibold text-sm">{event.label}</h3>
-                              <p className="text-xs text-muted-foreground mt-1">{event.description}</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{event.description}</p>
                             </div>
                           );
                         })}
@@ -269,8 +271,8 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <MapPin className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Where do you want to go?</h2>
-                        <p className="text-muted-foreground mt-2">Enter your dream destination</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Where do you want to go?</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">Enter your dream destination</p>
                       </div>
 
                       <FormField
@@ -283,7 +285,7 @@ export default function CreateTrip() {
                               <Input 
                                 placeholder="e.g., Tokyo, Japan" 
                                 {...field} 
-                                className="bg-white dark:bg-slate-700 text-lg py-6"
+                                className="bg-white dark:bg-gray-700 text-lg py-6"
                                 data-testid="input-destination"
                               />
                             </FormControl>
@@ -340,8 +342,8 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Calendar className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">When are you traveling?</h2>
-                        <p className="text-muted-foreground mt-2">Select your travel dates</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">When are you traveling?</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">Select your travel dates</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -357,8 +359,8 @@ export default function CreateTrip() {
                                     <Button
                                       variant="outline"
                                       className={cn(
-                                        "w-full pl-3 text-left font-normal bg-white dark:bg-slate-700 py-6",
-                                        !field.value && "text-muted-foreground"
+                                        "w-full pl-3 text-left font-normal bg-white dark:bg-gray-700 py-6",
+                                        !field.value && "text-gray-600 dark:text-gray-400"
                                       )}
                                       data-testid="button-start-date"
                                     >
@@ -400,8 +402,8 @@ export default function CreateTrip() {
                                     <Button
                                       variant="outline"
                                       className={cn(
-                                        "w-full pl-3 text-left font-normal bg-white dark:bg-slate-700 py-6",
-                                        !field.value && "text-muted-foreground"
+                                        "w-full pl-3 text-left font-normal bg-white dark:bg-gray-700 py-6",
+                                        !field.value && "text-gray-600 dark:text-gray-400"
                                       )}
                                       data-testid="button-end-date"
                                     >
@@ -446,12 +448,12 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Customize Your Experience</h2>
-                        <p className="text-muted-foreground mt-2">Tell us what you enjoy</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Customize Your Experience</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">Tell us what you enjoy</p>
                       </div>
 
                       <div>
-                        <h3 className="font-semibold mb-4 text-slate-900 dark:text-white">Travel Style (select all that apply)</h3>
+                        <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Travel Style (select all that apply)</h3>
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                           {travelStyles.map((style) => (
                             <button
@@ -468,7 +470,7 @@ export default function CreateTrip() {
                             >
                               <div className={cn(
                                 "w-10 h-10 mx-auto mb-2 rounded-lg flex items-center justify-center",
-                                selectedStyles.includes(style.id) ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                                selectedStyles.includes(style.id) ? "bg-primary text-white" : "bg-muted text-gray-600 dark:text-gray-400"
                               )}>
                                 <style.icon className="w-5 h-5" />
                               </div>
@@ -479,7 +481,7 @@ export default function CreateTrip() {
                       </div>
 
                       <div>
-                        <h3 className="font-semibold mb-4 text-slate-900 dark:text-white">Budget Range</h3>
+                        <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Budget Range</h3>
                         <div className="grid grid-cols-3 gap-3">
                           {budgetOptions.map((budget) => (
                             <button
@@ -498,7 +500,7 @@ export default function CreateTrip() {
                               data-testid={`button-budget-${budget.id}`}
                             >
                               <span className="font-medium block">{budget.label}</span>
-                              <span className="text-xs text-muted-foreground">{budget.description}</span>
+                              <span className="text-xs text-gray-600 dark:text-gray-400">{budget.description}</span>
                             </button>
                           ))}
                         </div>
@@ -517,8 +519,8 @@ export default function CreateTrip() {
                     >
                       <div className="text-center mb-8">
                         <Check className="w-12 h-12 mx-auto text-accent mb-4" />
-                        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Review Your Trip</h2>
-                        <p className="text-muted-foreground mt-2">Almost there! Give your trip a name and confirm.</p>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Review Your Trip</h2>
+                        <p className="text-gray-600 dark:text-gray-400 mt-2">Almost there! Give your trip a name and confirm.</p>
                       </div>
 
                       <FormField
@@ -531,7 +533,7 @@ export default function CreateTrip() {
                               <Input 
                                 placeholder={`My ${destination || 'Amazing'} Adventure`} 
                                 {...field} 
-                                className="bg-white dark:bg-slate-700 text-lg py-6"
+                                className="bg-white dark:bg-gray-700 text-lg py-6"
                                 data-testid="input-title"
                               />
                             </FormControl>
@@ -542,22 +544,22 @@ export default function CreateTrip() {
                       />
 
                       <div className="bg-muted/50 rounded-xl p-6 space-y-4">
-                        <h3 className="font-semibold text-slate-900 dark:text-white">Trip Summary</h3>
+                        <h3 className="font-semibold text-gray-900 dark:text-white">Trip Summary</h3>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <span className="text-muted-foreground">Event Type</span>
+                            <span className="text-gray-600 dark:text-gray-400">Event Type</span>
                             <p className="font-medium capitalize">{selectedEventType}</p>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Destination</span>
+                            <span className="text-gray-600 dark:text-gray-400">Destination</span>
                             <p className="font-medium">{destination || "Not set"}</p>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Travelers</span>
+                            <span className="text-gray-600 dark:text-gray-400">Travelers</span>
                             <p className="font-medium">{travelers} {travelers === 1 ? 'person' : 'people'}</p>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Dates</span>
+                            <span className="text-gray-600 dark:text-gray-400">Dates</span>
                             <p className="font-medium">
                               {startDate && endDate 
                                 ? `${format(startDate, "MMM d")} - ${format(endDate, "MMM d, yyyy")}`
@@ -565,13 +567,13 @@ export default function CreateTrip() {
                             </p>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Budget</span>
+                            <span className="text-gray-600 dark:text-gray-400">Budget</span>
                             <p className="font-medium capitalize">{selectedBudget}</p>
                           </div>
                         </div>
                         {selectedStyles.length > 0 && (
                           <div>
-                            <span className="text-muted-foreground text-sm">Travel Styles</span>
+                            <span className="text-gray-600 dark:text-gray-400 text-sm">Travel Styles</span>
                             <div className="flex flex-wrap gap-2 mt-1">
                               {selectedStyles.map(styleId => {
                                 const style = travelStyles.find(s => s.id === styleId);

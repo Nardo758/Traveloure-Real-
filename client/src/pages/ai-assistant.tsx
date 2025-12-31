@@ -190,27 +190,27 @@ export default function AIAssistant() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="mb-6">
           <Button
             variant="ghost"
             onClick={() => setLocation("/dashboard")}
-            className="mb-4"
+            className="mb-4 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
             data-testid="button-back-dashboard"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-br from-primary to-accent rounded-xl">
+            <div className="p-3 bg-primary rounded-lg">
               <Bot className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
                 AI Travel Assistant
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-gray-600 dark:text-gray-400">
                 Your personal travel planning companion
               </p>
             </div>
@@ -218,7 +218,7 @@ export default function AIAssistant() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
-          <Card className="lg:col-span-1 bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+          <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle className="text-lg">Conversations</CardTitle>
@@ -237,10 +237,10 @@ export default function AIAssistant() {
               <ScrollArea className="h-[calc(100vh-340px)]">
                 {loadingConversations ? (
                   <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                    <Loader2 className="w-6 h-6 animate-spin text-gray-600 dark:text-gray-400" />
                   </div>
                 ) : conversations.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
+                  <div className="text-center py-8 text-gray-600 dark:text-gray-400">
                     <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
                     <p className="text-sm">No conversations yet</p>
                   </div>
@@ -260,7 +260,7 @@ export default function AIAssistant() {
                       >
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{conv.title}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-gray-600 dark:text-gray-400">
                             {new Date(conv.createdAt).toLocaleDateString()}
                           </p>
                         </div>
@@ -284,21 +284,21 @@ export default function AIAssistant() {
             </CardContent>
           </Card>
 
-          <Card className="lg:col-span-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur flex flex-col">
+          <Card className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 flex flex-col">
             <CardContent className="flex-1 p-4 flex flex-col overflow-hidden">
               <ScrollArea className="flex-1 pr-4">
                 {selectedConversation && loadingMessages ? (
                   <div className="flex items-center justify-center h-full">
-                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-500" />
                   </div>
                 ) : messages.length === 0 && !streamingMessage && !selectedConversation ? (
                   <div className="h-full flex flex-col items-center justify-center py-12">
                     <div className="text-center mb-8">
                       <Sparkles className="w-16 h-16 mx-auto text-primary mb-4" />
-                      <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
                         How can I help you today?
                       </h2>
-                      <p className="text-muted-foreground max-w-md">
+                      <p className="text-gray-600 dark:text-gray-400 max-w-md">
                         I can help you plan trips, find destinations, create itineraries, and more!
                       </p>
                     </div>
@@ -307,11 +307,11 @@ export default function AIAssistant() {
                         <button
                           key={index}
                           onClick={() => setInputMessage(prompt.text)}
-                          className="p-4 rounded-xl border-2 border-muted text-left transition-all flex items-center gap-3"
+                          className="p-4 rounded-lg border-2 border-gray-200 dark:border-gray-700 text-left transition-all flex items-center gap-3 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-md"
                           data-testid={`button-suggestion-${index}`}
                         >
                           <prompt.icon className="w-5 h-5 text-primary flex-shrink-0" />
-                          <span className="text-sm">{prompt.text}</span>
+                          <span className="text-sm text-gray-700 dark:text-gray-300">{prompt.text}</span>
                         </button>
                       ))}
                     </div>
@@ -345,7 +345,7 @@ export default function AIAssistant() {
                             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                           </div>
                           {message.role === "user" && (
-                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center flex-shrink-0">
+                            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center flex-shrink-0">
                               <User className="w-4 h-4" />
                             </div>
                           )}
@@ -399,7 +399,7 @@ export default function AIAssistant() {
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">
                   AI assistant powered by OpenAI. Responses are for planning purposes only.
                 </p>
               </div>

@@ -141,13 +141,13 @@ export default function Vendors() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="mb-6">
           <Button
             variant="ghost"
             onClick={() => setLocation("/dashboard")}
-            className="mb-4"
+            className="mb-4 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
             data-testid="button-back-dashboard"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -155,14 +155,14 @@ export default function Vendors() {
           </Button>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 bg-gradient-to-br from-primary to-accent rounded-xl">
+              <div className="p-3 bg-primary rounded-lg">
                 <Building2 className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white">
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
                   Vendor Directory
                 </h1>
-                <p className="text-muted-foreground">
+                <p className="text-gray-600 dark:text-gray-400">
                   Find and manage trusted service providers
                 </p>
               </div>
@@ -334,7 +334,7 @@ export default function Vendors() {
 
         <div className="flex flex-col md:flex-row gap-4 mb-6">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 dark:text-gray-400" />
             <Input
               placeholder="Search vendors..."
               value={searchQuery}
@@ -382,16 +382,16 @@ export default function Vendors() {
         <ScrollArea className="flex-1 px-1">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <Loader2 className="w-8 h-8 animate-spin text-gray-600 dark:text-gray-400" />
             </div>
           ) : filteredVendors.length === 0 ? (
-            <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
               <CardContent className="flex flex-col items-center justify-center py-16">
-                <Building2 className="w-16 h-16 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                <Building2 className="w-16 h-16 text-gray-600 dark:text-gray-400 mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                   No vendors found
                 </h3>
-                <p className="text-muted-foreground text-center max-w-md mb-6">
+                <p className="text-gray-600 dark:text-gray-400 text-center max-w-md mb-6">
                   {searchQuery || selectedCategory !== "all"
                     ? "Try adjusting your search or filters"
                     : "Add your first vendor to get started"}
@@ -409,7 +409,7 @@ export default function Vendors() {
                 return (
                   <Card
                     key={vendor.id}
-                    className="bg-white/80 dark:bg-slate-800/80 backdrop-blur"
+                    className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700"
                     data-testid={`card-vendor-${vendor.id}`}
                   >
                     <CardHeader className="pb-3">
@@ -428,19 +428,19 @@ export default function Vendors() {
                     </CardHeader>
                     <CardContent className="space-y-2">
                       {(vendor.city || vendor.country) && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <MapPin className="w-4 h-4" />
                           {[vendor.city, vendor.country].filter(Boolean).join(", ")}
                         </div>
                       )}
                       {vendor.email && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Mail className="w-4 h-4" />
                           {vendor.email}
                         </div>
                       )}
                       {vendor.phone && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                           <Phone className="w-4 h-4" />
                           {vendor.phone}
                         </div>
@@ -463,7 +463,7 @@ export default function Vendors() {
                 return (
                   <Card
                     key={vendor.id}
-                    className="bg-white/80 dark:bg-slate-800/80 backdrop-blur"
+                    className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700"
                     data-testid={`card-vendor-${vendor.id}`}
                   >
                     <CardContent className="p-4">
@@ -473,16 +473,16 @@ export default function Vendors() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-slate-900 dark:text-white">{vendor.name}</h3>
+                            <h3 className="font-semibold text-gray-900 dark:text-white">{vendor.name}</h3>
                             <Badge variant="secondary" className="capitalize">
                               {vendor.priceRange || "moderate"}
                             </Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground truncate">
+                          <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
                             {vendor.description || "No description available"}
                           </p>
                         </div>
-                        <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+                        <div className="hidden md:flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
                           {(vendor.city || vendor.country) && (
                             <div className="flex items-center gap-1">
                               <MapPin className="w-4 h-4" />
@@ -515,7 +515,7 @@ export default function Vendors() {
               <Card
                 key={category.id}
                 className={cn(
-                  "cursor-pointer transition-all bg-white/80 dark:bg-slate-800/80 backdrop-blur",
+                  "cursor-pointer transition-all bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700",
                   selectedCategory === category.id && "ring-2 ring-primary"
                 )}
                 onClick={() => setSelectedCategory(category.id === selectedCategory ? "all" : category.id)}
@@ -525,7 +525,7 @@ export default function Vendors() {
                   <category.icon className="w-5 h-5 text-primary" />
                   <div>
                     <p className="font-medium text-sm">{category.label}</p>
-                    <p className="text-xs text-muted-foreground">{count} vendors</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">{count} vendors</p>
                   </div>
                 </CardContent>
               </Card>

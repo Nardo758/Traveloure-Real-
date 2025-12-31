@@ -23,7 +23,7 @@ export default function Dashboard() {
     return (
       <div className="container mx-auto px-4 py-12 text-center">
         <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-        <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
+        <p className="text-gray-600 dark:text-gray-400 mt-2">Could not load your trips. Please try again later.</p>
       </div>
     );
   }
@@ -32,21 +32,21 @@ export default function Dashboard() {
   const pastTrips = trips?.filter(t => new Date(t.endDate) < new Date()) || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header Section */}
-      <div className="bg-white dark:bg-slate-900 border-b border-border">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
         <div className="container mx-auto px-4 py-8 max-w-7xl">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h1 className="text-3xl md:text-4xl font-display font-bold text-slate-900 dark:text-white">
+              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
                 Welcome back, {user?.firstName || 'Traveler'}
               </h1>
-              <p className="text-muted-foreground mt-2">
+              <p className="text-gray-600 dark:text-gray-400 mt-2">
                 Ready for your next adventure?
               </p>
             </div>
             <Link href="/create-trip">
-              <Button size="lg" className="rounded-xl shadow-lg shadow-primary/20" data-testid="button-new-trip">
+              <Button size="lg" className="bg-primary hover:bg-primary-hover text-white font-semibold rounded-lg shadow-sm hover:shadow-md transition-all" data-testid="button-new-trip">
                 <Plus className="w-5 h-5 mr-2" />
                 Plan New Trip
               </Button>
@@ -57,81 +57,81 @@ export default function Dashboard() {
 
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-10">
           <Link href="/create-trip" data-testid="link-create-ai">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-create-ai">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700" data-testid="card-action-create-ai">
               <CardContent className="p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                   <Sparkles className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Create Trip</h3>
-                  <p className="text-sm text-muted-foreground">Plan your adventure</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Create Trip</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Plan your adventure</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/ai-assistant" data-testid="link-ai-assistant">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-ai-assistant">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700" data-testid="card-action-ai-assistant">
               <CardContent className="p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center group-hover:from-primary/20 group-hover:to-accent/20 transition-colors">
+                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                   <Bot className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">AI Assistant</h3>
-                  <p className="text-sm text-muted-foreground">Get AI-powered help</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">AI Assistant</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Get AI-powered help</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/chat" data-testid="link-talk-experts">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-talk-experts">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700" data-testid="card-action-talk-experts">
               <CardContent className="p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                  <Map className="w-6 h-6 text-accent" />
+                <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-800/40 transition-colors">
+                  <Map className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Talk to Experts</h3>
-                  <p className="text-sm text-muted-foreground">Local insider tips</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Talk to Experts</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Local insider tips</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/vendors" data-testid="link-vendors">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-vendors">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700" data-testid="card-action-vendors">
               <CardContent className="p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-900/50 transition-colors">
+                <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center group-hover:bg-green-200 dark:group-hover:bg-green-800/40 transition-colors">
                   <Building2 className="w-6 h-6 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Vendors</h3>
-                  <p className="text-sm text-muted-foreground">Service providers</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Vendors</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Service providers</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/executive-assistant" data-testid="link-executive-assistant">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-executive-assistant">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700" data-testid="card-action-executive-assistant">
               <CardContent className="p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50 transition-colors">
+                <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center group-hover:bg-purple-200 dark:group-hover:bg-purple-800/40 transition-colors">
                   <BarChart3 className="w-6 h-6 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Overview</h3>
-                  <p className="text-sm text-muted-foreground">Trip management</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Overview</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Trip management</p>
                 </div>
               </CardContent>
             </Card>
           </Link>
           <Link href="/explore" data-testid="link-explore-deals">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer group" data-testid="card-action-explore-deals">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-xl transition-all cursor-pointer group border border-gray-200 dark:border-gray-700" data-testid="card-action-explore-deals">
               <CardContent className="p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                  <Calendar className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                <div className="w-12 h-12 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center group-hover:bg-yellow-200 dark:group-hover:bg-yellow-800/40 transition-colors">
+                  <Calendar className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Explore</h3>
-                  <p className="text-sm text-muted-foreground">Amazing packages</p>
+                  <h3 className="font-semibold text-gray-900 dark:text-white">Explore</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Amazing packages</p>
                 </div>
               </CardContent>
             </Card>
@@ -145,7 +145,7 @@ export default function Dashboard() {
               <section>
                 <div className="flex items-center gap-3 mb-6">
                   <Plane className="w-6 h-6 text-primary" />
-                  <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
+                  <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
                     Upcoming Trips
                   </h2>
                 </div>
@@ -164,8 +164,8 @@ export default function Dashboard() {
             {/* All Trips */}
             <section>
               <div className="flex items-center gap-3 mb-6">
-                <Map className="w-6 h-6 text-muted-foreground" />
-                <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
+                <Map className="w-6 h-6 text-gray-500" />
+                <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white">
                   All Trips
                 </h2>
               </div>
@@ -184,17 +184,17 @@ export default function Dashboard() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center py-20 bg-white dark:bg-slate-800 rounded-3xl border-2 border-dashed border-border"
+            className="text-center py-20 bg-white dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700"
           >
-            <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-6 text-primary">
-              <Plane className="w-10 h-10" />
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Plane className="w-10 h-10 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">No trips yet</h2>
-            <p className="text-muted-foreground max-w-md mx-auto mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">No trips yet</h2>
+            <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto mb-8">
               You haven't planned any trips yet. Start your journey by creating your first itinerary!
             </p>
             <Link href="/create-trip">
-              <Button size="lg" data-testid="button-first-trip">
+              <Button size="lg" className="bg-primary hover:bg-primary-hover text-white font-semibold" data-testid="button-first-trip">
                 <Plus className="w-5 h-5 mr-2" />
                 Create Your First Trip
               </Button>

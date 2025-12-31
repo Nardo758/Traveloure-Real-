@@ -106,8 +106,8 @@ export default function LandingPage() {
       )}
 
       {/* Hero Section - Two Column Layout */}
-      <section className="w-full py-12 md:py-16 lg:py-20 bg-white dark:bg-slate-900">
-        <div className="container mx-auto px-4 grid grid-cols-1 lg:grid-cols-2 items-center gap-10 lg:gap-16">
+      <section className="w-full py-12 md:py-16 lg:py-20 bg-white dark:bg-gray-900">
+        <div className="container mx-auto px-4 max-w-7xl grid grid-cols-1 lg:grid-cols-2 items-center gap-10 lg:gap-16">
           {/* Left Content */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -115,23 +115,23 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="max-w-xl"
           >
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-slate-900 dark:text-white leading-tight tracking-tight">
+            <h1 className="text-4xl lg:text-5xl xl:text-6xl font-bold text-gray-900 dark:text-white leading-tight tracking-tight">
               Revolutionized Your<br />
               Travel Planning With<br />
               AI & <span className="text-primary">Travel</span> Experts
             </h1>
             
-            <p className="text-muted-foreground mt-6 text-base md:text-lg leading-relaxed">
+            <p className="text-gray-600 dark:text-gray-300 mt-6 text-base md:text-lg leading-relaxed">
               Experience personalized travel planning with insider knowledge from travel experts, powered by advanced AI.
             </p>
 
             {/* Beta Notice Badge */}
-            <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-muted/50 dark:bg-slate-800/50 rounded-full text-sm">
-              <Badge variant="secondary" className="bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs">
+            <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-full text-sm">
+              <Badge variant="secondary" className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold text-xs">
                 BETA
               </Badge>
-              <span className="text-muted-foreground">New features in development</span>
-              <span className="text-muted-foreground">-</span>
+              <span className="text-gray-600 dark:text-gray-400">New features in development</span>
+              <span className="text-gray-400">-</span>
               <span className="text-primary font-medium">Your feedback matters</span>
             </div>
 
@@ -139,7 +139,7 @@ export default function LandingPage() {
             <div className="flex flex-wrap gap-3 mt-8">
               <Link href="/api/login">
                 <Button 
-                  className="bg-primary hover:bg-primary/90 text-white rounded-full px-6 py-5 text-sm font-semibold shadow-lg shadow-primary/25"
+                  className="bg-primary hover:bg-primary-hover text-white rounded-lg px-6 py-3 font-semibold shadow-sm hover:shadow-md transition-all"
                   data-testid="button-create-trip"
                 >
                   Create a New Trip <ArrowRight className="w-4 h-4 ml-2" />
@@ -148,7 +148,7 @@ export default function LandingPage() {
               <Link href="/explore">
                 <Button
                   variant="outline"
-                  className="rounded-full px-6 py-5 text-sm font-semibold border-slate-300 dark:border-slate-600"
+                  className="rounded-lg px-6 py-3 font-semibold border-2 border-gray-300 hover:border-gray-400 text-gray-700 dark:text-gray-200 dark:border-gray-600 transition-colors"
                   data-testid="button-build-expert"
                 >
                   Build with an Expert
@@ -157,7 +157,7 @@ export default function LandingPage() {
               <Link href="/explore">
                 <Button
                   variant="outline"
-                  className="rounded-full px-6 py-5 text-sm font-semibold border-slate-300 dark:border-slate-600"
+                  className="rounded-lg px-6 py-3 font-semibold border-2 border-gray-300 hover:border-gray-400 text-gray-700 dark:text-gray-200 dark:border-gray-600 transition-colors"
                   data-testid="button-help-decide"
                 >
                   Help Me Decide
@@ -173,7 +173,7 @@ export default function LandingPage() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="relative w-full flex justify-center lg:justify-end"
           >
-            <div className="relative rounded-2xl overflow-hidden shadow-2xl border-4 border-white dark:border-slate-700 max-w-lg w-full">
+            <div className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700 max-w-lg w-full">
               <img
                 src={lakeImage}
                 alt="Beautiful turquoise lake with boats and mountains"
@@ -186,14 +186,14 @@ export default function LandingPage() {
       </section>
 
       {/* Accordion Sections - Flat Style */}
-      <section className="py-8 md:py-12 bg-white dark:bg-slate-900">
+      <section className="py-12 md:py-16 bg-white dark:bg-gray-900">
         <div className="container mx-auto px-4 max-w-4xl">
           <Accordion
             type="single"
             collapsible
             value={activeAccordion}
             onValueChange={(value) => setActiveAccordion(value)}
-            className="divide-y divide-border border-t border-b"
+            className="divide-y divide-gray-200 dark:divide-gray-700 border-t border-b border-gray-200 dark:border-gray-700"
           >
             {accordionSections.map((item) => (
               <AccordionItem
@@ -207,15 +207,15 @@ export default function LandingPage() {
                     <span className={cn(
                       "text-base md:text-lg font-semibold transition-colors",
                       activeAccordion === item.id 
-                        ? "text-slate-900 dark:text-white" 
-                        : "text-slate-700 dark:text-slate-300"
+                        ? "text-gray-900 dark:text-white" 
+                        : "text-gray-700 dark:text-gray-300"
                     )}>
                       {item.title}
                     </span>
-                    <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
+                    <ChevronUp className="h-4 w-4 shrink-0 text-gray-500 transition-transform duration-200" />
                   </AccordionPrimitive.Trigger>
                 </AccordionPrimitive.Header>
-                <AccordionContent className="pb-4 text-muted-foreground text-sm md:text-base leading-relaxed">
+                <AccordionContent className="pb-4 text-gray-600 dark:text-gray-400 text-sm md:text-base leading-relaxed">
                   {item.content}
                 </AccordionContent>
               </AccordionItem>

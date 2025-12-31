@@ -86,27 +86,27 @@ export default function ExecutiveAssistant() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-6 max-w-7xl">
         <div className="mb-6">
           <Button
             variant="ghost"
             onClick={() => setLocation("/dashboard")}
-            className="mb-4"
+            className="mb-4 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white"
             data-testid="button-back-dashboard"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
           </Button>
           <div className="flex items-center gap-3">
-            <div className="p-3 bg-gradient-to-br from-primary to-accent rounded-xl">
+            <div className="p-3 bg-primary rounded-lg">
               <BarChart3 className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-display font-bold text-slate-900 dark:text-white">
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
                 Executive Assistant
               </h1>
-              <p className="text-muted-foreground">
+              <p className="text-gray-600 dark:text-gray-400">
                 Manage and oversee all travel operations
               </p>
             </div>
@@ -114,54 +114,54 @@ export default function ExecutiveAssistant() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur" data-testid="card-stat-total">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-total">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-primary/10 rounded-lg">
                   <Plane className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.total}</p>
-                  <p className="text-xs text-muted-foreground">Total Trips</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.total}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Total Trips</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur" data-testid="card-stat-active">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-active">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
                   <TrendingUp className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.active}</p>
-                  <p className="text-xs text-muted-foreground">Active Trips</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.active}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Active Trips</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur" data-testid="card-stat-completed">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-completed">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
                   <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.completed}</p>
-                  <p className="text-xs text-muted-foreground">Completed</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.completed}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Completed</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur" data-testid="card-stat-draft">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-draft">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
                   <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.draft}</p>
-                  <p className="text-xs text-muted-foreground">Drafts</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.draft}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Drafts</p>
                 </div>
               </div>
             </CardContent>
@@ -169,7 +169,7 @@ export default function ExecutiveAssistant() {
         </div>
 
         <Tabs defaultValue="upcoming" className="space-y-4">
-          <TabsList className="bg-white/80 dark:bg-slate-800/80">
+          <TabsList className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
             <TabsTrigger value="upcoming" data-testid="tab-upcoming">
               <Calendar className="w-4 h-4 mr-2" />
               Upcoming
@@ -185,7 +185,7 @@ export default function ExecutiveAssistant() {
           </TabsList>
 
           <TabsContent value="upcoming">
-            <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-lg">Upcoming Trips</CardTitle>
                 <CardDescription>Trips scheduled for the future</CardDescription>
@@ -193,12 +193,12 @@ export default function ExecutiveAssistant() {
               <CardContent>
                 {loadingTrips ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-600 dark:text-gray-400" />
                   </div>
                 ) : upcomingTrips.length === 0 ? (
                   <div className="text-center py-12">
-                    <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No upcoming trips scheduled</p>
+                    <Calendar className="w-12 h-12 mx-auto text-gray-600 dark:text-gray-400 mb-4" />
+                    <p className="text-gray-600 dark:text-gray-400">No upcoming trips scheduled</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -216,7 +216,7 @@ export default function ExecutiveAssistant() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold truncate">{trip.title}</h3>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                               <MapPin className="w-3 h-3" />
                               <span>{trip.destination}</span>
                             </div>
@@ -239,7 +239,7 @@ export default function ExecutiveAssistant() {
           </TabsContent>
 
           <TabsContent value="recent">
-            <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-lg">Recently Created</CardTitle>
                 <CardDescription>Latest trips added to the system</CardDescription>
@@ -247,12 +247,12 @@ export default function ExecutiveAssistant() {
               <CardContent>
                 {loadingTrips ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-600 dark:text-gray-400" />
                   </div>
                 ) : recentTrips.length === 0 ? (
                   <div className="text-center py-12">
-                    <Plane className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No trips created yet</p>
+                    <Plane className="w-12 h-12 mx-auto text-gray-600 dark:text-gray-400 mb-4" />
+                    <p className="text-gray-600 dark:text-gray-400">No trips created yet</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -270,13 +270,13 @@ export default function ExecutiveAssistant() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="font-semibold truncate">{trip.title}</h3>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                               <MapPin className="w-3 h-3" />
                               <span>{trip.destination}</span>
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-gray-600 dark:text-gray-400">
                               Created {trip.createdAt ? new Date(trip.createdAt).toLocaleDateString() : ""}
                             </p>
                             <Badge className={cn("mt-1", getStatusColor(trip.status))}>
@@ -293,7 +293,7 @@ export default function ExecutiveAssistant() {
           </TabsContent>
 
           <TabsContent value="all">
-            <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+            <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
               <CardHeader>
                 <CardTitle className="text-lg">All Trips</CardTitle>
                 <CardDescription>Complete overview of all trips</CardDescription>
@@ -302,12 +302,12 @@ export default function ExecutiveAssistant() {
                 <ScrollArea className="h-[400px]">
                   {loadingTrips ? (
                     <div className="flex items-center justify-center py-12">
-                      <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+                      <Loader2 className="w-8 h-8 animate-spin text-gray-600 dark:text-gray-400" />
                     </div>
                   ) : trips.length === 0 ? (
                     <div className="text-center py-12">
-                      <Plane className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground">No trips available</p>
+                      <Plane className="w-12 h-12 mx-auto text-gray-600 dark:text-gray-400 mb-4" />
+                      <p className="text-gray-600 dark:text-gray-400">No trips available</p>
                     </div>
                   ) : (
                     <div className="space-y-3 pr-4">
@@ -332,7 +332,7 @@ export default function ExecutiveAssistant() {
                                   </Badge>
                                 )}
                               </div>
-                              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                              <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
                                 <div className="flex items-center gap-1">
                                   <MapPin className="w-3 h-3" />
                                   <span>{trip.destination}</span>
@@ -367,7 +367,7 @@ export default function ExecutiveAssistant() {
         </Tabs>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-primary" />
@@ -405,7 +405,7 @@ export default function ExecutiveAssistant() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white/80 dark:bg-slate-800/80 backdrop-blur">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <AlertCircle className="w-5 h-5 text-primary" />
@@ -419,12 +419,12 @@ export default function ExecutiveAssistant() {
                     <Clock className="w-5 h-5 text-yellow-600" />
                     <div>
                       <p className="text-sm font-medium">{stats.draft} draft trip(s)</p>
-                      <p className="text-xs text-muted-foreground">Awaiting completion</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Awaiting completion</p>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-6 text-muted-foreground">
+                <div className="text-center py-6 text-gray-600 dark:text-gray-400">
                   <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" />
                   <p>All trips are up to date</p>
                 </div>
