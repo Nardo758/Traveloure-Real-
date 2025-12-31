@@ -11,6 +11,9 @@ import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
 import Explore from "@/pages/explore";
 import Chat from "@/pages/chat";
+import HowItWorks from "@/pages/how-it-works";
+import Pricing from "@/pages/pricing";
+import About from "@/pages/about";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -54,8 +57,11 @@ function Router() {
           {() => <ProtectedRoute component={Chat} />}
         </Route>
 
-        {/* Public Route */}
+        {/* Public Routes */}
         <Route path="/explore" component={Explore} />
+        <Route path="/how-it-works" component={HowItWorks} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/about" component={About} />
 
         <Route component={NotFound} />
       </Switch>

@@ -2,6 +2,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Sparkles, 
@@ -15,7 +16,15 @@ import {
   ChevronRight,
   Quote,
   Mountain,
-  Cloud
+  Cloud,
+  Plane,
+  Heart,
+  Diamond,
+  Cake,
+  Building2,
+  Star,
+  MapPin,
+  MessageCircle
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import {
@@ -25,7 +34,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const launchCities = [
   { city: "Mumbai", country: "India" },
@@ -144,6 +153,100 @@ const testimonials = [
     name: "Akira Tanaka",
     location: "Tokyo, Japan",
     avatar: "AT"
+  },
+];
+
+const planCategories = [
+  {
+    id: "travel",
+    title: "Travel",
+    description: "Plan your perfect vacation with AI-powered itineraries and local expert guidance.",
+    icon: Plane,
+    color: "bg-blue-500",
+    href: "/create-trip?type=travel"
+  },
+  {
+    id: "wedding",
+    title: "Wedding",
+    description: "Create your dream destination wedding with expert planners and AI coordination.",
+    icon: Heart,
+    color: "bg-pink-500",
+    href: "/create-trip?type=wedding"
+  },
+  {
+    id: "proposal",
+    title: "Proposal",
+    description: "Plan the perfect proposal with romantic destinations and unforgettable moments.",
+    icon: Diamond,
+    color: "bg-purple-500",
+    href: "/create-trip?type=proposal"
+  },
+  {
+    id: "romance",
+    title: "Romance",
+    description: "Romantic getaways crafted for couples seeking memorable experiences together.",
+    icon: Heart,
+    color: "bg-red-500",
+    href: "/create-trip?type=romance"
+  },
+  {
+    id: "birthday",
+    title: "Birthday",
+    description: "Celebrate special birthdays with curated destination experiences.",
+    icon: Cake,
+    color: "bg-orange-500",
+    href: "/create-trip?type=birthday"
+  },
+  {
+    id: "corporate",
+    title: "Corporate",
+    description: "Professional retreats and team-building trips planned with precision.",
+    icon: Building2,
+    color: "bg-slate-600",
+    href: "/create-trip?type=corporate"
+  },
+];
+
+const localExperts = [
+  {
+    id: 1,
+    name: "Priya Sharma",
+    location: "Mumbai, India",
+    specialty: "Cultural Tours & Food Experiences",
+    rating: 4.9,
+    reviews: 127,
+    image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&h=150&fit=crop",
+    languages: ["English", "Hindi", "Marathi"]
+  },
+  {
+    id: 2,
+    name: "Carlos Martinez",
+    location: "Bogota, Colombia",
+    specialty: "Adventure & Eco Tourism",
+    rating: 4.8,
+    reviews: 98,
+    image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop",
+    languages: ["English", "Spanish"]
+  },
+  {
+    id: 3,
+    name: "Yuki Tanaka",
+    location: "Kyoto, Japan",
+    specialty: "Traditional Culture & Tea Ceremonies",
+    rating: 5.0,
+    reviews: 156,
+    image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop",
+    languages: ["English", "Japanese"]
+  },
+  {
+    id: 4,
+    name: "Rahul Patel",
+    location: "Goa, India",
+    specialty: "Beach Destinations & Nightlife",
+    rating: 4.7,
+    reviews: 84,
+    image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop",
+    languages: ["English", "Hindi", "Konkani"]
   },
 ];
 
@@ -361,6 +464,134 @@ export default function LandingPage() {
               </AccordionItem>
             ))}
           </Accordion>
+        </div>
+      </section>
+
+      {/* What Would You Like to Plan Section */}
+      <section className="py-16 md:py-24 bg-muted/30">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+              What Would You Like to Plan?
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Choose your event type and let us help you create unforgettable experiences
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {planCategories.map((category, i) => (
+              <motion.div
+                key={category.id}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+              >
+                <Link href={category.href}>
+                  <Card 
+                    className="hover-elevate cursor-pointer group h-full"
+                    data-testid={`card-category-${category.id}`}
+                  >
+                    <CardContent className="p-6">
+                      <div className={cn(
+                        "w-14 h-14 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110",
+                        category.color
+                      )}>
+                        <category.icon className="w-7 h-7 text-white" />
+                      </div>
+                      <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+                        {category.title}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {category.description}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Meet Our Local Experts Section */}
+      <section className="py-16 md:py-24 bg-white dark:bg-slate-900">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+              Meet Our Local Experts
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto">
+              Connect with trusted travel experts who know their destinations inside and out
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            {localExperts.map((expert, i) => (
+              <motion.div
+                key={expert.id}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+              >
+                <Card 
+                  className="hover-elevate overflow-visible h-full"
+                  data-testid={`card-expert-${expert.id}`}
+                >
+                  <CardContent className="p-5 text-center">
+                    <Avatar className="w-20 h-20 mx-auto mb-4 border-4 border-white dark:border-slate-800 shadow-lg">
+                      <AvatarImage src={expert.image} alt={expert.name} />
+                      <AvatarFallback className="bg-primary text-white text-lg">
+                        {expert.name.split(' ').map(n => n[0]).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">
+                      {expert.name}
+                    </h3>
+                    <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground mb-2">
+                      <MapPin className="w-3 h-3" />
+                      {expert.location}
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      {expert.specialty}
+                    </p>
+                    <div className="flex items-center justify-center gap-2 mb-4">
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                        <span className="font-semibold text-slate-900 dark:text-white">{expert.rating}</span>
+                      </div>
+                      <span className="text-muted-foreground text-sm">({expert.reviews} reviews)</span>
+                    </div>
+                    <Link href={`/experts/${expert.id}`}>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full"
+                        data-testid={`button-chat-expert-${expert.id}`}
+                      >
+                        <MessageCircle className="w-4 h-4 mr-2" />
+                        Chat Now
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="text-center mt-10">
+            <Link href="/explore">
+              <Button 
+                variant="outline" 
+                size="lg"
+                data-testid="button-view-all-experts"
+              >
+                View All Experts <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+          </div>
         </div>
       </section>
 
