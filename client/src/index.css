@@ -1,58 +1,69 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* Traveloure Coral/Pink Palette */
-  /* Primary: Coral Pink (matches #FF385C) */
+  /* Traveloure Design System - from wireframes v2.0 */
+  
+  /* Primary: #FF385C (Traveloure Red/Pink) */
   --primary: 350 100% 61%;
   --primary-foreground: 0 0% 100%;
+  --primary-hover: 350 81% 54%; /* #E23350 */
 
-  /* Secondary: Light Gray */
-  --secondary: 220 14% 96%;
-  --secondary-foreground: 220 20% 20%;
+  /* Secondary: Gray palette */
+  --secondary: 220 9% 46%; /* #6B7280 */
+  --secondary-foreground: 0 0% 100%;
 
-  /* Accent: Green for highlights (matches original) */
-  --accent: 145 63% 42%;
+  /* Accent: Green for success */
+  --accent: 160 84% 39%; /* #10B981 */
   --accent-foreground: 0 0% 100%;
 
-  /* Neutrals */
-  --background: 0 0% 100%;
-  --foreground: 220 20% 20%;
+  /* Neutrals - exact wireframe colors */
+  --background: 210 20% 98%; /* #F9FAFB */
+  --foreground: 221 39% 11%; /* #111827 - Text Dark */
   
-  --muted: 220 14% 96%;
-  --muted-foreground: 220 10% 46%;
+  --muted: 220 14% 96%; /* #F3F4F6 - Secondary Light */
+  --muted-foreground: 220 9% 46%; /* #6B7280 - Text Mid */
   
-  --card: 0 0% 100%;
-  --card-foreground: 220 20% 20%;
+  --card: 0 0% 100%; /* #FFFFFF - Surface */
+  --card-foreground: 221 39% 11%; /* #111827 */
   
   --popover: 0 0% 100%;
-  --popover-foreground: 220 20% 20%;
+  --popover-foreground: 221 39% 11%;
   
-  --border: 220 14% 90%;
-  --input: 220 14% 90%;
+  --border: 220 13% 91%; /* #E5E7EB */
+  --input: 220 13% 91%;
   
-  --destructive: 0 84% 60%;
+  --destructive: 0 84% 60%; /* #EF4444 */
   --destructive-foreground: 0 0% 98%;
 
   --ring: 350 100% 61%;
-  --radius: 0.75rem;
+  --radius: 0.5rem;
+
+  /* Text colors */
+  --text-dark: 221 39% 11%; /* #111827 */
+  --text-mid: 220 9% 46%; /* #6B7280 */
+  --text-light: 218 11% 65%; /* #9CA3AF */
+
+  /* Status colors */
+  --success: 160 84% 39%; /* #10B981 */
+  --warning: 38 92% 50%; /* #F59E0B */
+  --error: 0 84% 60%; /* #EF4444 */
+  --info: 217 91% 60%; /* #3B82F6 */
 
   /* Sidebar */
-  --sidebar-background: 0 0% 98%;
-  --sidebar-foreground: 220 20% 20%;
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 221 39% 11%;
   --sidebar-primary: 350 100% 61%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 220 14% 96%;
-  --sidebar-accent-foreground: 220 20% 20%;
-  --sidebar-border: 220 14% 90%;
+  --sidebar-accent-foreground: 221 39% 11%;
+  --sidebar-border: 220 13% 91%;
   --sidebar-ring: 350 100% 61%;
 
-  /* Fonts - Poppins for headings, Inter for body (matches production) */
-  --font-display: 'Poppins', sans-serif;
-  --font-body: 'Inter', sans-serif;
+  /* Fonts - System UI stack per wireframe spec */
+  --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
 .dark {
@@ -104,7 +115,7 @@
     @apply bg-background text-foreground antialiased font-body;
   }
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display font-bold text-slate-900 dark:text-slate-50;
+    @apply font-display font-bold text-gray-900 dark:text-gray-50;
   }
 }
 
