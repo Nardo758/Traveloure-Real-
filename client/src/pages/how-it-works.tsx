@@ -83,14 +83,14 @@ export default function HowItWorksPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <h1 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6">
+            <h1 className="text-4xl md:text-5xl font-bold text-[#111827] dark:text-white mb-6">
               How Traveloure Works
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
@@ -128,7 +128,7 @@ export default function HowItWorksPage() {
                       <step.icon className="w-7 h-7 text-white" />
                     </div>
                   </div>
-                  <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4" data-testid={`text-step-title-${step.number}`}>
+                  <h2 className="text-3xl font-bold text-[#111827] dark:text-white mb-4" data-testid={`text-step-title-${step.number}`}>
                     {step.title}
                   </h2>
                   <p className="text-lg text-muted-foreground mb-6">
@@ -158,7 +158,7 @@ export default function HowItWorksPage() {
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Choose Your Planning Style
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -180,7 +180,7 @@ export default function HowItWorksPage() {
                     <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                       <option.icon className="w-6 h-6 text-primary" />
                     </div>
-                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
+                    <h3 className="text-xl font-semibold text-[#111827] dark:text-white mb-2">
                       {option.title}
                     </h3>
                     <p className="text-sm text-muted-foreground mb-4">

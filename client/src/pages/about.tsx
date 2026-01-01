@@ -82,7 +82,7 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <motion.div
@@ -90,7 +90,7 @@ export default function AboutPage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <h1 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6">
+              <h1 className="text-4xl md:text-5xl font-bold text-[#111827] dark:text-white mb-6">
                 Revolutionizing How the World Plans Travel
               </h1>
               <p className="text-lg text-muted-foreground mb-8">
@@ -125,7 +125,7 @@ export default function AboutPage() {
       </section>
 
       {/* Stats Section */}
-      <section className="py-12 bg-slate-900 text-white">
+      <section className="py-12 bg-gray-900 text-white">
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, i) => (
@@ -139,7 +139,7 @@ export default function AboutPage() {
                 data-testid={`stat-${i}`}
               >
                 <div className="text-4xl md:text-5xl font-bold text-primary mb-2" data-testid={`text-stat-value-${i}`}>{stat.value}</div>
-                <div className="text-slate-400" data-testid={`text-stat-label-${i}`}>{stat.label}</div>
+                <div className="text-gray-400" data-testid={`text-stat-label-${i}`}>{stat.label}</div>
               </motion.div>
             ))}
           </div>
@@ -158,7 +158,7 @@ export default function AboutPage() {
               <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
                 <Target className="w-8 h-8 text-primary" />
               </div>
-              <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-6">
+              <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-6">
                 Our Mission
               </h2>
               <p className="text-lg text-muted-foreground leading-relaxed">
@@ -175,7 +175,7 @@ export default function AboutPage() {
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Our Values
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -197,7 +197,7 @@ export default function AboutPage() {
                     <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                       <value.icon className="w-7 h-7 text-primary" />
                     </div>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                    <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-2">
                       {value.title}
                     </h3>
                     <p className="text-sm text-muted-foreground">
@@ -215,7 +215,7 @@ export default function AboutPage() {
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Our Story
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -240,7 +240,7 @@ export default function AboutPage() {
                 >
                   <div className={`flex-1 ${i % 2 === 0 ? "md:text-right" : "md:text-left"} pl-12 md:pl-0`}>
                     <div className="text-primary font-bold text-lg mb-1" data-testid={`text-milestone-year-${milestone.year}`}>{milestone.year}</div>
-                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2" data-testid={`text-milestone-title-${milestone.year}`}>
+                    <h3 className="text-xl font-semibold text-[#111827] dark:text-white mb-2" data-testid={`text-milestone-title-${milestone.year}`}>
                       {milestone.title}
                     </h3>
                     <p className="text-muted-foreground text-sm">{milestone.description}</p>
@@ -258,7 +258,7 @@ export default function AboutPage() {
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Meet Our Team
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -277,13 +277,13 @@ export default function AboutPage() {
               >
                 <Card className="h-full" data-testid={`card-team-${i}`}>
                   <CardContent className="p-6 text-center">
-                    <Avatar className="w-24 h-24 mx-auto mb-4 border-4 border-white dark:border-slate-800 shadow-lg">
+                    <Avatar className="w-24 h-24 mx-auto mb-4 border-4 border-white dark:border-gray-800 shadow-lg">
                       <AvatarImage src={member.image} alt={member.name} />
                       <AvatarFallback className="bg-primary text-white text-xl">
                         {member.name.split(' ').map(n => n[0]).join('')}
                       </AvatarFallback>
                     </Avatar>
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">
+                    <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-1">
                       {member.name}
                     </h3>
                     <p className="text-sm text-primary font-medium mb-3">{member.role}</p>
@@ -307,7 +307,7 @@ export default function AboutPage() {
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
               <MapPin className="w-8 h-8 text-primary" />
             </div>
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Where We Operate
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
@@ -317,7 +317,7 @@ export default function AboutPage() {
               {["Mumbai, India", "Bogota, Colombia", "Goa, India", "Kyoto, Japan", "Edinburgh, UK", "Barcelona, Spain", "Cape Town, SA", "Bali, Indonesia"].map((city, i) => (
                 <span
                   key={city}
-                  className="px-4 py-2 bg-muted rounded-full text-sm font-medium text-slate-900 dark:text-white"
+                  className="px-4 py-2 bg-muted rounded-full text-sm font-medium text-[#111827] dark:text-white"
                   data-testid={`badge-location-${i}`}
                 >
                   {city}

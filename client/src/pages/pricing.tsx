@@ -127,14 +127,14 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+      <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4 text-center">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <h1 className="text-4xl md:text-5xl font-bold text-slate-900 dark:text-white mb-6">
+            <h1 className="text-4xl md:text-5xl font-bold text-[#111827] dark:text-white mb-6">
               Simple, Transparent Pricing
             </h1>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
@@ -170,7 +170,7 @@ export default function PricingPage() {
                     </div>
                     <CardTitle className="text-2xl">{plan.name}</CardTitle>
                     <div className="mt-4">
-                      <span className="text-4xl font-bold text-slate-900 dark:text-white">{plan.price}</span>
+                      <span className="text-4xl font-bold text-[#111827] dark:text-white">{plan.price}</span>
                       <span className="text-muted-foreground">{plan.period}</span>
                     </div>
                     <CardDescription className="mt-2">{plan.description}</CardDescription>
@@ -211,7 +211,7 @@ export default function PricingPage() {
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Buy Credits
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -245,7 +245,7 @@ export default function PricingPage() {
                         +{pkg.bonus} bonus
                       </Badge>
                     )}
-                    <div className="text-xl font-semibold text-slate-900 dark:text-white">
+                    <div className="text-xl font-semibold text-[#111827] dark:text-white">
                       ${pkg.price}
                     </div>
                   </CardContent>
@@ -260,7 +260,7 @@ export default function PricingPage() {
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Compare Plans
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
@@ -315,7 +315,7 @@ export default function PricingPage() {
       <section className="py-16 md:py-24 bg-muted/30">
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] dark:text-white mb-4">
               Frequently Asked Questions
             </h2>
           </div>
@@ -341,7 +341,7 @@ export default function PricingPage() {
             ].map((faq, i) => (
               <Card key={i} data-testid={`card-faq-${i}`}>
                 <CardContent className="p-6">
-                  <h3 className="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+                  <h3 className="font-semibold text-[#111827] dark:text-white mb-2 flex items-center gap-2">
                     <HelpCircle className="w-5 h-5 text-primary" />
                     {faq.q}
                   </h3>
