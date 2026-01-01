@@ -9,6 +9,10 @@ import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
+import MyTrips from "@/pages/my-trips";
+import Profile from "@/pages/profile";
+import Credits from "@/pages/credits";
+import Notifications from "@/pages/notifications";
 import Explore from "@/pages/explore";
 import Chat from "@/pages/chat";
 import AIAssistant from "@/pages/ai-assistant";
@@ -32,7 +36,6 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   }
 
   if (!user) {
-    // Redirect to login if not authenticated
     window.location.href = "/api/login";
     return null;
   }
@@ -42,42 +45,66 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
 function Router() {
   return (
-    <Layout>
-      <Switch>
-        <Route path="/" component={LandingPage} />
-        
-        {/* Protected Routes */}
-        <Route path="/dashboard">
-          {() => <ProtectedRoute component={Dashboard} />}
-        </Route>
-        <Route path="/create-trip">
-          {() => <ProtectedRoute component={CreateTrip} />}
-        </Route>
-        <Route path="/trip/:id">
-          {() => <ProtectedRoute component={TripDetails} />}
-        </Route>
-        <Route path="/chat">
-          {() => <ProtectedRoute component={Chat} />}
-        </Route>
-        <Route path="/ai-assistant">
-          {() => <ProtectedRoute component={AIAssistant} />}
-        </Route>
-        <Route path="/vendors">
-          {() => <ProtectedRoute component={Vendors} />}
-        </Route>
-        <Route path="/executive-assistant">
-          {() => <ProtectedRoute component={ExecutiveAssistant} />}
-        </Route>
+    <Switch>
+      {/* Public Routes with Layout */}
+      <Route path="/">
+        <Layout><LandingPage /></Layout>
+      </Route>
+      <Route path="/how-it-works">
+        <Layout><HowItWorks /></Layout>
+      </Route>
+      <Route path="/pricing">
+        <Layout><Pricing /></Layout>
+      </Route>
+      <Route path="/about">
+        <Layout><About /></Layout>
+      </Route>
+      <Route path="/explore">
+        <Layout><Explore /></Layout>
+      </Route>
 
-        {/* Public Routes */}
-        <Route path="/explore" component={Explore} />
-        <Route path="/how-it-works" component={HowItWorks} />
-        <Route path="/pricing" component={Pricing} />
-        <Route path="/about" component={About} />
+      {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}
+      <Route path="/dashboard">
+        {() => <ProtectedRoute component={Dashboard} />}
+      </Route>
+      <Route path="/my-trips">
+        {() => <ProtectedRoute component={MyTrips} />}
+      </Route>
+      <Route path="/profile">
+        {() => <ProtectedRoute component={Profile} />}
+      </Route>
+      <Route path="/credits">
+        {() => <ProtectedRoute component={Credits} />}
+      </Route>
+      <Route path="/notifications">
+        {() => <ProtectedRoute component={Notifications} />}
+      </Route>
 
-        <Route component={NotFound} />
-      </Switch>
-    </Layout>
+      {/* Protected Routes with Layout */}
+      <Route path="/create-trip">
+        {() => <Layout><ProtectedRoute component={CreateTrip} /></Layout>}
+      </Route>
+      <Route path="/trip/:id">
+        {() => <Layout><ProtectedRoute component={TripDetails} /></Layout>}
+      </Route>
+      <Route path="/chat">
+        {() => <Layout><ProtectedRoute component={Chat} /></Layout>}
+      </Route>
+      <Route path="/ai-assistant">
+        {() => <Layout><ProtectedRoute component={AIAssistant} /></Layout>}
+      </Route>
+      <Route path="/vendors">
+        {() => <Layout><ProtectedRoute component={Vendors} /></Layout>}
+      </Route>
+      <Route path="/executive-assistant">
+        {() => <Layout><ProtectedRoute component={ExecutiveAssistant} /></Layout>}
+      </Route>
+
+      {/* 404 */}
+      <Route>
+        <Layout><NotFound /></Layout>
+      </Route>
+    </Switch>
   );
 }
 
