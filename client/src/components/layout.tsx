@@ -11,10 +11,17 @@ import {
   ChevronDown,
   Home,
   Plane,
-  HelpCircle,
+  Heart,
+  Gem,
+  Sparkles,
+  Cake,
+  Building2,
   Users,
   Briefcase,
-  Mail,
+  Calendar,
+  Clock,
+  Globe,
+  Bot,
   Facebook,
   Instagram,
   Linkedin,
@@ -32,26 +39,57 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
 const navItems = [
-  { name: "Home", href: "/" },
   {
     name: "Features",
     icon: ChevronDown,
-    children: [
-      { name: "For Travelers", href: "/how-it-works", icon: Plane, description: "Plan trips with AI and experts" },
-      { name: "For Life Events", href: "/create-trip", icon: Users, description: "Weddings, proposals, celebrations" },
-      { name: "AI Trip Planner", href: "/explore", icon: HelpCircle, description: "Let AI create your itinerary" },
+    sections: [
+      {
+        title: "FOR TRAVELERS",
+        items: [
+          { name: "Plan Your Perfect Trip", href: "/create-trip", icon: Plane, description: "Personalized travel planning" },
+          { name: "Find Local Experts", href: "/vendors", icon: Users, description: "Connect with destination experts" },
+          { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
+          { name: "Executive Assistant Services", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
+        ],
+      },
+      {
+        title: "FOR LIFE EVENTS",
+        items: [
+          { name: "Plan Your Dream Wedding", href: "/create-trip", icon: Heart, description: "Full wedding planning" },
+          { name: "Perfect Proposal Planning", href: "/create-trip", icon: Gem, description: "Create the perfect moment" },
+          { name: "Romantic Date Nights", href: "/create-trip", icon: Sparkles, description: "Special romantic experiences" },
+          { name: "Milestone Celebrations", href: "/create-trip", icon: Cake, description: "Birthdays & anniversaries" },
+          { name: "Corporate Events & Retreats", href: "/create-trip", icon: Building2, description: "Team events made easy" },
+        ],
+      },
     ],
   },
-  { name: "Deals", href: "/pricing" },
   {
     name: "Partner With Us",
     icon: ChevronDown,
-    children: [
-      { name: "Become a Partner", href: "/partner", icon: Briefcase, description: "Join our expert network" },
-      { name: "Partner Benefits", href: "/about", icon: Users, description: "Learn about perks & earnings" },
+    sections: [
+      {
+        title: "BECOME A PARTNER",
+        items: [
+          { name: "Travel Expert", href: "/partner", icon: Plane, description: "Share your destination expertise" },
+          { name: "Local Expert", href: "/partner", icon: Globe, description: "Guide travelers in your city" },
+          { name: "Event Planner", href: "/partner", icon: Calendar, description: "Plan weddings & celebrations" },
+          { name: "Executive Assistant", href: "/partner", icon: Briefcase, description: "Manage high-end clients" },
+          { name: "Service Provider", href: "/partner", icon: Building2, description: "Offer venues & services" },
+        ],
+      },
+      {
+        title: "BENEFITS",
+        items: [
+          { name: "Flexible Schedule", href: "/about", icon: Clock, description: "Work on your own terms" },
+          { name: "AI-Powered Tools", href: "/about", icon: Bot, description: "Cutting-edge planning tools" },
+          { name: "Global Clientele", href: "/about", icon: Globe, description: "Connect with travelers worldwide" },
+        ],
+      },
     ],
   },
-  { name: "Contact Us", href: "/contact" },
+  { name: "Pricing", href: "/pricing" },
+  { name: "About", href: "/about" },
 ];
 
 const authNavItems = [
@@ -81,7 +119,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
 
   const slugify = (str: string) => str.toLowerCase().replace(/\s+/g, '-');
 
-  if (!item.children) {
+  if (!item.sections) {
     return (
       <Link
         href={item.href || "#"}
@@ -89,7 +127,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
           "text-sm font-medium transition-colors px-3 py-2 relative",
           isActive 
             ? "text-primary after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-primary after:rounded-full" 
-            : "text-muted-foreground hover:text-primary"
+            : "text-[#6B7280] hover:text-[#FF385C]"
         )}
         data-testid={`link-nav-${slugify(item.name)}`}
       >
@@ -105,7 +143,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       onMouseLeave={handleMouseLeave}
     >
       <button
-        className="flex items-center text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-3 py-2"
+        className="flex items-center text-sm font-medium text-[#6B7280] hover:text-[#FF385C] transition-colors px-3 py-2"
         type="button"
         data-testid={`button-nav-dropdown-${slugify(item.name)}`}
       >
@@ -120,19 +158,32 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 mt-1 w-56 bg-white dark:bg-slate-800 border border-border rounded-lg shadow-xl z-50"
+            className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 border border-[#E5E7EB] rounded-lg shadow-xl z-50"
           >
             <div className="py-2">
-              {item.children.map((child) => (
-                <Link
-                  key={child.name}
-                  href={child.href || "#"}
-                  className="flex items-center gap-3 px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                  data-testid={`link-nav-${slugify(child.name)}`}
-                >
-                  {child.icon && <child.icon className="w-4 h-4" />}
-                  {child.name}
-                </Link>
+              {item.sections.map((section, sIdx) => (
+                <div key={section.title}>
+                  {sIdx > 0 && <div className="border-t border-[#E5E7EB] my-2" />}
+                  <div className="px-4 py-2 text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide">
+                    {section.title}
+                  </div>
+                  {section.items.map((child) => (
+                    <Link
+                      key={child.name}
+                      href={child.href || "#"}
+                      className="flex items-start gap-3 px-4 py-2.5 text-sm hover:bg-[#F3F4F6] transition-colors group"
+                      data-testid={`link-nav-${slugify(child.name)}`}
+                    >
+                      {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-[#6B7280] group-hover:text-[#FF385C]" />}
+                      <div>
+                        <div className="text-[#111827] font-medium group-hover:text-[#FF385C]">{child.name}</div>
+                        {child.description && (
+                          <div className="text-xs text-[#9CA3AF]">{child.description}</div>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               ))}
             </div>
           </motion.div>
@@ -152,19 +203,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-white dark:bg-slate-900 border-b border-border sticky top-0 z-50">
+      <nav className="bg-white dark:bg-gray-900 border-b border-[#E5E7EB] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               {/* Logo */}
               <Link href="/" className="flex-shrink-0 flex items-center gap-3" data-testid="link-logo">
                 <div className="flex items-center gap-1.5">
-                  <Compass className="h-6 w-6 text-primary" />
-                  <span className="font-bold text-xl tracking-tight text-slate-900 dark:text-white uppercase">
+                  <Compass className="h-6 w-6 text-[#FF385C]" />
+                  <span className="font-bold text-xl tracking-tight text-[#111827] dark:text-white uppercase">
                     Traveloure
                   </span>
                 </div>
-                <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20">
+                <span className="px-2 py-0.5 text-xs font-semibold bg-[#FFE3E8] text-[#FF385C] rounded-full border border-[#FF385C]/20">
                   BETA
                 </span>
               </Link>
@@ -208,7 +259,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           {user.firstName?.[0] || "U"}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <span className="text-sm font-medium text-[#6B7280] dark:text-gray-300">
                         {user.firstName}
                       </span>
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
@@ -271,7 +322,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden border-t border-border bg-white dark:bg-slate-900"
+              className="md:hidden border-t border-[#E5E7EB] bg-white dark:bg-gray-900"
             >
               <div className="pt-2 pb-3 space-y-1 px-4">
                 {user ? (
@@ -295,29 +346,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 ) : (
                   <>
                     {navItems.map((item) => (
-                      item.children ? (
+                      item.sections ? (
                         <div key={item.name} className="py-2">
-                          <div className="px-3 py-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                          <div className="px-3 py-2 text-sm font-semibold text-[#9CA3AF] uppercase tracking-wide">
                             {item.name}
                           </div>
-                          {item.children.map((child) => (
-                            <Link
-                              key={child.name}
-                              href={child.href || "#"}
-                              className="flex items-center gap-3 px-6 py-2.5 text-base font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                              onClick={() => setIsMobileMenuOpen(false)}
-                              data-testid={`link-mobile-${child.name.toLowerCase().replace(/\s+/g, '-')}`}
-                            >
-                              {child.icon && <child.icon className="w-5 h-5" />}
-                              {child.name}
-                            </Link>
+                          {item.sections.map((section) => (
+                            <div key={section.title}>
+                              <div className="px-6 py-1.5 text-xs font-semibold text-[#9CA3AF] uppercase">
+                                {section.title}
+                              </div>
+                              {section.items.map((child) => (
+                                <Link
+                                  key={child.name}
+                                  href={child.href || "#"}
+                                  className="flex items-center gap-3 px-8 py-2.5 text-base font-medium text-[#6B7280] hover:text-[#FF385C] hover:bg-[#F3F4F6] rounded-lg transition-colors"
+                                  onClick={() => setIsMobileMenuOpen(false)}
+                                  data-testid={`link-mobile-${child.name.toLowerCase().replace(/\s+/g, '-')}`}
+                                >
+                                  {child.icon && <child.icon className="w-5 h-5" />}
+                                  {child.name}
+                                </Link>
+                              ))}
+                            </div>
                           ))}
                         </div>
                       ) : (
                         <Link
                           key={item.name}
                           href={item.href || "#"}
-                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#FF385C] transition-colors"
                           onClick={() => setIsMobileMenuOpen(false)}
                           data-testid={`link-mobile-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                         >
@@ -367,18 +425,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Footer */}
-      <footer className="bg-slate-900 text-white py-16">
+      <footer className="bg-gray-900 text-white py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
             <div className="lg:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="bg-primary p-2 rounded-lg">
+                <div className="bg-[#FF385C] p-2 rounded-lg">
                   <Compass className="h-5 w-5 text-white" />
                 </div>
                 <span className="font-display font-bold text-xl">Traveloure</span>
               </div>
-              <p className="text-slate-400 text-sm mb-6 max-w-sm">
+              <p className="text-gray-400 text-sm mb-6 max-w-sm">
                 Experience personalized travel planning with insider knowledge from travel experts, powered by advanced AI technology.
               </p>
               {/* Social Links */}
@@ -387,7 +445,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://facebook.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center hover:bg-primary transition-colors"
+                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
                   data-testid="link-social-facebook"
                 >
                   <Facebook className="w-5 h-5" />
@@ -396,7 +454,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://twitter.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center hover:bg-primary transition-colors"
+                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
                   data-testid="link-social-twitter"
                 >
                   <Twitter className="w-5 h-5" />
@@ -405,7 +463,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://instagram.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center hover:bg-primary transition-colors"
+                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
                   data-testid="link-social-instagram"
                 >
                   <Instagram className="w-5 h-5" />
@@ -414,7 +472,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://linkedin.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center hover:bg-primary transition-colors"
+                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
                   data-testid="link-social-linkedin"
                 >
                   <Linkedin className="w-5 h-5" />
@@ -425,7 +483,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Product Column */}
             <div>
               <h4 className="font-semibold mb-4 text-white">Product</h4>
-              <ul className="space-y-3 text-sm text-slate-400">
+              <ul className="space-y-3 text-sm text-gray-400">
                 <li><Link href="/create-trip" className="hover:text-white transition-colors" data-testid="link-footer-create-trip">Create a Trip</Link></li>
                 <li><Link href="/explore" className="hover:text-white transition-colors" data-testid="link-footer-explore">Explore Destinations</Link></li>
                 <li><Link href="/chat" className="hover:text-white transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
@@ -437,7 +495,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Company Column */}
             <div>
               <h4 className="font-semibold mb-4 text-white">Company</h4>
-              <ul className="space-y-3 text-sm text-slate-400">
+              <ul className="space-y-3 text-sm text-gray-400">
                 <li><Link href="/about" className="hover:text-white transition-colors" data-testid="link-footer-about">About Us</Link></li>
                 <li><Link href="/partner" className="hover:text-white transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
                 <li><Link href="/careers" className="hover:text-white transition-colors" data-testid="link-footer-careers">Careers</Link></li>
@@ -449,7 +507,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Support Column */}
             <div>
               <h4 className="font-semibold mb-4 text-white">Support</h4>
-              <ul className="space-y-3 text-sm text-slate-400">
+              <ul className="space-y-3 text-sm text-gray-400">
                 <li><Link href="/help" className="hover:text-white transition-colors" data-testid="link-footer-help">Help Center</Link></li>
                 <li><Link href="/contact" className="hover:text-white transition-colors" data-testid="link-footer-contact">Contact Us</Link></li>
                 <li><Link href="/privacy" className="hover:text-white transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
@@ -460,11 +518,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Bottom Bar */}
-          <div className="border-t border-slate-800 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-slate-400">
+          <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-gray-400">
               © {new Date().getFullYear()} Traveloure. All rights reserved.
             </p>
-            <div className="flex items-center gap-6 text-sm text-slate-400">
+            <div className="flex items-center gap-6 text-sm text-gray-400">
               <Link href="/privacy" className="hover:text-white transition-colors" data-testid="link-footer-bottom-privacy">Privacy</Link>
               <Link href="/terms" className="hover:text-white transition-colors" data-testid="link-footer-bottom-terms">Terms</Link>
               <Link href="/cookies" className="hover:text-white transition-colors" data-testid="link-footer-bottom-cookies">Cookies</Link>
