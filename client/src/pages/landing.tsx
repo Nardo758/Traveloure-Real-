@@ -177,25 +177,43 @@ export default function LandingPage() {
                 </span>
               </div>
 
-              {/* CTA Buttons */}
+              {/* Beta notice */}
+              <div className="inline-flex items-center gap-2 bg-[#F3F4F6] border border-[#E5E7EB] px-4 py-2 rounded-lg text-sm text-[#6B7280] mb-6">
+                <span className="text-[#FF385C] font-medium">BETA</span>
+                <span>New features in development</span>
+                <span className="text-[#9CA3AF]">•</span>
+                <span>Your feedback matters</span>
+              </div>
+
+              {/* CTA Buttons - 3 Main Paths */}
               <div className="flex flex-wrap gap-3">
-                <Link href="/api/login">
+                <Link href="/browse">
                   <Button 
                     size="lg"
                     className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6 h-12"
-                    data-testid="button-get-started"
+                    data-testid="button-create-trip"
                   >
-                    Get Started - Free
+                    Create a New Trip <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
-                <Link href="#how-it-works">
+                <Link href="/experts">
                   <Button
                     size="lg"
                     variant="outline"
                     className="border-[#E5E7EB] text-[#374151] font-medium px-6 h-12"
-                    data-testid="button-how-it-works"
+                    data-testid="button-build-with-expert"
                   >
-                    See How It Works
+                    Build with an Expert
+                  </Button>
+                </Link>
+                <Link href="/help-me-decide">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-[#E5E7EB] text-[#374151] font-medium px-6 h-12"
+                    data-testid="button-help-me-decide"
+                  >
+                    Help Me Decide
                   </Button>
                 </Link>
               </div>
