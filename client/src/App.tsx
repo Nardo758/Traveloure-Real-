@@ -22,6 +22,15 @@ import HowItWorks from "@/pages/how-it-works";
 import Pricing from "@/pages/pricing";
 import About from "@/pages/about";
 import NotFound from "@/pages/not-found";
+import ExpertDashboard from "@/pages/expert/dashboard";
+import ExpertClients from "@/pages/expert/clients";
+import ExpertEarnings from "@/pages/expert/earnings";
+import ExpertProfile from "@/pages/expert/profile";
+import ExpertAIAssistant from "@/pages/expert/ai-assistant";
+import ExpertMessages from "@/pages/expert/messages";
+import ExpertBookings from "@/pages/expert/bookings";
+import ExpertServices from "@/pages/expert/services";
+import ExpertPerformance from "@/pages/expert/performance";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -78,6 +87,35 @@ function Router() {
       </Route>
       <Route path="/notifications">
         {() => <ProtectedRoute component={Notifications} />}
+      </Route>
+
+      {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
+      <Route path="/expert/dashboard">
+        {() => <ProtectedRoute component={ExpertDashboard} />}
+      </Route>
+      <Route path="/expert/ai-assistant">
+        {() => <ProtectedRoute component={ExpertAIAssistant} />}
+      </Route>
+      <Route path="/expert/messages">
+        {() => <ProtectedRoute component={ExpertMessages} />}
+      </Route>
+      <Route path="/expert/clients">
+        {() => <ProtectedRoute component={ExpertClients} />}
+      </Route>
+      <Route path="/expert/bookings">
+        {() => <ProtectedRoute component={ExpertBookings} />}
+      </Route>
+      <Route path="/expert/services">
+        {() => <ProtectedRoute component={ExpertServices} />}
+      </Route>
+      <Route path="/expert/earnings">
+        {() => <ProtectedRoute component={ExpertEarnings} />}
+      </Route>
+      <Route path="/expert/performance">
+        {() => <ProtectedRoute component={ExpertPerformance} />}
+      </Route>
+      <Route path="/expert/profile">
+        {() => <ProtectedRoute component={ExpertProfile} />}
       </Route>
 
       {/* Protected Routes with Layout */}
