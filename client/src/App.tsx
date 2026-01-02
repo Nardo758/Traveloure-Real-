@@ -62,6 +62,8 @@ import AdminAnalytics from "@/pages/admin/analytics";
 import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
+import BrowsePage from "@/pages/browse";
+import OptimizePage from "@/pages/optimize";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -101,6 +103,12 @@ function Router() {
       </Route>
       <Route path="/explore">
         <Layout><Explore /></Layout>
+      </Route>
+      <Route path="/browse">
+        <BrowsePage />
+      </Route>
+      <Route path="/optimize">
+        <OptimizePage />
       </Route>
 
       {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}

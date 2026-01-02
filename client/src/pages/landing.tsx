@@ -257,26 +257,28 @@ export default function LandingPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: idx * 0.05 }}
               >
-                <Card 
-                  className="bg-white border border-[#E5E7EB] hover:border-[#FF385C] hover:shadow-lg transition-all cursor-pointer group h-full"
-                  data-testid={`card-event-${event.title.toLowerCase()}`}
-                >
-                  <CardContent className="p-6 text-center">
-                    <div className={cn("w-12 h-12 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center group-hover:bg-[#FFE3E8] transition-colors", event.color)}>
-                      <event.icon className="w-6 h-6" />
-                    </div>
-                    <h3 className="font-bold text-[#111827] mb-2">{event.title}</h3>
-                    <p className="text-sm text-[#6B7280] mb-4">{event.description}</p>
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="border-[#E5E7EB] text-[#374151] group-hover:bg-[#FF385C] group-hover:text-white group-hover:border-[#FF385C] transition-colors"
-                      data-testid={`button-event-${event.title.toLowerCase()}`}
-                    >
-                      {event.cta}
-                    </Button>
-                  </CardContent>
-                </Card>
+                <Link href="/browse">
+                  <Card 
+                    className="bg-white border border-[#E5E7EB] hover:border-[#FF385C] hover:shadow-lg transition-all cursor-pointer group h-full"
+                    data-testid={`card-event-${event.title.toLowerCase()}`}
+                  >
+                    <CardContent className="p-6 text-center">
+                      <div className={cn("w-12 h-12 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center group-hover:bg-[#FFE3E8] transition-colors", event.color)}>
+                        <event.icon className="w-6 h-6" />
+                      </div>
+                      <h3 className="font-bold text-[#111827] mb-2">{event.title}</h3>
+                      <p className="text-sm text-[#6B7280] mb-4">{event.description}</p>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-[#E5E7EB] text-[#374151] group-hover:bg-[#FF385C] group-hover:text-white group-hover:border-[#FF385C] transition-colors"
+                        data-testid={`button-event-${event.title.toLowerCase()}`}
+                      >
+                        Start Browsing
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Link>
               </motion.div>
             ))}
           </div>
