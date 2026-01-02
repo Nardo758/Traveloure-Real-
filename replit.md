@@ -51,6 +51,51 @@ Key database tables:
 
 ## Recent Changes (January 2026)
 
+### Phase 6 Complete: Service Provider & Admin Dashboards
+
+**Service Provider Dashboard (9 pages):**
+Components in `client/src/components/`:
+- `provider-sidebar.tsx` - Collapsible sidebar with 9 navigation items
+- `provider-layout.tsx` - Layout wrapper with header showing rating badge
+
+Pages in `client/src/pages/provider/`:
+- `dashboard.tsx` - Stats, pending requests, upcoming bookings, quick actions
+- `bookings.tsx` - All bookings with search, status filters, and booking details
+- `services.tsx` - Service management with categories, pricing, toggle active/inactive
+- `earnings.tsx` - Revenue stats, monthly earnings chart, payout schedule, transaction history
+- `performance.tsx` - Metrics, benchmarks, rating distribution, reviews with response capability
+- `calendar.tsx` - Interactive calendar with event management, blocking dates
+- `profile.tsx` - Business profile with photos, amenities, capacity information
+- `settings.tsx` - Account, business preferences, notifications, payment settings
+- `resources.tsx` - Learning guides, video tutorials, downloadable resources, FAQ
+
+**Routes:** All provider routes follow `/provider/*` pattern with ProtectedRoute wrapper
+
+**Admin Dashboard (10 pages):**
+Components in `client/src/components/`:
+- `admin-sidebar.tsx` - Collapsible sidebar with 10 navigation items (dark theme)
+- `admin-layout.tsx` - Layout wrapper with system status badge
+
+Pages in `client/src/pages/admin/`:
+- `dashboard.tsx` - Platform stats, pending approvals (experts, providers, disputes), system health, activity feed
+- `users.tsx` - User management with search, role filters, user table with actions
+- `experts.tsx` - Expert management with pending applications and active expert table
+- `providers.tsx` - Provider management with pending applications and active provider table
+- `plans.tsx` - Plan management with search, status filters, progress tracking
+- `revenue.tsx` - Revenue stats, monthly chart, revenue by source, transaction history
+- `analytics.tsx` - Page views, user metrics, traffic sources, top destinations, demographics
+- `search.tsx` - Global search across users, experts, providers, plans
+- `notifications.tsx` - Notification center with filters, mark as read, delete functionality
+- `system.tsx` - System status, platform settings, API usage, security, backup settings
+
+**Routes:** All admin routes follow `/admin/*` pattern with ProtectedRoute wrapper
+
+**Design Notes:**
+- Provider Dashboard uses #FF385C primary color with amber rating badge
+- Admin Dashboard uses gray-900 for sidebar active states (professional admin look)
+- All interactive elements have data-testid attributes following {action}-{target} convention
+- Both dashboards bypass global Layout, using their respective Layout components
+
 ### Phase 5 Complete: Executive Assistant (EA) Dashboard
 Implemented comprehensive EA Dashboard for managing multiple C-level executives:
 

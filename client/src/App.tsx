@@ -43,6 +43,25 @@ import EAGifts from "@/pages/ea/gifts";
 import EAReports from "@/pages/ea/reports";
 import EAProfile from "@/pages/ea/profile";
 import EASettings from "@/pages/ea/settings";
+import ProviderDashboard from "@/pages/provider/dashboard";
+import ProviderBookings from "@/pages/provider/bookings";
+import ProviderServices from "@/pages/provider/services";
+import ProviderEarnings from "@/pages/provider/earnings";
+import ProviderPerformance from "@/pages/provider/performance";
+import ProviderCalendar from "@/pages/provider/calendar";
+import ProviderProfile from "@/pages/provider/profile";
+import ProviderSettings from "@/pages/provider/settings";
+import ProviderResources from "@/pages/provider/resources";
+import AdminDashboard from "@/pages/admin/dashboard";
+import AdminUsers from "@/pages/admin/users";
+import AdminExperts from "@/pages/admin/experts";
+import AdminProviders from "@/pages/admin/providers";
+import AdminPlans from "@/pages/admin/plans";
+import AdminRevenue from "@/pages/admin/revenue";
+import AdminAnalytics from "@/pages/admin/analytics";
+import AdminSearch from "@/pages/admin/search";
+import AdminNotifications from "@/pages/admin/notifications";
+import AdminSystem from "@/pages/admin/system";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -166,6 +185,67 @@ function Router() {
       </Route>
       <Route path="/ea/settings">
         {() => <ProtectedRoute component={EASettings} />}
+      </Route>
+
+      {/* Service Provider Dashboard Routes (use ProviderLayout - no global Layout) */}
+      <Route path="/provider/dashboard">
+        {() => <ProtectedRoute component={ProviderDashboard} />}
+      </Route>
+      <Route path="/provider/bookings">
+        {() => <ProtectedRoute component={ProviderBookings} />}
+      </Route>
+      <Route path="/provider/services">
+        {() => <ProtectedRoute component={ProviderServices} />}
+      </Route>
+      <Route path="/provider/earnings">
+        {() => <ProtectedRoute component={ProviderEarnings} />}
+      </Route>
+      <Route path="/provider/performance">
+        {() => <ProtectedRoute component={ProviderPerformance} />}
+      </Route>
+      <Route path="/provider/calendar">
+        {() => <ProtectedRoute component={ProviderCalendar} />}
+      </Route>
+      <Route path="/provider/profile">
+        {() => <ProtectedRoute component={ProviderProfile} />}
+      </Route>
+      <Route path="/provider/settings">
+        {() => <ProtectedRoute component={ProviderSettings} />}
+      </Route>
+      <Route path="/provider/resources">
+        {() => <ProtectedRoute component={ProviderResources} />}
+      </Route>
+
+      {/* Admin Dashboard Routes (use AdminLayout - no global Layout) */}
+      <Route path="/admin/dashboard">
+        {() => <ProtectedRoute component={AdminDashboard} />}
+      </Route>
+      <Route path="/admin/users">
+        {() => <ProtectedRoute component={AdminUsers} />}
+      </Route>
+      <Route path="/admin/experts">
+        {() => <ProtectedRoute component={AdminExperts} />}
+      </Route>
+      <Route path="/admin/providers">
+        {() => <ProtectedRoute component={AdminProviders} />}
+      </Route>
+      <Route path="/admin/plans">
+        {() => <ProtectedRoute component={AdminPlans} />}
+      </Route>
+      <Route path="/admin/revenue">
+        {() => <ProtectedRoute component={AdminRevenue} />}
+      </Route>
+      <Route path="/admin/analytics">
+        {() => <ProtectedRoute component={AdminAnalytics} />}
+      </Route>
+      <Route path="/admin/search">
+        {() => <ProtectedRoute component={AdminSearch} />}
+      </Route>
+      <Route path="/admin/notifications">
+        {() => <ProtectedRoute component={AdminNotifications} />}
+      </Route>
+      <Route path="/admin/system">
+        {() => <ProtectedRoute component={AdminSystem} />}
       </Route>
 
       {/* Protected Routes with Layout */}
