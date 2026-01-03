@@ -113,7 +113,7 @@ export async function setupAuth(app: Express) {
   app.get("/api/callback", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
+      successReturnToOrRedirect: "/dashboard",
       failureRedirect: "/api/login",
     })(req, res, next);
   });
