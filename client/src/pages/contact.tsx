@@ -257,9 +257,9 @@ export default function ContactPage() {
 
                     <Button
                       type="submit"
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !formData.name || !formData.email || !formData.message}
                       className="w-full h-12 bg-[#FF385C] hover:bg-[#E23350] text-white"
-                      data-testid="button-submit"
+                      data-testid="button-submit-contact"
                     >
                       {isSubmitting ? (
                         "Sending..."

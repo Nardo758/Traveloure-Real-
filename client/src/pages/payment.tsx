@@ -91,11 +91,34 @@ export default function PaymentPage() {
     }
   };
 
+  const [cardDetails, setCardDetails] = useState({
+    cardNumber: "",
+    expiry: "",
+    cvv: "",
+    cardName: "",
+  });
+
+  const isCardValid = paymentMethod !== "card" || (
+    cardDetails.cardNumber.length >= 16 &&
+    cardDetails.expiry.length >= 5 &&
+    cardDetails.cvv.length >= 3 &&
+    cardDetails.cardName.length >= 2
+  );
+
   const handlePayment = async () => {
     if (!agreeToTerms) {
       toast({
         title: "Please agree to terms",
         description: "You must agree to the terms and conditions to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (paymentMethod === "card" && !isCardValid) {
+      toast({
+        title: "Invalid card details",
+        description: "Please enter valid card information.",
         variant: "destructive",
       });
       return;
@@ -230,6 +253,8 @@ export default function PaymentPage() {
                           <Input
                             id="cardNumber"
                             placeholder="1234 5678 9012 3456"
+                            value={cardDetails.cardNumber}
+                            onChange={(e) => setCardDetails(prev => ({ ...prev, cardNumber: e.target.value.replace(/\D/g, '').slice(0, 16) }))}
                             className="pl-10 h-12 border-[#E5E7EB]"
                             data-testid="input-card-number"
                           />
@@ -244,6 +269,8 @@ export default function PaymentPage() {
                           <Input
                             id="expiry"
                             placeholder="MM/YY"
+                            value={cardDetails.expiry}
+                            onChange={(e) => setCardDetails(prev => ({ ...prev, expiry: e.target.value.slice(0, 5) }))}
                             className="mt-2 h-12 border-[#E5E7EB]"
                             data-testid="input-expiry"
                           />
@@ -255,6 +282,8 @@ export default function PaymentPage() {
                           <Input
                             id="cvv"
                             placeholder="123"
+                            value={cardDetails.cvv}
+                            onChange={(e) => setCardDetails(prev => ({ ...prev, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
                             className="mt-2 h-12 border-[#E5E7EB]"
                             data-testid="input-cvv"
                           />
@@ -268,6 +297,8 @@ export default function PaymentPage() {
                         <Input
                           id="cardName"
                           placeholder="John Doe"
+                          value={cardDetails.cardName}
+                          onChange={(e) => setCardDetails(prev => ({ ...prev, cardName: e.target.value }))}
                           className="mt-2 h-12 border-[#E5E7EB]"
                           data-testid="input-card-name"
                         />
@@ -453,8 +484,8 @@ export default function PaymentPage() {
                   <Button
                     className="w-full h-12 bg-[#FF385C] hover:bg-[#E23350] text-white text-lg"
                     onClick={handlePayment}
-                    disabled={isProcessing}
-                    data-testid="button-pay"
+                    disabled={isProcessing || !agreeToTerms || !isCardValid}
+                    data-testid="button-pay-now"
                   >
                     {isProcessing ? (
                       "Processing..."

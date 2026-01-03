@@ -131,7 +131,32 @@ export default function TravelExpertsPage() {
     }
   };
 
+  const canProceed = () => {
+    switch (currentStep) {
+      case 1:
+        return formData.firstName && formData.lastName && formData.email && formData.phone;
+      case 2:
+        return formData.destinations.length > 0 && formData.specialties.length > 0 && formData.languages.length > 0;
+      case 3:
+        return formData.yearsExperience && formData.bio.length > 20;
+      case 4:
+        return formData.availability && formData.responseTime && formData.hourlyRate;
+      case 5:
+        return formData.agreeToTerms;
+      default:
+        return true;
+    }
+  };
+
   const nextStep = () => {
+    if (!canProceed()) {
+      toast({
+        title: "Please complete all required fields",
+        description: "Fill in all required information before continuing.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (currentStep < steps.length) {
       setCurrentStep((prev) => prev + 1);
     }
@@ -611,8 +636,9 @@ export default function TravelExpertsPage() {
           {currentStep < steps.length ? (
             <Button
               onClick={nextStep}
+              disabled={!canProceed()}
               className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-              data-testid="button-next"
+              data-testid="button-next-step"
             >
               Next
               <ArrowRight className="w-4 h-4 ml-2" />
