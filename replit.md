@@ -51,6 +51,35 @@ Key database tables:
 
 ## Recent Changes (January 2026)
 
+### Backend API Security Implementation (January 3)
+
+**New Database Tables:**
+- `local_expert_forms` - Expert application submissions with status tracking
+- `service_provider_forms` - Provider application submissions with status tracking
+- `provider_services` - Services offered by approved providers
+- `service_categories` / `service_subcategories` - Service categorization hierarchy
+- `faqs` - Platform FAQ management
+- `wallets` / `credit_transactions` - User wallet and credit system
+
+**API Endpoints Added:**
+- Expert applications: POST /api/expert-application, GET /api/my-expert-application
+- Provider applications: POST /api/provider-application, GET /api/my-provider-application
+- Provider services: Full CRUD at /api/provider/services/*
+- Service categories: GET /api/service-categories, POST (admin only)
+- FAQs: GET /api/faqs, POST/PATCH/DELETE (admin only)
+- Wallet: GET /api/wallet, GET /api/wallet/transactions, POST /api/wallet/add-credits (admin only)
+
+**Security Patterns:**
+- All admin routes verify `user.role === "admin"` before processing
+- Provider service mutations verify ownership before allowing update/delete
+- userId is stripped from service update payloads to prevent ownership transfer attacks
+- Wallet credit additions are admin-only (production will integrate with Stripe)
+
+**Application Workflow:**
+1. User submits expert/provider application → status: "pending"
+2. Admin reviews via /api/admin/[expert|provider]-applications endpoints
+3. Admin approves/rejects → if approved, user role updated to "expert" or "provider"
+
 ### Phase 7 Complete: Public Pages & Registration Flows (January 3)
 
 **New Public Pages:**
