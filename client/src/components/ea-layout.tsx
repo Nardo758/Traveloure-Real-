@@ -1,6 +1,7 @@
 import { EASidebar } from "./ea-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Bot } from "lucide-react";
+import { UserMenu } from "@/components/user-menu";
 
 interface EALayoutProps {
   children: React.ReactNode;
@@ -17,9 +18,12 @@ export function EALayout({ children, title }: EALayoutProps) {
           <h1 className="text-lg font-semibold text-gray-900" data-testid="text-page-title">
             {title || "Executive Assistant Portal"}
           </h1>
-          <Badge className="bg-green-100 text-green-700 border-green-200" data-testid="badge-ai-status">
-            <Bot className="w-4 h-4 mr-1" /> AI: Active
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge className="bg-green-100 text-green-700 border-green-200" data-testid="badge-ai-status">
+              <Bot className="w-4 h-4 mr-1" /> AI: Active
+            </Badge>
+            <UserMenu />
+          </div>
         </header>
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
