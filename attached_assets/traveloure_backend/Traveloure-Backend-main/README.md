@@ -1,0 +1,44 @@
+# traveloure-backend
+
+# TravlDna
+
+## **Project Documentation**
+
+https://docs.google.com/document/d/1bmTw3TlHm2F-z-ScXxTr3sjDBQsM-5SGDzjRtcGKjZ8/edit?tab=t.0
+
+
+**API Documentation:**
+https://docs.google.com/document/d/1bmTw
+
+stripe listen --forward-to http://127.0.0.1:8000/plan/webhook/stripe/
+
+# ENV File Content
+```
+OPENAI_API_KEY=""
+WEATHER_API_KEY=""
+SERP_API_KEY=""
+FORECAST_URL=""
+WEATHER_API_KEY2=""
+FRONTEND_URL=""
+GEMINI_API_KEY=""
+SECRET_KEY=""
+DEBUG="True"
+EMAIL_BACKEND=""
+EMAIL_HOST=""
+EMAIL_PORT=""
+EMAIL_HOST_USER=""
+EMAIL_HOST_PASSWORD=""
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+GOOGLE_SECURE_REFERRER_POLICY=""
+GOOGLE_SECURE_CROSS_ORIGIN_OPENER_POLICY=""
+GOOGLE_CERTIFICATE_URL=""
+STRIPE_SECRET_KEY=""
+STRIPE_PUBLIC_KEY=""
+STRIPE_WEBHOOK_SECRET=""
+DATABASE_NAME=""
+DATABASE_USER=""
+DATABASE_PASSWORD=""
+DATABASE_PORT=""
+DATABASE_HOST=""
+```
