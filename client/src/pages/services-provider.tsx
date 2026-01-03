@@ -109,7 +109,30 @@ export default function ServicesProviderPage() {
     }
   };
 
+  const canProceed = () => {
+    switch (currentStep) {
+      case 1:
+        return formData.businessName && formData.businessType && formData.email && formData.phone;
+      case 2:
+        return formData.serviceCategories.length > 0 && formData.description.length > 20;
+      case 3:
+        return formData.address && formData.city && formData.country && formData.hasInsurance && formData.hasLicense;
+      case 4:
+        return formData.agreeToTerms;
+      default:
+        return true;
+    }
+  };
+
   const nextStep = () => {
+    if (!canProceed()) {
+      toast({
+        title: "Please complete all required fields",
+        description: "Fill in all required information before continuing.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (currentStep < steps.length) {
       setCurrentStep((prev) => prev + 1);
     }
@@ -555,8 +578,9 @@ export default function ServicesProviderPage() {
           {currentStep < steps.length ? (
             <Button
               onClick={nextStep}
+              disabled={!canProceed()}
               className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-              data-testid="button-next"
+              data-testid="button-next-step"
             >
               Next
               <ArrowRight className="w-4 h-4 ml-2" />

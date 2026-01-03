@@ -300,7 +300,7 @@ export default function PartnerWithUsPage() {
                       </ul>
                     </div>
 
-                    <Link href={type.href}>
+                    <Link href={type.id === "service-provider" ? "/services-provider" : "/travel-experts"}>
                       <Button
                         className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
                         data-testid={`button-apply-${type.id}`}

@@ -71,19 +71,19 @@ const navItems = [
       {
         title: "BECOME A PARTNER",
         items: [
-          { name: "Travel Expert", href: "/partner-with-us", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/partner-with-us", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/partner-with-us", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/partner-with-us", icon: Briefcase, description: "Manage high-end clients" },
-          { name: "Service Provider", href: "/partner-with-us", icon: Building2, description: "Offer venues & services" },
+          { name: "Travel Expert", href: "/travel-experts", icon: Plane, description: "Share your destination expertise" },
+          { name: "Local Expert", href: "/travel-experts", icon: Globe, description: "Guide travelers in your city" },
+          { name: "Event Planner", href: "/travel-experts", icon: Calendar, description: "Plan weddings & celebrations" },
+          { name: "Executive Assistant", href: "/travel-experts", icon: Briefcase, description: "Manage high-end clients" },
+          { name: "Service Provider", href: "/services-provider", icon: Building2, description: "Offer venues & services" },
         ],
       },
       {
         title: "BENEFITS",
         items: [
-          { name: "Flexible Schedule", href: "/about", icon: Clock, description: "Work on your own terms" },
-          { name: "AI-Powered Tools", href: "/about", icon: Bot, description: "Cutting-edge planning tools" },
-          { name: "Global Clientele", href: "/about", icon: Globe, description: "Connect with travelers worldwide" },
+          { name: "Flexible Schedule", href: "/partner-with-us", icon: Clock, description: "Work on your own terms" },
+          { name: "AI-Powered Tools", href: "/partner-with-us", icon: Bot, description: "Cutting-edge planning tools" },
+          { name: "Global Clientele", href: "/partner-with-us", icon: Globe, description: "Connect with travelers worldwide" },
         ],
       },
     ],
