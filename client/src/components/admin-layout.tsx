@@ -1,6 +1,7 @@
 import { AdminSidebar } from "./admin-sidebar";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle } from "lucide-react";
+import { UserMenu } from "@/components/user-menu";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -17,9 +18,12 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
           <h1 className="text-lg font-semibold text-gray-900" data-testid="text-page-title">
             {title || "Admin Panel"}
           </h1>
-          <Badge className="bg-green-100 text-green-700 border-green-200" data-testid="badge-system-status">
-            <CheckCircle className="w-4 h-4 mr-1" /> All Systems Operational
-          </Badge>
+          <div className="flex items-center gap-3">
+            <Badge className="bg-green-100 text-green-700 border-green-200" data-testid="badge-system-status">
+              <CheckCircle className="w-4 h-4 mr-1" /> All Systems Operational
+            </Badge>
+            <UserMenu />
+          </div>
         </header>
         {/* Main Content */}
         <main className="flex-1 overflow-auto">

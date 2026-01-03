@@ -3,6 +3,7 @@ import { ExpertSidebar } from "@/components/expert-sidebar";
 import { Bell, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { UserMenu } from "@/components/user-menu";
 
 interface ExpertLayoutProps {
   children: React.ReactNode;
@@ -43,6 +44,7 @@ export function ExpertLayout({ children, title }: ExpertLayoutProps) {
                   3
                 </Badge>
               </Button>
+              <UserMenu />
             </div>
           </header>
           <main className="flex-1 overflow-y-auto">
