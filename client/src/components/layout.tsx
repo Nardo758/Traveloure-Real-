@@ -71,11 +71,11 @@ const navItems = [
       {
         title: "BECOME A PARTNER",
         items: [
-          { name: "Travel Expert", href: "/partner", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/partner", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/partner", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/partner", icon: Briefcase, description: "Manage high-end clients" },
-          { name: "Service Provider", href: "/partner", icon: Building2, description: "Offer venues & services" },
+          { name: "Travel Expert", href: "/partner-with-us", icon: Plane, description: "Share your destination expertise" },
+          { name: "Local Expert", href: "/partner-with-us", icon: Globe, description: "Guide travelers in your city" },
+          { name: "Event Planner", href: "/partner-with-us", icon: Calendar, description: "Plan weddings & celebrations" },
+          { name: "Executive Assistant", href: "/partner-with-us", icon: Briefcase, description: "Manage high-end clients" },
+          { name: "Service Provider", href: "/partner-with-us", icon: Building2, description: "Offer venues & services" },
         ],
       },
       {
@@ -88,8 +88,8 @@ const navItems = [
       },
     ],
   },
-  { name: "Pricing", href: "/pricing" },
-  { name: "About", href: "/about" },
+  { name: "Deals", href: "/deals" },
+  { name: "Contact", href: "/contact" },
 ];
 
 const authNavItems = [

@@ -64,6 +64,16 @@ import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
 import BrowsePage from "@/pages/browse";
 import OptimizePage from "@/pages/optimize";
+import ExpertsPage from "@/pages/experts";
+import HelpMeDecidePage from "@/pages/help-me-decide";
+import PartnerWithUsPage from "@/pages/partner-with-us";
+import ContactPage from "@/pages/contact";
+import FAQPage from "@/pages/faq";
+import FeaturesPage from "@/pages/features";
+import DealsPage from "@/pages/deals";
+import PaymentPage from "@/pages/payment";
+import TravelExpertsPage from "@/pages/travel-experts";
+import ServicesProviderPage from "@/pages/services-provider";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -109,6 +119,36 @@ function Router() {
       </Route>
       <Route path="/optimize">
         <OptimizePage />
+      </Route>
+      <Route path="/experts">
+        <Layout><ExpertsPage /></Layout>
+      </Route>
+      <Route path="/help-me-decide">
+        <Layout><HelpMeDecidePage /></Layout>
+      </Route>
+      <Route path="/partner-with-us">
+        <Layout><PartnerWithUsPage /></Layout>
+      </Route>
+      <Route path="/contact">
+        <Layout><ContactPage /></Layout>
+      </Route>
+      <Route path="/faq">
+        <Layout><FAQPage /></Layout>
+      </Route>
+      <Route path="/features">
+        <Layout><FeaturesPage /></Layout>
+      </Route>
+      <Route path="/deals">
+        <Layout><DealsPage /></Layout>
+      </Route>
+      <Route path="/payment">
+        <PaymentPage />
+      </Route>
+      <Route path="/travel-experts">
+        <TravelExpertsPage />
+      </Route>
+      <Route path="/services-provider">
+        <ServicesProviderPage />
       </Route>
 
       {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}
