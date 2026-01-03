@@ -78,6 +78,20 @@ Key database tables:
 - Contact form validates required fields before submit enabled
 - All forms use destructive toast feedback for validation errors
 
+### Phase 8 Complete: Additional Dashboard & Trip Pages (January 3)
+
+**New Pages:**
+- `/itinerary/:id` - Day-by-day trip breakdown with activity timeline, booking status indicators, interactive day navigation, and booking CTAs
+- `/credits-billing` - Credit package purchasing with 4 tiers, transaction history, payment methods management, invoices with tabs interface
+- `/expert-status` - Expert application progress tracking with 6-step timeline, document verification workflow, progress percentage
+- `/provider-status` - Service provider application progress with document management, business details display
+- `/expert/contract-categories` - Service category management for experts with revenue tracking, contracts overview, commission rates
+
+**Routes:**
+- Itinerary page is public (no auth required)
+- Credits-billing, expert-status, provider-status use DashboardLayout with ProtectedRoute
+- Expert contract-categories uses ExpertLayout with ProtectedRoute
+
 ### Phase 6 Complete: Service Provider & Admin Dashboards
 
 **Service Provider Dashboard (9 pages):**
