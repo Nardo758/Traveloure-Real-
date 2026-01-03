@@ -74,6 +74,11 @@ import DealsPage from "@/pages/deals";
 import PaymentPage from "@/pages/payment";
 import TravelExpertsPage from "@/pages/travel-experts";
 import ServicesProviderPage from "@/pages/services-provider";
+import ItineraryPage from "@/pages/itinerary";
+import CreditsBillingPage from "@/pages/credits-billing";
+import ExpertStatusPage from "@/pages/expert-status";
+import ProviderStatusPage from "@/pages/provider-status";
+import ExpertContractCategories from "@/pages/expert/contract-categories";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -167,6 +172,18 @@ function Router() {
       <Route path="/notifications">
         {() => <ProtectedRoute component={Notifications} />}
       </Route>
+      <Route path="/credits-billing">
+        {() => <ProtectedRoute component={CreditsBillingPage} />}
+      </Route>
+      <Route path="/expert-status">
+        {() => <ProtectedRoute component={ExpertStatusPage} />}
+      </Route>
+      <Route path="/provider-status">
+        {() => <ProtectedRoute component={ProviderStatusPage} />}
+      </Route>
+      <Route path="/itinerary/:id">
+        <ItineraryPage />
+      </Route>
 
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
       <Route path="/expert/dashboard">
@@ -195,6 +212,9 @@ function Router() {
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} />}
+      </Route>
+      <Route path="/expert/contract-categories">
+        {() => <ProtectedRoute component={ExpertContractCategories} />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
