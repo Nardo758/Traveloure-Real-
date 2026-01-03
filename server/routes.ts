@@ -4,7 +4,13 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
-import { users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, aiBlueprints, vendors, insertVendorSchema } from "@shared/schema";
+import { 
+  users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
+  aiBlueprints, vendors, insertVendorSchema,
+  insertLocalExpertFormSchema, insertServiceProviderFormSchema,
+  insertProviderServiceSchema, insertServiceCategorySchema,
+  insertServiceSubcategorySchema, insertFaqSchema
+} from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import OpenAI from "openai";
@@ -274,6 +280,330 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       }
       console.error("Error creating vendor:", err);
       res.status(500).json({ message: "Failed to create vendor" });
+    }
+  });
+
+  // === Expert Application Routes ===
+  
+  // Get current user's expert application
+  app.get("/api/expert-application", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const form = await storage.getLocalExpertForm(userId);
+    res.json(form || null);
+  });
+
+  // Submit expert application
+  app.post("/api/expert-application", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      const existing = await storage.getLocalExpertForm(userId);
+      if (existing) {
+        return res.status(400).json({ message: "You already have an application submitted" });
+      }
+
+      const input = insertLocalExpertFormSchema.parse(req.body);
+      const form = await storage.createLocalExpertForm({ ...input, userId });
+      res.status(201).json(form);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating expert application:", err);
+      res.status(500).json({ message: "Failed to submit application" });
+    }
+  });
+
+  // Admin: Get all expert applications
+  app.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const status = req.query.status as string | undefined;
+    const forms = await storage.getLocalExpertForms(status);
+    res.json(forms);
+  });
+
+  // Admin: Update expert application status
+  app.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { status, rejectionMessage } = req.body;
+    const updated = await storage.updateLocalExpertFormStatus(req.params.id, status, rejectionMessage);
+    if (!updated) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    
+    // If approved, update user role to expert
+    if (status === "approved") {
+      await db.update(users).set({ role: "expert" }).where(eq(users.id, updated.userId));
+    }
+    
+    res.json(updated);
+  });
+
+  // === Provider Application Routes ===
+  
+  // Get current user's provider application
+  app.get("/api/provider-application", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const form = await storage.getServiceProviderForm(userId);
+    res.json(form || null);
+  });
+
+  // Submit provider application
+  app.post("/api/provider-application", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      const existing = await storage.getServiceProviderForm(userId);
+      if (existing) {
+        return res.status(400).json({ message: "You already have an application submitted" });
+      }
+
+      const input = insertServiceProviderFormSchema.parse(req.body);
+      const form = await storage.createServiceProviderForm({ ...input, userId });
+      res.status(201).json(form);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating provider application:", err);
+      res.status(500).json({ message: "Failed to submit application" });
+    }
+  });
+
+  // Admin: Get all provider applications
+  app.get("/api/admin/provider-applications", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const status = req.query.status as string | undefined;
+    const forms = await storage.getServiceProviderForms(status);
+    res.json(forms);
+  });
+
+  // Admin: Update provider application status
+  app.patch("/api/admin/provider-applications/:id/status", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { status, rejectionMessage } = req.body;
+    const updated = await storage.updateServiceProviderFormStatus(req.params.id, status, rejectionMessage);
+    if (!updated) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    res.json(updated);
+  });
+
+  // === Provider Services Routes ===
+  
+  // Get provider's services
+  app.get("/api/provider/services", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const services = await storage.getProviderServices(userId);
+    res.json(services);
+  });
+
+  // Create a new service
+  app.post("/api/provider/services", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = insertProviderServiceSchema.parse(req.body);
+      const service = await storage.createProviderService({ ...input, userId });
+      res.status(201).json(service);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating provider service:", err);
+      res.status(500).json({ message: "Failed to create service" });
+    }
+  });
+
+  // Update a service
+  app.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const services = await storage.getProviderServices(userId);
+      const ownedService = services.find(s => s.id === req.params.id);
+      if (!ownedService) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      const input = insertProviderServiceSchema.partial().parse(req.body);
+      // Remove userId from input to prevent ownership transfer
+      const { userId: _, ...safeInput } = input as any;
+      const updated = await storage.updateProviderService(req.params.id, safeInput);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update service" });
+    }
+  });
+
+  // Delete a service
+  app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const services = await storage.getProviderServices(userId);
+    const ownedService = services.find(s => s.id === req.params.id);
+    if (!ownedService) {
+      return res.status(404).json({ message: "Service not found or not owned by you" });
+    }
+    await storage.deleteProviderService(req.params.id);
+    res.status(204).send();
+  });
+
+  // === Service Categories Routes ===
+  
+  // Get all categories
+  app.get("/api/service-categories", async (req, res) => {
+    const categories = await storage.getServiceCategories();
+    res.json(categories);
+  });
+
+  // Create category (admin)
+  app.post("/api/service-categories", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceCategorySchema.parse(req.body);
+      const category = await storage.createServiceCategory(input);
+      res.status(201).json(category);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create category" });
+    }
+  });
+
+  // Get subcategories for a category
+  app.get("/api/service-categories/:categoryId/subcategories", async (req, res) => {
+    const subcategories = await storage.getServiceSubcategories(req.params.categoryId);
+    res.json(subcategories);
+  });
+
+  // Create subcategory (admin)
+  app.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceSubcategorySchema.parse(req.body);
+      const subcategory = await storage.createServiceSubcategory(input);
+      res.status(201).json(subcategory);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create subcategory" });
+    }
+  });
+
+  // === FAQ Routes ===
+  
+  // Get all FAQs
+  app.get("/api/faqs", async (req, res) => {
+    const category = req.query.category as string | undefined;
+    const faqsList = await storage.getFAQs(category);
+    res.json(faqsList);
+  });
+
+  // Create FAQ (admin)
+  app.post("/api/faqs", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertFaqSchema.parse(req.body);
+      const faq = await storage.createFAQ(input);
+      res.status(201).json(faq);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create FAQ" });
+    }
+  });
+
+  // Update FAQ (admin)
+  app.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertFaqSchema.partial().parse(req.body);
+      const updated = await storage.updateFAQ(req.params.id, input);
+      if (!updated) {
+        return res.status(404).json({ message: "FAQ not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update FAQ" });
+    }
+  });
+
+  // Delete FAQ (admin)
+  app.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    await storage.deleteFAQ(req.params.id);
+    res.status(204).send();
+  });
+
+  // === Wallet & Credits Routes ===
+  
+  // Get current user's wallet
+  app.get("/api/wallet", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const wallet = await storage.getOrCreateWallet(userId);
+    res.json(wallet);
+  });
+
+  // Get wallet transactions
+  app.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const wallet = await storage.getWallet(userId);
+    if (!wallet) {
+      return res.json([]);
+    }
+    const transactions = await storage.getCreditTransactions(wallet.id);
+    res.json(transactions);
+  });
+
+  // Add credits (admin only - for production, integrate with payment provider)
+  app.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
+    try {
+      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { userId, amount, description } = req.body;
+      if (!userId || !amount || amount <= 0) {
+        return res.status(400).json({ message: "Invalid userId or amount" });
+      }
+      const transaction = await storage.addCredits(userId, amount, description || "Credit purchase");
+      res.status(201).json(transaction);
+    } catch (err) {
+      console.error("Error adding credits:", err);
+      res.status(500).json({ message: "Failed to add credits" });
     }
   });
 
