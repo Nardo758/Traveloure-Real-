@@ -1,12 +1,9 @@
-import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { 
   ArrowRight,
-  ChevronLeft,
-  ChevronRight,
   X,
   Rocket,
   Plane,
@@ -16,18 +13,21 @@ import {
   Building2,
   Sparkles,
   Star,
-  Users,
   Globe,
-  Clock,
-  TrendingUp,
   Facebook,
   Instagram,
   Twitter,
   Linkedin
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 const launchCities = [
   { city: "Mumbai", country: "India" },
@@ -37,43 +37,86 @@ const launchCities = [
   { city: "Edinburgh", country: "UK" },
 ];
 
-const eventTypes = [
-  { icon: Plane, title: "TRAVEL", description: "Your perfect vacation with local experts", cta: "Plan Trip", color: "text-blue-600" },
-  { icon: Heart, title: "WEDDING", description: "Your dream ceremony with expert help", cta: "Plan Event", color: "text-pink-600" },
-  { icon: Gem, title: "PROPOSAL", description: "The perfect moment with expert help", cta: "Plan It", color: "text-purple-600" },
-  { icon: Sparkles, title: "ROMANCE", description: "Unforgettable date nights & anniversaries", cta: "Romance", color: "text-red-500" },
-  { icon: Cake, title: "BIRTHDAY", description: "Milestone celebrations made special", cta: "Celebrate", color: "text-orange-500" },
-  { icon: Building2, title: "CORPORATE", description: "Team events & retreats made easy", cta: "Organize", color: "text-gray-600" },
+const experienceCategories = [
+  { icon: Plane, label: "Travel", color: "text-blue-500" },
+  { icon: Heart, label: "Wedding", color: "text-pink-500" },
+  { icon: Gem, label: "Proposal", color: "text-purple-500" },
+  { icon: Sparkles, label: "Romance", color: "text-red-500" },
+  { icon: Cake, label: "Birthday", color: "text-orange-500" },
+  { icon: Building2, label: "Corporate", color: "text-gray-600" },
 ];
 
-const howItWorks = [
-  { step: 1, title: "TELL US YOUR PLANS", description: "Share what you're planning" },
-  { step: 2, title: "GET MATCHED WITH EXPERTS", description: "AI + humans find perfect local experts" },
-  { step: 3, title: "ENJOY YOUR EXPERIENCE", description: "Relax while experts handle it" },
-];
-
-const experts = [
-  { name: "Marie L.", location: "Paris Expert", rating: 5, reviews: 124, quote: "Helped 100+ travelers discover real Paris" },
-  { name: "Kenji T.", location: "Tokyo Expert", rating: 5, reviews: 98, quote: "Cultural deep dives & hidden gems" },
-  { name: "Sofia R.", location: "Barcelona", rating: 5, reviews: 156, quote: "Event planning specialist" },
+const faqItems = [
+  {
+    id: "ai-plan",
+    title: "Let Our AI Plan Your Trip",
+    content: "Our advanced AI analyzes your preferences, budget, and travel style to create personalized itineraries. From suggesting hidden gems to optimizing your schedule, our AI ensures every moment of your trip is perfectly planned."
+  },
+  {
+    id: "experts",
+    title: "Travel Experts To Help",
+    content: "Connect with verified local experts who know their destinations inside out. They provide authentic recommendations, handle logistics, and offer real-time support throughout your journey."
+  },
+  {
+    id: "ai-optimization",
+    title: "AI Optimization - Perfectly Tailored For You",
+    content: "Our AI continuously learns from your preferences and feedback to refine recommendations. It optimizes routes, timing, and activities to match your unique travel style."
+  },
+  {
+    id: "destinations",
+    title: "Discover New Destinations",
+    content: "Explore curated destinations handpicked by our experts and AI. From trending hotspots to off-the-beaten-path adventures, find your next perfect getaway."
+  },
+  {
+    id: "partner",
+    title: "Partner With Us",
+    content: "Join our network of travel experts, service providers, and local guides. Grow your business while helping travelers create unforgettable experiences."
+  },
 ];
 
 const impactStats = [
-  { value: "1,000+", label: "Experiences Planned" },
-  { value: "500+", label: "Local Experts Worldwide" },
-  { value: "98%", label: "Satisfaction Rate" },
-  { value: "50+", label: "Countries Covered" },
-  { value: "24 Hours", label: "AI-Powered Support" },
-  { value: "80%", label: "Time Saved with AI" },
+  { 
+    value: "8M+", 
+    label: "Trips Planned", 
+    description: "Trusted by travellers worldwide. Join the millions who've used Wanderlog to seamlessly plan their journeys—whether it's a weekend getaway or a month-long adventure."
+  },
+  { 
+    value: "500K+", 
+    label: "Custom Itineraries Generated", 
+    description: "Trusted by travellers worldwide. Half a million unique, tailored itineraries built using real-time preferences and constraints—no two plans are the same."
+  },
+  { 
+    value: "$500+", 
+    label: "Saved on Multi-City Trips", 
+    description: "Trusted by travellers worldwide. AI-route optimization and bundled planning reduce spend dramatically, especially for longer or multi-destination travel."
+  },
+  { 
+    value: "33K+", 
+    label: "Reviews Received", 
+    description: "Trusted by travellers worldwide. With tens of thousands of 5-star reviews, our platform is trusted by travellers worldwide."
+  },
 ];
 
 const testimonials = [
-  { text: "The best investment for our Paris trip. Marie showed us places we'd never have found alone!", author: "Sarah & Mike", location: "New York" },
-  { text: "Our wedding planner coordinated everything perfectly. The AI tools saved weeks of work!", author: "Jennifer & David", location: "Chicago" },
-  { text: "As an executive assistant, this platform is a game-changer for managing multiple client events simultaneously.", author: "Rachel T.", location: "Executive Assistant" },
+  { 
+    text: "The travel expert recommendations made our trip to Portugal truly special. We discovered places we would have never found on our own!", 
+    author: "Sarah Johnson", 
+    location: "New York, USA",
+    rating: 4
+  },
+  { 
+    text: "The AI itinerary planning saved me hours of research. It perfectly balanced tourist spots with authentic local experiences.", 
+    author: "David Chen", 
+    location: "Toronto, Canada",
+    rating: 5
+  },
+  { 
+    text: "As someone who was unsure where to go, the 'Help Me Decide' feature was a game-changer. I ended up with the perfect vacation!", 
+    author: "Maria Rodriguez", 
+    location: "Madrid, Spain",
+    rating: 4
+  },
 ];
-
-const heroImages = [lakeImage, lakeImage, lakeImage, lakeImage];
 
 const footerLinks = {
   product: ["Features", "How It Works", "Pricing", "AI Tools"],
@@ -82,20 +125,7 @@ const footerLinks = {
 };
 
 export default function LandingPage() {
-  const { user } = useAuth();
   const [showBanner, setShowBanner] = useState(true);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [currentTestimonialIndex, setCurrentTestimonialIndex] = useState(0);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prev) => (prev + 1) % heroImages.length);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const nextTestimonial = () => setCurrentTestimonialIndex((prev) => (prev + 1) % testimonials.length);
-  const prevTestimonial = () => setCurrentTestimonialIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#F9FAFB]">
@@ -139,368 +169,221 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* Hero Section */}
-      <section className="bg-white py-16 lg:py-24">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            {/* Left Content */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-            >
-              {/* Beta Badge */}
-              <div className="inline-flex items-center gap-2 bg-[#FFE3E8] text-[#FF385C] px-3 py-1.5 rounded-full text-sm font-medium mb-6">
-                <Rocket className="w-4 h-4" />
-                BETA VERSION
-              </div>
+      {/* Hero Section with Background Image */}
+      <section 
+        className="relative min-h-[600px] lg:min-h-[700px] flex items-center"
+        style={{
+          backgroundImage: `url(${lakeImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        {/* Dark wash overlay */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30" />
+        
+        <div className="container mx-auto px-4 max-w-6xl relative z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="max-w-2xl"
+          >
+            {/* Beta Badge */}
+            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm font-medium mb-6">
+              <Rocket className="w-4 h-4" />
+              BETA VERSION
+            </div>
 
-              <h1 className="text-4xl md:text-5xl lg:text-[56px] font-bold text-[#111827] leading-[1.1] tracking-tight mb-6">
-                Plan Your Perfect<br />
-                Life Experiences
-              </h1>
-              
-              <p className="text-lg text-[#6B7280] leading-relaxed mb-6 max-w-lg">
-                From dream vacations to unforgettable weddings — connect with local experts who make it happen.
-              </p>
-
-              {/* Feature bullets */}
-              <div className="flex flex-wrap gap-4 mb-8 text-sm text-[#374151]">
-                <span className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-[#FF385C]" /> AI + Human Expertise
-                </span>
-                <span className="flex items-center gap-2">
-                  <Star className="w-4 h-4 text-[#FF385C]" /> Personalized Plans
-                </span>
-                <span className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-[#FF385C]" /> Global Network
-                </span>
-              </div>
-
-              {/* Beta notice */}
-              <div className="inline-flex items-center gap-2 bg-[#F3F4F6] border border-[#E5E7EB] px-4 py-2 rounded-lg text-sm text-[#6B7280] mb-6">
-                <span className="text-[#FF385C] font-medium">BETA</span>
-                <span>New features in development</span>
-                <span className="text-[#9CA3AF]">•</span>
-                <span>Your feedback matters</span>
-              </div>
-
-              {/* CTA Buttons - 3 Main Paths */}
-              <div className="flex flex-wrap gap-3">
-                <Link href="/browse">
-                  <Button 
-                    size="lg"
-                    className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6 h-12"
-                    data-testid="button-create-trip"
-                  >
-                    Create a New Trip <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-                <Link href="/experts">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="border-[#E5E7EB] text-[#374151] font-medium px-6 h-12"
-                    data-testid="button-build-with-expert"
-                  >
-                    Build with an Expert
-                  </Button>
-                </Link>
-                <Link href="/help-me-decide">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="border-[#E5E7EB] text-[#374151] font-medium px-6 h-12"
-                    data-testid="button-help-me-decide"
-                  >
-                    Help Me Decide
-                  </Button>
-                </Link>
-              </div>
-            </motion.div>
-
-            {/* Right Image Carousel */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-              className="relative"
-            >
-              <div className="relative rounded-2xl overflow-hidden shadow-xl">
-                <AnimatePresence mode="wait">
-                  <motion.img
-                    key={currentImageIndex}
-                    src={heroImages[currentImageIndex]}
-                    alt="Travel destination"
-                    className="w-full h-[350px] lg:h-[420px] object-cover"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                    data-testid="img-hero"
-                  />
-                </AnimatePresence>
-              </div>
-              {/* Image dots */}
-              <div className="flex justify-center gap-2 mt-4">
-                {heroImages.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentImageIndex(idx)}
-                    className={cn(
-                      "h-2 rounded-full transition-all",
-                      currentImageIndex === idx ? "w-6 bg-[#FF385C]" : "w-2 bg-[#E5E7EB] hover:bg-[#9CA3AF]"
-                    )}
-                    data-testid={`button-image-dot-${idx}`}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* What Would You Like to Plan? */}
-      <section className="py-16 lg:py-20 bg-white border-t border-[#E5E7EB]">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#111827] text-center mb-12">
-            What Would You Like to Plan?
-          </h2>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6 mb-8">
-            {eventTypes.map((event, idx) => (
-              <motion.div
-                key={event.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: idx * 0.05 }}
-              >
-                <Link href="/browse">
-                  <Card 
-                    className="bg-white border border-[#E5E7EB] hover:border-[#FF385C] hover:shadow-lg transition-all cursor-pointer group h-full"
-                    data-testid={`card-event-${event.title.toLowerCase()}`}
-                  >
-                    <CardContent className="p-6 text-center">
-                      <div className={cn("w-12 h-12 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center group-hover:bg-[#FFE3E8] transition-colors", event.color)}>
-                        <event.icon className="w-6 h-6" />
-                      </div>
-                      <h3 className="font-bold text-[#111827] mb-2">{event.title}</h3>
-                      <p className="text-sm text-[#6B7280] mb-4">{event.description}</p>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="border-[#E5E7EB] text-[#374151] group-hover:bg-[#FF385C] group-hover:text-white group-hover:border-[#FF385C] transition-colors"
-                        data-testid={`button-event-${event.title.toLowerCase()}`}
-                      >
-                        Start Browsing
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Not Sure banner */}
-          <div className="bg-[#F3F4F6] rounded-xl p-6 text-center">
-            <p className="text-[#374151] mb-4">
-              <Sparkles className="w-5 h-5 inline mr-2 text-[#FF385C]" />
-              NOT SURE? Try our AI planner or browse local experts
+            <h1 className="text-4xl md:text-5xl lg:text-[56px] font-bold text-white leading-[1.1] tracking-tight mb-6">
+              Plan Your Perfect<br />
+              Life Experiences
+            </h1>
+            
+            <p className="text-lg text-white/90 leading-relaxed mb-6 max-w-lg">
+              From dream vacations to unforgettable weddings — connect with local experts who make it happen.
             </p>
-            <div className="flex justify-center gap-3">
-              <Link href="/ai-assistant">
-                <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-ai-planner">
-                  AI Trip Planner
+
+            {/* Feature bullets */}
+            <div className="flex flex-wrap gap-4 mb-8 text-sm text-white/80">
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[#FF385C]" /> AI + Human Expertise
+              </span>
+              <span className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-[#FF385C]" /> Personalized Plans
+              </span>
+              <span className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-[#FF385C]" /> Global Network
+              </span>
+            </div>
+
+            {/* Experience Category Buttons */}
+            <div className="flex flex-wrap gap-2 mb-8">
+              {experienceCategories.map((cat) => (
+                <Link key={cat.label} href="/browse">
+                  <Button
+                    variant="outline"
+                    className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 gap-2"
+                    data-testid={`button-category-${cat.label.toLowerCase()}`}
+                  >
+                    <cat.icon className={cn("w-4 h-4", cat.color)} />
+                    {cat.label}
+                  </Button>
+                </Link>
+              ))}
+            </div>
+
+            {/* CTA Buttons - 3 Main Paths */}
+            <div className="flex flex-wrap gap-3">
+              <Link href="/browse">
+                <Button 
+                  size="lg"
+                  className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6 h-12"
+                  data-testid="button-create-trip"
+                >
+                  Create a New Trip <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Link>
-              <Link href="/vendors">
-                <Button variant="outline" className="border-[#E5E7EB]" data-testid="button-browse-experts">
-                  Browse Experts
+              <Link href="/experts">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6 h-12"
+                  data-testid="button-build-with-expert"
+                >
+                  Build with an Expert
+                </Button>
+              </Link>
+              <Link href="/help-me-decide">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6 h-12"
+                  data-testid="button-help-me-decide"
+                >
+                  Help Me Decide
                 </Button>
               </Link>
             </div>
-          </div>
+          </motion.div>
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-16 lg:py-20 bg-[#F9FAFB]">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#111827] text-center mb-4">
-            How It Works
-          </h2>
-          <p className="text-[#6B7280] text-center mb-12 max-w-xl mx-auto">
-            Our AI creates your blueprint, experts add the magic touch
-          </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {howItWorks.map((item, idx) => (
-              <motion.div
-                key={item.step}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: idx * 0.1 }}
-                className="text-center relative"
-              >
-                {idx < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-[60%] w-[80%] h-0.5 bg-[#E5E7EB]">
-                    <ArrowRight className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
-                  </div>
-                )}
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#FFE3E8] text-[#FF385C] flex items-center justify-center text-2xl font-bold">
-                  {item.step}
-                </div>
-                <h3 className="font-bold text-[#111827] mb-2">{item.title}</h3>
-                <p className="text-sm text-[#6B7280]">{item.description}</p>
-              </motion.div>
-            ))}
-          </div>
-
-          <div className="text-center mt-12">
-            <Link href="/api/login">
-              <Button size="lg" className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-8" data-testid="button-get-started-free">
-                Get Started Free
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* Meet Our Local Experts */}
+      {/* Accordion FAQ Section (Expert Section) */}
       <section className="py-16 lg:py-20 bg-white">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#111827] text-center mb-4">
-            Meet Our Local Experts
-          </h2>
-          <p className="text-[#6B7280] text-center mb-12">
-            Real people, real expertise, real results
-          </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {experts.map((expert, idx) => (
-              <motion.div
-                key={expert.name}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: idx * 0.1 }}
-              >
-                <Card className="border border-[#E5E7EB] hover:shadow-lg transition-shadow" data-testid={`card-expert-${idx}`}>
-                  <CardContent className="p-6">
-                    <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center text-white text-2xl font-bold">
-                      {expert.name.charAt(0)}
-                    </div>
-                    <h3 className="font-bold text-[#111827] text-center">{expert.name}</h3>
-                    <p className="text-sm text-[#6B7280] text-center mb-2">{expert.location}</p>
-                    <div className="flex justify-center items-center gap-1 mb-4">
-                      {[...Array(expert.rating)].map((_, i) => (
-                        <Star key={i} className="w-4 h-4 text-yellow-400 fill-current" />
-                      ))}
-                      <span className="text-sm text-[#6B7280] ml-1">({expert.reviews})</span>
-                    </div>
-                    <p className="text-sm text-[#374151] text-center italic mb-4">"{expert.quote}"</p>
-                    <Button variant="outline" className="w-full border-[#E5E7EB]" data-testid={`button-view-profile-${idx}`}>
-                      View Profile
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
+        <div className="container mx-auto px-4 max-w-3xl">
+          <Accordion type="single" collapsible className="w-full">
+            {faqItems.map((item) => (
+              <AccordionItem key={item.id} value={item.id} className="border-b border-[#E5E7EB]">
+                <AccordionTrigger 
+                  className="text-left text-[#111827] font-medium py-5 hover:no-underline"
+                  data-testid={`accordion-trigger-${item.id}`}
+                >
+                  {item.title}
+                </AccordionTrigger>
+                <AccordionContent className="text-[#6B7280] pb-5">
+                  {item.content}
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
-
-          <div className="text-center mt-8">
-            <Link href="/vendors">
-              <Button variant="ghost" className="text-[#FF385C] font-semibold hover:bg-transparent hover:text-[#E23350]" data-testid="button-browse-all-experts">
-                Browse All Experts <ArrowRight className="w-4 h-4 ml-1" />
-              </Button>
-            </Link>
-          </div>
+          </Accordion>
         </div>
       </section>
 
-      {/* By The Numbers */}
+      {/* Our Impact In Numbers */}
       <section className="py-16 lg:py-20 bg-[#F9FAFB]">
         <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#111827] text-center mb-12">
-            By The Numbers
-          </h2>
+          <div className="mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827]">
+              Our <span className="text-[#FF385C]">Impact</span> In Numbers
+            </h2>
+            <p className="text-[#6B7280] mt-2 max-w-xl">
+              Plan your perfect trip with personalized suggestions, easy itineraries, and real-time travel tips.
+            </p>
+          </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-6 lg:gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {impactStats.map((stat, idx) => (
               <motion.div
                 key={stat.label}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.3, delay: idx * 0.05 }}
-                className="text-center p-6 bg-white rounded-xl border border-[#E5E7EB]"
-                data-testid={`stat-${idx}`}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: idx * 0.1 }}
               >
-                <p className="text-3xl md:text-4xl font-bold text-[#FF385C] mb-2">{stat.value}</p>
-                <p className="text-sm text-[#6B7280]">{stat.label}</p>
+                <Card className="h-full border border-[#E5E7EB] bg-white" data-testid={`card-stat-${idx}`}>
+                  <CardContent className="p-6">
+                    <p className="text-3xl md:text-4xl font-bold text-[#111827] mb-1">{stat.value}</p>
+                    <p className="text-sm font-medium text-[#374151] mb-3">{stat.label}</p>
+                    <p className="text-xs text-[#6B7280] leading-relaxed">{stat.description}</p>
+                  </CardContent>
+                </Card>
               </motion.div>
             ))}
+          </div>
+
+          {/* Dot indicators */}
+          <div className="flex justify-center gap-2 mt-8">
+            <div className="w-6 h-2 rounded-full bg-[#10B981]" />
+            <div className="w-2 h-2 rounded-full bg-[#E5E7EB]" />
           </div>
         </div>
       </section>
 
-      {/* What People Say (Testimonials) */}
+      {/* Customer Success Stories */}
       <section className="py-16 lg:py-20 bg-white">
-        <div className="container mx-auto px-4 max-w-4xl">
-          <h2 className="text-3xl md:text-4xl font-bold text-[#111827] text-center mb-12">
-            What People Say
-          </h2>
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827]">
+              Customer <span className="text-[#10B981]">Success</span> Stories
+            </h2>
+            <p className="text-[#6B7280] mt-2">
+              Hear from travelers who have transformed their travel experiences with our platform.
+            </p>
+          </div>
           
-          <div className="relative">
-            <AnimatePresence mode="wait">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {testimonials.map((testimonial, idx) => (
               <motion.div
-                key={currentTestimonialIndex}
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -30 }}
-                transition={{ duration: 0.3 }}
+                key={testimonial.author}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: idx * 0.1 }}
               >
-                <Card className="border border-[#E5E7EB]">
-                  <CardContent className="p-8 md:p-10">
-                    <p className="text-lg md:text-xl text-[#374151] leading-relaxed mb-6 text-center">
-                      "{testimonials[currentTestimonialIndex].text}"
+                <Card className="h-full border border-[#E5E7EB] bg-white" data-testid={`card-testimonial-${idx}`}>
+                  <CardContent className="p-6">
+                    {/* Star rating */}
+                    <div className="flex gap-1 mb-4">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Star 
+                          key={star} 
+                          className={cn(
+                            "w-4 h-4",
+                            star <= testimonial.rating 
+                              ? "text-yellow-400 fill-current" 
+                              : "text-gray-300"
+                          )} 
+                        />
+                      ))}
+                    </div>
+                    
+                    <p className="text-sm text-[#374151] leading-relaxed mb-6">
+                      {testimonial.text}
                     </p>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-[#111827]">- {testimonials[currentTestimonialIndex].author}</p>
-                        <p className="text-sm text-[#6B7280]">{testimonials[currentTestimonialIndex].location}</p>
+                    
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center text-white font-semibold text-sm">
+                        {testimonial.author.charAt(0)}
                       </div>
-                      <div className="flex gap-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star key={star} className="w-5 h-5 text-yellow-400 fill-current" />
-                        ))}
+                      <div>
+                        <p className="font-medium text-[#111827] text-sm">{testimonial.author}</p>
+                        <p className="text-xs text-[#6B7280]">{testimonial.location}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
-            </AnimatePresence>
-
-            <div className="flex justify-center items-center gap-4 mt-6">
-              <Button variant="ghost" size="icon" onClick={prevTestimonial} className="rounded-full" data-testid="button-prev-testimonial">
-                <ChevronLeft className="w-5 h-5" />
-              </Button>
-              <div className="flex gap-2">
-                {testimonials.map((_, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentTestimonialIndex(idx)}
-                    className={cn(
-                      "h-2 rounded-full transition-all",
-                      currentTestimonialIndex === idx ? "w-4 bg-[#FF385C]" : "w-2 bg-[#E5E7EB]"
-                    )}
-                    data-testid={`button-testimonial-dot-${idx}`}
-                  />
-                ))}
-              </div>
-              <Button variant="ghost" size="icon" onClick={nextTestimonial} className="rounded-full" data-testid="button-next-testimonial">
-                <ChevronRight className="w-5 h-5" />
-              </Button>
-            </div>
+            ))}
           </div>
+
         </div>
       </section>
 
