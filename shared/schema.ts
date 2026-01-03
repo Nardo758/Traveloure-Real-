@@ -17,6 +17,8 @@ export const feedbackStatusEnum = ["pending", "accepted", "rejected"] as const;
 export const eventTypeEnum = ["vacation", "wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate", "adventure", "cultural", "other"] as const;
 export const vendorStatusEnum = ["active", "inactive", "pending_approval"] as const;
 export const vendorAssignmentStatusEnum = ["pending", "confirmed", "completed", "cancelled"] as const;
+export const applicationStatusEnum = ["pending", "approved", "rejected", "deleted"] as const;
+export const serviceFormStatusEnum = ["pending", "approved", "rejected"] as const;
 
 // === Tables ===
 
@@ -235,6 +237,135 @@ export const affiliatePlatforms = pgTable("affiliate_platforms", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Local Expert & Service Provider Applications ===
+
+export const localExpertForms = pgTable("local_expert_forms", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  languages: jsonb("languages").default([]),
+  yearsInCity: integer("years_in_city").notNull(),
+  offerService: boolean("offer_service").default(false),
+  govId: text("gov_id"), // File URL
+  travelLicence: text("travel_licence"), // File URL
+  instagramLink: text("instagram_link"),
+  facebookLink: text("facebook_link"),
+  linkedinLink: text("linkedin_link"),
+  services: jsonb("services").default([]),
+  serviceAvailability: integer("service_availability").default(15),
+  priceExpectation: integer("price_expectation").notNull(),
+  shortBio: text("short_bio"),
+  confirmAge: boolean("confirm_age").default(false),
+  termsAndConditions: boolean("terms_and_conditions").default(false),
+  partnership: boolean("partnership").default(false),
+  status: varchar("status", { length: 20 }).default("pending"), // Enum: applicationStatusEnum
+  rejectionMessage: text("rejection_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const serviceProviderForms = pgTable("service_provider_forms", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  businessName: text("business_name").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 255 }).notNull(),
+  website: text("website"),
+  mobile: varchar("mobile", { length: 50 }).notNull(),
+  whatsapp: varchar("whatsapp", { length: 50 }),
+  country: varchar("country", { length: 100 }).notNull(),
+  address: text("address").notNull(),
+  bookingLink: text("booking_link"),
+  gst: varchar("gst", { length: 100 }),
+  instagramLink: text("instagram_link"),
+  facebookLink: text("facebook_link"),
+  linkedinLink: text("linkedin_link"),
+  photo1: text("photo1"), // File URL
+  photo2: text("photo2"),
+  photo3: text("photo3"),
+  photo4: text("photo4"),
+  photo5: text("photo5"),
+  businessType: varchar("business_type", { length: 100 }).notNull(),
+  serviceOffers: jsonb("service_offers").default([]),
+  description: text("description"),
+  instantBooking: boolean("instant_booking").default(false),
+  businessLogo: text("business_logo"), // File URL
+  businessLicense: text("business_license"), // File URL
+  businessGstTax: text("business_gst_tax"), // File URL
+  termsAndConditions: boolean("terms_and_conditions").default(false),
+  infoConfirmation: boolean("info_confirmation").default(false),
+  contactRequest: boolean("contact_request").default(false),
+  status: varchar("status", { length: 20 }).default("pending"), // Enum: applicationStatusEnum
+  rejectionMessage: text("rejection_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Service Categories ===
+
+export const serviceCategories = pgTable("service_categories", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const serviceSubcategories = pgTable("service_subcategories", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  categoryId: varchar("category_id").notNull().references(() => serviceCategories.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Provider Services ===
+
+export const providerServices = pgTable("provider_services", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceName: varchar("service_name", { length: 255 }).notNull(),
+  serviceType: varchar("service_type", { length: 255 }),
+  categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "set null" }),
+  price: varchar("price", { length: 50 }),
+  priceBasedOn: varchar("price_based_on", { length: 100 }),
+  description: text("description"),
+  location: varchar("location", { length: 255 }).default("Unknown"),
+  availability: jsonb("availability").default([]),
+  serviceFile: text("service_file"), // File URL
+  formStatus: varchar("form_status", { length: 50 }).default("pending"), // Enum: serviceFormStatusEnum
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === FAQ ===
+
+export const faqs = pgTable("faqs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
+  attachment: text("attachment"), // File URL
+  category: varchar("category", { length: 100 }),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Wallets & Credits ===
+
+export const wallets = pgTable("wallets", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  credits: integer("credits").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const creditTransactions = pgTable("credit_transactions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  walletId: varchar("wallet_id").notNull().references(() => wallets.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull(),
+  transactionType: varchar("transaction_type", { length: 20 }).notNull(), // "credit" or "debit"
+  description: text("description"),
+  referenceId: varchar("reference_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === Vendors & Coordination ===
 
 export const vendors = pgTable("vendors", {
@@ -348,6 +479,16 @@ export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, c
 export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
+// New schemas for Expert/Provider applications
+export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
+export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, createdAt: true });
+export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
+export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ id: true, createdAt: true });
+
 // === Types ===
 export type Trip = typeof trips.$inferSelect;
 export type InsertTrip = z.infer<typeof insertTripSchema>;
@@ -363,3 +504,21 @@ export type VendorAssignment = typeof vendorAssignments.$inferSelect;
 export type InsertVendorAssignment = z.infer<typeof insertVendorAssignmentSchema>;
 export type AiBlueprint = typeof aiBlueprints.$inferSelect;
 export type InsertAiBlueprint = z.infer<typeof insertAiBlueprintSchema>;
+
+// New types for Expert/Provider applications
+export type LocalExpertForm = typeof localExpertForms.$inferSelect;
+export type InsertLocalExpertForm = z.infer<typeof insertLocalExpertFormSchema>;
+export type ServiceProviderForm = typeof serviceProviderForms.$inferSelect;
+export type InsertServiceProviderForm = z.infer<typeof insertServiceProviderFormSchema>;
+export type ServiceCategory = typeof serviceCategories.$inferSelect;
+export type InsertServiceCategory = z.infer<typeof insertServiceCategorySchema>;
+export type ServiceSubcategory = typeof serviceSubcategories.$inferSelect;
+export type InsertServiceSubcategory = z.infer<typeof insertServiceSubcategorySchema>;
+export type ProviderService = typeof providerServices.$inferSelect;
+export type InsertProviderService = z.infer<typeof insertProviderServiceSchema>;
+export type FAQ = typeof faqs.$inferSelect;
+export type InsertFAQ = z.infer<typeof insertFaqSchema>;
+export type Wallet = typeof wallets.$inferSelect;
+export type InsertWallet = z.infer<typeof insertWalletSchema>;
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
+export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
