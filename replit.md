@@ -51,6 +51,33 @@ Key database tables:
 
 ## Recent Changes (January 2026)
 
+### Phase 7 Complete: Public Pages & Registration Flows (January 3)
+
+**New Public Pages:**
+- `/experts` - Expert discovery with filters by destination, specialty, rating
+- `/help-me-decide` - Pre-researched packages with articles and events sub-pages
+- `/partner-with-us` - Partner signup overview with 5 partner types and benefits
+- `/contact` - Contact form with office locations worldwide
+- `/faq` - FAQ with accordion search functionality
+- `/features` - Features showcase with stats
+- `/deals` - Flash sales and category filters
+- `/payment` - Checkout with cart summary, payment form, promo codes
+
+**Registration Wizards:**
+- `/travel-experts` - 5-step wizard (basic info, expertise, experience, availability, review) with step validation
+- `/services-provider` - 4-step form (business info, services, compliance, review) with step validation
+
+**Navigation Updates:**
+- Added Deals and Contact links to header
+- Partner With Us dropdown now routes directly to registration pages
+- Benefits items link to /partner-with-us info page
+
+**Validation Patterns:**
+- `canProceed()` function gates wizard step progression
+- Payment form requires valid card details before submission
+- Contact form validates required fields before submit enabled
+- All forms use destructive toast feedback for validation errors
+
 ### Phase 6 Complete: Service Provider & Admin Dashboards
 
 **Service Provider Dashboard (9 pages):**
