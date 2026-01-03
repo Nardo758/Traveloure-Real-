@@ -25,7 +25,11 @@ import {
   Facebook,
   Instagram,
   Linkedin,
-  Twitter
+  Twitter,
+  CreditCard,
+  UserCheck,
+  HelpCircle,
+  FileText
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -88,6 +92,8 @@ const navItems = [
       },
     ],
   },
+  { name: "Experts", href: "/experts" },
+  { name: "Help Me Decide", href: "/help-me-decide" },
   { name: "Deals", href: "/deals" },
   { name: "Contact", href: "/contact" },
 ];
@@ -265,11 +271,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align="end" className="w-56">
                     <DropdownMenuItem asChild>
                       <Link href="/dashboard" className="cursor-pointer" data-testid="link-user-my-trips">
                         <Map className="w-4 h-4 mr-2" />
                         My Trips
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/credits-billing" className="cursor-pointer" data-testid="link-user-credits-billing">
+                        <CreditCard className="w-4 h-4 mr-2" />
+                        Credits & Billing
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/expert-status" className="cursor-pointer" data-testid="link-user-expert-status">
+                        <UserCheck className="w-4 h-4 mr-2" />
+                        Expert Application
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/provider-status" className="cursor-pointer" data-testid="link-user-provider-status">
+                        <Building2 className="w-4 h-4 mr-2" />
+                        Provider Application
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem 
