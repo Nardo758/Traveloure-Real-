@@ -888,6 +888,117 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
     res.json(result);
   });
 
+  // AI-Powered Service Recommendations
+  app.post("/api/discover/recommendations", async (req, res) => {
+    try {
+      // Validate API key is configured
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY || !process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
+        return res.status(503).json({ message: "AI service not configured" });
+      }
+
+      // Validate request body
+      const requestSchema = z.object({
+        query: z.string().optional(),
+        destination: z.string().optional(),
+        tripType: z.string().optional(),
+        budget: z.string().optional(),
+      });
+      
+      const validatedBody = requestSchema.safeParse(req.body);
+      if (!validatedBody.success) {
+        return res.status(400).json({ message: "Invalid request body" });
+      }
+      
+      const { query, destination, tripType, budget } = validatedBody.data;
+      
+      // Get all categories and available services for context
+      const categories = await storage.getServiceCategories();
+      const allServices = await storage.getAllActiveServices();
+      
+      // Build service summaries for AI context (limit to prevent token overflow)
+      const serviceSummaries = allServices.slice(0, 50).map(s => ({
+        id: s.id,
+        name: s.serviceName,
+        category: categories.find((c: { id: string; name: string }) => c.id === s.categoryId)?.name || "Other",
+        price: s.price,
+        rating: s.averageRating,
+        location: s.location,
+        description: s.shortDescription || s.description?.substring(0, 100),
+      }));
+      
+      const categoryList = categories.map((c) => `${c.name} (${c.slug || "other"})`).join(", ");
+      
+      const prompt = `You are a travel service recommendation AI for Traveloure, a travel marketplace.
+
+Based on the user's needs, recommend relevant service categories and specific services they might need.
+
+User's Request:
+- Search Query: ${query || "Not specified"}
+- Destination: ${destination || "Not specified"}
+- Trip Type: ${tripType || "General travel"}
+- Budget: ${budget || "Flexible"}
+
+Available Service Categories: ${categoryList}
+
+Available Services (sample):
+${JSON.stringify(serviceSummaries, null, 2)}
+
+Please provide recommendations in this JSON format:
+{
+  "recommendedCategories": [
+    {
+      "slug": "category-slug",
+      "name": "Category Name",
+      "reason": "Why this category is relevant"
+    }
+  ],
+  "recommendedServices": [
+    {
+      "id": "service-id",
+      "reason": "Why this service is recommended"
+    }
+  ],
+  "suggestions": "Brief personalized travel tip or suggestion based on their needs"
+}
+
+Provide 2-4 category recommendations and up to 5 specific service recommendations if relevant services are available.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are a helpful travel planning assistant. Always respond with valid JSON." },
+          { role: "user", content: prompt }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 1024,
+      });
+
+      const responseText = completion.choices[0]?.message?.content || "{}";
+      const recommendations = JSON.parse(responseText);
+      
+      // Enrich recommendations with full service data
+      const enrichedServices = [];
+      for (const rec of recommendations.recommendedServices || []) {
+        const service = allServices.find(s => s.id === rec.id);
+        if (service) {
+          enrichedServices.push({
+            ...service,
+            recommendationReason: rec.reason,
+          });
+        }
+      }
+      
+      res.json({
+        recommendedCategories: recommendations.recommendedCategories || [],
+        recommendedServices: enrichedServices,
+        suggestions: recommendations.suggestions || "",
+      });
+    } catch (err) {
+      console.error("AI Recommendations error:", err);
+      res.status(500).json({ message: "Failed to generate recommendations" });
+    }
+  });
+
   // Get expert's services by status
   app.get("/api/expert/services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
