@@ -871,6 +871,23 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
     res.json(services);
   });
 
+  // Unified Discovery Search (public - with advanced filtering)
+  app.get("/api/discover", async (req, res) => {
+    const filters = {
+      query: req.query.q as string | undefined,
+      categoryId: req.query.categoryId as string | undefined,
+      location: req.query.location as string | undefined,
+      minPrice: req.query.minPrice ? parseFloat(req.query.minPrice as string) : undefined,
+      maxPrice: req.query.maxPrice ? parseFloat(req.query.maxPrice as string) : undefined,
+      minRating: req.query.minRating ? parseFloat(req.query.minRating as string) : undefined,
+      sortBy: req.query.sortBy as "rating" | "price_low" | "price_high" | "reviews" | undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
+      offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
+    };
+    const result = await storage.unifiedSearch(filters);
+    res.json(result);
+  });
+
   // Get expert's services by status
   app.get("/api/expert/services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
@@ -925,7 +942,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       // Create service from template
       const serviceData = {
         userId,
-        serviceName: template.name,
+        serviceName: template.title,
         description: template.description,
         categoryId: template.categoryId,
         price: template.suggestedPrice || "0",
@@ -993,11 +1010,6 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
         ...input,
         travelerId: userId,
         providerId: service.userId,
-        serviceSnapshot: {
-          name: service.serviceName,
-          price: service.price,
-          deliveryMethod: service.deliveryMethod,
-        },
       });
       
       // Increment service bookings count
