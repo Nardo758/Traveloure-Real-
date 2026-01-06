@@ -123,6 +123,19 @@ export interface IStorage {
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
+
+  // Unified Discovery
+  unifiedSearch(filters: {
+    query?: string;
+    categoryId?: string;
+    location?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minRating?: number;
+    sortBy?: "rating" | "price_low" | "price_high" | "reviews";
+    limit?: number;
+    offset?: number;
+  }): Promise<{ services: ProviderService[]; total: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -611,6 +624,80 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceReviews.id, id))
       .returning();
     return updated;
+  }
+
+  // Unified Discovery
+  async unifiedSearch(filters: {
+    query?: string;
+    categoryId?: string;
+    location?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minRating?: number;
+    sortBy?: "rating" | "price_low" | "price_high" | "reviews";
+    limit?: number;
+    offset?: number;
+  }): Promise<{ services: ProviderService[]; total: number }> {
+    const conditions = [eq(providerServices.status, "active")];
+    
+    if (filters.query) {
+      conditions.push(
+        or(
+          ilike(providerServices.serviceName, `%${filters.query}%`),
+          ilike(providerServices.description, `%${filters.query}%`)
+        )!
+      );
+    }
+    
+    if (filters.categoryId) {
+      conditions.push(eq(providerServices.categoryId, filters.categoryId));
+    }
+    
+    if (filters.location) {
+      conditions.push(ilike(providerServices.location, `%${filters.location}%`));
+    }
+    
+    // Get total count first
+    const allMatching = await db.select().from(providerServices)
+      .where(and(...conditions));
+    
+    // Filter by price and rating in memory (since they're stored as strings)
+    let filtered = allMatching.filter(s => {
+      const price = parseFloat(s.price || "0") || 0;
+      const rating = parseFloat(s.averageRating || "0") || 0;
+      
+      if (filters.minPrice && price < filters.minPrice) return false;
+      if (filters.maxPrice && price > filters.maxPrice) return false;
+      if (filters.minRating && rating < filters.minRating) return false;
+      
+      return true;
+    });
+    
+    // Sort
+    switch (filters.sortBy) {
+      case "rating":
+        filtered.sort((a, b) => parseFloat(b.averageRating || "0") - parseFloat(a.averageRating || "0"));
+        break;
+      case "price_low":
+        filtered.sort((a, b) => parseFloat(a.price || "0") - parseFloat(b.price || "0"));
+        break;
+      case "price_high":
+        filtered.sort((a, b) => parseFloat(b.price || "0") - parseFloat(a.price || "0"));
+        break;
+      case "reviews":
+        filtered.sort((a, b) => (b.reviewCount || 0) - (a.reviewCount || 0));
+        break;
+      default:
+        filtered.sort((a, b) => (b.bookingsCount || 0) - (a.bookingsCount || 0));
+    }
+    
+    const limit = filters.limit || 20;
+    const offset = filters.offset || 0;
+    
+    return {
+      services: filtered.slice(offset, offset + limit),
+      total: filtered.length
+    };
   }
 }
 
