@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,9 @@ import {
   HelpCircle,
   ChevronLeft,
   ChevronRight,
+  Wand2,
+  Loader2,
+  Lightbulb,
 } from "lucide-react";
 import {
   Sheet,
@@ -81,6 +85,16 @@ type Service = {
 type DiscoverResult = {
   services: Service[];
   total: number;
+};
+
+type AIRecommendation = {
+  recommendedCategories: Array<{
+    slug: string;
+    name: string;
+    reason: string;
+  }>;
+  recommendedServices: Array<Service & { recommendationReason: string }>;
+  suggestions: string;
 };
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -324,6 +338,28 @@ export default function DiscoverPage() {
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
+  // AI Recommendations
+  const [showRecommendations, setShowRecommendations] = useState(false);
+  const [recommendations, setRecommendations] = useState<AIRecommendation | null>(null);
+
+  const recommendationsMutation = useMutation({
+    mutationFn: async (data: { query?: string; destination?: string }) => {
+      const res = await apiRequest("POST", "/api/discover/recommendations", data);
+      return res.json() as Promise<AIRecommendation>;
+    },
+    onSuccess: (data) => {
+      setRecommendations(data);
+      setShowRecommendations(true);
+    },
+  });
+
+  const getAIRecommendations = () => {
+    recommendationsMutation.mutate({
+      query: debouncedQuery || undefined,
+      destination: locationFilter || undefined,
+    });
+  };
+
   const clearFilters = () => {
     setSelectedCategory("all");
     setMinPrice(0);
@@ -420,6 +456,21 @@ export default function DiscoverPage() {
                   <SelectItem value="price_high">Price: High to Low</SelectItem>
                 </SelectContent>
               </Select>
+
+              {/* AI Recommendations Button */}
+              <Button 
+                onClick={getAIRecommendations}
+                disabled={recommendationsMutation.isPending}
+                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                data-testid="button-ai-recommendations"
+              >
+                {recommendationsMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Wand2 className="w-4 h-4 mr-2" />
+                )}
+                AI Suggestions
+              </Button>
 
               {/* Mobile Filter Button */}
               <Sheet>
@@ -534,6 +585,97 @@ export default function DiscoverPage() {
                   Clear all
                 </Button>
               </div>
+            )}
+
+            {/* AI Recommendations Panel */}
+            {showRecommendations && recommendations && (
+              <Card className="mb-6 border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Lightbulb className="w-5 h-5 text-purple-500" />
+                      AI Recommendations
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowRecommendations(false)}
+                      data-testid="button-close-recommendations"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {recommendations.suggestions && (
+                    <p className="text-muted-foreground text-sm" data-testid="text-ai-suggestion">
+                      {recommendations.suggestions}
+                    </p>
+                  )}
+                  
+                  {recommendations.recommendedCategories.length > 0 && (
+                    <div data-testid="section-recommended-categories">
+                      <p className="text-sm font-medium mb-2">Suggested Categories:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {recommendations.recommendedCategories
+                          .filter(cat => cat.slug)
+                          .map((cat, idx) => {
+                            const Icon = categoryIcons[cat.slug] || Compass;
+                            return (
+                              <Button
+                                key={idx}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const category = categories?.find(c => c.slug === cat.slug);
+                                  if (category) setSelectedCategory(category.id);
+                                }}
+                                className="gap-2"
+                                data-testid={`button-rec-category-${cat.slug}`}
+                              >
+                                <Icon className="w-4 h-4" />
+                                {cat.name}
+                              </Button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  {recommendations.recommendedServices.length > 0 && (
+                    <div data-testid="section-recommended-services">
+                      <p className="text-sm font-medium mb-2">Recommended Services:</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {recommendations.recommendedServices.slice(0, 4).map((service) => (
+                          <Link 
+                            key={service.id} 
+                            href={`/services/${service.id}`}
+                            data-testid={`link-rec-service-${service.id}`}
+                          >
+                            <div 
+                              className="p-3 bg-background rounded-md border hover-elevate cursor-pointer"
+                              data-testid={`card-rec-service-${service.id}`}
+                            >
+                              <div 
+                                className="font-medium text-sm"
+                                data-testid={`text-rec-service-name-${service.id}`}
+                              >
+                                {service.serviceName}
+                              </div>
+                              <div 
+                                className="text-xs text-muted-foreground mt-1"
+                                data-testid={`text-rec-reason-${service.id}`}
+                              >
+                                {service.recommendationReason}
+                              </div>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {/* Results */}
