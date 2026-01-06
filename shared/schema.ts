@@ -300,12 +300,24 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
 
 // === Service Categories ===
 
+export const categoryTypeEnum = ["service_provider", "local_expert", "hybrid"] as const;
+
 export const serviceCategories = pgTable("service_categories", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: varchar("name", { length: 100 }).notNull().unique(),
+  slug: varchar("slug", { length: 100 }).unique(),
   description: text("description"),
+  icon: varchar("icon", { length: 10 }),
   imageUrl: text("image_url"),
+  categoryType: varchar("category_type", { length: 20 }).default("service_provider"),
+  verificationRequired: boolean("verification_required").default(true),
+  requiredDocuments: jsonb("required_documents").default([]),
+  customProfileFields: jsonb("custom_profile_fields").default([]),
+  priceRange: jsonb("price_range").default({}),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const serviceSubcategories = pgTable("service_subcategories", {
@@ -313,6 +325,10 @@ export const serviceSubcategories = pgTable("service_subcategories", {
   categoryId: varchar("category_id").notNull().references(() => serviceCategories.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 100 }).notNull(),
   description: text("description"),
+  icon: varchar("icon", { length: 10 }),
+  priceRange: jsonb("price_range").default({}),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

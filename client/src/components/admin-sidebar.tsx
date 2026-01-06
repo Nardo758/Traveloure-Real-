@@ -13,7 +13,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  Shield
+  Shield,
+  FolderKanban
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -24,6 +25,7 @@ const navItems = [
   { icon: Users, label: "Users", href: "/admin/users" },
   { icon: UserCheck, label: "Experts", href: "/admin/experts" },
   { icon: Building2, label: "Providers", href: "/admin/providers" },
+  { icon: FolderKanban, label: "Categories", href: "/admin/categories" },
   { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
   { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },
   { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },

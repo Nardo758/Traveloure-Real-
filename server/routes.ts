@@ -675,6 +675,183 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
     res.status(204).send();
   });
 
+  // === Admin Service Category Management ===
+
+  // Get all categories with subcategories
+  app.get("/api/admin/categories", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const type = req.query.type as string | undefined;
+    const categories = await storage.getServiceCategories(type);
+    const subcategories = await storage.getAllServiceSubcategories();
+    
+    // Attach subcategories to each category
+    const categoriesWithSubs = categories.map(cat => ({
+      ...cat,
+      subcategories: subcategories.filter(sub => sub.categoryId === cat.id)
+    }));
+    res.json(categoriesWithSubs);
+  });
+
+  // Get single category
+  app.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const category = await storage.getServiceCategoryById(req.params.id);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found" });
+    }
+    const subcategories = await storage.getServiceSubcategories(req.params.id);
+    res.json({ ...category, subcategories });
+  });
+
+  // Create category (admin only)
+  app.post("/api/admin/categories", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceCategorySchema.parse(req.body);
+      const category = await storage.createServiceCategory(input);
+      res.status(201).json(category);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create category" });
+    }
+  });
+
+  // Update category (admin only)
+  app.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceCategorySchema.partial().parse(req.body);
+      const updated = await storage.updateServiceCategory(req.params.id, input);
+      if (!updated) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+
+  // Delete category (admin only)
+  app.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    await storage.deleteServiceCategory(req.params.id);
+    res.status(204).send();
+  });
+
+  // Create subcategory (admin only)
+  app.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const category = await storage.getServiceCategoryById(req.params.categoryId);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      const input = insertServiceSubcategorySchema.parse({ ...req.body, categoryId: req.params.categoryId });
+      const subcategory = await storage.createServiceSubcategory(input);
+      res.status(201).json(subcategory);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create subcategory" });
+    }
+  });
+
+  // Update subcategory (admin only)
+  app.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceSubcategorySchema.partial().parse(req.body);
+      const updated = await storage.updateServiceSubcategory(req.params.id, input);
+      if (!updated) {
+        return res.status(404).json({ message: "Subcategory not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update subcategory" });
+    }
+  });
+
+  // Delete subcategory (admin only)
+  app.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    await storage.deleteServiceSubcategory(req.params.id);
+    res.status(204).send();
+  });
+
+  // Seed 15 core categories (admin only - run once)
+  app.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    
+    const coreCategories = [
+      { name: "Photography & Videography", slug: "photography-videography", description: "Portrait, event, engagement, family, architectural photography and travel videos, drone footage", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["portfolio", "insurance"], priceRange: { min: 150, max: 1000 }, sortOrder: 1 },
+      { name: "Transportation & Logistics", slug: "transportation-logistics", description: "Private drivers, airport transfers, day trips, specialty transport", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance", "vehicle_registration"], priceRange: { min: 50, max: 800 }, sortOrder: 2 },
+      { name: "Food & Culinary", slug: "food-culinary", description: "Private chefs, cooking lessons, meal prep, sommelier services, food tours", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["culinary_credentials", "food_handler_license"], priceRange: { min: 100, max: 600 }, sortOrder: 3 },
+      { name: "Childcare & Family", slug: "childcare-family", description: "Babysitters, nannies, kids activity coordinators, family assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "cpr_certification", "references"], priceRange: { min: 20, max: 150 }, sortOrder: 4 },
+      { name: "Tours & Experiences", slug: "tours-experiences", description: "Tour guides, walking tours, museum tours, adventure guides, cultural experiences", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["tour_guide_license", "insurance"], priceRange: { min: 100, max: 500 }, sortOrder: 5 },
+      { name: "Personal Assistance", slug: "personal-assistance", description: "Travel companions, personal concierge, executive assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "references", "first_aid"], priceRange: { min: 100, max: 300 }, sortOrder: 6 },
+      { name: "TaskRabbit Services", slug: "taskrabbit-services", description: "Handyman, delivery, cleaning, property management", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 30, max: 200 }, sortOrder: 7 },
+      { name: "Health & Wellness", slug: "health-wellness", description: "Fitness instructors, massage therapists, yoga teachers, wellness coaches", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["certification", "insurance"], priceRange: { min: 50, max: 200 }, sortOrder: 8 },
+      { name: "Beauty & Styling", slug: "beauty-styling", description: "Hair stylists, makeup artists, personal stylists", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 75, max: 300 }, sortOrder: 9 },
+      { name: "Pets & Animals", slug: "pets-animals", description: "Pet sitters, dog walkers, animal experience guides", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["references"], priceRange: { min: 25, max: 100 }, sortOrder: 10 },
+      { name: "Events & Celebrations", slug: "events-celebrations", description: "Event coordinators, florists, bakers, party planners", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 1500 }, sortOrder: 11 },
+      { name: "Technology & Connectivity", slug: "technology-connectivity", description: "Tech support, social media management, photography editing", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 50, max: 150 }, sortOrder: 12 },
+      { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 },
+      { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 },
+      { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 },
+    ];
+    
+    const created = [];
+    for (const cat of coreCategories) {
+      try {
+        const existing = await storage.getServiceCategoryBySlug(cat.slug);
+        if (!existing) {
+          const newCat = await storage.createServiceCategory(cat as any);
+          created.push(newCat);
+        }
+      } catch (err) {
+        console.error(`Failed to create category ${cat.name}:`, err);
+      }
+    }
+    
+    res.json({ message: `Created ${created.length} categories`, categories: created });
+  });
+
   // === Enhanced Expert Services Routes ===
   
   // Get single service by ID (public - for booking page)
