@@ -71,11 +71,18 @@ export interface IStorage {
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
 
-  // Service Categories
-  getServiceCategories(): Promise<ServiceCategory[]>;
+  // Service Categories (Enhanced for Admin Management)
+  getServiceCategories(type?: string): Promise<ServiceCategory[]>;
+  getServiceCategoryById(id: string): Promise<ServiceCategory | undefined>;
+  getServiceCategoryBySlug(slug: string): Promise<ServiceCategory | undefined>;
   createServiceCategory(category: InsertServiceCategory): Promise<ServiceCategory>;
+  updateServiceCategory(id: string, updates: Partial<InsertServiceCategory>): Promise<ServiceCategory | undefined>;
+  deleteServiceCategory(id: string): Promise<void>;
   getServiceSubcategories(categoryId: string): Promise<ServiceSubcategory[]>;
+  getAllServiceSubcategories(): Promise<ServiceSubcategory[]>;
   createServiceSubcategory(subcategory: InsertServiceSubcategory): Promise<ServiceSubcategory>;
+  updateServiceSubcategory(id: string, updates: Partial<InsertServiceSubcategory>): Promise<ServiceSubcategory | undefined>;
+  deleteServiceSubcategory(id: string): Promise<void>;
 
   // FAQs
   getFAQs(category?: string): Promise<FAQ[]>;
@@ -288,22 +295,66 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Service Categories
-  async getServiceCategories(): Promise<ServiceCategory[]> {
-    return await db.select().from(serviceCategories);
+  async getServiceCategories(type?: string): Promise<ServiceCategory[]> {
+    if (type) {
+      return await db.select().from(serviceCategories).where(eq(serviceCategories.categoryType, type)).orderBy(serviceCategories.sortOrder);
+    }
+    return await db.select().from(serviceCategories).orderBy(serviceCategories.sortOrder);
+  }
+
+  async getServiceCategoryById(id: string): Promise<ServiceCategory | undefined> {
+    const [category] = await db.select().from(serviceCategories).where(eq(serviceCategories.id, id));
+    return category;
+  }
+
+  async getServiceCategoryBySlug(slug: string): Promise<ServiceCategory | undefined> {
+    const [category] = await db.select().from(serviceCategories).where(eq(serviceCategories.slug, slug));
+    return category;
   }
 
   async createServiceCategory(category: InsertServiceCategory): Promise<ServiceCategory> {
-    const [newCategory] = await db.insert(serviceCategories).values(category).returning();
+    const slug = category.slug || category.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const [newCategory] = await db.insert(serviceCategories).values({ ...category, slug }).returning();
     return newCategory;
   }
 
+  async updateServiceCategory(id: string, updates: Partial<InsertServiceCategory>): Promise<ServiceCategory | undefined> {
+    const [updated] = await db.update(serviceCategories)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(serviceCategories.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteServiceCategory(id: string): Promise<void> {
+    await db.delete(serviceCategories).where(eq(serviceCategories.id, id));
+  }
+
   async getServiceSubcategories(categoryId: string): Promise<ServiceSubcategory[]> {
-    return await db.select().from(serviceSubcategories).where(eq(serviceSubcategories.categoryId, categoryId));
+    return await db.select().from(serviceSubcategories)
+      .where(eq(serviceSubcategories.categoryId, categoryId))
+      .orderBy(serviceSubcategories.sortOrder);
+  }
+
+  async getAllServiceSubcategories(): Promise<ServiceSubcategory[]> {
+    return await db.select().from(serviceSubcategories).orderBy(serviceSubcategories.sortOrder);
   }
 
   async createServiceSubcategory(subcategory: InsertServiceSubcategory): Promise<ServiceSubcategory> {
     const [newSubcategory] = await db.insert(serviceSubcategories).values(subcategory).returning();
     return newSubcategory;
+  }
+
+  async updateServiceSubcategory(id: string, updates: Partial<InsertServiceSubcategory>): Promise<ServiceSubcategory | undefined> {
+    const [updated] = await db.update(serviceSubcategories)
+      .set(updates)
+      .where(eq(serviceSubcategories.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteServiceSubcategory(id: string): Promise<void> {
+    await db.delete(serviceSubcategories).where(eq(serviceSubcategories.id, id));
   }
 
   // FAQs
