@@ -4,6 +4,7 @@ import {
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
+  serviceTemplates, serviceBookings, serviceReviews,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -16,9 +17,12 @@ import {
   type ServiceSubcategory, type InsertServiceSubcategory,
   type FAQ, type InsertFAQ,
   type Wallet, type InsertWallet,
-  type CreditTransaction, type InsertCreditTransaction
+  type CreditTransaction, type InsertCreditTransaction,
+  type ServiceTemplate, type InsertServiceTemplate,
+  type ServiceBooking, type InsertServiceBooking,
+  type ServiceReview, type InsertServiceReview
 } from "@shared/schema";
-import { eq, ilike, and } from "drizzle-orm";
+import { eq, ilike, and, desc, or } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -85,6 +89,33 @@ export interface IStorage {
   addCredits(userId: string, amount: number, description: string, referenceId?: string): Promise<CreditTransaction>;
   deductCredits(userId: string, amount: number, description: string, referenceId?: string): Promise<CreditTransaction | null>;
   getCreditTransactions(walletId: string): Promise<CreditTransaction[]>;
+
+  // Service Templates
+  getServiceTemplates(categoryId?: string): Promise<ServiceTemplate[]>;
+  getServiceTemplate(id: string): Promise<ServiceTemplate | undefined>;
+  createServiceTemplate(template: InsertServiceTemplate): Promise<ServiceTemplate>;
+  updateServiceTemplate(id: string, updates: Partial<InsertServiceTemplate>): Promise<ServiceTemplate | undefined>;
+  deleteServiceTemplate(id: string): Promise<void>;
+
+  // Enhanced Provider Services (for Expert Services Menu)
+  getProviderServiceById(id: string): Promise<ProviderService | undefined>;
+  getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]>;
+  getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]>;
+  toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined>;
+  duplicateService(id: string, userId: string): Promise<ProviderService | undefined>;
+  incrementServiceBookings(id: string, amount: number): Promise<void>;
+
+  // Service Bookings
+  getServiceBookings(filters: { providerId?: string; travelerId?: string; status?: string }): Promise<ServiceBooking[]>;
+  getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
+  createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined>;
+
+  // Service Reviews
+  getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
+  getServiceReview(id: string): Promise<ServiceReview | undefined>;
+  createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
+  addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -357,6 +388,178 @@ export class DatabaseStorage implements IStorage {
 
   async getCreditTransactions(walletId: string): Promise<CreditTransaction[]> {
     return await db.select().from(creditTransactions).where(eq(creditTransactions.walletId, walletId));
+  }
+
+  // Service Templates
+  async getServiceTemplates(categoryId?: string): Promise<ServiceTemplate[]> {
+    if (categoryId) {
+      return await db.select().from(serviceTemplates)
+        .where(and(eq(serviceTemplates.categoryId, categoryId), eq(serviceTemplates.isActive, true)))
+        .orderBy(serviceTemplates.sortOrder);
+    }
+    return await db.select().from(serviceTemplates).where(eq(serviceTemplates.isActive, true)).orderBy(serviceTemplates.sortOrder);
+  }
+
+  async getServiceTemplate(id: string): Promise<ServiceTemplate | undefined> {
+    const [template] = await db.select().from(serviceTemplates).where(eq(serviceTemplates.id, id));
+    return template;
+  }
+
+  async createServiceTemplate(template: InsertServiceTemplate): Promise<ServiceTemplate> {
+    const [newTemplate] = await db.insert(serviceTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateServiceTemplate(id: string, updates: Partial<InsertServiceTemplate>): Promise<ServiceTemplate | undefined> {
+    const [updated] = await db.update(serviceTemplates)
+      .set(updates)
+      .where(eq(serviceTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteServiceTemplate(id: string): Promise<void> {
+    await db.update(serviceTemplates).set({ isActive: false }).where(eq(serviceTemplates.id, id));
+  }
+
+  // Enhanced Provider Services
+  async getProviderServiceById(id: string): Promise<ProviderService | undefined> {
+    const [service] = await db.select().from(providerServices).where(eq(providerServices.id, id));
+    return service;
+  }
+
+  async getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]> {
+    if (status) {
+      return await db.select().from(providerServices)
+        .where(and(eq(providerServices.userId, userId), eq(providerServices.status, status)))
+        .orderBy(desc(providerServices.createdAt));
+    }
+    return await db.select().from(providerServices)
+      .where(eq(providerServices.userId, userId))
+      .orderBy(desc(providerServices.createdAt));
+  }
+
+  async getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]> {
+    let conditions = [eq(providerServices.status, "active")];
+    if (categoryId) {
+      conditions.push(eq(providerServices.categoryId, categoryId));
+    }
+    if (location) {
+      conditions.push(ilike(providerServices.location, `%${location}%`));
+    }
+    return await db.select().from(providerServices)
+      .where(and(...conditions))
+      .orderBy(desc(providerServices.bookingsCount));
+  }
+
+  async toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined> {
+    const [updated] = await db.update(providerServices)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(providerServices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async duplicateService(id: string, userId: string): Promise<ProviderService | undefined> {
+    const original = await this.getProviderServiceById(id);
+    if (!original) return undefined;
+    
+    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, ...serviceData } = original;
+    const [newService] = await db.insert(providerServices).values({
+      ...serviceData,
+      serviceName: `${original.serviceName} (Copy)`,
+      status: "draft",
+      bookingsCount: 0,
+      totalRevenue: "0",
+      averageRating: null,
+      reviewCount: 0,
+    }).returning();
+    return newService;
+  }
+
+  async incrementServiceBookings(id: string, amount: number): Promise<void> {
+    const service = await this.getProviderServiceById(id);
+    if (service) {
+      await db.update(providerServices)
+        .set({ 
+          bookingsCount: (service.bookingsCount || 0) + 1,
+          totalRevenue: String(Number(service.totalRevenue || 0) + amount),
+          updatedAt: new Date()
+        })
+        .where(eq(providerServices.id, id));
+    }
+  }
+
+  // Service Bookings
+  async getServiceBookings(filters: { providerId?: string; travelerId?: string; status?: string }): Promise<ServiceBooking[]> {
+    let conditions: any[] = [];
+    if (filters.providerId) conditions.push(eq(serviceBookings.providerId, filters.providerId));
+    if (filters.travelerId) conditions.push(eq(serviceBookings.travelerId, filters.travelerId));
+    if (filters.status) conditions.push(eq(serviceBookings.status, filters.status));
+    
+    if (conditions.length === 0) {
+      return await db.select().from(serviceBookings).orderBy(desc(serviceBookings.createdAt));
+    }
+    return await db.select().from(serviceBookings).where(and(...conditions)).orderBy(desc(serviceBookings.createdAt));
+  }
+
+  async getServiceBooking(id: string): Promise<ServiceBooking | undefined> {
+    const [booking] = await db.select().from(serviceBookings).where(eq(serviceBookings.id, id));
+    return booking;
+  }
+
+  async createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking> {
+    const [newBooking] = await db.insert(serviceBookings).values(booking).returning();
+    return newBooking;
+  }
+
+  async updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined> {
+    const updates: any = { status, updatedAt: new Date() };
+    if (status === "confirmed") updates.confirmedAt = new Date();
+    if (status === "completed") updates.completedAt = new Date();
+    if (status === "cancelled" || status === "refunded") {
+      updates.cancelledAt = new Date();
+      if (reason) updates.cancellationReason = reason;
+    }
+    
+    const [updated] = await db.update(serviceBookings)
+      .set(updates)
+      .where(eq(serviceBookings.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Service Reviews
+  async getServiceReviews(serviceId: string): Promise<ServiceReview[]> {
+    return await db.select().from(serviceReviews)
+      .where(eq(serviceReviews.serviceId, serviceId))
+      .orderBy(desc(serviceReviews.createdAt));
+  }
+
+  async getServiceReview(id: string): Promise<ServiceReview | undefined> {
+    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
+    return review;
+  }
+
+  async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
+    const [newReview] = await db.insert(serviceReviews).values(review).returning();
+    
+    // Update service average rating
+    const allReviews = await this.getServiceReviews(review.serviceId);
+    const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+    await db.update(providerServices)
+      .set({ averageRating: String(avgRating), reviewCount: allReviews.length, updatedAt: new Date() })
+      .where(eq(providerServices.id, review.serviceId));
+    
+    return newReview;
+  }
+
+  async addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined> {
+    const [updated] = await db.update(serviceReviews)
+      .set({ responseText, responseAt: new Date() })
+      .where(eq(serviceReviews.id, id))
+      .returning();
+    return updated;
   }
 }
 

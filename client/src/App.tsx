@@ -79,6 +79,8 @@ import CreditsBillingPage from "@/pages/credits-billing";
 import ExpertStatusPage from "@/pages/expert-status";
 import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
+import ServiceWizard from "@/pages/expert/service-wizard";
+import ServiceTemplates from "@/pages/expert/service-templates";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -203,6 +205,12 @@ function Router() {
       </Route>
       <Route path="/expert/services">
         {() => <ProtectedRoute component={ExpertServices} />}
+      </Route>
+      <Route path="/expert/services/new">
+        {() => <ProtectedRoute component={ServiceWizard} />}
+      </Route>
+      <Route path="/expert/services/templates">
+        {() => <ProtectedRoute component={ServiceTemplates} />}
       </Route>
       <Route path="/expert/earnings">
         {() => <ProtectedRoute component={ExpertEarnings} />}
