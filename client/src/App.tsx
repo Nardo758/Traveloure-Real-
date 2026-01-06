@@ -66,6 +66,7 @@ import AdminSystem from "@/pages/admin/system";
 import BrowsePage from "@/pages/browse";
 import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
+import ServiceProvidersPage from "@/pages/service-providers";
 import HelpMeDecidePage from "@/pages/help-me-decide";
 import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
@@ -130,6 +131,9 @@ function Router() {
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
+      </Route>
+      <Route path="/service-providers">
+        <ServiceProvidersPage />
       </Route>
       <Route path="/help-me-decide">
         <Layout><HelpMeDecidePage /></Layout>
