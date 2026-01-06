@@ -86,7 +86,7 @@ function ServiceCard({ service }: { service: Service }) {
   const price = parseFloat(service.basePrice) || 0;
 
   return (
-    <Link href={`/services/${service.id}`}>
+    <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
       <Card className="hover-elevate cursor-pointer h-full">
         <CardContent className="p-4">
           <div className="flex gap-4">
@@ -204,6 +204,12 @@ export default function ServiceProviders() {
     }
     if (selectedCategory && service.categoryId !== selectedCategory) {
       return false;
+    }
+    if (locationFilter) {
+      const loc = locationFilter.toLowerCase();
+      if (!service.location?.toLowerCase().includes(loc)) {
+        return false;
+      }
     }
     return true;
   });
