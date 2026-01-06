@@ -316,21 +316,125 @@ export const serviceSubcategories = pgTable("service_subcategories", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Provider Services ===
+// === Expert/Provider Services (Enhanced for Marketplace) ===
+
+export const serviceTypeEnum = ["consultation", "planning", "action", "concierge", "experience", "specialty"] as const;
+export const deliveryMethodEnum = ["pdf", "video", "call", "in_person", "voice_notes", "async_messaging"] as const;
+export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   serviceName: varchar("service_name", { length: 255 }).notNull(),
-  serviceType: varchar("service_type", { length: 255 }),
-  categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "set null" }),
-  price: varchar("price", { length: 50 }),
-  priceBasedOn: varchar("price_based_on", { length: 100 }),
+  shortDescription: varchar("short_description", { length: 150 }),
   description: text("description"),
+  serviceType: varchar("service_type", { length: 50 }).default("planning"), // consultation, planning, action, concierge, experience, specialty
+  categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "set null" }),
+  
+  // Pricing
+  price: decimal("price", { precision: 10, scale: 2 }),
+  priceType: varchar("price_type", { length: 20 }).default("fixed"), // fixed, variable, custom_quote
+  priceBasedOn: varchar("price_based_on", { length: 100 }),
+  
+  // Delivery
+  deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // pdf, video, call, in_person, voice_notes, async_messaging
+  deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
+  revisionsIncluded: integer("revisions_included").default(0),
+  
+  // Capacity & Scheduling
+  maxConcurrentBookings: integer("max_concurrent_bookings"),
+  leadTimeHours: integer("lead_time_hours").default(24),
   location: varchar("location", { length: 255 }).default("Unknown"),
   availability: jsonb("availability").default([]),
+  
+  // What's Included & Requirements
+  whatIncluded: jsonb("what_included").default([]), // Array of strings: ["3 hours shooting", "50+ edited photos"]
+  requirements: jsonb("requirements").default([]), // What provider needs from traveler
+  faqs: jsonb("faqs").default([]), // [{question, answer}]
+  
+  // Media
+  serviceImage: text("service_image"), // Cover image URL
   serviceFile: text("service_file"), // File URL
-  formStatus: varchar("form_status", { length: 50 }).default("pending"), // Enum: serviceFormStatusEnum
+  
+  // Status & Analytics
+  status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
+  formStatus: varchar("form_status", { length: 50 }).default("pending"), // For approval workflow
+  isFeatured: boolean("is_featured").default(false),
+  bookingsCount: integer("bookings_count").default(0),
+  totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
+  reviewCount: integer("review_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === Service Templates (Pre-defined service templates experts can use) ===
+
+export const serviceTemplates = pgTable("service_templates", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  shortDescription: varchar("short_description", { length: 150 }),
+  description: text("description"),
+  serviceType: varchar("service_type", { length: 50 }).default("planning"),
+  suggestedPrice: decimal("suggested_price", { precision: 10, scale: 2 }),
+  priceRange: jsonb("price_range").default([]), // [min, max]
+  deliveryMethod: varchar("delivery_method", { length: 50 }),
+  deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }),
+  whatIncluded: jsonb("what_included").default([]),
+  requirements: jsonb("requirements").default([]),
+  usageCount: integer("usage_count").default(0),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === Service Bookings ===
+
+export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", "completed", "cancelled", "refunded"] as const;
+
+export const serviceBookings = pgTable("service_bookings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contractId: varchar("contract_id").references(() => userAndExpertContracts.id, { onDelete: "set null" }),
+  
+  // Booking Details
+  bookingDetails: jsonb("booking_details").default({}), // Trip dates, preferences, requirements
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  
+  // Status & Payment
+  status: varchar("status", { length: 30 }).default("pending"),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).default("0"),
+  providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  
+  // Timestamps
+  confirmedAt: timestamp("confirmed_at"),
+  completedAt: timestamp("completed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === Service Reviews ===
+
+export const serviceReviews = pgTable("service_reviews", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(), // 1-5
+  reviewText: text("review_text"),
+  responseText: text("response_text"), // Provider response
+  responseAt: timestamp("response_at"),
+  isVerified: boolean("is_verified").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -484,10 +588,15 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, createdAt: true });
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ id: true, createdAt: true });
+
+// Service Templates, Bookings, Reviews schemas
+export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
+export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ id: true, confirmedAt: true, completedAt: true, cancelledAt: true, createdAt: true, updatedAt: true });
+export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true });
 
 // === Types ===
 export type Trip = typeof trips.$inferSelect;
@@ -522,3 +631,11 @@ export type Wallet = typeof wallets.$inferSelect;
 export type InsertWallet = z.infer<typeof insertWalletSchema>;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
 export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
+
+// Service Templates, Bookings, Reviews types
+export type ServiceTemplate = typeof serviceTemplates.$inferSelect;
+export type InsertServiceTemplate = z.infer<typeof insertServiceTemplateSchema>;
+export type ServiceBooking = typeof serviceBookings.$inferSelect;
+export type InsertServiceBooking = z.infer<typeof insertServiceBookingSchema>;
+export type ServiceReview = typeof serviceReviews.$inferSelect;
+export type InsertServiceReview = z.infer<typeof insertServiceReviewSchema>;

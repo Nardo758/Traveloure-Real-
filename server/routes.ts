@@ -9,7 +9,8 @@ import {
   aiBlueprints, vendors, insertVendorSchema,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
-  insertServiceSubcategorySchema, insertFaqSchema
+  insertServiceSubcategorySchema, insertFaqSchema,
+  insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -605,6 +606,362 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       console.error("Error adding credits:", err);
       res.status(500).json({ message: "Failed to add credits" });
     }
+  });
+
+  // === Service Templates Routes (Admin manages, Experts browse) ===
+  
+  // Get all active service templates
+  app.get("/api/service-templates", async (req, res) => {
+    const categoryId = req.query.categoryId as string | undefined;
+    const templates = await storage.getServiceTemplates(categoryId);
+    res.json(templates);
+  });
+
+  // Get single template
+  app.get("/api/service-templates/:id", async (req, res) => {
+    const template = await storage.getServiceTemplate(req.params.id);
+    if (!template) {
+      return res.status(404).json({ message: "Template not found" });
+    }
+    res.json(template);
+  });
+
+  // Create template (admin only)
+  app.post("/api/admin/service-templates", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceTemplateSchema.parse(req.body);
+      const template = await storage.createServiceTemplate(input);
+      res.status(201).json(template);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create template" });
+    }
+  });
+
+  // Update template (admin only)
+  app.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const input = insertServiceTemplateSchema.partial().parse(req.body);
+      const updated = await storage.updateServiceTemplate(req.params.id, input);
+      if (!updated) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update template" });
+    }
+  });
+
+  // Delete template (admin only - soft delete)
+  app.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    await storage.deleteServiceTemplate(req.params.id);
+    res.status(204).send();
+  });
+
+  // === Enhanced Expert Services Routes ===
+  
+  // Get single service by ID (public - for booking page)
+  app.get("/api/services/:id", async (req, res) => {
+    const service = await storage.getProviderServiceById(req.params.id);
+    if (!service || service.status !== "active") {
+      return res.status(404).json({ message: "Service not found" });
+    }
+    res.json(service);
+  });
+
+  // Browse all active services (public marketplace)
+  app.get("/api/services", async (req, res) => {
+    const categoryId = req.query.categoryId as string | undefined;
+    const location = req.query.location as string | undefined;
+    const services = await storage.getAllActiveServices(categoryId, location);
+    res.json(services);
+  });
+
+  // Get expert's services by status
+  app.get("/api/expert/services", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const status = req.query.status as string | undefined;
+    const services = await storage.getProviderServicesByStatus(userId, status);
+    res.json(services);
+  });
+
+  // Toggle service status (pause/activate)
+  app.patch("/api/expert/services/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      const { status } = req.body;
+      if (!["active", "paused", "draft"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const updated = await storage.toggleServiceStatus(req.params.id, status);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update status" });
+    }
+  });
+
+  // Duplicate a service
+  app.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found or not owned by you" });
+      }
+      const duplicated = await storage.duplicateService(req.params.id, userId);
+      res.status(201).json(duplicated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to duplicate service" });
+    }
+  });
+
+  // Create service from template
+  app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const template = await storage.getServiceTemplate(req.params.templateId);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Create service from template
+      const serviceData = {
+        userId,
+        serviceName: template.name,
+        description: template.description,
+        categoryId: template.categoryId,
+        price: template.suggestedPrice || "0",
+        serviceType: template.serviceType,
+        deliveryMethod: template.deliveryMethod,
+        deliveryTimeframe: template.deliveryTimeframe,
+        requirements: template.requirements,
+        whatIncluded: template.whatIncluded,
+        status: "draft",
+      };
+      
+      const service = await storage.createProviderService(serviceData as any);
+      res.status(201).json(service);
+    } catch (err) {
+      console.error("Error creating service from template:", err);
+      res.status(500).json({ message: "Failed to create service from template" });
+    }
+  });
+
+  // === Service Bookings Routes ===
+  
+  // Get bookings for provider (their services)
+  app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const status = req.query.status as string | undefined;
+    const bookings = await storage.getServiceBookings({ providerId: userId, status });
+    res.json(bookings);
+  });
+
+  // Get bookings for traveler (services they booked)
+  app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const status = req.query.status as string | undefined;
+    const bookings = await storage.getServiceBookings({ travelerId: userId, status });
+    res.json(bookings);
+  });
+
+  // Get single booking
+  app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const booking = await storage.getServiceBooking(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+    // Check if user is traveler or provider
+    if (booking.travelerId !== userId && booking.providerId !== userId) {
+      return res.status(403).json({ message: "Not authorized to view this booking" });
+    }
+    res.json(booking);
+  });
+
+  // Create a booking
+  app.post("/api/bookings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const input = insertServiceBookingSchema.parse(req.body);
+      
+      // Verify service exists and is active
+      const service = await storage.getProviderServiceById(input.serviceId);
+      if (!service || service.status !== "active") {
+        return res.status(404).json({ message: "Service not found or not available" });
+      }
+      
+      const booking = await storage.createServiceBooking({
+        ...input,
+        travelerId: userId,
+        providerId: service.userId,
+        serviceSnapshot: {
+          name: service.serviceName,
+          price: service.price,
+          deliveryMethod: service.deliveryMethod,
+        },
+      });
+      
+      // Increment service bookings count
+      await storage.incrementServiceBookings(service.id, Number(service.price) || 0);
+      
+      res.status(201).json(booking);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating booking:", err);
+      res.status(500).json({ message: "Failed to create booking" });
+    }
+  });
+
+  // Update booking status (provider actions)
+  app.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const { status, reason } = req.body;
+      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update booking status" });
+    }
+  });
+
+  // Cancel booking (traveler action)
+  app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      if (booking.status !== "pending" && booking.status !== "confirmed") {
+        return res.status(400).json({ message: "Cannot cancel this booking" });
+      }
+      const { reason } = req.body;
+      const updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to cancel booking" });
+    }
+  });
+
+  // === Service Reviews Routes ===
+  
+  // Get reviews for a service
+  app.get("/api/services/:serviceId/reviews", async (req, res) => {
+    const reviews = await storage.getServiceReviews(req.params.serviceId);
+    res.json(reviews);
+  });
+
+  // Create a review (only after completed booking)
+  app.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      // Verify user has a completed booking for this service
+      const bookings = await storage.getServiceBookings({ 
+        travelerId: userId, 
+        status: "completed" 
+      });
+      const hasCompletedBooking = bookings.some(b => b.serviceId === req.params.serviceId);
+      if (!hasCompletedBooking) {
+        return res.status(403).json({ message: "You can only review services you've completed" });
+      }
+      
+      const service = await storage.getProviderServiceById(req.params.serviceId);
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      
+      const input = insertServiceReviewSchema.parse({
+        ...req.body,
+        serviceId: req.params.serviceId,
+        travelerId: userId,
+        providerId: service.userId,
+      });
+      
+      const review = await storage.createServiceReview(input);
+      res.status(201).json(review);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating review:", err);
+      res.status(500).json({ message: "Failed to create review" });
+    }
+  });
+
+  // Provider responds to a review
+  app.post("/api/expert/reviews/:id/respond", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const review = await storage.getServiceReview(req.params.id);
+      if (!review || review.providerId !== userId) {
+        return res.status(404).json({ message: "Review not found or not for your service" });
+      }
+      const { responseText } = req.body;
+      if (!responseText) {
+        return res.status(400).json({ message: "Response text required" });
+      }
+      const updated = await storage.addReviewResponse(req.params.id, responseText);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to respond to review" });
+    }
+  });
+
+  // Get expert's analytics/stats
+  app.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const services = await storage.getProviderServicesByStatus(userId);
+    const bookings = await storage.getServiceBookings({ providerId: userId });
+    
+    const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
+    const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+    const avgRating = services.filter(s => s.averageRating).reduce((sum, s, _, arr) => 
+      sum + Number(s.averageRating) / arr.length, 0
+    );
+    
+    const pendingBookings = bookings.filter(b => b.status === "pending").length;
+    const completedBookings = bookings.filter(b => b.status === "completed").length;
+    
+    res.json({
+      totalServices: services.length,
+      activeServices: services.filter(s => s.status === "active").length,
+      draftServices: services.filter(s => s.status === "draft").length,
+      pausedServices: services.filter(s => s.status === "paused").length,
+      totalRevenue,
+      totalBookings,
+      averageRating: avgRating || null,
+      pendingBookings,
+      completedBookings,
+    });
   });
 
   // Call seed database
