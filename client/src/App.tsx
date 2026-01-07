@@ -73,8 +73,8 @@ import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
-import ExperiencesPage from "@/pages/experiences";
 import ExperienceWizardPage from "@/pages/experience-wizard-page";
+import ExperienceTemplatePage from "@/pages/experience-template";
 import DealsPage from "@/pages/deals";
 import PaymentPage from "@/pages/payment";
 import TravelExpertsPage from "@/pages/travel-experts";
@@ -172,11 +172,11 @@ function Router() {
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
       </Route>
-      <Route path="/experiences">
-        <ExperiencesPage />
+      <Route path="/experiences/travel">
+        <BrowsePage />
       </Route>
-      <Route path="/experiences/:slug/new">
-        <ExperienceWizardPage />
+      <Route path="/experiences/:slug">
+        <ExperienceTemplatePage />
       </Route>
       <Route path="/deals">
         <Layout><DealsPage /></Layout>

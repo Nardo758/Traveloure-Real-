@@ -38,12 +38,12 @@ const launchCities = [
 ];
 
 const experienceCategories = [
-  { icon: Plane, label: "Travel", color: "text-blue-500" },
-  { icon: Heart, label: "Wedding", color: "text-pink-500" },
-  { icon: Gem, label: "Proposal", color: "text-purple-500" },
-  { icon: Sparkles, label: "Romance", color: "text-red-500" },
-  { icon: Cake, label: "Birthday", color: "text-orange-500" },
-  { icon: Building2, label: "Corporate", color: "text-gray-600" },
+  { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500" },
+  { icon: Heart, label: "Wedding", slug: "wedding", color: "text-pink-500" },
+  { icon: Gem, label: "Proposal", slug: "proposal", color: "text-purple-500" },
+  { icon: Sparkles, label: "Romance", slug: "romance", color: "text-red-500" },
+  { icon: Cake, label: "Birthday", slug: "birthday", color: "text-orange-500" },
+  { icon: Building2, label: "Corporate", slug: "corporate", color: "text-gray-600" },
 ];
 
 const faqItems = [
@@ -219,7 +219,7 @@ export default function LandingPage() {
             {/* Experience Category Buttons */}
             <div className="flex flex-wrap gap-2 mb-8">
               {experienceCategories.map((cat) => (
-                <Link key={cat.label} href="/browse">
+                <Link key={cat.label} href={`/experiences/${cat.slug}`}>
                   <Button
                     variant="outline"
                     className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 gap-2"
@@ -234,7 +234,7 @@ export default function LandingPage() {
 
             {/* CTA Buttons - 3 Main Paths */}
             <div className="flex flex-wrap gap-3">
-              <Link href="/browse">
+              <Link href="/experiences/travel">
                 <Button 
                   size="lg"
                   className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6 h-12"
