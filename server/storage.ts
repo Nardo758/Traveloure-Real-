@@ -5,7 +5,8 @@ import {
   localExpertForms, serviceProviderForms, providerServices,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
-  notifications,
+  notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
+  userExperiences, userExperienceItems,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -23,7 +24,12 @@ import {
   type ServiceBooking, type InsertServiceBooking,
   type ServiceReview, type InsertServiceReview,
   type CartItem, type Contract,
-  type Notification, type InsertNotification
+  type Notification, type InsertNotification,
+  type ExperienceType, type InsertExperienceType,
+  type ExperienceTemplateStep, type InsertExperienceTemplateStep,
+  type ExpertExperienceType, type InsertExpertExperienceType,
+  type UserExperience, type InsertUserExperience,
+  type UserExperienceItem, type InsertUserExperienceItem
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -160,6 +166,31 @@ export interface IStorage {
   markAsRead(id: string): Promise<Notification | undefined>;
   markAllAsRead(userId: string): Promise<void>;
   deleteNotification(id: string): Promise<void>;
+
+  // Experience Types
+  getExperienceTypes(): Promise<ExperienceType[]>;
+  getExperienceType(id: string): Promise<ExperienceType | undefined>;
+  getExperienceTypeBySlug(slug: string): Promise<ExperienceType | undefined>;
+  getExperienceTemplateSteps(experienceTypeId: string): Promise<ExperienceTemplateStep[]>;
+  
+  // User Experiences
+  getUserExperiences(userId: string): Promise<UserExperience[]>;
+  getUserExperience(id: string): Promise<UserExperience | undefined>;
+  createUserExperience(experience: InsertUserExperience & { userId: string }): Promise<UserExperience>;
+  updateUserExperience(id: string, updates: Partial<InsertUserExperience>): Promise<UserExperience | undefined>;
+  deleteUserExperience(id: string): Promise<void>;
+  
+  // User Experience Items
+  getUserExperienceItems(userExperienceId: string): Promise<UserExperienceItem[]>;
+  addUserExperienceItem(item: InsertUserExperienceItem): Promise<UserExperienceItem>;
+  updateUserExperienceItem(id: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined>;
+  removeUserExperienceItem(id: string): Promise<void>;
+
+  // Expert Experience Types
+  getExpertExperienceTypes(expertId: string): Promise<ExpertExperienceType[]>;
+  getExpertsByExperienceType(experienceTypeId: string): Promise<any[]>;
+  addExpertExperienceType(data: InsertExpertExperienceType): Promise<ExpertExperienceType>;
+  removeExpertExperienceType(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -850,6 +881,105 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNotification(id: string): Promise<void> {
     await db.delete(notifications).where(eq(notifications.id, id));
+  }
+
+  // Experience Types Methods
+  async getExperienceTypes(): Promise<ExperienceType[]> {
+    return await db.select().from(experienceTypes)
+      .where(eq(experienceTypes.isActive, true))
+      .orderBy(experienceTypes.sortOrder);
+  }
+
+  async getExperienceType(id: string): Promise<ExperienceType | undefined> {
+    const [result] = await db.select().from(experienceTypes).where(eq(experienceTypes.id, id));
+    return result;
+  }
+
+  async getExperienceTypeBySlug(slug: string): Promise<ExperienceType | undefined> {
+    const [result] = await db.select().from(experienceTypes).where(eq(experienceTypes.slug, slug));
+    return result;
+  }
+
+  async getExperienceTemplateSteps(experienceTypeId: string): Promise<ExperienceTemplateStep[]> {
+    return await db.select().from(experienceTemplateSteps)
+      .where(eq(experienceTemplateSteps.experienceTypeId, experienceTypeId))
+      .orderBy(experienceTemplateSteps.stepNumber);
+  }
+
+  // User Experiences Methods
+  async getUserExperiences(userId: string): Promise<UserExperience[]> {
+    return await db.select().from(userExperiences)
+      .where(eq(userExperiences.userId, userId))
+      .orderBy(desc(userExperiences.createdAt));
+  }
+
+  async getUserExperience(id: string): Promise<UserExperience | undefined> {
+    const [result] = await db.select().from(userExperiences).where(eq(userExperiences.id, id));
+    return result;
+  }
+
+  async createUserExperience(experience: InsertUserExperience & { userId: string }): Promise<UserExperience> {
+    const [newExperience] = await db.insert(userExperiences).values(experience).returning();
+    return newExperience;
+  }
+
+  async updateUserExperience(id: string, updates: Partial<InsertUserExperience>): Promise<UserExperience | undefined> {
+    const [updated] = await db.update(userExperiences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(userExperiences.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteUserExperience(id: string): Promise<void> {
+    await db.delete(userExperiences).where(eq(userExperiences.id, id));
+  }
+
+  // User Experience Items Methods
+  async getUserExperienceItems(userExperienceId: string): Promise<UserExperienceItem[]> {
+    return await db.select().from(userExperienceItems)
+      .where(eq(userExperienceItems.userExperienceId, userExperienceId))
+      .orderBy(userExperienceItems.sortOrder);
+  }
+
+  async addUserExperienceItem(item: InsertUserExperienceItem): Promise<UserExperienceItem> {
+    const [newItem] = await db.insert(userExperienceItems).values(item).returning();
+    return newItem;
+  }
+
+  async updateUserExperienceItem(id: string, updates: Partial<InsertUserExperienceItem>): Promise<UserExperienceItem | undefined> {
+    const [updated] = await db.update(userExperienceItems)
+      .set(updates)
+      .where(eq(userExperienceItems.id, id))
+      .returning();
+    return updated;
+  }
+
+  async removeUserExperienceItem(id: string): Promise<void> {
+    await db.delete(userExperienceItems).where(eq(userExperienceItems.id, id));
+  }
+
+  // Expert Experience Types Methods
+  async getExpertExperienceTypes(expertId: string): Promise<ExpertExperienceType[]> {
+    return await db.select().from(expertExperienceTypes)
+      .where(eq(expertExperienceTypes.expertId, expertId));
+  }
+
+  async getExpertsByExperienceType(experienceTypeId: string): Promise<any[]> {
+    const results = await db.select({
+      expertExperienceType: expertExperienceTypes,
+    }).from(expertExperienceTypes)
+      .where(eq(expertExperienceTypes.experienceTypeId, experienceTypeId));
+    return results;
+  }
+
+  async addExpertExperienceType(data: InsertExpertExperienceType): Promise<ExpertExperienceType> {
+    const [result] = await db.insert(expertExperienceTypes).values(data).returning();
+    return result;
+  }
+
+  async removeExpertExperienceType(id: string): Promise<void> {
+    await db.delete(expertExperienceTypes).where(eq(expertExperienceTypes.id, id));
   }
 }
 

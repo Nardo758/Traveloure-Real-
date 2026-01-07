@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedCategories } from "./seed-categories";
+import { seedExperienceTypes } from "./seed-experience-types";
 import { setupWebSocket } from "./websocket";
 
 const app = express();
@@ -74,6 +75,16 @@ app.use((req, res, next) => {
     }
   } catch (err) {
     console.error("Failed to seed categories:", err);
+  }
+
+  // Seed experience types on startup
+  try {
+    const expResult = await seedExperienceTypes();
+    if (expResult.created > 0) {
+      log(`Seeded ${expResult.created} new experience types`);
+    }
+  } catch (err) {
+    console.error("Failed to seed experience types:", err);
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
