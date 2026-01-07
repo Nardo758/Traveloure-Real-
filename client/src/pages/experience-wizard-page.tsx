@@ -10,7 +10,7 @@ import { ArrowLeft, AlertCircle } from "lucide-react";
 import type { ExperienceType, ExperienceTemplateStep } from "@shared/schema";
 
 export default function ExperienceWizardPage() {
-  const [, params] = useRoute("/experiences/:slug/new");
+  const [, params] = useRoute("/experiences/:slug");
   const slug = params?.slug || "";
 
   const { data: experienceType, isLoading: typeLoading, error: typeError } = useQuery<ExperienceType>({

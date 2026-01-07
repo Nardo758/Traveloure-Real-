@@ -53,7 +53,7 @@ const navItems = [
       {
         title: "FOR TRAVELERS",
         items: [
-          { name: "Plan Your Perfect Trip", href: "/experiences/travel/new", icon: Plane, description: "Personalized travel planning" },
+          { name: "Plan Your Perfect Trip", href: "/experiences/travel", icon: Plane, description: "Personalized travel planning" },
           { name: "Find Local Experts", href: "/vendors", icon: Users, description: "Connect with destination experts" },
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
           { name: "Executive Assistant Services", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
@@ -62,11 +62,11 @@ const navItems = [
       {
         title: "FOR LIFE EVENTS",
         items: [
-          { name: "Plan Your Dream Wedding", href: "/experiences/wedding/new", icon: Heart, description: "Full wedding planning" },
-          { name: "Perfect Proposal Planning", href: "/experiences/proposal/new", icon: Gem, description: "Create the perfect moment" },
-          { name: "Romantic Getaways", href: "/experiences/romance/new", icon: Sparkles, description: "Special romantic experiences" },
-          { name: "Birthday Celebrations", href: "/experiences/birthday/new", icon: Cake, description: "Plan unforgettable parties" },
-          { name: "Corporate Events & Retreats", href: "/experiences/corporate/new", icon: Building2, description: "Team events made easy" },
+          { name: "Plan Your Dream Wedding", href: "/experiences/wedding", icon: Heart, description: "Full wedding planning" },
+          { name: "Perfect Proposal Planning", href: "/experiences/proposal", icon: Gem, description: "Create the perfect moment" },
+          { name: "Romantic Getaways", href: "/experiences/romance", icon: Sparkles, description: "Special romantic experiences" },
+          { name: "Birthday Celebrations", href: "/experiences/birthday", icon: Cake, description: "Plan unforgettable parties" },
+          { name: "Corporate Events & Retreats", href: "/experiences/corporate", icon: Building2, description: "Team events made easy" },
         ],
       },
     ],
@@ -95,7 +95,6 @@ const navItems = [
       },
     ],
   },
-  { name: "Experiences", href: "/experiences" },
   { name: "Experts", href: "/experts" },
   { name: "Help Me Decide", href: "/help-me-decide" },
   { name: "Deals", href: "/deals" },
