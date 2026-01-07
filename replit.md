@@ -51,6 +51,29 @@ Key database tables:
 
 ## Recent Changes (January 2026)
 
+### Phase 6-8 Complete: Reviews, Notifications, Provider Data Integration (January 7)
+
+**Notifications System:**
+- `notifications` schema with type-based categorization (booking_created, message_received, review_received)
+- NotificationBell component in header with unread count badge and dropdown
+- API endpoints: GET /api/notifications, PATCH mark-read, POST mark-all-read
+- Auto-creates notifications on checkout for providers
+
+**Reviews & Ratings:**
+- Review submission UI on My Bookings page for completed bookings (5-star rating)
+- Service detail page (/services/:id) with reviews display and average ratings
+- hasReview tracking via getReviewsByBookingId storage method
+
+**Provider Data Integration:**
+- Provider calendar now uses real booking data from /api/provider/bookings endpoint
+- Provider earnings dashboard calculates stats from actual completed bookings
+- Monthly earnings chart correctly aggregates by year-month to prevent cross-year data leakage
+- Transaction history shows real booking earnings
+
+**New API Endpoints:**
+- GET /api/provider/bookings - Fetch provider's bookings with service details
+- Notification creation in checkout flow for provider alerts
+
 ### Backend API Security Implementation (January 3)
 
 **New Database Tables:**
