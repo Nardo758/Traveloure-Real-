@@ -43,6 +43,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
+import { NotificationBell } from "@/components/notification-bell";
 
 const navItems = [
   {
@@ -237,7 +238,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             {/* User Actions */}
-            <div className="hidden md:flex items-center gap-4">
+            <div className="hidden md:flex items-center gap-2">
+              <NotificationBell />
               <UserMenu />
             </div>
 

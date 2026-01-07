@@ -520,6 +520,20 @@ export const vendorAssignments = pgTable("vendor_assignments", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// === Notifications ===
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(), // booking_created, booking_confirmed, message_received, review_received, etc.
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  relatedId: varchar("related_id", { length: 255 }), // ID of related entity (booking, message, etc.)
+  relatedType: varchar("related_type", { length: 50 }), // booking, message, review, contract
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === Shopping Cart ===
 
 export const cartItems = pgTable("cart_items", {
@@ -628,6 +642,7 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
 export const insertContractSchema = createInsertSchema(userAndExpertContracts).omit({ id: true, status: true, isPaid: true, paymentUrl: true, createdAt: true });
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, isRead: true, createdAt: true });
 
 // === Types ===
 export type Trip = typeof trips.$inferSelect;
@@ -674,3 +689,5 @@ export type Contract = typeof userAndExpertContracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
 export type ServiceReview = typeof serviceReviews.$inferSelect;
 export type InsertServiceReview = z.infer<typeof insertServiceReviewSchema>;
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
