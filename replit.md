@@ -26,7 +26,14 @@ The application features a modern and responsive design using Tailwind CSS and s
 - **Expert Advisor Chat**: A system for users to chat with local travel experts for personalized recommendations.
 - **Tourist Place Discovery**: Functionality to search and discover tourist destinations.
 - **"Help Guide" Packages**: Pre-made trip packages for user inspiration.
-- **Experience Planning System**: A dynamic, configurable wizard system for planning various experiences (Travel, Wedding, Proposal, etc.) with steps loaded from the database.
+- **Experience Planning System**: Template-based planning for 8 experience types (Travel, Wedding, Proposal, Romance, Birthday, Corporate, Boys Trip, Girls Trip) with:
+  - Hero images with destination/date inputs
+  - Category-specific tabbed provider browsing (e.g., Wedding: Venue/Catering/Photography/Florist/Entertainment)
+  - Comprehensive filtering (category, search, price, rating, preferences)
+  - Provider grid with add-to-cart functionality
+  - Interactive Map View with Google Maps integration (`@vis.gl/react-google-maps`)
+  - AI Optimization tab using OpenAI for itinerary analysis, efficiency scoring, and recommendations
+  - Expert assistance touchpoints: floating chat widget, hero CTA, sidebar expert card, checkout escalation
 - **Reviews & Notifications**: System for users to review services and receive timely notifications.
 - **Provider & Admin Dashboards**: Comprehensive dashboards for service providers to manage bookings, services, earnings, and for administrators to manage users, experts, providers, and platform analytics.
 - **Executive Assistant (EA) Dashboard**: A specialized dashboard for managing multiple C-level executives, including calendar, travel, events, and AI assistance.
@@ -44,6 +51,8 @@ The application features a modern and responsive design using Tailwind CSS and s
 ### Third-Party Services
 - **Replit Auth**: For OpenID Connect-based user authentication.
 - **PostgreSQL**: The relational database management system for data persistence.
+- **OpenAI**: For AI-powered itinerary optimization and recommendations via gpt-4o.
+- **Google Maps**: For interactive mapping with provider locations and route visualization.
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management for React.
@@ -54,9 +63,20 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `framer-motion`: Animation library for React.
 - `date-fns`: Date utility library.
 - `lucide-react`: Icon library.
+- `@vis.gl/react-google-maps`: Google Maps React components for interactive mapping.
+- `openai`: OpenAI SDK for AI integration.
 
 ### Environment Variables
 - `DATABASE_URL`: Connection string for PostgreSQL.
 - `SESSION_SECRET`: Secret key for encrypting session data.
 - `ISSUER_URL`: URL of the Replit OIDC issuer.
 - `REPL_ID`: Identifier for the Replit environment.
+- `GOOGLE_MAPS_API_KEY`: API key for Google Maps integration.
+- `VITE_GOOGLE_MAPS_API_KEY`: Frontend-accessible Google Maps API key.
+
+## Recent Changes (January 2026)
+- Added Map View tab to all 8 experience types with interactive Google Maps showing provider locations
+- Implemented AI Optimization feature analyzing selections and providing efficiency scores, recommendations, and schedules
+- Added expert assistance touchpoints throughout the experience planning flow (floating chat, hero CTA, sidebar card, checkout escalation)
+- Removed unused wizard-based experience planning in favor of streamlined template approach
+- Experience templates now use consistent tabbed navigation with category-specific provider tabs
