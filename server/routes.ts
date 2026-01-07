@@ -1084,6 +1084,21 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // Get bookings for traveler (services they booked)
+  // Provider bookings (for calendar)
+  app.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const status = req.query.status as string | undefined;
+    const bookings = await storage.getServiceBookings({ providerId: userId, status });
+    
+    // Enrich with service details
+    const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
+      const service = await storage.getProviderService(booking.serviceId);
+      return { ...booking, service };
+    }));
+    
+    res.json(enrichedBookings);
+  });
+
   app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const status = req.query.status as string | undefined;
