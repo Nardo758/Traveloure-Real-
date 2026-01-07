@@ -41,6 +41,7 @@ import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExperienceMap, RouteVisualization } from "@/components/experience-map";
+import { ExpertChatWidget, ExpertSidebarCard, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import type { ExperienceType, ProviderService } from "@shared/schema";
 
 interface CartItem {
@@ -416,6 +417,11 @@ export default function ExperienceTemplatePage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
+
+  const openExpertChat = () => {
+    setChatOpen(true);
+  };
 
   const toggleFilter = (filter: string) => {
     setSelectedFilters((prev) =>
@@ -632,6 +638,22 @@ export default function ExperienceTemplatePage() {
                   >
                     Submit {experienceType.name} Details
                   </Button>
+
+                  <div className="flex items-center gap-2 pt-2">
+                    <div className="flex-1 border-t border-gray-200 dark:border-gray-600" />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">or</span>
+                    <div className="flex-1 border-t border-gray-200 dark:border-gray-600" />
+                  </div>
+
+                  <Button 
+                    variant="outline"
+                    className="w-full border-[#FF385C] text-[#FF385C] hover:bg-[#FF385C]/10"
+                    onClick={openExpertChat}
+                    data-testid="button-hero-expert"
+                  >
+                    <MessageCircle className="w-4 h-4 mr-2" />
+                    Plan with an Expert
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -701,6 +723,13 @@ export default function ExperienceTemplatePage() {
                   </ScrollArea>
                   {cart.length > 0 && (
                     <div className="mt-4 pt-4 border-t">
+                      <CheckoutExpertBanner 
+                        onConnect={() => {
+                          setCartOpen(false);
+                          openExpertChat();
+                        }}
+                        cartTotal={cartTotal}
+                      />
                       <div className="flex justify-between mb-4">
                         <span className="font-medium">Total</span>
                         <span className="font-bold">${cartTotal}</span>
@@ -825,7 +854,13 @@ export default function ExperienceTemplatePage() {
                   ? `No providers found in ${destination}` 
                   : "Enter a location to see available options"}
             </p>
-            <Button variant="outline" size="sm" className="gap-2" data-testid="button-expert-help">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="gap-2"
+              onClick={openExpertChat}
+              data-testid="button-expert-help"
+            >
               <MessageCircle className="w-4 h-4" />
               Get Expert Help
             </Button>
@@ -880,72 +915,104 @@ export default function ExperienceTemplatePage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {servicesLoading ? (
-                [1, 2, 3, 4, 5, 6].map((i) => (
-                  <Card key={i}>
-                    <Skeleton className="h-48 w-full" />
-                    <CardContent className="p-4">
-                      <Skeleton className="h-6 w-3/4 mb-2" />
-                      <Skeleton className="h-4 w-full mb-2" />
-                      <Skeleton className="h-4 w-1/2" />
-                    </CardContent>
-                  </Card>
-                ))
-              ) : filteredServices.length > 0 ? (
-                filteredServices.map((service) => (
-                  <Card key={service.id} className="overflow-hidden hover-elevate">
-                    <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
-                      <Building2 className="w-12 h-12 text-gray-400" />
-                    </div>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold text-lg">{service.serviceName}</h3>
-                        <Badge variant="secondary" className="text-xs">
-                          <Star className="w-3 h-3 mr-1 fill-amber-400 text-amber-400" />
-                          {service.averageRating || "4.8"}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                        {service.shortDescription || service.description}
+            <div className="flex gap-6">
+              <div className="flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {servicesLoading ? (
+                    [1, 2, 3, 4, 5, 6].map((i) => (
+                      <Card key={i}>
+                        <Skeleton className="h-48 w-full" />
+                        <CardContent className="p-4">
+                          <Skeleton className="h-6 w-3/4 mb-2" />
+                          <Skeleton className="h-4 w-full mb-2" />
+                          <Skeleton className="h-4 w-1/2" />
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : filteredServices.length > 0 ? (
+                    filteredServices.map((service) => (
+                      <Card key={service.id} className="overflow-hidden hover-elevate">
+                        <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
+                          <Building2 className="w-12 h-12 text-gray-400" />
+                        </div>
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-2">
+                            <h3 className="font-semibold text-lg">{service.serviceName}</h3>
+                            <Badge variant="secondary" className="text-xs">
+                              <Star className="w-3 h-3 mr-1 fill-amber-400 text-amber-400" />
+                              {service.averageRating || "4.8"}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                            {service.shortDescription || service.description}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-lg">${service.price || 0}</span>
+                            <Button
+                              size="sm"
+                              className="bg-[#FF385C] hover:bg-[#E23350]"
+                              onClick={() => addToCart({
+                                id: service.id.toString(),
+                                type: activeTab,
+                                name: service.serviceName,
+                                price: Number(service.price) || 0,
+                                quantity: 1,
+                                provider: "Platform Provider",
+                              })}
+                              data-testid={`button-add-${service.id}`}
+                            >
+                              <Plus className="w-4 h-4 mr-1" />
+                              Add
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <div className="col-span-full text-center py-12">
+                      <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium mb-2">No providers available yet</h3>
+                      <p className="text-muted-foreground mb-4">
+                        We're adding providers for this category. Check back soon!
                       </p>
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-lg">${service.price || 0}</span>
-                        <Button
-                          size="sm"
-                          className="bg-[#FF385C] hover:bg-[#E23350]"
-                          onClick={() => addToCart({
-                            id: service.id.toString(),
-                            type: activeTab,
-                            name: service.serviceName,
-                            price: Number(service.price) || 0,
-                            quantity: 1,
-                            provider: "Platform Provider",
-                          })}
-                          data-testid={`button-add-${service.id}`}
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                <div className="col-span-full text-center py-12">
-                  <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No providers available yet</h3>
-                  <p className="text-muted-foreground mb-4">
-                    We're adding providers for this category. Check back soon!
-                  </p>
-                  <Button variant="outline" data-testid="button-notify-me">
-                    Notify Me When Available
-                  </Button>
+                      <Button variant="outline" data-testid="button-notify-me">
+                        Notify Me When Available
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+              
+              <div className="hidden lg:block w-80 flex-shrink-0">
+                <div className="sticky top-20">
+                  <ExpertSidebarCard
+                    experienceType={experienceType?.name}
+                    onConnect={openExpertChat}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>
+        
+        <ExpertChatWidget
+          experienceType={experienceType?.name}
+          destination={destination}
+          onRequestExpert={() => {}}
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+        />
+        
+        {!chatOpen && (
+          <Button
+            onClick={() => setChatOpen(true)}
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-[#FF385C] hover:bg-[#E23350] shadow-lg z-50"
+            size="icon"
+            data-testid="button-open-chat"
+          >
+            <MessageCircle className="w-6 h-6" />
+          </Button>
+        )}
       </div>
     </Layout>
   );
