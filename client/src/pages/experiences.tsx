@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
-  Plane, Heart, Gem, PartyPopper, Briefcase, Users, Sparkles, Calendar,
+  Plane, Heart, Gem, Diamond, HeartHandshake, Cake, Briefcase, Users, Sparkles, Calendar,
   ArrowRight, Star, MapPin, Clock, ChevronRight
 } from "lucide-react";
 import type { ExperienceType } from "@shared/schema";
@@ -25,14 +25,16 @@ const stepCounts: Record<string, number> = {
 };
 
 const iconMap: Record<string, any> = {
-  plane: Plane,
-  heart: Heart,
-  gem: Gem,
-  "party-popper": PartyPopper,
-  briefcase: Briefcase,
-  users: Users,
-  sparkles: Sparkles,
-  calendar: Calendar,
+  Plane: Plane,
+  Heart: Heart,
+  Gem: Gem,
+  Diamond: Diamond,
+  HeartHandshake: HeartHandshake,
+  Cake: Cake,
+  Briefcase: Briefcase,
+  Users: Users,
+  Sparkles: Sparkles,
+  Calendar: Calendar,
 };
 
 const containerVariants = {
