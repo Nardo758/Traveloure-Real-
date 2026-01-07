@@ -1088,7 +1088,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const userId = (req.user as any).claims.sub;
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ travelerId: userId, status });
-    res.json(bookings);
+    
+    // Enrich bookings with hasReview flag
+    const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
+      const reviews = await storage.getReviewsByBookingId(booking.id);
+      return { ...booking, hasReview: reviews.length > 0 };
+    }));
+    
+    res.json(enrichedBookings);
   });
 
   // Get single booking
