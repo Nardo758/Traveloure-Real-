@@ -1264,6 +1264,190 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     });
   });
 
+  // === Cart Routes ===
+
+  // Get cart items
+  app.get("/api/cart", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const items = await storage.getCartItems(userId);
+    
+    // Calculate totals
+    const subtotal = items.reduce((sum, item) => {
+      const price = parseFloat(item.service?.price || "0");
+      return sum + (price * (item.quantity || 1));
+    }, 0);
+    
+    const platformFee = subtotal * 0.20; // 20% platform fee
+    const total = subtotal + platformFee;
+    
+    res.json({
+      items,
+      subtotal: subtotal.toFixed(2),
+      platformFee: platformFee.toFixed(2),
+      total: total.toFixed(2),
+      itemCount: items.length,
+    });
+  });
+
+  // Add to cart
+  app.post("/api/cart", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { serviceId, quantity, tripId, scheduledDate, notes } = req.body;
+      
+      if (!serviceId) {
+        return res.status(400).json({ message: "Service ID is required" });
+      }
+      
+      // Verify service exists
+      const service = await storage.getProviderServiceById(serviceId);
+      if (!service) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      
+      const item = await storage.addToCart(userId, {
+        serviceId,
+        quantity: quantity || 1,
+        tripId,
+        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+        notes,
+      });
+      
+      res.status(201).json(item);
+    } catch (err) {
+      console.error("Add to cart error:", err);
+      res.status(500).json({ message: "Failed to add to cart" });
+    }
+  });
+
+  // Update cart item
+  app.patch("/api/cart/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { quantity, scheduledDate, notes } = req.body;
+      const updated = await storage.updateCartItem(req.params.id, {
+        quantity,
+        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+        notes,
+      });
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Cart item not found" });
+      }
+      
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update cart item" });
+    }
+  });
+
+  // Remove from cart
+  app.delete("/api/cart/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.removeFromCart(req.params.id);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to remove from cart" });
+    }
+  });
+
+  // Clear cart
+  app.delete("/api/cart", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      await storage.clearCart(userId);
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Failed to clear cart" });
+    }
+  });
+
+  // === Checkout & Auto-Contract Generation ===
+
+  // Create booking with auto-contract
+  app.post("/api/checkout", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId, notes } = req.body;
+      
+      // Get cart items
+      const cartData = await storage.getCartItems(userId);
+      
+      if (cartData.length === 0) {
+        return res.status(400).json({ message: "Cart is empty" });
+      }
+      
+      // Calculate totals
+      const subtotal = cartData.reduce((sum, item) => {
+        const price = parseFloat(item.service?.price || "0");
+        return sum + (price * (item.quantity || 1));
+      }, 0);
+      const platformFee = subtotal * 0.20;
+      const total = subtotal + platformFee;
+      
+      // Create bookings for each cart item
+      const bookings = [];
+      for (const item of cartData) {
+        if (!item.service) continue;
+        
+        const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        const fee = price * 0.20;
+        
+        // Create contract for this booking
+        const contract = await storage.createContract({
+          title: `Booking: ${item.service.serviceName}`,
+          tripTo: item.service.location || "N/A",
+          description: `Service booking for ${item.service.serviceName}. ${notes || ""}`,
+          amount: price.toFixed(2),
+        });
+        
+        // Create booking
+        const booking = await storage.createServiceBooking({
+          serviceId: item.serviceId,
+          travelerId: userId,
+          providerId: item.service.userId,
+          contractId: contract.id,
+          tripId: tripId || item.tripId,
+          bookingDetails: {
+            scheduledDate: item.scheduledDate,
+            notes: item.notes || notes,
+            quantity: item.quantity || 1,
+          },
+          totalAmount: price.toFixed(2),
+          platformFee: fee.toFixed(2),
+          providerEarnings: (price - fee).toFixed(2),
+          status: "pending",
+        });
+        
+        // Increment bookings count for the service
+        await storage.incrementServiceBookings(item.serviceId, 1);
+        
+        bookings.push({ booking, contract });
+      }
+      
+      // Clear cart after successful checkout
+      await storage.clearCart(userId);
+      
+      res.status(201).json({
+        success: true,
+        bookings,
+        total: total.toFixed(2),
+        message: "Booking created successfully. Proceed to payment.",
+      });
+    } catch (err) {
+      console.error("Checkout error:", err);
+      res.status(500).json({ message: "Checkout failed" });
+    }
+  });
+
+  // Get contract details
+  app.get("/api/contracts/:id", isAuthenticated, async (req, res) => {
+    const contract = await storage.getContract(req.params.id);
+    if (!contract) {
+      return res.status(404).json({ message: "Contract not found" });
+    }
+    res.json(contract);
+  });
+
   // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
 

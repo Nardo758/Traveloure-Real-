@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ import {
   Wand2,
   Loader2,
   Lightbulb,
+  ShoppingCart,
 } from "lucide-react";
 import {
   Sheet,
@@ -115,7 +117,17 @@ const categoryIcons: Record<string, React.ElementType> = {
   "custom-other": HelpCircle,
 };
 
-function ServiceCard({ service, category }: { service: Service; category?: ServiceCategory }) {
+function ServiceCard({ 
+  service, 
+  category,
+  onAddToCart,
+  isAddingToCart 
+}: { 
+  service: Service; 
+  category?: ServiceCategory;
+  onAddToCart?: (serviceId: string) => void;
+  isAddingToCart?: boolean;
+}) {
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
   const reviewCount = service.reviewCount || 0;
@@ -124,10 +136,10 @@ function ServiceCard({ service, category }: { service: Service; category?: Servi
   const location = service.location || "Remote";
 
   return (
-    <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
-      <Card className="hover-elevate cursor-pointer h-full" data-testid={`card-service-${service.id}`}>
-        <CardContent className="p-4">
-          <div className="flex gap-4">
+    <Card className="hover-elevate h-full" data-testid={`card-service-${service.id}`}>
+      <CardContent className="p-4">
+        <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
+          <div className="flex gap-4 cursor-pointer">
             <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
               <Icon className="w-8 h-8 text-muted-foreground" />
             </div>
@@ -155,33 +167,45 @@ function ServiceCard({ service, category }: { service: Service; category?: Servi
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between mt-4 pt-3 border-t gap-2">
-            <div className="flex items-center gap-2">
-              {category && (
-                <Badge variant="secondary" className="text-xs" data-testid={`badge-category-${service.id}`}>
-                  {category.name}
-                </Badge>
-              )}
+        </Link>
+        <div className="flex items-center justify-between mt-4 pt-3 border-t gap-2">
+          <div className="flex items-center gap-2">
+            {category && (
+              <Badge variant="secondary" className="text-xs" data-testid={`badge-category-${service.id}`}>
+                {category.name}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+              <span className="font-medium" data-testid={`text-rating-${service.id}`}>
+                {rating.toFixed(1)}
+              </span>
+              <span className="text-muted-foreground text-sm">
+                ({reviewCount})
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                <span className="font-medium" data-testid={`text-rating-${service.id}`}>
-                  {rating.toFixed(1)}
-                </span>
-                <span className="text-muted-foreground text-sm">
-                  ({reviewCount})
-                </span>
-              </div>
-              <div className="flex items-center gap-1 font-semibold">
-                <DollarSign className="w-4 h-4" />
-                <span data-testid={`text-price-${service.id}`}>${price.toFixed(0)}</span>
-              </div>
+            <div className="flex items-center gap-1 font-semibold">
+              <DollarSign className="w-4 h-4" />
+              <span data-testid={`text-price-${service.id}`}>${price.toFixed(0)}</span>
             </div>
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+        </div>
+        {onAddToCart && (
+          <Button
+            size="sm"
+            className="w-full mt-3"
+            onClick={() => onAddToCart(service.id)}
+            disabled={isAddingToCart}
+            data-testid={`button-add-to-cart-${service.id}`}
+          >
+            <ShoppingCart className="w-4 h-4 mr-2" />
+            {isAddingToCart ? "Adding..." : "Add to Cart"}
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -358,6 +382,29 @@ export default function DiscoverPage() {
       query: debouncedQuery || undefined,
       destination: locationFilter || undefined,
     });
+  };
+
+  const { toast } = useToast();
+  const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
+
+  const addToCartMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      setAddingToCartId(serviceId);
+      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({ title: "Added to cart!", description: "Service has been added to your cart." });
+      setAddingToCartId(null);
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
+      setAddingToCartId(null);
+    },
+  });
+
+  const handleAddToCart = (serviceId: string) => {
+    addToCartMutation.mutate(serviceId);
   };
 
   const clearFilters = () => {
@@ -704,6 +751,8 @@ export default function DiscoverPage() {
                       key={service.id} 
                       service={service} 
                       category={getCategoryById(service.categoryId)}
+                      onAddToCart={handleAddToCart}
+                      isAddingToCart={addingToCartId === service.id}
                     />
                   ))}
                 </div>

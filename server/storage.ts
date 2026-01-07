@@ -4,7 +4,7 @@ import {
   userAndExpertChats, helpGuideTrips, vendors,
   localExpertForms, serviceProviderForms, providerServices,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
-  serviceTemplates, serviceBookings, serviceReviews,
+  serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -20,7 +20,8 @@ import {
   type CreditTransaction, type InsertCreditTransaction,
   type ServiceTemplate, type InsertServiceTemplate,
   type ServiceBooking, type InsertServiceBooking,
-  type ServiceReview, type InsertServiceReview
+  type ServiceReview, type InsertServiceReview,
+  type CartItem, type Contract
 } from "@shared/schema";
 import { eq, ilike, and, desc, or } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -136,6 +137,18 @@ export interface IStorage {
     limit?: number;
     offset?: number;
   }): Promise<{ services: ProviderService[]; total: number }>;
+
+  // Cart
+  getCartItems(userId: string): Promise<any[]>;
+  addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string }): Promise<any>;
+  updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
+  removeFromCart(id: string): Promise<void>;
+  clearCart(userId: string): Promise<void>;
+
+  // Contracts
+  getContract(id: string): Promise<any | undefined>;
+  createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string }): Promise<any>;
+  updateContractStatus(id: string, status: string, paymentUrl?: string): Promise<any | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -698,6 +711,88 @@ export class DatabaseStorage implements IStorage {
       services: filtered.slice(offset, offset + limit),
       total: filtered.length
     };
+  }
+
+  // Cart Methods
+  async getCartItems(userId: string): Promise<any[]> {
+    const items = await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+    // Join with service details
+    const enriched = await Promise.all(items.map(async (item) => {
+      const [service] = await db.select().from(providerServices).where(eq(providerServices.id, item.serviceId));
+      return { ...item, service };
+    }));
+    return enriched;
+  }
+
+  async addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string }): Promise<any> {
+    // Check if item already in cart
+    const [existing] = await db.select().from(cartItems)
+      .where(and(eq(cartItems.userId, userId), eq(cartItems.serviceId, item.serviceId)));
+    
+    if (existing) {
+      const [updated] = await db.update(cartItems)
+        .set({ quantity: (existing.quantity || 1) + (item.quantity || 1) })
+        .where(eq(cartItems.id, existing.id))
+        .returning();
+      return updated;
+    }
+    
+    const [newItem] = await db.insert(cartItems).values({
+      userId,
+      serviceId: item.serviceId,
+      quantity: item.quantity || 1,
+      tripId: item.tripId,
+      scheduledDate: item.scheduledDate,
+      notes: item.notes
+    }).returning();
+    return newItem;
+  }
+
+  async updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined> {
+    const [updated] = await db.update(cartItems)
+      .set(updates)
+      .where(eq(cartItems.id, id))
+      .returning();
+    return updated;
+  }
+
+  async removeFromCart(id: string): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.id, id));
+  }
+
+  async clearCart(userId: string): Promise<void> {
+    await db.delete(cartItems).where(eq(cartItems.userId, userId));
+  }
+
+  // Contract Methods
+  async getContract(id: string): Promise<any | undefined> {
+    const [contract] = await db.select().from(userAndExpertContracts).where(eq(userAndExpertContracts.id, id));
+    return contract;
+  }
+
+  async createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string }): Promise<any> {
+    const [newContract] = await db.insert(userAndExpertContracts).values({
+      title: contract.title,
+      tripTo: contract.tripTo,
+      description: contract.description,
+      amount: contract.amount,
+      attachment: contract.attachment,
+      status: "pending",
+      isPaid: false
+    }).returning();
+    return newContract;
+  }
+
+  async updateContractStatus(id: string, status: string, paymentUrl?: string): Promise<any | undefined> {
+    const [updated] = await db.update(userAndExpertContracts)
+      .set({ 
+        status, 
+        paymentUrl: paymentUrl || undefined,
+        isPaid: status === "paid" 
+      })
+      .where(eq(userAndExpertContracts.id, id))
+      .returning();
+    return updated;
   }
 }
 
