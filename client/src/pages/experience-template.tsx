@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ExperienceMap, RouteVisualization } from "@/components/experience-map";
 import type { ExperienceType, ProviderService } from "@shared/schema";
 
 interface CartItem {
@@ -68,6 +69,7 @@ const experienceConfigs: Record<string, {
       { id: "photography", label: "Photography", icon: Building2, category: "photography" },
       { id: "florist", label: "Florist", icon: Building2, category: "florist" },
       { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
@@ -82,6 +84,7 @@ const experienceConfigs: Record<string, {
       { id: "dining", label: "Dining", icon: Building2, category: "dining" },
       { id: "rings", label: "Rings", icon: Gem, category: "jewelry" },
       { id: "transportation", label: "Transportation", icon: Building2, category: "transportation" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
@@ -95,6 +98,7 @@ const experienceConfigs: Record<string, {
       { id: "dining", label: "Dining", icon: Building2, category: "dining" },
       { id: "activities", label: "Activities", icon: Building2, category: "activities" },
       { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Couples", "Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Beachfront"],
@@ -108,6 +112,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Building2, category: "catering" },
       { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
       { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Kids", "Adults", "Outdoor", "Indoor", "Theme Party", "Elegant", "Casual", "Adventure"],
@@ -121,6 +126,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Building2, category: "catering" },
       { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
       { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
@@ -134,6 +140,7 @@ const experienceConfigs: Record<string, {
       { id: "activities", label: "Adventures", icon: Building2, category: "adventures" },
       { id: "nightlife", label: "Nightlife", icon: Building2, category: "nightlife" },
       { id: "sports", label: "Sports", icon: Building2, category: "sports" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Adventure", "Sports", "Nightlife", "Beach", "Mountains", "City", "Bachelor", "Fishing"],
@@ -147,6 +154,7 @@ const experienceConfigs: Record<string, {
       { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
       { id: "shopping", label: "Shopping", icon: Building2, category: "shopping" },
       { id: "dining", label: "Dining & Wine", icon: Building2, category: "dining" },
+      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Spa", "Shopping", "Beach", "Wine", "Brunch", "Wellness", "Bachelorette", "Luxury"],
@@ -830,6 +838,47 @@ export default function ExperienceTemplatePage() {
               date={startDate}
               cart={cart}
             />
+          ) : activeTab === "map" ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <ExperienceMap
+                  providers={filteredServices.map((s, index) => {
+                    const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
+                    const baseHash = numericId * 1000;
+                    const latOffset = ((baseHash % 100) - 50) / 1000;
+                    const lngOffset = (((baseHash + 37) % 100) - 50) / 1000;
+                    return {
+                      id: s.id.toString(),
+                      name: s.serviceName,
+                      category: s.serviceType || currentTabCategory || "venue",
+                      price: Number(s.price) || 0,
+                      rating: Number(s.averageRating) || 4.5,
+                      lat: 40.7128 + latOffset,
+                      lng: -74.0060 + lngOffset,
+                      description: s.shortDescription || s.description || undefined
+                    };
+                  })}
+                  destination={destination}
+                  onAddToCart={(provider) => addToCart({
+                    id: provider.id,
+                    type: provider.category,
+                    name: provider.name,
+                    price: provider.price,
+                    quantity: 1,
+                    provider: "Platform Provider"
+                  })}
+                />
+              </div>
+              <div>
+                <RouteVisualization
+                  stops={cart.map((item, i) => ({
+                    name: item.name,
+                    time: `${9 + i}:00 AM`,
+                    duration: "1-2 hours"
+                  }))}
+                />
+              </div>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {servicesLoading ? (
