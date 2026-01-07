@@ -315,6 +315,61 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
     }
   });
 
+  // Admin: Get platform stats
+  app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
+    const user = req.user as any;
+    if (user.claims.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    
+    try {
+      // Get counts from database
+      const allUsers = await db.select().from(users);
+      const allBookings = await storage.getServiceBookings({});
+      const pendingExperts = await storage.getLocalExpertForms("pending");
+      const pendingProviders = await storage.getServiceProviderForms("pending");
+      
+      const totalUsers = allUsers.length;
+      const totalBookings = allBookings.length;
+      
+      // Calculate revenue from completed bookings
+      const completedBookings = allBookings.filter(b => b.status === "completed");
+      const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.platformFee || "0"), 0);
+      
+      // This month's revenue
+      const now = new Date();
+      const thisMonth = now.getMonth();
+      const thisYear = now.getFullYear();
+      const monthlyRevenue = completedBookings
+        .filter(b => {
+          const date = b.createdAt ? new Date(b.createdAt) : null;
+          return date && date.getMonth() === thisMonth && date.getFullYear() === thisYear;
+        })
+        .reduce((sum, b) => sum + parseFloat(b.platformFee || "0"), 0);
+      
+      // New users today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const newUsersToday = allUsers.filter(u => {
+        const created = u.createdAt ? new Date(u.createdAt) : null;
+        return created && created >= today;
+      }).length;
+      
+      res.json({
+        totalUsers,
+        totalBookings,
+        totalRevenue,
+        monthlyRevenue,
+        newUsersToday,
+        pendingExpertApplications: pendingExperts.length,
+        pendingProviderApplications: pendingProviders.length,
+      });
+    } catch (err) {
+      console.error("Admin stats error:", err);
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
   // Admin: Get all expert applications
   app.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
@@ -1092,7 +1147,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     
     // Enrich with service details
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-      const service = await storage.getProviderService(booking.serviceId);
+      const service = await storage.getProviderServiceById(booking.serviceId);
       return { ...booking, service };
     }));
     
