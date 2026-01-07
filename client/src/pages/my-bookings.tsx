@@ -1,15 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { Layout } from "@/components/layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Calendar, 
-  MapPin, 
   Clock, 
   DollarSign, 
   FileText, 
@@ -17,9 +27,12 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
-  Package
+  Package,
+  Star
 } from "lucide-react";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface Booking {
   id: string;
@@ -41,6 +54,7 @@ interface Booking {
   cancelledAt: string | null;
   cancellationReason: string | null;
   createdAt: string;
+  hasReview?: boolean;
 }
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
@@ -54,6 +68,8 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
 
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/my-bookings"],
@@ -89,6 +105,11 @@ export default function MyBookingsPage() {
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const activeBookings = bookings?.filter(b => ["confirmed", "in_progress"].includes(b.status)) || [];
   const completedBookings = bookings?.filter(b => ["completed", "cancelled", "refunded"].includes(b.status)) || [];
+
+  const openReviewDialog = (booking: Booking) => {
+    setSelectedBooking(booking);
+    setReviewDialogOpen(true);
+  };
 
   return (
     <Layout>
@@ -130,7 +151,7 @@ export default function MyBookingsPage() {
 
             <TabsContent value="all" className="space-y-4">
               {bookings.map((booking) => (
-                <BookingCard key={booking.id} booking={booking} />
+                <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
               ))}
             </TabsContent>
 
@@ -139,7 +160,7 @@ export default function MyBookingsPage() {
                 <EmptyState message="No pending bookings" />
               ) : (
                 pendingBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
                 ))
               )}
             </TabsContent>
@@ -149,7 +170,7 @@ export default function MyBookingsPage() {
                 <EmptyState message="No active bookings" />
               ) : (
                 activeBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
                 ))
               )}
             </TabsContent>
@@ -159,31 +180,44 @@ export default function MyBookingsPage() {
                 <EmptyState message="No completed bookings" />
               ) : (
                 completedBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
                 ))
               )}
             </TabsContent>
           </Tabs>
         )}
       </div>
+
+      <ReviewDialog
+        open={reviewDialogOpen}
+        onOpenChange={setReviewDialogOpen}
+        booking={selectedBooking}
+      />
     </Layout>
   );
 }
 
-function BookingCard({ booking }: { booking: Booking }) {
+function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
+  const canReview = booking.status === "completed" && !booking.hasReview;
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge variant={status.variant} data-testid={`badge-status-${booking.id}`}>
                 <StatusIcon className="w-3 h-3 mr-1" />
                 {status.label}
               </Badge>
+              {booking.hasReview && (
+                <Badge variant="outline" data-testid={`badge-reviewed-${booking.id}`}>
+                  <Star className="w-3 h-3 mr-1 fill-current" />
+                  Reviewed
+                </Badge>
+              )}
               <span className="text-sm text-muted-foreground">
                 Booked on {format(new Date(booking.createdAt), "MMM d, yyyy")}
               </span>
@@ -208,7 +242,18 @@ function BookingCard({ booking }: { booking: Booking }) {
             <p className="font-bold text-lg" data-testid={`text-amount-${booking.id}`}>
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
-            <div className="flex gap-2 mt-2">
+            <div className="flex gap-2 mt-2 flex-wrap justify-end">
+              {canReview && (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  onClick={() => onReview(booking)}
+                  data-testid={`button-review-${booking.id}`}
+                >
+                  <Star className="w-4 h-4 mr-1" />
+                  Review
+                </Button>
+              )}
               {booking.contractId && (
                 <Button variant="outline" size="sm" asChild data-testid={`button-view-contract-${booking.id}`}>
                   <Link href={`/contracts/${booking.contractId}`}>
@@ -228,6 +273,125 @@ function BookingCard({ booking }: { booking: Booking }) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ReviewDialog({ 
+  open, 
+  onOpenChange, 
+  booking 
+}: { 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void; 
+  booking: Booking | null;
+}) {
+  const { toast } = useToast();
+  const [rating, setRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
+  const [hoveredRating, setHoveredRating] = useState(0);
+
+  const mutation = useMutation({
+    mutationFn: async (data: { rating: number; reviewText: string }) => {
+      return apiRequest("POST", `/api/services/${booking?.serviceId}/reviews`, {
+        bookingId: booking?.id,
+        rating: data.rating,
+        reviewText: data.reviewText,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Review submitted", description: "Thank you for your feedback!" });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      onOpenChange(false);
+      setRating(5);
+      setReviewText("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to submit review", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = () => {
+    if (rating < 1 || rating > 5) {
+      toast({ title: "Invalid rating", description: "Please select a rating", variant: "destructive" });
+      return;
+    }
+    mutation.mutate({ rating, reviewText });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle data-testid="text-review-dialog-title">Leave a Review</DialogTitle>
+          <DialogDescription>
+            Share your experience with this service
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div>
+            <Label className="mb-2 block">Rating</Label>
+            <div className="flex gap-1" data-testid="input-rating-stars">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  type="button"
+                  onClick={() => setRating(star)}
+                  onMouseEnter={() => setHoveredRating(star)}
+                  onMouseLeave={() => setHoveredRating(0)}
+                  className="p-1 transition-transform hover:scale-110"
+                  data-testid={`button-star-${star}`}
+                >
+                  <Star 
+                    className={`w-8 h-8 ${
+                      star <= (hoveredRating || rating) 
+                        ? "fill-yellow-400 text-yellow-400" 
+                        : "text-muted-foreground"
+                    }`} 
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="reviewText" className="mb-2 block">Your Review (optional)</Label>
+            <Textarea
+              id="reviewText"
+              value={reviewText}
+              onChange={(e) => setReviewText(e.target.value)}
+              placeholder="Tell others about your experience..."
+              rows={4}
+              data-testid="input-review-text"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button 
+            variant="outline" 
+            onClick={() => onOpenChange(false)}
+            data-testid="button-cancel-review"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSubmit} 
+            disabled={mutation.isPending}
+            data-testid="button-submit-review"
+          >
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              "Submit Review"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

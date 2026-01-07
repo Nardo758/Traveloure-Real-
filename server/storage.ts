@@ -122,6 +122,7 @@ export interface IStorage {
   // Service Reviews
   getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
+  getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
 
@@ -616,6 +617,11 @@ export class DatabaseStorage implements IStorage {
   async getServiceReview(id: string): Promise<ServiceReview | undefined> {
     const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
     return review;
+  }
+
+  async getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]> {
+    return await db.select().from(serviceReviews)
+      .where(eq(serviceReviews.bookingId, bookingId));
   }
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
