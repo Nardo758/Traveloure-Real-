@@ -40,8 +40,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ExperienceMap, RouteVisualization } from "@/components/experience-map";
-import { ExpertChatWidget, ExpertSidebarCard, CheckoutExpertBanner } from "@/components/expert-chat-widget";
+import { ExperienceMap } from "@/components/experience-map";
+import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import type { ExperienceType, ProviderService } from "@shared/schema";
 
 interface CartItem {
@@ -70,7 +70,6 @@ const experienceConfigs: Record<string, {
       { id: "photography", label: "Photography", icon: Building2, category: "photography" },
       { id: "florist", label: "Florist", icon: Building2, category: "florist" },
       { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
@@ -85,7 +84,6 @@ const experienceConfigs: Record<string, {
       { id: "dining", label: "Dining", icon: Building2, category: "dining" },
       { id: "rings", label: "Rings", icon: Gem, category: "jewelry" },
       { id: "transportation", label: "Transportation", icon: Building2, category: "transportation" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
@@ -99,7 +97,6 @@ const experienceConfigs: Record<string, {
       { id: "dining", label: "Dining", icon: Building2, category: "dining" },
       { id: "activities", label: "Activities", icon: Building2, category: "activities" },
       { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Couples", "Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Beachfront"],
@@ -113,7 +110,6 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Building2, category: "catering" },
       { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
       { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Kids", "Adults", "Outdoor", "Indoor", "Theme Party", "Elegant", "Casual", "Adventure"],
@@ -127,7 +123,6 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Building2, category: "catering" },
       { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
       { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
@@ -141,7 +136,6 @@ const experienceConfigs: Record<string, {
       { id: "activities", label: "Adventures", icon: Building2, category: "adventures" },
       { id: "nightlife", label: "Nightlife", icon: Building2, category: "nightlife" },
       { id: "sports", label: "Sports", icon: Building2, category: "sports" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Adventure", "Sports", "Nightlife", "Beach", "Mountains", "City", "Bachelor", "Fishing"],
@@ -155,7 +149,6 @@ const experienceConfigs: Record<string, {
       { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
       { id: "shopping", label: "Shopping", icon: Building2, category: "shopping" },
       { id: "dining", label: "Dining & Wine", icon: Building2, category: "dining" },
-      { id: "map", label: "Map View", icon: MapPin, category: null },
       { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Spa", "Shopping", "Beach", "Wine", "Brunch", "Wellness", "Bachelorette", "Luxury"],
@@ -502,6 +495,27 @@ export default function ExperienceTemplatePage() {
     return filtered;
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
+  const mapProviders = useMemo(() => {
+    return filteredServices.map((s, index) => {
+      const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
+      const baseHash = numericId * 1000;
+      const latOffset = ((baseHash % 100) - 50) / 1000;
+      const lngOffset = (((baseHash + 37) % 100) - 50) / 1000;
+      return {
+        id: s.id.toString(),
+        name: s.serviceName,
+        category: s.serviceType || currentTabCategory || "venue",
+        price: Number(s.price) || 0,
+        rating: Number(s.averageRating) || 4.5,
+        lat: 40.7128 + latOffset,
+        lng: -74.0060 + lngOffset,
+        description: s.shortDescription || s.description || undefined
+      };
+    });
+  }, [filteredServices, currentTabCategory]);
+
+  const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
+
   if (typeLoading) {
     return (
       <Layout>
@@ -543,16 +557,17 @@ export default function ExperienceTemplatePage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        <div className="relative h-[280px] md:h-[320px]">
-          <div 
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ backgroundImage: `url('${config.heroImage}')` }}
-          >
-            <div className="absolute inset-0 bg-black/30" />
-          </div>
-          
-          <div className="absolute right-4 md:right-12 top-1/2 -translate-y-1/2 w-[360px] md:w-[420px]">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col lg:flex-row">
+        <div className="flex-1 lg:w-[60%] flex flex-col min-h-screen">
+          <div className="relative h-[280px] md:h-[320px] flex-shrink-0">
+            <div 
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url('${config.heroImage}')` }}
+            >
+              <div className="absolute inset-0 bg-black/30" />
+            </div>
+            
+            <div className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-[320px] md:w-[380px]">
             <Card className="bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl border-0">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -873,47 +888,6 @@ export default function ExperienceTemplatePage() {
               date={startDate}
               cart={cart}
             />
-          ) : activeTab === "map" ? (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <ExperienceMap
-                  providers={filteredServices.map((s, index) => {
-                    const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
-                    const baseHash = numericId * 1000;
-                    const latOffset = ((baseHash % 100) - 50) / 1000;
-                    const lngOffset = (((baseHash + 37) % 100) - 50) / 1000;
-                    return {
-                      id: s.id.toString(),
-                      name: s.serviceName,
-                      category: s.serviceType || currentTabCategory || "venue",
-                      price: Number(s.price) || 0,
-                      rating: Number(s.averageRating) || 4.5,
-                      lat: 40.7128 + latOffset,
-                      lng: -74.0060 + lngOffset,
-                      description: s.shortDescription || s.description || undefined
-                    };
-                  })}
-                  destination={destination}
-                  onAddToCart={(provider) => addToCart({
-                    id: provider.id,
-                    type: provider.category,
-                    name: provider.name,
-                    price: provider.price,
-                    quantity: 1,
-                    provider: "Platform Provider"
-                  })}
-                />
-              </div>
-              <div>
-                <RouteVisualization
-                  stops={cart.map((item, i) => ({
-                    name: item.name,
-                    time: `${9 + i}:00 AM`,
-                    duration: "1-2 hours"
-                  }))}
-                />
-              </div>
-            </div>
           ) : (
             <div className="flex gap-6">
               <div className="flex-1">
@@ -983,16 +957,121 @@ export default function ExperienceTemplatePage() {
                 </div>
               </div>
               
-              <div className="hidden lg:block w-80 flex-shrink-0">
-                <div className="sticky top-20">
-                  <ExpertSidebarCard
-                    experienceType={experienceType?.name}
-                    onConnect={openExpertChat}
-                  />
-                </div>
-              </div>
             </div>
           )}
+        </div>
+        </div>
+
+        <div className="hidden lg:block lg:w-[40%] h-screen sticky top-0">
+          <div className="h-full flex flex-col">
+            <div className="flex-1 relative">
+              <ExperienceMap
+                providers={mapProviders}
+                selectedProviderIds={selectedProviderIds}
+                destination={destination}
+                onAddToCart={(provider) => addToCart({
+                  id: provider.id,
+                  type: provider.category,
+                  name: provider.name,
+                  price: provider.price,
+                  quantity: 1,
+                  provider: "Platform Provider"
+                })}
+                onRemoveFromCart={removeFromCart}
+                height="100%"
+              />
+            </div>
+            
+            {cart.length > 0 && (
+              <div className="bg-white dark:bg-gray-800 border-t p-4 max-h-[200px] overflow-auto">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-sm">Your Selections ({cart.length})</h3>
+                  <span className="font-bold text-[#FF385C]">${cartTotal}</span>
+                </div>
+                <div className="space-y-2">
+                  {cart.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded p-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">${item.price}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0"
+                        onClick={() => removeFromCart(item.id)}
+                        data-testid={`button-map-remove-${item.id}`}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="lg:hidden">
+          <Collapsible>
+            <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t shadow-lg z-40">
+              <CollapsibleTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  className="w-full flex items-center justify-between p-4 h-auto"
+                  data-testid="button-toggle-map-mobile"
+                >
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-[#FF385C]" />
+                    <span className="font-medium">View Map</span>
+                    {cart.length > 0 && (
+                      <Badge className="bg-[#FF385C]">{cart.length} selected</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {cart.length > 0 && (
+                      <span className="font-bold text-[#FF385C]">${cartTotal}</span>
+                    )}
+                    <ChevronDown className="w-5 h-5" />
+                  </div>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="h-[300px] border-t">
+                  <ExperienceMap
+                    providers={mapProviders}
+                    selectedProviderIds={selectedProviderIds}
+                    destination={destination}
+                    onAddToCart={(provider) => addToCart({
+                      id: provider.id,
+                      type: provider.category,
+                      name: provider.name,
+                      price: provider.price,
+                      quantity: 1,
+                      provider: "Platform Provider"
+                    })}
+                    onRemoveFromCart={removeFromCart}
+                    height="100%"
+                  />
+                </div>
+                {cart.length > 0 && (
+                  <div className="p-3 border-t bg-gray-50 dark:bg-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-sm">{cart.length} items</span>
+                      <span className="font-bold text-[#FF385C]">${cartTotal}</span>
+                    </div>
+                    <Button 
+                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      onClick={() => setCartOpen(true)}
+                      data-testid="button-view-cart-mobile"
+                    >
+                      View Cart
+                    </Button>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </div>
+          </Collapsible>
         </div>
         
         <ExpertChatWidget

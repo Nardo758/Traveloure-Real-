@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { APIProvider, Map, Marker, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react-google-maps";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +10,9 @@ import {
   Clock, 
   Star,
   Route,
-  Plus
+  Plus,
+  X,
+  Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,34 +29,67 @@ interface MapProvider {
 
 interface ExperienceMapProps {
   providers: MapProvider[];
+  selectedProviderIds?: string[];
   destination?: string;
   onAddToCart?: (provider: MapProvider) => void;
+  onRemoveFromCart?: (providerId: string) => void;
   className?: string;
+  height?: string;
 }
 
 const categoryColors: Record<string, string> = {
   venue: "#FF385C",
+  venues: "#FF385C",
+  "venues-luxury": "#FF385C",
   catering: "#00A699",
   photography: "#FC642D",
   florist: "#E91E63",
   entertainment: "#9C27B0",
   dining: "#FF9800",
+  restaurant: "#FF9800",
   accommodations: "#3F51B5",
+  hotel: "#3F51B5",
+  hotels: "#3F51B5",
   spa: "#009688",
+  wellness: "#009688",
   activities: "#4CAF50",
   nightlife: "#673AB7",
+  jewelry: "#9C27B0",
+  rings: "#9C27B0",
+  transportation: "#795548",
+  transport: "#795548",
+  decorations: "#FF5722",
+  "av-equipment": "#607D8B",
+  av: "#607D8B",
+  "team-building": "#2196F3",
+  team: "#2196F3",
+  adventures: "#FF5722",
+  adventure: "#FF5722",
+  sports: "#4CAF50",
+  sport: "#4CAF50",
+  shopping: "#E91E63",
+  wine: "#9C27B0",
+  beach: "#00BCD4",
+  tour: "#4CAF50",
+  tours: "#4CAF50",
   default: "#607D8B"
 };
 
 function MapContent({ 
-  providers, 
-  onAddToCart 
+  providers,
+  selectedProviderIds = [],
+  onAddToCart,
+  onRemoveFromCart
 }: { 
   providers: MapProvider[]; 
+  selectedProviderIds?: string[];
   onAddToCart?: (provider: MapProvider) => void;
+  onRemoveFromCart?: (providerId: string) => void;
 }) {
   const [selectedProvider, setSelectedProvider] = useState<MapProvider | null>(null);
   const [hoveredProvider, setHoveredProvider] = useState<string | null>(null);
+  
+  const isSelected = (id: string) => selectedProviderIds.includes(id);
 
   const center = useMemo(() => {
     if (providers.length === 0) {
@@ -75,15 +110,46 @@ function MapContent({
       streetViewControl={false}
       className="w-full h-full rounded-md"
     >
-      {providers.map((provider) => (
-        <Marker
-          key={provider.id}
-          position={{ lat: provider.lat, lng: provider.lng }}
-          onClick={() => setSelectedProvider(provider)}
-          onMouseEnter={() => setHoveredProvider(provider.id)}
-          onMouseLeave={() => setHoveredProvider(null)}
-        />
-      ))}
+      {providers.map((provider) => {
+        const selected = isSelected(provider.id);
+        const categoryColor = categoryColors[provider.category] || categoryColors.default;
+        return (
+          <AdvancedMarker
+            key={provider.id}
+            position={{ lat: provider.lat, lng: provider.lng }}
+            onClick={() => setSelectedProvider(provider)}
+          >
+            {selected ? (
+              <div 
+                className="relative flex items-center justify-center"
+                style={{ transform: 'scale(1.3)' }}
+              >
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white"
+                  style={{ backgroundColor: '#FF385C' }}
+                >
+                  <Check className="w-4 h-4 text-white" />
+                </div>
+                <div 
+                  className="absolute -bottom-1 w-0 h-0"
+                  style={{
+                    borderLeft: '6px solid transparent',
+                    borderRight: '6px solid transparent',
+                    borderTop: '8px solid #FF385C'
+                  }}
+                />
+              </div>
+            ) : (
+              <Pin
+                background={categoryColor}
+                borderColor="#ffffff"
+                glyphColor="#ffffff"
+                scale={1}
+              />
+            )}
+          </AdvancedMarker>
+        );
+      })}
 
       {selectedProvider && (
         <InfoWindow
@@ -112,15 +178,29 @@ function MapContent({
                 {selectedProvider.description}
               </p>
             )}
-            {onAddToCart && (
-              <Button 
-                size="sm" 
-                className="w-full bg-[#FF385C] hover:bg-[#E23350] text-xs h-7"
-                onClick={() => onAddToCart(selectedProvider)}
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                Add to Plan
-              </Button>
+            {isSelected(selectedProvider.id) ? (
+              onRemoveFromCart && (
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  className="w-full text-xs h-7 border-red-500 text-red-500 hover:bg-red-50"
+                  onClick={() => onRemoveFromCart(selectedProvider.id)}
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Remove from Plan
+                </Button>
+              )
+            ) : (
+              onAddToCart && (
+                <Button 
+                  size="sm" 
+                  className="w-full bg-[#FF385C] hover:bg-[#E23350] text-xs h-7"
+                  onClick={() => onAddToCart(selectedProvider)}
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add to Plan
+                </Button>
+              )
             )}
           </div>
         </InfoWindow>
@@ -130,84 +210,104 @@ function MapContent({
 }
 
 export function ExperienceMap({ 
-  providers, 
+  providers,
+  selectedProviderIds = [],
   destination,
   onAddToCart,
-  className 
+  onRemoveFromCart,
+  className,
+  height = "100%"
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
     return (
-      <Card className={cn("overflow-hidden", className)}>
-        <CardContent className="p-6 text-center">
+      <div className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)} style={{ height }}>
+        <div className="text-center p-6">
           <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold mb-2">Map Unavailable</h3>
           <p className="text-sm text-muted-foreground">
             Google Maps API key not configured
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   if (providers.length === 0) {
     return (
-      <Card className={cn("overflow-hidden", className)}>
-        <CardContent className="p-6 text-center">
+      <div className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)} style={{ height }}>
+        <div className="text-center p-6">
           <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold mb-2">No Locations to Display</h3>
           <p className="text-sm text-muted-foreground">
             {destination 
               ? `No providers found in ${destination}` 
-              : "Select a destination to see providers on the map"}
+              : "Enter a destination to see providers on the map"}
           </p>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
+  const selectedCount = selectedProviderIds.length;
+
   return (
-    <Card className={cn("overflow-hidden", className)}>
-      <div className="h-[400px] relative">
-        <APIProvider apiKey={apiKey}>
-          <MapContent providers={providers} onAddToCart={onAddToCart} />
-        </APIProvider>
-        
-        <div className="absolute top-3 left-3 bg-white dark:bg-gray-900 rounded-md shadow-md p-2">
+    <div className={cn("relative", className)} style={{ height }}>
+      <APIProvider apiKey={apiKey}>
+        <MapContent 
+          providers={providers} 
+          selectedProviderIds={selectedProviderIds}
+          onAddToCart={onAddToCart}
+          onRemoveFromCart={onRemoveFromCart}
+        />
+      </APIProvider>
+      
+      <div className="absolute top-3 left-3 flex flex-col gap-2">
+        <div className="bg-white dark:bg-gray-900 rounded-md shadow-md p-2">
           <div className="flex items-center gap-2 text-xs">
             <Route className="w-4 h-4 text-[#FF385C]" />
             <span className="font-medium">{providers.length} providers</span>
           </div>
         </div>
-      </div>
-      
-      <CardContent className="p-3 border-t">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Navigation className="w-4 h-4" />
-            <span>{destination || "All locations"}</span>
+        {selectedCount > 0 && (
+          <div className="bg-[#FF385C] text-white rounded-md shadow-md p-2">
+            <div className="flex items-center gap-2 text-xs">
+              <Check className="w-4 h-4" />
+              <span className="font-medium">{selectedCount} selected</span>
+            </div>
           </div>
-          <div className="flex gap-1 flex-wrap">
-            {Object.entries(
-              providers.reduce((acc, p) => {
-                acc[p.category] = (acc[p.category] || 0) + 1;
-                return acc;
-              }, {} as Record<string, number>)
-            ).slice(0, 4).map(([cat, count]) => (
-              <Badge 
-                key={cat} 
-                variant="outline" 
-                className="text-xs"
-                style={{ borderColor: categoryColors[cat] || categoryColors.default }}
-              >
-                {cat}: {count}
-              </Badge>
-            ))}
+        )}
+      </div>
+
+      <div className="absolute bottom-3 left-3 right-3">
+        <div className="bg-white/90 dark:bg-gray-900/90 backdrop-blur rounded-md shadow-md p-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Navigation className="w-3 h-3" />
+              <span>{destination || "All locations"}</span>
+            </div>
+            <div className="flex gap-1 flex-wrap">
+              {Object.entries(
+                providers.reduce((acc, p) => {
+                  acc[p.category] = (acc[p.category] || 0) + 1;
+                  return acc;
+                }, {} as Record<string, number>)
+              ).slice(0, 4).map(([cat, count]) => (
+                <Badge 
+                  key={cat} 
+                  variant="outline" 
+                  className="text-xs h-5"
+                  style={{ borderColor: categoryColors[cat] || categoryColors.default }}
+                >
+                  {cat}: {count}
+                </Badge>
+              ))}
+            </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
