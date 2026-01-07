@@ -10,106 +10,129 @@ import {
   Calendar,
   Download,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Loader2
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+import type { ServiceBooking, ProviderService } from "@shared/schema";
 
-const stats = [
-  { label: "Total Earnings", value: "$125,450", change: "+12%", positive: true },
-  { label: "This Month", value: "$45,200", change: "+8%", positive: true },
-  { label: "Pending", value: "$12,500", change: null, positive: null },
-  { label: "Available to Withdraw", value: "$32,700", change: null, positive: null },
-];
-
-const transactions = [
-  {
-    id: 1,
-    type: "payment",
-    description: "Wedding - Sarah & Mike Johnson",
-    date: "Jan 2, 2026",
-    amount: "+$25,000",
-    status: "completed",
-  },
-  {
-    id: 2,
-    type: "payment",
-    description: "Corporate Event - Tech Corp",
-    date: "Dec 28, 2025",
-    amount: "+$12,000",
-    status: "completed",
-  },
-  {
-    id: 3,
-    type: "payout",
-    description: "Bank Transfer - Chase ****1234",
-    date: "Dec 25, 2025",
-    amount: "-$30,000",
-    status: "completed",
-  },
-  {
-    id: 4,
-    type: "payment",
-    description: "Anniversary Dinner - Robert Adams",
-    date: "Dec 20, 2025",
-    amount: "+$500",
-    status: "completed",
-  },
-  {
-    id: 5,
-    type: "payment",
-    description: "Birthday Party - David Thompson",
-    date: "Dec 15, 2025",
-    amount: "+$8,000",
-    status: "pending",
-  },
-  {
-    id: 6,
-    type: "refund",
-    description: "Partial Refund - Cancelled Event",
-    date: "Dec 10, 2025",
-    amount: "-$2,500",
-    status: "completed",
-  },
-];
-
-const monthlyEarnings = [
-  { month: "Jan", amount: 45200 },
-  { month: "Dec", amount: 42500 },
-  { month: "Nov", amount: 38000 },
-  { month: "Oct", amount: 52000 },
-  { month: "Sep", amount: 48000 },
-  { month: "Aug", amount: 35000 },
-];
+type BookingWithService = ServiceBooking & { service?: ProviderService };
 
 export default function ProviderEarnings() {
-  const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount));
+  const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
+    queryKey: ["/api/provider/bookings"],
+  });
+
+  const stats = useMemo(() => {
+    if (!bookings) return { total: 0, thisMonth: 0, pending: 0, available: 0 };
+    
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+    
+    let total = 0;
+    let monthly = 0;
+    let pending = 0;
+    let available = 0;
+    
+    bookings.forEach((b) => {
+      const earnings = parseFloat(b.providerEarnings || "0");
+      const bookingDate = b.createdAt ? new Date(b.createdAt) : new Date();
+      
+      if (b.status === "completed") {
+        total += earnings;
+        available += earnings;
+        if (bookingDate.getMonth() === thisMonth && bookingDate.getFullYear() === thisYear) {
+          monthly += earnings;
+        }
+      } else if (b.status === "confirmed" || b.status === "pending") {
+        pending += earnings;
+      }
+    });
+    
+    return { total, thisMonth: monthly, pending, available };
+  }, [bookings]);
+
+  const transactions = useMemo(() => {
+    if (!bookings) return [];
+    return bookings
+      .filter((b) => b.status === "completed" || b.status === "confirmed")
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 10)
+      .map((b) => ({
+        id: b.id,
+        type: "payment" as const,
+        description: b.service?.serviceName || "Service Booking",
+        date: b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : "N/A",
+        amount: `+$${parseFloat(b.providerEarnings || "0").toFixed(2)}`,
+        status: b.status === "completed" ? "completed" : "pending",
+      }));
+  }, [bookings]);
+
+  const monthlyEarnings = useMemo(() => {
+    if (!bookings) return [];
+    
+    const monthMap: Record<string, number> = {};
+    const now = new Date();
+    
+    for (let i = 5; i >= 0; i--) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = date.toLocaleString('default', { month: 'short' });
+      monthMap[key] = 0;
+    }
+    
+    bookings.forEach((b) => {
+      if (b.status === "completed" && b.createdAt) {
+        const date = new Date(b.createdAt);
+        const key = date.toLocaleString('default', { month: 'short' });
+        if (monthMap[key] !== undefined) {
+          monthMap[key] += parseFloat(b.providerEarnings || "0");
+        }
+      }
+    });
+    
+    return Object.entries(monthMap).map(([month, amount]) => ({ month, amount }));
+  }, [bookings]);
+
+  const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
+
+  if (isLoading) {
+    return (
+      <ProviderLayout title="Earnings">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+        </div>
+      </ProviderLayout>
+    );
+  }
+
+  const statsData = [
+    { label: "Total Earnings", value: `$${stats.total.toFixed(2)}`, icon: DollarSign, color: "text-green-600" },
+    { label: "This Month", value: `$${stats.thisMonth.toFixed(2)}`, icon: TrendingUp, color: "text-blue-600" },
+    { label: "Pending", value: `$${stats.pending.toFixed(2)}`, icon: Clock, color: "text-amber-600" },
+    { label: "Available", value: `$${stats.available.toFixed(2)}`, icon: CheckCircle, color: "text-green-600" },
+  ];
 
   return (
     <ProviderLayout title="Earnings">
       <div className="p-6 space-y-6">
-        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat) => (
+          {statsData.map((stat) => (
             <Card key={stat.label} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">{stat.label}</p>
-                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                    {stat.change && (
-                      <div className={`flex items-center gap-1 text-sm ${stat.positive ? "text-green-600" : "text-red-600"}`}>
-                        {stat.positive ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                        {stat.change} vs last month
-                      </div>
-                    )}
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{stat.label}</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stat.value}</p>
                   </div>
-                  <DollarSign className="w-8 h-8 text-green-600" />
+                  <stat.icon className={`w-8 h-8 ${stat.color}`} />
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        {/* Actions */}
         <div className="flex flex-wrap gap-3">
           <Button data-testid="button-request-payout">
             <DollarSign className="w-4 h-4 mr-2" /> Request Payout
@@ -117,13 +140,9 @@ export default function ProviderEarnings() {
           <Button variant="outline" data-testid="button-download-statement">
             <Download className="w-4 h-4 mr-2" /> Download Statement
           </Button>
-          <Button variant="outline" data-testid="button-view-tax-docs">
-            View Tax Documents
-          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Monthly Earnings Chart */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2">
@@ -132,116 +151,104 @@ export default function ProviderEarnings() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {monthlyEarnings.map((month, index) => (
-                  <div key={month.month} className="space-y-1" data-testid={`chart-bar-${month.month.toLowerCase()}`}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">{month.month}</span>
-                      <span className="font-medium text-gray-900">${month.amount.toLocaleString()}</span>
+              {monthlyEarnings.length > 0 ? (
+                <div className="space-y-3">
+                  {monthlyEarnings.map((month) => (
+                    <div key={month.month} className="space-y-1" data-testid={`chart-bar-${month.month.toLowerCase()}`}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">{month.month}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">${month.amount.toFixed(2)}</span>
+                      </div>
+                      <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-[#FF385C] rounded-full transition-all"
+                          style={{ width: `${(month.amount / maxEarning) * 100}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-[#FF385C] rounded-full transition-all"
-                        style={{ width: `${(month.amount / maxEarning) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">No earnings data yet</p>
+              )}
             </CardContent>
           </Card>
 
-          {/* Payout Schedule */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-blue-600" />
-                Payout Schedule
+                Payout Information
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200" data-testid="card-next-payout">
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800" data-testid="card-available-balance">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-green-700">Next Scheduled Payout</p>
-                    <p className="text-xl font-bold text-green-800">$32,700</p>
+                    <p className="text-sm text-green-700 dark:text-green-400">Available Balance</p>
+                    <p className="text-xl font-bold text-green-800 dark:text-green-300">${stats.available.toFixed(2)}</p>
                   </div>
-                  <Clock className="w-6 h-6 text-green-600" />
+                  <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
-                <p className="text-sm text-green-600 mt-2">Processing on January 5, 2026</p>
               </div>
 
-              <div className="space-y-2">
-                <p className="font-medium text-gray-900">Payout Method</p>
-                <div className="p-3 bg-gray-50 rounded-lg flex items-center justify-between">
+              <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800" data-testid="card-pending-balance">
+                <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-medium">Chase Bank</p>
-                    <p className="text-sm text-gray-500">Account ending in ****1234</p>
+                    <p className="text-sm text-amber-700 dark:text-amber-400">Pending Earnings</p>
+                    <p className="text-xl font-bold text-amber-800 dark:text-amber-300">${stats.pending.toFixed(2)}</p>
                   </div>
-                  <Button variant="ghost" size="sm" data-testid="button-change-payout">
-                    Change
-                  </Button>
+                  <Clock className="w-6 h-6 text-amber-600" />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <p className="font-medium text-gray-900">Payout Frequency</p>
-                <p className="text-gray-600">Weekly (Every Friday)</p>
+                <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">Clears after service completion</p>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Transaction History */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
-            <CardTitle>Transaction History</CardTitle>
-            <Button variant="ghost" size="sm" data-testid="button-view-all-transactions">
-              View All
-            </Button>
+            <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {transactions.map((tx) => (
-                <div 
-                  key={tx.id}
-                  className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
-                  data-testid={`row-transaction-${tx.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      tx.type === "payment" ? "bg-green-100" : tx.type === "payout" ? "bg-blue-100" : "bg-red-100"
-                    }`}>
-                      {tx.type === "payment" ? (
+            {transactions.length > 0 ? (
+              <div className="space-y-3">
+                {transactions.map((tx) => (
+                  <div 
+                    key={tx.id}
+                    className="flex items-center justify-between py-3 border-b border-gray-100 dark:border-gray-800 last:border-0"
+                    data-testid={`row-transaction-${tx.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center bg-green-100 dark:bg-green-900/30">
                         <ArrowUpRight className="w-5 h-5 text-green-600" />
-                      ) : tx.type === "payout" ? (
-                        <ArrowDownRight className="w-5 h-5 text-blue-600" />
-                      ) : (
-                        <ArrowDownRight className="w-5 h-5 text-red-600" />
-                      )}
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{tx.description}</p>
+                        <p className="text-sm text-gray-500">{tx.date}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{tx.description}</p>
-                      <p className="text-sm text-gray-500">{tx.date}</p>
+                    <div className="text-right">
+                      <p className="font-semibold text-green-600">{tx.amount}</p>
+                      <Badge 
+                        className={tx.status === "completed" 
+                          ? "bg-green-100 text-green-700 border-green-200" 
+                          : "bg-amber-100 text-amber-700 border-amber-200"
+                        }
+                      >
+                        {tx.status === "completed" ? <CheckCircle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
+                        {tx.status}
+                      </Badge>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`font-semibold ${tx.amount.startsWith("+") ? "text-green-600" : "text-gray-900"}`}>
-                      {tx.amount}
-                    </p>
-                    <Badge 
-                      className={tx.status === "completed" 
-                        ? "bg-green-100 text-green-700 border-green-200" 
-                        : "bg-amber-100 text-amber-700 border-amber-200"
-                      }
-                    >
-                      {tx.status === "completed" ? <CheckCircle className="w-3 h-3 mr-1" /> : <Clock className="w-3 h-3 mr-1" />}
-                      {tx.status}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <DollarSign className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                <p>No transactions yet</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
