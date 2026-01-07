@@ -1,12 +1,16 @@
 import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
 import { useParams, Link } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight } from "lucide-react";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const sampleItinerary = [
   {
@@ -43,10 +47,45 @@ const sampleItinerary = [
   }
 ];
 
+interface ProviderService {
+  id: string;
+  providerId: string;
+  categoryId: string;
+  name: string;
+  description: string;
+  basePrice: string;
+  pricingType: string;
+  duration: string | null;
+  location: string | null;
+  rating: string | null;
+  reviewCount: number;
+  isActive: boolean;
+  bookingCount: number;
+}
+
 export default function TripDetails() {
   const { id } = useParams();
   const { data: trip, isLoading } = useTrip(id || "");
   const generateItinerary = useGenerateItinerary();
+  const { toast } = useToast();
+
+  const { data: servicesResult, isLoading: servicesLoading } = useQuery<{ services: ProviderService[], total: number }>({
+    queryKey: ["/api/services", { destination: trip?.destination }],
+    enabled: !!trip?.destination,
+  });
+
+  const addToCartMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({ title: "Added to cart!", description: "Service has been added to your cart." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to add to cart", description: error.message });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -223,47 +262,116 @@ export default function TripDetails() {
                 </TabsContent>
 
                 <TabsContent value="expert" className="mt-0">
-                  <div className="grid md:grid-cols-2 gap-8 items-center py-8">
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
-                        Connect with a Local Expert
-                      </h3>
-                      <p className="text-muted-foreground mb-6">
-                        Get personalized advice, hidden gems, and real-time support from someone who lives in {trip.destination}.
-                        Our experts can help you with:
-                      </p>
-                      <ul className="space-y-3 mb-6">
-                        <li className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                            <Utensils className="w-4 h-4 text-accent" />
-                          </div>
-                          <span className="text-slate-700 dark:text-slate-300">Best restaurants and local cuisine</span>
-                        </li>
-                        <li className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                            <Camera className="w-4 h-4 text-accent" />
-                          </div>
-                          <span className="text-slate-700 dark:text-slate-300">Hidden gems and off-the-beaten-path spots</span>
-                        </li>
-                        <li className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                            <MapPin className="w-4 h-4 text-accent" />
-                          </div>
-                          <span className="text-slate-700 dark:text-slate-300">Cultural tips and local customs</span>
-                        </li>
-                      </ul>
-                      <Link href="/chat">
-                        <Button className="gap-2" data-testid="button-find-expert">
-                          Find an Expert <ArrowRight className="w-4 h-4" />
-                        </Button>
-                      </Link>
+                  <div className="space-y-8 py-4">
+                    <div className="grid md:grid-cols-2 gap-8 items-center">
+                      <div>
+                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+                          Connect with a Local Expert
+                        </h3>
+                        <p className="text-muted-foreground mb-6">
+                          Get personalized advice, hidden gems, and real-time support from someone who lives in {trip.destination}.
+                        </p>
+                        <Link href="/chat">
+                          <Button className="gap-2" data-testid="button-find-expert">
+                            Chat with Expert <ArrowRight className="w-4 h-4" />
+                          </Button>
+                        </Link>
+                      </div>
+                      <div className="relative">
+                        <img 
+                          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=600&auto=format&fit=crop"
+                          alt="Local Expert"
+                          className="rounded-2xl shadow-xl"
+                        />
+                      </div>
                     </div>
-                    <div className="relative">
-                      <img 
-                        src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=600&auto=format&fit=crop"
-                        alt="Local Expert"
-                        className="rounded-2xl shadow-xl"
-                      />
+                    
+                    <div className="border-t border-border pt-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
+                          Available Services for Your Trip
+                        </h4>
+                        <Link href="/discover">
+                          <Button variant="outline" size="sm" data-testid="button-browse-all">
+                            Browse All <ArrowRight className="w-4 h-4 ml-1" />
+                          </Button>
+                        </Link>
+                      </div>
+                      
+                      {servicesLoading ? (
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {[1, 2, 3].map((i) => (
+                            <Card key={i}>
+                              <CardContent className="p-4">
+                                <Skeleton className="h-5 w-3/4 mb-2" />
+                                <Skeleton className="h-4 w-full mb-3" />
+                                <div className="flex justify-between">
+                                  <Skeleton className="h-6 w-20" />
+                                  <Skeleton className="h-8 w-24" />
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : servicesResult && servicesResult.services.length > 0 ? (
+                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {servicesResult.services.slice(0, 6).map((service) => (
+                            <Card key={service.id} data-testid={`card-service-${service.id}`}>
+                              <CardContent className="p-4">
+                                <h5 className="font-semibold text-slate-900 dark:text-white mb-1 line-clamp-1">
+                                  {service.name}
+                                </h5>
+                                <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                                  {service.description}
+                                </p>
+                                <div className="flex items-center gap-2 mb-3">
+                                  {service.rating && (
+                                    <Badge variant="secondary" className="gap-1">
+                                      <Star className="w-3 h-3 fill-current" />
+                                      {parseFloat(service.rating).toFixed(1)}
+                                    </Badge>
+                                  )}
+                                  {service.location && (
+                                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {service.location}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-lg">${parseFloat(service.basePrice).toFixed(0)}</span>
+                                  <Button 
+                                    size="sm"
+                                    onClick={() => addToCartMutation.mutate(service.id)}
+                                    disabled={addToCartMutation.isPending}
+                                    data-testid={`button-add-cart-${service.id}`}
+                                  >
+                                    {addToCartMutation.isPending ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <ShoppingCart className="w-4 h-4 mr-1" />
+                                        Add
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Sparkles className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                          <p>No services found for {trip.destination}.</p>
+                          <p className="text-sm mt-1">Check out our full marketplace for other options.</p>
+                          <Link href="/discover">
+                            <Button variant="outline" className="mt-4" data-testid="button-discover">
+                              Browse Marketplace
+                            </Button>
+                          </Link>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </TabsContent>
