@@ -87,6 +87,7 @@ import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
+import ServiceDetailPage from "@/pages/service-detail";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -141,6 +142,9 @@ function Router() {
       </Route>
       <Route path="/discover">
         <DiscoverPage />
+      </Route>
+      <Route path="/services/:id">
+        <ServiceDetailPage />
       </Route>
       <Route path="/cart">
         <CartPage />
