@@ -73,26 +73,28 @@ export default function ProviderEarnings() {
   const monthlyEarnings = useMemo(() => {
     if (!bookings) return [];
     
-    const monthMap: Record<string, number> = {};
+    const monthData: { key: string; label: string; amount: number }[] = [];
     const now = new Date();
     
     for (let i = 5; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = date.toLocaleString('default', { month: 'short' });
-      monthMap[key] = 0;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleString('default', { month: 'short' });
+      monthData.push({ key, label, amount: 0 });
     }
     
     bookings.forEach((b) => {
       if (b.status === "completed" && b.createdAt) {
         const date = new Date(b.createdAt);
-        const key = date.toLocaleString('default', { month: 'short' });
-        if (monthMap[key] !== undefined) {
-          monthMap[key] += parseFloat(b.providerEarnings || "0");
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthEntry = monthData.find(m => m.key === key);
+        if (monthEntry) {
+          monthEntry.amount += parseFloat(b.providerEarnings || "0");
         }
       }
     });
     
-    return Object.entries(monthMap).map(([month, amount]) => ({ month, amount }));
+    return monthData.map(({ label, amount }) => ({ month: label, amount }));
   }, [bookings]);
 
   const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
