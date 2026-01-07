@@ -73,7 +73,6 @@ import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
-import ExperienceWizardPage from "@/pages/experience-wizard-page";
 import ExperienceTemplatePage from "@/pages/experience-template";
 import DealsPage from "@/pages/deals";
 import PaymentPage from "@/pages/payment";
