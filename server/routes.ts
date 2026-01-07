@@ -566,6 +566,107 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
     }
   });
 
+  // === Experience Types Routes ===
+  
+  // Get all experience types
+  app.get("/api/experience-types", async (req, res) => {
+    const types = await storage.getExperienceTypes();
+    res.json(types);
+  });
+
+  // Get experience type by slug
+  app.get("/api/experience-types/:slug", async (req, res) => {
+    const type = await storage.getExperienceTypeBySlug(req.params.slug);
+    if (!type) {
+      return res.status(404).json({ message: "Experience type not found" });
+    }
+    res.json(type);
+  });
+
+  // Get template steps for an experience type
+  app.get("/api/experience-types/:id/steps", async (req, res) => {
+    const steps = await storage.getExperienceTemplateSteps(req.params.id);
+    res.json(steps);
+  });
+
+  // === User Experiences Routes ===
+
+  // Get user's experiences
+  app.get("/api/user-experiences", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const experiences = await storage.getUserExperiences(userId);
+    res.json(experiences);
+  });
+
+  // Get single experience with items
+  app.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+    const experience = await storage.getUserExperience(req.params.id);
+    if (!experience) {
+      return res.status(404).json({ message: "Experience not found" });
+    }
+    const items = await storage.getUserExperienceItems(req.params.id);
+    res.json({ ...experience, items });
+  });
+
+  // Create new experience
+  app.post("/api/user-experiences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const experience = await storage.createUserExperience({ ...req.body, userId });
+      res.status(201).json(experience);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create experience" });
+    }
+  });
+
+  // Update experience
+  app.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const experience = await storage.getUserExperience(req.params.id);
+    if (!experience || experience.userId !== userId) {
+      return res.status(404).json({ message: "Experience not found" });
+    }
+    const updated = await storage.updateUserExperience(req.params.id, req.body);
+    res.json(updated);
+  });
+
+  // Delete experience
+  app.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const experience = await storage.getUserExperience(req.params.id);
+    if (!experience || experience.userId !== userId) {
+      return res.status(404).json({ message: "Experience not found" });
+    }
+    await storage.deleteUserExperience(req.params.id);
+    res.status(204).send();
+  });
+
+  // Add item to experience
+  app.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const experience = await storage.getUserExperience(req.params.id);
+    if (!experience || experience.userId !== userId) {
+      return res.status(404).json({ message: "Experience not found" });
+    }
+    const item = await storage.addUserExperienceItem({ ...req.body, userExperienceId: req.params.id });
+    res.status(201).json(item);
+  });
+
+  // Update experience item
+  app.patch("/api/user-experience-items/:id", isAuthenticated, async (req, res) => {
+    const updated = await storage.updateUserExperienceItem(req.params.id, req.body);
+    if (!updated) {
+      return res.status(404).json({ message: "Item not found" });
+    }
+    res.json(updated);
+  });
+
+  // Remove experience item
+  app.delete("/api/user-experience-items/:id", isAuthenticated, async (req, res) => {
+    await storage.removeUserExperienceItem(req.params.id);
+    res.status(204).send();
+  });
+
   // === FAQ Routes ===
   
   // Get all FAQs

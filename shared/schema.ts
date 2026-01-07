@@ -597,6 +597,86 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
 });
 
 
+// === Experience Types & Templates ===
+
+export const experienceTypeSlugEnum = ["travel", "wedding", "proposal", "romance", "birthday", "corporate", "boys-trip", "girls-trip"] as const;
+
+export const experienceTypes = pgTable("experience_types", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  slug: varchar("slug", { length: 50 }).notNull().unique(), // travel, wedding, proposal, romance, birthday, corporate, boys-trip, girls-trip
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }), // Lucide icon name
+  color: varchar("color", { length: 20 }), // Brand color for this experience
+  imageUrl: text("image_url"),
+  isActive: boolean("is_active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const experienceTemplateSteps = pgTable("experience_template_steps", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  stepNumber: integer("step_number").notNull(),
+  name: varchar("name", { length: 100 }).notNull(), // "Venue", "Catering", "Photography"
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }),
+  serviceCategories: jsonb("service_categories").default([]), // Links to which service categories apply
+  isRequired: boolean("is_required").default(false),
+  fields: jsonb("fields").default([]), // Custom form fields for this step
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const expertExperienceTypes = pgTable("expert_experience_types", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  proficiencyLevel: varchar("proficiency_level", { length: 20 }).default("intermediate"), // beginner, intermediate, expert
+  yearsExperience: integer("years_experience").default(0),
+  portfolioUrl: text("portfolio_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userExperiences = pgTable("user_experiences", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }),
+  status: varchar("status", { length: 20 }).default("draft"), // draft, planning, confirmed, completed, cancelled
+  eventDate: date("event_date"),
+  location: varchar("location", { length: 255 }),
+  budget: decimal("budget", { precision: 10, scale: 2 }),
+  guestCount: integer("guest_count"),
+  preferences: jsonb("preferences").default({}), // Experience-specific preferences
+  stepData: jsonb("step_data").default({}), // Data collected from each wizard step
+  currentStep: integer("current_step").default(1),
+  mapData: jsonb("map_data").default({}), // Location coordinates for map display
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const userExperienceItems = pgTable("user_experience_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userExperienceId: varchar("user_experience_id").notNull().references(() => userExperiences.id, { onDelete: "cascade" }),
+  stepId: varchar("step_id").references(() => experienceTemplateSteps.id, { onDelete: "set null" }),
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  externalServiceData: jsonb("external_service_data").default({}), // For SERP API results
+  isExternal: boolean("is_external").default(false), // True if from SERP API
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  scheduledDate: timestamp("scheduled_date"),
+  scheduledTime: varchar("scheduled_time", { length: 20 }),
+  location: varchar("location", { length: 255 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  status: varchar("status", { length: 20 }).default("pending"), // pending, confirmed, completed, cancelled
+  notes: text("notes"),
+  metadata: jsonb("metadata").default({}),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === Relations ===
 
 export const tripsRelations = relations(trips, ({ one, many }) => ({
@@ -691,3 +771,21 @@ export type ServiceReview = typeof serviceReviews.$inferSelect;
 export type InsertServiceReview = z.infer<typeof insertServiceReviewSchema>;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+// Experience Types schemas and types
+export const insertExperienceTypeSchema = createInsertSchema(experienceTypes).omit({ id: true, createdAt: true });
+export const insertExperienceTemplateStepSchema = createInsertSchema(experienceTemplateSteps).omit({ id: true, createdAt: true });
+export const insertExpertExperienceTypeSchema = createInsertSchema(expertExperienceTypes).omit({ id: true, createdAt: true });
+export const insertUserExperienceSchema = createInsertSchema(userExperiences).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+export const insertUserExperienceItemSchema = createInsertSchema(userExperienceItems).omit({ id: true, createdAt: true });
+
+export type ExperienceType = typeof experienceTypes.$inferSelect;
+export type InsertExperienceType = z.infer<typeof insertExperienceTypeSchema>;
+export type ExperienceTemplateStep = typeof experienceTemplateSteps.$inferSelect;
+export type InsertExperienceTemplateStep = z.infer<typeof insertExperienceTemplateStepSchema>;
+export type ExpertExperienceType = typeof expertExperienceTypes.$inferSelect;
+export type InsertExpertExperienceType = z.infer<typeof insertExpertExperienceTypeSchema>;
+export type UserExperience = typeof userExperiences.$inferSelect;
+export type InsertUserExperience = z.infer<typeof insertUserExperienceSchema>;
+export type UserExperienceItem = typeof userExperienceItems.$inferSelect;
+export type InsertUserExperienceItem = z.infer<typeof insertUserExperienceItemSchema>;
