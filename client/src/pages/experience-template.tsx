@@ -155,6 +155,226 @@ const experienceConfigs: Record<string, {
   },
 };
 
+interface OptimizationResult {
+  overallScore: number;
+  summary: string;
+  recommendations: Array<{
+    type: string;
+    title: string;
+    description: string;
+    impact: string;
+    potentialSavings: number | null;
+  }>;
+  optimizedSchedule: Array<{
+    time: string;
+    activity: string;
+    location: string;
+    notes: string;
+  }>;
+  estimatedTotal: {
+    original: number;
+    optimized: number;
+    savings: number;
+  };
+  warnings: string[];
+}
+
+function AIOptimizationTab({ 
+  experienceType, 
+  destination, 
+  date, 
+  cart 
+}: { 
+  experienceType: ExperienceType; 
+  destination: string; 
+  date?: Date; 
+  cart: CartItem[];
+}) {
+  const [optimizing, setOptimizing] = useState(false);
+  const [result, setResult] = useState<OptimizationResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const runOptimization = async () => {
+    setOptimizing(true);
+    setError(null);
+    
+    try {
+      const response = await fetch("/api/ai/optimize-experience", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          experienceType: experienceType.name,
+          destination,
+          date: date?.toISOString(),
+          selectedServices: cart.map(item => ({
+            name: item.name,
+            provider: item.provider,
+            price: item.price,
+            category: item.type
+          })),
+          preferences: {}
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to optimize");
+      }
+
+      const data = await response.json();
+      setResult(data);
+    } catch (err) {
+      setError("Unable to run optimization. Please try again.");
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  if (result) {
+    return (
+      <div className="space-y-6">
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white",
+                result.overallScore >= 80 ? "bg-green-500" : 
+                result.overallScore >= 60 ? "bg-amber-500" : "bg-red-500"
+              )}>
+                {result.overallScore}
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold">Optimization Score</h3>
+                <p className="text-sm text-muted-foreground">{result.summary}</p>
+              </div>
+            </div>
+            <Button variant="outline" onClick={() => setResult(null)} data-testid="button-reoptimize">
+              Run Again
+            </Button>
+          </div>
+
+          {result.estimatedTotal.savings > 0 && (
+            <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md p-4 mb-4">
+              <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                <Sparkles className="w-5 h-5" />
+                <span className="font-semibold">Potential Savings: ${result.estimatedTotal.savings}</span>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        {result.recommendations.length > 0 && (
+          <Card className="p-6">
+            <h4 className="font-semibold mb-4 flex items-center gap-2">
+              <Wand2 className="w-5 h-5 text-[#FF385C]" />
+              Recommendations
+            </h4>
+            <div className="space-y-3">
+              {result.recommendations.map((rec, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 rounded-md bg-muted/50">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full mt-2 flex-shrink-0",
+                    rec.impact === "high" ? "bg-red-500" :
+                    rec.impact === "medium" ? "bg-amber-500" : "bg-blue-500"
+                  )} />
+                  <div>
+                    <div className="font-medium">{rec.title}</div>
+                    <p className="text-sm text-muted-foreground">{rec.description}</p>
+                    {rec.potentialSavings && (
+                      <Badge variant="secondary" className="mt-1">
+                        Save ${rec.potentialSavings}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {result.optimizedSchedule.length > 0 && (
+          <Card className="p-6">
+            <h4 className="font-semibold mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-[#FF385C]" />
+              Optimized Schedule
+            </h4>
+            <div className="space-y-2">
+              {result.optimizedSchedule.map((item, i) => (
+                <div key={i} className="flex items-start gap-4 p-3 rounded-md bg-muted/50">
+                  <span className="text-sm font-medium text-muted-foreground w-20 flex-shrink-0">
+                    {item.time}
+                  </span>
+                  <div>
+                    <div className="font-medium">{item.activity}</div>
+                    <p className="text-sm text-muted-foreground">{item.location}</p>
+                    {item.notes && (
+                      <p className="text-xs text-muted-foreground mt-1">{item.notes}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {result.warnings.length > 0 && (
+          <Card className="p-6 border-amber-200 dark:border-amber-800">
+            <h4 className="font-semibold mb-3 text-amber-600 dark:text-amber-400">Warnings</h4>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              {result.warnings.map((warning, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-amber-500">!</span>
+                  {warning}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <Card className="p-8 text-center">
+      <Wand2 className="w-12 h-12 text-[#FF385C] mx-auto mb-4" />
+      <h3 className="text-xl font-semibold mb-2">AI Optimization</h3>
+      <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+        Let our AI analyze your selections and optimize your {experienceType.name.toLowerCase()} plan
+        for the best experience, timing, and value.
+      </p>
+      
+      {cart.length === 0 && (
+        <p className="text-sm text-amber-600 dark:text-amber-400 mb-4">
+          Add some items to your cart first for better optimization results.
+        </p>
+      )}
+
+      {error && (
+        <p className="text-sm text-red-500 mb-4">{error}</p>
+      )}
+
+      <Button 
+        className="bg-[#FF385C] hover:bg-[#E23350]" 
+        onClick={runOptimization}
+        disabled={optimizing}
+        data-testid="button-optimize"
+      >
+        {optimizing ? (
+          <>
+            <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            Optimizing...
+          </>
+        ) : (
+          <>
+            <Sparkles className="w-4 h-4 mr-2" />
+            Optimize My {experienceType.name}
+          </>
+        )}
+      </Button>
+    </Card>
+  );
+}
+
 export default function ExperienceTemplatePage() {
   const [, params] = useRoute("/experiences/:slug");
   const [, setLocation] = useLocation();
@@ -604,18 +824,12 @@ export default function ExperienceTemplatePage() {
           </div>
 
           {activeTab === "ai" ? (
-            <Card className="p-8 text-center">
-              <Wand2 className="w-12 h-12 text-[#FF385C] mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">AI Optimization</h3>
-              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                Let our AI analyze your selections and optimize your {experienceType.name.toLowerCase()} plan
-                for the best experience, timing, and value.
-              </p>
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-optimize">
-                <Sparkles className="w-4 h-4 mr-2" />
-                Optimize My {experienceType.name}
-              </Button>
-            </Card>
+            <AIOptimizationTab 
+              experienceType={experienceType}
+              destination={destination}
+              date={startDate}
+              cart={cart}
+            />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {servicesLoading ? (
