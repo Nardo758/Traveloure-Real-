@@ -1178,6 +1178,46 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // === Notifications Routes ===
+
+  // Get user notifications
+  app.get("/api/notifications", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const unreadOnly = req.query.unread === "true";
+    const notifications = await storage.getNotifications(userId, unreadOnly);
+    res.json(notifications);
+  });
+
+  // Get unread count
+  app.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const count = await storage.getUnreadCount(userId);
+    res.json({ count });
+  });
+
+  // Mark notification as read
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const notification = await storage.markAsRead(req.params.id);
+    if (notification && notification.userId !== userId) {
+      return res.status(403).json({ message: "Not your notification" });
+    }
+    res.json(notification);
+  });
+
+  // Mark all as read
+  app.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    await storage.markAllAsRead(userId);
+    res.json({ success: true });
+  });
+
+  // Delete notification
+  app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+    await storage.deleteNotification(req.params.id);
+    res.json({ success: true });
+  });
+
   // === Service Reviews Routes ===
   
   // Get reviews for a service
@@ -1427,6 +1467,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         
         // Increment bookings count for the service
         await storage.incrementServiceBookings(item.serviceId, 1);
+        
+        // Create notification for provider
+        await storage.createNotification({
+          userId: item.service.userId,
+          type: "booking_created",
+          title: "New Booking Request",
+          message: `You have a new booking for ${item.service.serviceName}`,
+          relatedId: booking.id,
+          relatedType: "booking",
+        });
         
         bookings.push({ booking, contract });
       }

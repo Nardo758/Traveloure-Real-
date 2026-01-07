@@ -5,6 +5,7 @@ import {
   localExpertForms, serviceProviderForms, providerServices,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
+  notifications,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -21,9 +22,10 @@ import {
   type ServiceTemplate, type InsertServiceTemplate,
   type ServiceBooking, type InsertServiceBooking,
   type ServiceReview, type InsertServiceReview,
-  type CartItem, type Contract
+  type CartItem, type Contract,
+  type Notification, type InsertNotification
 } from "@shared/schema";
-import { eq, ilike, and, desc, or } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -150,6 +152,14 @@ export interface IStorage {
   getContract(id: string): Promise<any | undefined>;
   createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string }): Promise<any>;
   updateContractStatus(id: string, status: string, paymentUrl?: string): Promise<any | undefined>;
+
+  // Notifications
+  getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]>;
+  getUnreadCount(userId: string): Promise<number>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markAsRead(id: string): Promise<Notification | undefined>;
+  markAllAsRead(userId: string): Promise<void>;
+  deleteNotification(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -799,6 +809,47 @@ export class DatabaseStorage implements IStorage {
       .where(eq(userAndExpertContracts.id, id))
       .returning();
     return updated;
+  }
+
+  // Notification Methods
+  async getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]> {
+    if (unreadOnly) {
+      return await db.select().from(notifications)
+        .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
+        .orderBy(desc(notifications.createdAt));
+    }
+    return await db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt));
+  }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    const [result] = await db.select({ count: count() }).from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    return result?.count || 0;
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications).values(notification).returning();
+    return newNotification;
+  }
+
+  async markAsRead(id: string): Promise<Notification | undefined> {
+    const [updated] = await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markAllAsRead(userId: string): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.userId, userId));
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    await db.delete(notifications).where(eq(notifications.id, id));
   }
 }
 
