@@ -260,6 +260,83 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
     }
   });
 
+  // Experience AI Optimization endpoint
+  app.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
+    try {
+      const { experienceType, destination, date, selectedServices, preferences } = req.body;
+      
+      const servicesContext = selectedServices?.map((s: any) => ({
+        name: s.name,
+        provider: s.provider,
+        price: s.price,
+        category: s.category
+      })) || [];
+
+      const systemPrompt = `You are an expert experience planning optimizer for Traveloure. 
+Analyze the user's selected services and provide optimization recommendations.
+Experience Type: ${experienceType}
+Destination: ${destination || "Not specified"}
+Date: ${date || "Flexible"}
+Selected Services: ${JSON.stringify(servicesContext)}
+Preferences: ${JSON.stringify(preferences || {})}
+
+Provide a comprehensive optimization analysis in JSON format with this structure:
+{
+  "overallScore": number between 0-100,
+  "summary": "Brief summary of the analysis",
+  "recommendations": [
+    { 
+      "type": "timing" | "cost" | "quality" | "logistics" | "alternative",
+      "title": "Recommendation title",
+      "description": "Detailed recommendation",
+      "impact": "high" | "medium" | "low",
+      "potentialSavings": number or null
+    }
+  ],
+  "optimizedSchedule": [
+    {
+      "time": "HH:MM AM/PM",
+      "activity": "Activity name",
+      "location": "Location",
+      "notes": "Any special notes"
+    }
+  ],
+  "estimatedTotal": {
+    "original": number,
+    "optimized": number,
+    "savings": number
+  },
+  "warnings": ["Any concerns or warnings about the plan"]
+}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Please analyze and optimize my ${experienceType} experience plan.` }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 2000,
+      });
+
+      const responseText = completion.choices[0]?.message?.content || "{}";
+      const optimization = JSON.parse(responseText);
+      
+      res.json(optimization);
+    } catch (error) {
+      console.error("Error in experience optimization:", error);
+      res.status(500).json({ 
+        message: "Failed to optimize experience",
+        overallScore: 0,
+        summary: "Unable to process optimization request",
+        recommendations: [],
+        optimizedSchedule: [],
+        estimatedTotal: { original: 0, optimized: 0, savings: 0 },
+        warnings: ["Optimization service temporarily unavailable"]
+      });
+    }
+  });
+
   // Vendors Routes
   app.get("/api/vendors", async (req, res) => {
     const { category, city } = req.query;
