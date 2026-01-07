@@ -75,7 +75,10 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `VITE_GOOGLE_MAPS_API_KEY`: Frontend-accessible Google Maps API key.
 
 ## Recent Changes (January 2026)
-- Added Map View tab to all 8 experience types with interactive Google Maps showing provider locations
+- Implemented persistent 60/40 split-screen layout for experience planning (left: content, right: always-visible map)
+- Map markers use distinct visual states: selected providers show pink circle with checkmark icon at 1.3x scale, unselected use category-colored pins
+- Extended category color system to cover 30+ service type variations for consistent marker coloring
+- Added mobile-accessible collapsible map section with sticky bottom bar toggle
 - Implemented AI Optimization feature analyzing selections and providing efficiency scores, recommendations, and schedules
 - Added expert assistance touchpoints throughout the experience planning flow (floating chat, hero CTA, sidebar card, checkout escalation)
 - Removed unused wizard-based experience planning in favor of streamlined template approach
