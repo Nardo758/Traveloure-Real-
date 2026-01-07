@@ -520,6 +520,19 @@ export const vendorAssignments = pgTable("vendor_assignments", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// === Shopping Cart ===
+
+export const cartItems = pgTable("cart_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  quantity: integer("quantity").default(1),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  scheduledDate: timestamp("scheduled_date"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === AI Blueprints ===
 
 export const aiBlueprints = pgTable("ai_blueprints", {
@@ -613,6 +626,8 @@ export const insertCreditTransactionSchema = createInsertSchema(creditTransactio
 export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
 export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ id: true, confirmedAt: true, completedAt: true, cancelledAt: true, createdAt: true, updatedAt: true });
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true });
+export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
+export const insertContractSchema = createInsertSchema(userAndExpertContracts).omit({ id: true, status: true, isPaid: true, paymentUrl: true, createdAt: true });
 
 // === Types ===
 export type Trip = typeof trips.$inferSelect;
@@ -653,5 +668,9 @@ export type ServiceTemplate = typeof serviceTemplates.$inferSelect;
 export type InsertServiceTemplate = z.infer<typeof insertServiceTemplateSchema>;
 export type ServiceBooking = typeof serviceBookings.$inferSelect;
 export type InsertServiceBooking = z.infer<typeof insertServiceBookingSchema>;
+export type CartItem = typeof cartItems.$inferSelect;
+export type InsertCartItem = z.infer<typeof insertCartItemSchema>;
+export type Contract = typeof userAndExpertContracts.$inferSelect;
+export type InsertContract = z.infer<typeof insertContractSchema>;
 export type ServiceReview = typeof serviceReviews.$inferSelect;
 export type InsertServiceReview = z.infer<typeof insertServiceReviewSchema>;

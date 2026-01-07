@@ -84,6 +84,8 @@ import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
+import CartPage from "@/pages/cart";
+import MyBookingsPage from "@/pages/my-bookings";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -138,6 +140,12 @@ function Router() {
       </Route>
       <Route path="/discover">
         <DiscoverPage />
+      </Route>
+      <Route path="/cart">
+        <CartPage />
+      </Route>
+      <Route path="/bookings">
+        <MyBookingsPage />
       </Route>
       <Route path="/help-me-decide">
         <Layout><HelpMeDecidePage /></Layout>

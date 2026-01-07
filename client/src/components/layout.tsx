@@ -29,7 +29,8 @@ import {
   CreditCard,
   UserCheck,
   HelpCircle,
-  FileText
+  FileText,
+  ShoppingCart
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
