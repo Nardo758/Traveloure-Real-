@@ -55,7 +55,7 @@ interface CartItem {
 
 const experienceConfigs: Record<string, {
   heroImage: string;
-  tabs: { id: string; label: string; icon: any }[];
+  tabs: { id: string; label: string; icon: any; category: string | null }[];
   filters: string[];
   locationLabel: string;
   dateLabel: string;
@@ -63,11 +63,12 @@ const experienceConfigs: Record<string, {
   wedding: {
     heroImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Building2 },
-      { id: "catering", label: "Catering", icon: Building2 },
-      { id: "photography", label: "Photography", icon: Building2 },
-      { id: "florist", label: "Florist", icon: Building2 },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "photography", label: "Photography", icon: Building2, category: "photography" },
+      { id: "florist", label: "Florist", icon: Building2, category: "florist" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
     locationLabel: "Wedding Location:",
@@ -76,11 +77,12 @@ const experienceConfigs: Record<string, {
   proposal: {
     heroImage: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Building2 },
-      { id: "photography", label: "Photography", icon: Building2 },
-      { id: "dining", label: "Dining", icon: Building2 },
-      { id: "rings", label: "Rings", icon: Gem },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "photography", label: "Photography", icon: Building2, category: "photography" },
+      { id: "dining", label: "Dining", icon: Building2, category: "dining" },
+      { id: "rings", label: "Rings", icon: Gem, category: "jewelry" },
+      { id: "transportation", label: "Transportation", icon: Building2, category: "transportation" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
     locationLabel: "Proposal Location:",
@@ -89,11 +91,11 @@ const experienceConfigs: Record<string, {
   romance: {
     heroImage: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=1600&q=80",
     tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Building2 },
-      { id: "dining", label: "Dining", icon: Building2 },
-      { id: "activities", label: "Activities", icon: Building2 },
-      { id: "spa", label: "Spa & Wellness", icon: Building2 },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "accommodations", label: "Accommodations", icon: Building2, category: "accommodations" },
+      { id: "dining", label: "Dining", icon: Building2, category: "dining" },
+      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
+      { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Couples", "Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Beachfront"],
     locationLabel: "Destination:",
@@ -102,11 +104,11 @@ const experienceConfigs: Record<string, {
   birthday: {
     heroImage: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Building2 },
-      { id: "catering", label: "Catering", icon: Building2 },
-      { id: "entertainment", label: "Entertainment", icon: Building2 },
-      { id: "decorations", label: "Decorations", icon: Building2 },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Kids", "Adults", "Outdoor", "Indoor", "Theme Party", "Elegant", "Casual", "Adventure"],
     locationLabel: "Party Location:",
@@ -115,11 +117,11 @@ const experienceConfigs: Record<string, {
   corporate: {
     heroImage: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Building2 },
-      { id: "catering", label: "Catering", icon: Building2 },
-      { id: "av", label: "A/V Equipment", icon: Building2 },
-      { id: "team", label: "Team Activities", icon: Users },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
+      { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
     locationLabel: "Event Location:",
@@ -128,11 +130,11 @@ const experienceConfigs: Record<string, {
   "boys-trip": {
     heroImage: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&q=80",
     tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Building2 },
-      { id: "activities", label: "Adventures", icon: Building2 },
-      { id: "nightlife", label: "Nightlife", icon: Building2 },
-      { id: "sports", label: "Sports", icon: Building2 },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "accommodations", label: "Accommodations", icon: Building2, category: "accommodations" },
+      { id: "activities", label: "Adventures", icon: Building2, category: "adventures" },
+      { id: "nightlife", label: "Nightlife", icon: Building2, category: "nightlife" },
+      { id: "sports", label: "Sports", icon: Building2, category: "sports" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Adventure", "Sports", "Nightlife", "Beach", "Mountains", "City", "Bachelor", "Fishing"],
     locationLabel: "Destination:",
@@ -141,11 +143,11 @@ const experienceConfigs: Record<string, {
   "girls-trip": {
     heroImage: "https://images.unsplash.com/photo-1559181567-c3190ca9959b?w=1600&q=80",
     tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Building2 },
-      { id: "spa", label: "Spa & Wellness", icon: Building2 },
-      { id: "shopping", label: "Shopping", icon: Building2 },
-      { id: "dining", label: "Dining & Wine", icon: Building2 },
-      { id: "ai", label: "AI Optimization", icon: Wand2 },
+      { id: "accommodations", label: "Accommodations", icon: Building2, category: "accommodations" },
+      { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
+      { id: "shopping", label: "Shopping", icon: Building2, category: "shopping" },
+      { id: "dining", label: "Dining & Wine", icon: Building2, category: "dining" },
+      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Spa", "Shopping", "Beach", "Wine", "Brunch", "Wellness", "Bachelorette", "Luxury"],
     locationLabel: "Destination:",
@@ -209,6 +211,62 @@ export default function ExperienceTemplatePage() {
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const currentTabCategory = config.tabs.find(t => t.id === activeTab)?.category;
+
+  const filteredServices = useMemo(() => {
+    if (!services) return [];
+    
+    let filtered = [...services];
+
+    if (currentTabCategory) {
+      filtered = filtered.filter(s => {
+        const svcType = s.serviceType?.toLowerCase() || "";
+        const svcName = s.serviceName.toLowerCase();
+        return svcType.includes(currentTabCategory) || svcName.includes(currentTabCategory);
+      });
+    }
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(s => 
+        s.serviceName.toLowerCase().includes(query) ||
+        (s.shortDescription?.toLowerCase().includes(query)) ||
+        (s.description?.toLowerCase().includes(query))
+      );
+    }
+
+    if (priceRange[0] > 0 || priceRange[1] < 500) {
+      filtered = filtered.filter(s => {
+        const price = Number(s.price) || 0;
+        return price >= priceRange[0] && (priceRange[1] >= 500 || price <= priceRange[1]);
+      });
+    }
+
+    if (minRating > 0) {
+      filtered = filtered.filter(s => (Number(s.averageRating) || 0) >= minRating);
+    }
+
+    if (selectedFilters.length > 0) {
+      filtered = filtered.filter(s => {
+        const desc = (s.description || "").toLowerCase();
+        const name = s.serviceName.toLowerCase();
+        return selectedFilters.some(f => 
+          desc.includes(f.toLowerCase()) || name.includes(f.toLowerCase())
+        );
+      });
+    }
+
+    if (sortBy === "price-low") {
+      filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+    } else if (sortBy === "price-high") {
+      filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0));
+    } else if (sortBy === "rating") {
+      filtered.sort((a, b) => (Number(b.averageRating) || 0) - (Number(a.averageRating) || 0));
+    }
+
+    return filtered;
+  }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   if (typeLoading) {
     return (
@@ -531,9 +589,13 @@ export default function ExperienceTemplatePage() {
             </CollapsibleContent>
           </Collapsible>
 
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm text-muted-foreground">
-              {destination ? `Showing results in ${destination}` : "Enter a location to see available options"}
+              {filteredServices.length > 0 
+                ? `Showing ${filteredServices.length} ${filteredServices.length === 1 ? 'provider' : 'providers'}${destination ? ` in ${destination}` : ''}`
+                : destination 
+                  ? `No providers found in ${destination}` 
+                  : "Enter a location to see available options"}
             </p>
             <Button variant="outline" size="sm" className="gap-2" data-testid="button-expert-help">
               <MessageCircle className="w-4 h-4" />
@@ -567,8 +629,8 @@ export default function ExperienceTemplatePage() {
                     </CardContent>
                   </Card>
                 ))
-              ) : services && services.length > 0 ? (
-                services.slice(0, 6).map((service) => (
+              ) : filteredServices.length > 0 ? (
+                filteredServices.map((service) => (
                   <Card key={service.id} className="overflow-hidden hover-elevate">
                     <div className="h-48 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
                       <Building2 className="w-12 h-12 text-gray-400" />
