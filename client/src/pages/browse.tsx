@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,6 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Search,
   ShoppingCart,
@@ -26,6 +29,8 @@ import {
   Ticket,
   ChevronDown,
   Wand2,
+  SlidersHorizontal,
+  Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -254,8 +259,142 @@ export default function BrowsePage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  
+  // Advanced filter states
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 500]);
+  const [minRating, setMinRating] = useState<number>(0);
+  const [sortBy, setSortBy] = useState<string>("popular");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const nights = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
+
+  // Filter and sort activities
+  const filteredActivities = useMemo(() => {
+    let results = [...sampleActivities];
+    
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      results = results.filter(a => 
+        a.name.toLowerCase().includes(query) ||
+        a.description.toLowerCase().includes(query) ||
+        a.provider.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply price range filter
+    results = results.filter(a => a.price >= priceRange[0] && a.price <= priceRange[1]);
+    
+    // Apply rating filter
+    results = results.filter(a => a.rating >= minRating);
+    
+    // Apply sorting
+    switch (sortBy) {
+      case "price-low":
+        results.sort((a, b) => a.price - b.price);
+        break;
+      case "price-high":
+        results.sort((a, b) => b.price - a.price);
+        break;
+      case "rating":
+        results.sort((a, b) => b.rating - a.rating);
+        break;
+      case "reviews":
+        results.sort((a, b) => b.reviewCount - a.reviewCount);
+        break;
+      default: // popular - sort by rating * review count
+        results.sort((a, b) => (b.rating * b.reviewCount) - (a.rating * a.reviewCount));
+    }
+    
+    return results;
+  }, [searchQuery, priceRange, minRating, sortBy]);
+
+  // Filter and sort hotels
+  const filteredHotels = useMemo(() => {
+    let results = [...sampleHotels];
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      results = results.filter(h => 
+        h.name.toLowerCase().includes(query) ||
+        h.description.toLowerCase().includes(query) ||
+        h.location.toLowerCase().includes(query)
+      );
+    }
+    
+    results = results.filter(h => h.pricePerNight >= priceRange[0] && h.pricePerNight <= priceRange[1]);
+    results = results.filter(h => h.rating >= minRating);
+    
+    switch (sortBy) {
+      case "price-low":
+        results.sort((a, b) => a.pricePerNight - b.pricePerNight);
+        break;
+      case "price-high":
+        results.sort((a, b) => b.pricePerNight - a.pricePerNight);
+        break;
+      case "rating":
+        results.sort((a, b) => b.rating - a.rating);
+        break;
+      case "reviews":
+        results.sort((a, b) => b.reviewCount - a.reviewCount);
+        break;
+      default:
+        results.sort((a, b) => (b.rating * b.reviewCount) - (a.rating * a.reviewCount));
+    }
+    
+    return results;
+  }, [searchQuery, priceRange, minRating, sortBy]);
+
+  // Filter and sort services
+  const filteredServices = useMemo(() => {
+    let results = [...sampleServices];
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      results = results.filter(s => 
+        s.name.toLowerCase().includes(query) ||
+        s.description.toLowerCase().includes(query) ||
+        s.category.toLowerCase().includes(query)
+      );
+    }
+    
+    results = results.filter(s => s.price >= priceRange[0] && s.price <= priceRange[1]);
+    results = results.filter(s => s.rating >= minRating);
+    
+    switch (sortBy) {
+      case "price-low":
+        results.sort((a, b) => a.price - b.price);
+        break;
+      case "price-high":
+        results.sort((a, b) => b.price - a.price);
+        break;
+      case "rating":
+        results.sort((a, b) => b.rating - a.rating);
+        break;
+      case "reviews":
+        results.sort((a, b) => b.reviewCount - a.reviewCount);
+        break;
+      default:
+        results.sort((a, b) => (b.rating * b.reviewCount) - (a.rating * a.reviewCount));
+    }
+    
+    return results;
+  }, [searchQuery, priceRange, minRating, sortBy]);
+
+  const clearAllFilters = () => {
+    setPriceRange([0, 500]);
+    setMinRating(0);
+    setSortBy("popular");
+    setSearchQuery("");
+    setSelectedFilters([]);
+  };
+
+  const activeFiltersCount = (priceRange[0] > 0 || priceRange[1] < 500 ? 1 : 0) +
+    (minRating > 0 ? 1 : 0) +
+    (sortBy !== "popular" ? 1 : 0) +
+    (searchQuery ? 1 : 0) +
+    selectedFilters.length;
 
   const addToCart = (item: CartItem) => {
     setCart((prev) => {
@@ -601,47 +740,182 @@ export default function BrowsePage() {
                 </Sheet>
               </div>
 
-              {/* Preference Filters */}
-              <div className="mt-4 mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <ChevronDown className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700">Select Your Activity Preferences</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {preferenceFilters.map((filter) => (
-                    <Button
-                      key={filter}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleFilter(filter)}
-                      className={cn(
-                        "rounded-full",
-                        selectedFilters.includes(filter)
-                          ? "bg-[#FF385C] text-white border-[#FF385C] hover:bg-[#E23350]"
-                          : "bg-white text-gray-700 hover:bg-gray-50"
+              {/* Advanced Filters Section */}
+              <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="mt-4 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <CollapsibleTrigger asChild>
+                    <Button variant="ghost" size="sm" className="gap-2 text-gray-700" data-testid="button-toggle-filters">
+                      <SlidersHorizontal className="w-4 h-4" />
+                      Filters & Sort
+                      {activeFiltersCount > 0 && (
+                        <Badge className="bg-[#FF385C] text-white ml-1">{activeFiltersCount}</Badge>
                       )}
-                      data-testid={`filter-${filter.toLowerCase()}`}
-                    >
-                      {filter}
+                      <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
                     </Button>
-                  ))}
+                  </CollapsibleTrigger>
+                  {activeFiltersCount > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearAllFilters}
+                      className="text-[#FF385C] hover:text-[#E23350]"
+                      data-testid="button-clear-filters"
+                    >
+                      <X className="w-3 h-3 mr-1" /> Clear all
+                    </Button>
+                  )}
                 </div>
-              </div>
+
+                <CollapsibleContent>
+                  <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <CardContent className="p-4 space-y-5">
+                      {/* Search Input */}
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                          Search
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            placeholder="Search by name, provider, or description..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9"
+                            data-testid="input-search-filter"
+                          />
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Price Range */}
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+                            Price Range: ${priceRange[0]} - ${priceRange[1]}+
+                          </Label>
+                          <Slider
+                            value={priceRange}
+                            onValueChange={(value) => setPriceRange(value as [number, number])}
+                            max={500}
+                            min={0}
+                            step={10}
+                            className="w-full"
+                            data-testid="slider-price-range"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>$0</span>
+                            <span>$500+</span>
+                          </div>
+                        </div>
+
+                        {/* Minimum Rating */}
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+                            Minimum Rating
+                          </Label>
+                          <div className="flex gap-1">
+                            {[0, 3, 3.5, 4, 4.5].map((rating) => (
+                              <Button
+                                key={rating}
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setMinRating(rating)}
+                                className={cn(
+                                  "flex-1",
+                                  minRating === rating
+                                    ? "bg-[#FF385C] text-white border-[#FF385C]"
+                                    : "bg-white text-gray-700"
+                                )}
+                                data-testid={`button-rating-${rating}`}
+                              >
+                                {rating === 0 ? "All" : (
+                                  <span className="flex items-center gap-0.5">
+                                    <Star className="w-3 h-3 fill-current" />
+                                    {rating}+
+                                  </span>
+                                )}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Sort By */}
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+                            Sort By
+                          </Label>
+                          <Select value={sortBy} onValueChange={setSortBy}>
+                            <SelectTrigger className="w-full" data-testid="select-sort">
+                              <SelectValue placeholder="Sort by..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="popular">Most Popular</SelectItem>
+                              <SelectItem value="rating">Highest Rated</SelectItem>
+                              <SelectItem value="reviews">Most Reviews</SelectItem>
+                              <SelectItem value="price-low">Price: Low to High</SelectItem>
+                              <SelectItem value="price-high">Price: High to Low</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      {/* Preference Filters */}
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                          Activity Preferences
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          {preferenceFilters.map((filter) => (
+                            <Button
+                              key={filter}
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleFilter(filter)}
+                              className={cn(
+                                "rounded-full",
+                                selectedFilters.includes(filter)
+                                  ? "bg-[#FF385C] text-white border-[#FF385C]"
+                                  : "bg-white text-gray-700"
+                              )}
+                              data-testid={`filter-${filter.toLowerCase()}`}
+                            >
+                              {filter}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Two Column Layout */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column - Inventory */}
                 <div>
                   <TabsContent value="activities" className="mt-0 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-gray-600 text-sm">Showing {sampleActivities.length} activities in {destination}</p>
-                      <Button variant="outline" size="sm" data-testid="button-sort-activities">
-                        Sort: Popular <ChevronDown className="w-4 h-4 ml-1" />
-                      </Button>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-600 text-sm">
+                        Showing {filteredActivities.length} of {sampleActivities.length} activities in {destination}
+                      </p>
                     </div>
 
                     <div className="space-y-3">
-                      {sampleActivities.map((activity) => (
+                      {filteredActivities.length === 0 ? (
+                        <Card className="p-8 text-center">
+                          <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-600 font-medium">No activities match your filters</p>
+                          <p className="text-sm text-gray-500 mt-1">Try adjusting your search or price range</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={clearAllFilters}
+                            className="mt-3"
+                            data-testid="button-clear-activity-filters"
+                          >
+                            Clear filters
+                          </Button>
+                        </Card>
+                      ) : filteredActivities.map((activity) => (
                         <Card key={activity.id} className="overflow-hidden" data-testid={`card-activity-${activity.id}`}>
                           <CardContent className="p-0">
                             <div className="flex">
@@ -702,15 +976,29 @@ export default function BrowsePage() {
                   </TabsContent>
 
                   <TabsContent value="hotels" className="mt-0 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-gray-600 text-sm">Showing {sampleHotels.length} properties in {destination}</p>
-                      <Button variant="outline" size="sm" data-testid="button-sort-hotels">
-                        Sort: Recommended <ChevronDown className="w-4 h-4 ml-1" />
-                      </Button>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-600 text-sm">
+                        Showing {filteredHotels.length} of {sampleHotels.length} properties in {destination}
+                      </p>
                     </div>
 
                     <div className="space-y-3">
-                      {sampleHotels.map((hotel) => (
+                      {filteredHotels.length === 0 ? (
+                        <Card className="p-8 text-center">
+                          <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-600 font-medium">No hotels match your filters</p>
+                          <p className="text-sm text-gray-500 mt-1">Try adjusting your search or price range</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={clearAllFilters}
+                            className="mt-3"
+                            data-testid="button-clear-hotel-filters"
+                          >
+                            Clear filters
+                          </Button>
+                        </Card>
+                      ) : filteredHotels.map((hotel) => (
                         <Card key={hotel.id} className="overflow-hidden" data-testid={`card-hotel-${hotel.id}`}>
                           <CardContent className="p-0">
                             <div className="flex">
@@ -765,15 +1053,29 @@ export default function BrowsePage() {
                   </TabsContent>
 
                   <TabsContent value="services" className="mt-0 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <p className="text-gray-600 text-sm">Showing {sampleServices.length} services in {destination}</p>
-                      <Button variant="outline" size="sm" data-testid="button-sort-services">
-                        Sort: Popular <ChevronDown className="w-4 h-4 ml-1" />
-                      </Button>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-gray-600 text-sm">
+                        Showing {filteredServices.length} of {sampleServices.length} services in {destination}
+                      </p>
                     </div>
 
                     <div className="space-y-3">
-                      {sampleServices.map((service) => (
+                      {filteredServices.length === 0 ? (
+                        <Card className="p-8 text-center">
+                          <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-600 font-medium">No services match your filters</p>
+                          <p className="text-sm text-gray-500 mt-1">Try adjusting your search or price range</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={clearAllFilters}
+                            className="mt-3"
+                            data-testid="button-clear-service-filters"
+                          >
+                            Clear filters
+                          </Button>
+                        </Card>
+                      ) : filteredServices.map((service) => (
                         <Card key={service.id} className="overflow-hidden" data-testid={`card-service-${service.id}`}>
                           <CardContent className="p-0">
                             <div className="flex">

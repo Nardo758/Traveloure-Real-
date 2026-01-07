@@ -1,9 +1,9 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock } from "lucide-react";
+import { Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock, Wifi, WifiOff } from "lucide-react";
 import { format } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,6 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useWebSocket } from "@/hooks/use-websocket";
+import { useToast } from "@/hooks/use-toast";
+
+interface RealtimeMessage {
+  id: string;
+  senderId: string;
+  recipientId?: string;
+  content: string;
+  timestamp: string;
+}
 
 const sampleExperts = [
   {
@@ -50,20 +60,100 @@ const sampleExperts = [
 
 export default function Chat() {
   const { user } = useAuth();
-  const { data: chats, isLoading } = useChats();
-  const sendMessage = useSendMessage();
+  const { data: chats, isLoading, refetch } = useChats();
+  const sendMessageMutation = useSendMessage();
+  const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [selectedExpert, setSelectedExpert] = useState<typeof sampleExperts[0] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [realtimeMessages, setRealtimeMessages] = useState<RealtimeMessage[]>([]);
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleNewMessage = useCallback((msg: any) => {
+    if (msg.type === "chat") {
+      setRealtimeMessages(prev => [...prev, {
+        id: msg.id || crypto.randomUUID(),
+        senderId: msg.senderId,
+        recipientId: msg.recipientId,
+        content: msg.content,
+        timestamp: msg.timestamp || new Date().toISOString(),
+      }]);
+      refetch();
+    }
+  }, [refetch]);
+
+  const handleTyping = useCallback((senderId: string) => {
+    if (selectedExpert && String(selectedExpert.id) === senderId) {
+      setIsTyping(true);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 3000);
+    }
+  }, [selectedExpert]);
+
+  const handleWsError = useCallback((error: string) => {
+    toast({
+      title: "Message failed",
+      description: error || "Failed to send message. Please try again.",
+      variant: "destructive",
+    });
+  }, [toast]);
+
+  const { isConnected, sendMessage: wsSendMessage, sendTyping } = useWebSocket({
+    userId: user?.id,
+    onMessage: handleNewMessage,
+    onTyping: handleTyping,
+    onConnected: () => console.log("WebSocket connected"),
+    onError: handleWsError,
+  });
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [realtimeMessages, chats]);
 
   const handleSend = () => {
-    if (!message.trim()) return;
-    sendMessage.mutate(
-      { message, senderId: user?.id },
-      {
-        onSuccess: () => setMessage(""),
+    if (!message.trim() || !selectedExpert) return;
+    
+    const currentMessage = message;
+    const recipientId = String(selectedExpert.id);
+    
+    // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
+    // WebSocket real-time only works with actual platform users
+    if (isConnected && recipientId.length > 10) {
+      // Real user ID (UUID format), try WebSocket
+      const success = wsSendMessage(recipientId, currentMessage);
+      if (success) {
+        setMessage("");
       }
-    );
+    } else {
+      // Demo mode or WebSocket failed - use HTTP mutation
+      sendMessageMutation.mutate(
+        { message: currentMessage, senderId: user?.id },
+        { 
+          onSuccess: () => {
+            setMessage("");
+            refetch();
+          },
+          onError: () => {
+            toast({
+              title: "Message failed",
+              description: "Failed to send message. Please try again.",
+              variant: "destructive",
+            });
+          }
+        }
+      );
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessage(e.target.value);
+    if (selectedExpert && isConnected) {
+      sendTyping(String(selectedExpert.id));
+    }
   };
 
   const filteredExperts = sampleExperts.filter(expert => 
@@ -177,17 +267,41 @@ export default function Chat() {
                       <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-slate-900 dark:text-white">{selectedExpert.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-slate-900 dark:text-white">{selectedExpert.name}</h3>
+                        {isConnected ? (
+                          <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+                            <Wifi className="w-3 h-3 mr-1" /> Live
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                            <WifiOff className="w-3 h-3 mr-1" /> Offline
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          Responds {selectedExpert.responseTime}
-                        </span>
-                        <span>|</span>
-                        <span>{selectedExpert.reviews} reviews</span>
+                        {isTyping ? (
+                          <span className="flex items-center gap-1 text-primary">
+                            <motion.span
+                              animate={{ opacity: [0.4, 1, 0.4] }}
+                              transition={{ duration: 1.2, repeat: Infinity }}
+                            >
+                              typing...
+                            </motion.span>
+                          </span>
+                        ) : (
+                          <>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              Responds {selectedExpert.responseTime}
+                            </span>
+                            <span>|</span>
+                            <span>{selectedExpert.reviews} reviews</span>
+                          </>
+                        )}
                       </div>
                     </div>
-                    <Button variant="outline" size="sm">View Profile</Button>
+                    <Button variant="outline" size="sm" data-testid="button-view-profile">View Profile</Button>
                   </div>
 
                   {/* Messages */}
@@ -244,7 +358,7 @@ export default function Chat() {
                     >
                       <Input
                         value={message}
-                        onChange={(e) => setMessage(e.target.value)}
+                        onChange={handleInputChange}
                         placeholder="Type your message..."
                         className="flex-1"
                         data-testid="input-message"
