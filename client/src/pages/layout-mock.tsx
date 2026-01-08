@@ -22,15 +22,7 @@ export default function LayoutMock() {
           <span className="text-xl font-bold text-[#FF385C]">TRAVELOURE</span>
           <span className="text-xs bg-[#FF385C] text-white px-2 py-0.5 rounded">BETA</span>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" className="gap-2">
-            <span className="text-amber-500">0 Credits</span>
-            <span>+</span>
-          </Button>
-          <Button className="bg-[#FF385C] hover:bg-[#E02D50]">
-            Generate Itinerary
-          </Button>
-        </div>
+        {/* Credits and Generate buttons moved to hero overlay */}
       </header>
 
       {/* 60/40 Split Screen Layout */}
@@ -44,6 +36,16 @@ export default function LayoutMock() {
               alt="Trip cover" 
               className="w-full h-full object-cover"
             />
+            {/* Credits and Generate Itinerary buttons - top right overlay */}
+            <div className="absolute top-4 right-4 flex items-center gap-3">
+              <Button variant="outline" size="sm" className="gap-2 bg-white/90 backdrop-blur-sm">
+                <span className="text-amber-500">0 Credits</span>
+                <span>+</span>
+              </Button>
+              <Button className="bg-[#FF385C] hover:bg-[#E02D50]">
+                Generate Itinerary
+              </Button>
+            </div>
           </div>
 
           {/* Trip Details Card - negative margin overlay */}
