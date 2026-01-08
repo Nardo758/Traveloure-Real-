@@ -650,7 +650,7 @@ export default function ExperienceTemplatePage() {
               style={{ backgroundImage: `url('${config.heroImage}')` }}
             />
 
-            {/* White ribbon bar with Credits, Cart, Generate Itinerary */}
+            {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3 z-10">
               <Link href="/credits">
                 <Button
@@ -664,6 +664,16 @@ export default function ExperienceTemplatePage() {
                   <Plus className="w-3 h-3" />
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={openExpertChat}
+                data-testid="button-expert-help-ribbon"
+              >
+                <MessageCircle className="w-4 h-4" />
+                Get Expert Help
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -996,7 +1006,7 @@ export default function ExperienceTemplatePage() {
             </CollapsibleContent>
           </Collapsible>
 
-          <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
+          <div className="mb-4">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
                 ? `Showing ${filteredServices.length} ${filteredServices.length === 1 ? 'provider' : 'providers'}${destination ? ` in ${destination}` : ''}`
@@ -1004,16 +1014,6 @@ export default function ExperienceTemplatePage() {
                   ? `No providers found in ${destination}` 
                   : "Enter a location to see available options"}
             </p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="gap-2"
-              onClick={openExpertChat}
-              data-testid="button-expert-help"
-            >
-              <MessageCircle className="w-4 h-4" />
-              Get Expert Help
-            </Button>
           </div>
 
             <div className="flex gap-6">
@@ -1191,6 +1191,16 @@ export default function ExperienceTemplatePage() {
                   <Plus className="w-2 h-2" />
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={openExpertChat}
+                data-testid="button-expert-help-ribbon-mobile"
+              >
+                <MessageCircle className="w-3 h-3" />
+                Expert
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
