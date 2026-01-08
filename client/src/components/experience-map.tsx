@@ -1,5 +1,23 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, Component, ReactNode } from "react";
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react-google-maps";
+
+class MapErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode; fallback: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -252,16 +270,30 @@ export function ExperienceMap({
 
   const selectedCount = selectedProviderIds.length;
 
+  const mapFallback = (
+    <div className="flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md w-full h-full">
+      <div className="text-center p-6">
+        <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+        <h3 className="font-semibold mb-2">Map Loading Error</h3>
+        <p className="text-sm text-muted-foreground">
+          Unable to load Google Maps. Please try refreshing the page.
+        </p>
+      </div>
+    </div>
+  );
+
   return (
     <div className={cn("relative", className)} style={{ height }}>
-      <APIProvider apiKey={apiKey}>
-        <MapContent 
-          providers={providers} 
-          selectedProviderIds={selectedProviderIds}
-          onAddToCart={onAddToCart}
-          onRemoveFromCart={onRemoveFromCart}
-        />
-      </APIProvider>
+      <MapErrorBoundary fallback={mapFallback}>
+        <APIProvider apiKey={apiKey}>
+          <MapContent 
+            providers={providers} 
+            selectedProviderIds={selectedProviderIds}
+            onAddToCart={onAddToCart}
+            onRemoveFromCart={onRemoveFromCart}
+          />
+        </APIProvider>
+      </MapErrorBoundary>
       
       <div className="absolute top-3 left-3 flex flex-col gap-2">
         <div className="bg-white dark:bg-gray-900 rounded-md shadow-md p-2">
