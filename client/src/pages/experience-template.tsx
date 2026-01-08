@@ -821,12 +821,6 @@ export default function ExperienceTemplatePage() {
               </Tabs>
 
               <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-                <SheetTrigger asChild>
-                  <Button variant="outline" className="gap-2" data-testid="button-cart">
-                    <ShoppingCart className="w-4 h-4" />
-                    ${cartTotal}
-                  </Button>
-                </SheetTrigger>
                 <SheetContent className="flex flex-col h-full">
                   <SheetHeader className="flex-shrink-0">
                     <SheetTitle>Your Selection</SheetTitle>
