@@ -1087,28 +1087,6 @@ export default function ExperienceTemplatePage() {
             </div>
         </div>
         
-        {/* Sticky Cart Summary Footer on Content Panel */}
-        {cart.length > 0 && (
-          <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t shadow-lg p-4 z-30">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5 text-[#FF385C]" />
-                  <span className="font-semibold">{cart.length} items</span>
-                </div>
-                <span className="text-lg font-bold text-[#FF385C]">${cartTotal}</span>
-              </div>
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => setCartOpen(true)}
-                data-testid="button-view-cart-content"
-              >
-                View Cart
-              </Button>
-            </div>
-          </div>
-        )}
           </Panel>
 
           <PanelResizeHandle className="w-2 bg-gray-200 dark:bg-gray-700 hover:bg-[#FF385C] transition-colors cursor-col-resize flex items-center justify-center">
@@ -1135,42 +1113,6 @@ export default function ExperienceTemplatePage() {
                 />
               </div>
               
-              {cart.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 border-t p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-sm">Your Selections ({cart.length})</h3>
-                    <span className="font-bold text-[#FF385C]">${cartTotal}</span>
-                  </div>
-                  <div className="space-y-2 max-h-[120px] overflow-auto mb-3">
-                    {cart.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded p-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{item.name}</p>
-                          <p className="text-xs text-muted-foreground">${item.price}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="flex-shrink-0"
-                          onClick={() => removeFromCart(item.id)}
-                          data-testid={`button-map-remove-${item.id}`}
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="w-full gap-2"
-                    onClick={() => setCartOpen(true)}
-                    data-testid="button-view-cart-map"
-                  >
-                    <ShoppingCart className="w-4 h-4" />
-                    View Full Cart
-                  </Button>
-                </div>
-              )}
             </div>
           </Panel>
         </PanelGroup>
@@ -1387,23 +1329,6 @@ export default function ExperienceTemplatePage() {
                     height="100%"
                   />
                 </div>
-                {cart.length > 0 && (
-                  <div className="p-3 border-t bg-gray-50 dark:bg-gray-700">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium text-sm">{cart.length} items</span>
-                      <span className="font-bold text-[#FF385C]">${cartTotal}</span>
-                    </div>
-                    <Button 
-                      variant="outline"
-                      className="w-full gap-2"
-                      onClick={() => setCartOpen(true)}
-                      data-testid="button-view-cart-mobile"
-                    >
-                      <ShoppingCart className="w-4 h-4" />
-                      View Full Cart
-                    </Button>
-                  </div>
-                )}
               </CollapsibleContent>
             </div>
           </Collapsible>
