@@ -89,6 +89,7 @@ import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
+import LayoutMock from "@/pages/layout-mock";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -188,6 +189,9 @@ function Router() {
       </Route>
       <Route path="/services-provider">
         <ServicesProviderPage />
+      </Route>
+      <Route path="/layout-mock">
+        <LayoutMock />
       </Route>
 
       {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}
