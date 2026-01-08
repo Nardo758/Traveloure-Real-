@@ -514,6 +514,12 @@ export default function ExperienceTemplatePage() {
     setCart((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const updateCartQuantity = (id: string, quantity: number) => {
+    setCart((prev) => prev.map((item) => 
+      item.id === id ? { ...item, quantity: Math.max(1, Math.min(10, quantity)) } : item
+    ));
+  };
+
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
   const currentTabCategory = config.tabs.find(t => t.id === activeTab)?.category;
@@ -809,11 +815,10 @@ export default function ExperienceTemplatePage() {
                         {cart.map((item) => (
                           <Card key={item.id}>
                             <CardContent className="p-4">
-                              <div className="flex justify-between items-start">
+                              <div className="flex justify-between items-start mb-3">
                                 <div>
                                   <h4 className="font-medium">{item.name}</h4>
                                   <p className="text-sm text-muted-foreground">{item.provider}</p>
-                                  <p className="text-sm font-medium mt-1">${item.price}</p>
                                 </div>
                                 <Button
                                   variant="ghost"
@@ -823,6 +828,21 @@ export default function ExperienceTemplatePage() {
                                 >
                                   <X className="w-4 h-4" />
                                 </Button>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-xs text-muted-foreground">Quantity: {item.quantity}</Label>
+                                  <span className="text-sm font-medium">${item.price * item.quantity}</span>
+                                </div>
+                                <Slider
+                                  value={[item.quantity]}
+                                  onValueChange={([val]) => updateCartQuantity(item.id, val)}
+                                  min={1}
+                                  max={10}
+                                  step={1}
+                                  className="w-full"
+                                  data-testid={`slider-quantity-${item.id}`}
+                                />
                               </div>
                             </CardContent>
                           </Card>
