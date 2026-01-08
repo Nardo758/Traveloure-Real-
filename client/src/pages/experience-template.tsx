@@ -650,7 +650,7 @@ export default function ExperienceTemplatePage() {
               style={{ backgroundImage: `url('${config.heroImage}')` }}
             />
 
-            {/* White ribbon bar with Credits button */}
+            {/* White ribbon bar with Credits, Cart, Generate Itinerary */}
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3 z-10">
               <Link href="/credits">
                 <Button
@@ -664,6 +664,30 @@ export default function ExperienceTemplatePage() {
                   <Plus className="w-3 h-3" />
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setCartOpen(true)}
+                data-testid="button-cart-ribbon"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                {cart.length > 0 ? `$${cartTotal}` : "Cart"}
+              </Button>
+              <Button
+                size="sm"
+                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
+                onClick={generateItinerary}
+                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
+                data-testid="button-generate-ribbon"
+              >
+                {generatingItinerary ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Wand2 className="w-4 h-4" />
+                )}
+                Generate Itinerary
+              </Button>
             </div>
           </div>
 
@@ -865,7 +889,10 @@ export default function ExperienceTemplatePage() {
                       </div>
                       <Button 
                         className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                        onClick={() => setLocation("/cart")}
+                        onClick={() => {
+                          setCartOpen(false);
+                          setTimeout(() => setLocation("/cart"), 150);
+                        }}
                         data-testid="button-checkout"
                       >
                         Proceed to Checkout
@@ -1066,7 +1093,7 @@ export default function ExperienceTemplatePage() {
             </div>
         </div>
         
-        {/* Sticky Cart Footer on Content Panel */}
+        {/* Sticky Cart Summary Footer on Content Panel */}
         {cart.length > 0 && (
           <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t shadow-lg p-4 z-30">
             <div className="flex items-center justify-between gap-4">
@@ -1077,30 +1104,14 @@ export default function ExperienceTemplatePage() {
                 </div>
                 <span className="text-lg font-bold text-[#FF385C]">${cartTotal}</span>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => setAiOptimizeOpen(true)}
-                  data-testid="button-optimize-content"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Optimize
-                </Button>
-                <Button
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
-                  onClick={generateItinerary}
-                  disabled={!canGenerateItinerary || generatingItinerary}
-                  data-testid="button-generate-content"
-                >
-                  {generatingItinerary ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4" />
-                  )}
-                  Generate Itinerary
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => setCartOpen(true)}
+                data-testid="button-view-cart-content"
+              >
+                View Cart
+              </Button>
             </div>
           </div>
         )}
@@ -1155,30 +1166,15 @@ export default function ExperienceTemplatePage() {
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      className="flex-1 gap-2"
-                      onClick={() => setAiOptimizeOpen(true)}
-                      data-testid="button-optimize-ai"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      Optimize
-                    </Button>
-                    <Button
-                      className="flex-1 bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
-                      onClick={generateItinerary}
-                      disabled={!canGenerateItinerary || generatingItinerary}
-                      data-testid="button-generate-itinerary-cart"
-                    >
-                      {generatingItinerary ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-4 h-4" />
-                      )}
-                      Generate
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => setCartOpen(true)}
+                    data-testid="button-view-cart-map"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    View Full Cart
+                  </Button>
                 </div>
               )}
             </div>
@@ -1201,6 +1197,30 @@ export default function ExperienceTemplatePage() {
                   <Plus className="w-2 h-2" />
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={() => setCartOpen(true)}
+                data-testid="button-cart-ribbon-mobile"
+              >
+                <ShoppingCart className="w-3 h-3" />
+                {cart.length > 0 ? `$${cartTotal}` : "Cart"}
+              </Button>
+              <Button
+                size="sm"
+                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-1 text-xs"
+                onClick={generateItinerary}
+                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
+                data-testid="button-generate-ribbon-mobile"
+              >
+                {generatingItinerary ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Wand2 className="w-3 h-3" />
+                )}
+                Generate
+              </Button>
             </div>
           </div>
 
@@ -1369,26 +1389,15 @@ export default function ExperienceTemplatePage() {
                       <span className="font-medium text-sm">{cart.length} items</span>
                       <span className="font-bold text-[#FF385C]">${cartTotal}</span>
                     </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline"
-                        className="flex-1 gap-1"
-                        onClick={() => setAiOptimizeOpen(true)}
-                        data-testid="button-optimize-ai-mobile"
-                      >
-                        <Sparkles className="w-4 h-4" />
-                        Optimize
-                      </Button>
-                      <Button 
-                        className="flex-1 bg-[#FF385C] hover:bg-[#E23350] gap-1"
-                        onClick={generateItinerary}
-                        disabled={!canGenerateItinerary || generatingItinerary}
-                        data-testid="button-generate-mobile"
-                      >
-                        {generatingItinerary ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                        Generate
-                      </Button>
-                    </div>
+                    <Button 
+                      variant="outline"
+                      className="w-full gap-2"
+                      onClick={() => setCartOpen(true)}
+                      data-testid="button-view-cart-mobile"
+                    >
+                      <ShoppingCart className="w-4 h-4" />
+                      View Full Cart
+                    </Button>
                   </div>
                 )}
               </CollapsibleContent>
