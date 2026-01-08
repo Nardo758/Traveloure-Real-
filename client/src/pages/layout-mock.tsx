@@ -37,7 +37,7 @@ export default function LayoutMock() {
               className="w-full h-full object-cover"
             />
             {/* Top ribbon bar with Credits and Generate Itinerary buttons */}
-            <div className="absolute top-0 left-0 right-0 bg-gray-800/80 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3">
+            <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3">
               <Button variant="outline" size="sm" className="gap-2 bg-white/90">
                 <span className="text-amber-500">0 Credits</span>
                 <span>+</span>
@@ -146,6 +146,12 @@ export default function LayoutMock() {
                   AI Optimization
                 </TabsTrigger>
               </TabsList>
+
+              {/* Parallel lines below tabs */}
+              <div className="mt-4 space-y-1">
+                <div className="h-px bg-gray-200 w-full"></div>
+                <div className="h-px bg-gray-200 w-full"></div>
+              </div>
 
               <TabsContent value="activities" className="mt-6">
                 <div className="text-muted-foreground">Activities content goes here...</div>
