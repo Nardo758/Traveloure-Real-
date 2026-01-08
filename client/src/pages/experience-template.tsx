@@ -921,7 +921,7 @@ export default function ExperienceTemplatePage() {
                       </div>
                     </div>
 
-                    <div>
+                    <div className="w-1/2">
                       <Label className="text-sm font-medium">Sort By</Label>
                       <Select value={sortBy} onValueChange={setSortBy}>
                         <SelectTrigger className="mt-2" data-testid="select-sort">
