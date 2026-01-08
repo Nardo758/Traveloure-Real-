@@ -803,15 +803,15 @@ export default function ExperienceTemplatePage() {
                     ${cartTotal}
                   </Button>
                 </SheetTrigger>
-                <SheetContent>
-                  <SheetHeader>
+                <SheetContent className="flex flex-col h-full">
+                  <SheetHeader className="flex-shrink-0">
                     <SheetTitle>Your Selection</SheetTitle>
                   </SheetHeader>
-                  <ScrollArea className="h-[calc(100vh-200px)] mt-4">
+                  <div className="flex-1 overflow-y-auto mt-4 pr-1">
                     {cart.length === 0 ? (
                       <p className="text-muted-foreground text-center py-8">Your cart is empty</p>
                     ) : (
-                      <div className="space-y-4">
+                      <div className="space-y-4 pb-4">
                         {cart.map((item) => (
                           <Card key={item.id}>
                             <CardContent className="p-4">
@@ -849,9 +849,9 @@ export default function ExperienceTemplatePage() {
                         ))}
                       </div>
                     )}
-                  </ScrollArea>
+                  </div>
                   {cart.length > 0 && (
-                    <div className="mt-4 pt-4 border-t">
+                    <div className="flex-shrink-0 pt-4 border-t mt-auto">
                       <CheckoutExpertBanner 
                         onConnect={() => {
                           setCartOpen(false);
