@@ -36,9 +36,9 @@ export default function LayoutMock() {
               alt="Trip cover" 
               className="w-full h-full object-cover"
             />
-            {/* Credits and Generate Itinerary buttons - top right overlay */}
-            <div className="absolute top-4 right-4 flex items-center gap-3">
-              <Button variant="outline" size="sm" className="gap-2 bg-white/90 backdrop-blur-sm">
+            {/* Top ribbon bar with Credits and Generate Itinerary buttons */}
+            <div className="absolute top-0 left-0 right-0 bg-gray-800/80 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3">
+              <Button variant="outline" size="sm" className="gap-2 bg-white/90">
                 <span className="text-amber-500">0 Credits</span>
                 <span>+</span>
               </Button>
