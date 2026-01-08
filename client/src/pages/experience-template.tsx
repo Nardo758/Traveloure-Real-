@@ -14,6 +14,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
   Search,
   ShoppingCart,
@@ -626,8 +627,9 @@ export default function ExperienceTemplatePage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col lg:flex-row">
-        <div className="flex-1 lg:w-[60%] flex flex-col min-h-screen">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
+          <Panel defaultSize={60} minSize={40} maxSize={80} className="flex flex-col overflow-hidden">
           {/* Hero Section with ribbon bar */}
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
@@ -1058,58 +1060,212 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
         </div>
-        </div>
+          </Panel>
 
-        <div className="hidden lg:block lg:w-[40%] h-screen sticky top-0">
-          <div className="h-full flex flex-col">
-            <div className="flex-1 relative">
-              <ExperienceMap
-                providers={mapProviders}
-                selectedProviderIds={selectedProviderIds}
-                destination={destination}
-                onAddToCart={(provider) => addToCart({
-                  id: provider.id,
-                  type: provider.category,
-                  name: provider.name,
-                  price: provider.price,
-                  quantity: 1,
-                  provider: "Platform Provider"
-                })}
-                onRemoveFromCart={removeFromCart}
-                height="100%"
-              />
-            </div>
-            
-            {cart.length > 0 && (
-              <div className="bg-white dark:bg-gray-800 border-t p-4 max-h-[200px] overflow-auto">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-sm">Your Selections ({cart.length})</h3>
-                  <span className="font-bold text-[#FF385C]">${cartTotal}</span>
-                </div>
-                <div className="space-y-2">
-                  {cart.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded p-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">${item.price}</p>
+          <PanelResizeHandle className="w-2 bg-gray-200 dark:bg-gray-700 hover:bg-[#FF385C] transition-colors cursor-col-resize flex items-center justify-center">
+            <div className="w-1 h-8 bg-gray-400 dark:bg-gray-500 rounded-full" />
+          </PanelResizeHandle>
+
+          <Panel defaultSize={40} minSize={20} maxSize={60} className="flex flex-col">
+            <div className="h-full flex flex-col">
+              <div className="flex-1 relative">
+                <ExperienceMap
+                  providers={mapProviders}
+                  selectedProviderIds={selectedProviderIds}
+                  destination={destination}
+                  onAddToCart={(provider) => addToCart({
+                    id: provider.id,
+                    type: provider.category,
+                    name: provider.name,
+                    price: provider.price,
+                    quantity: 1,
+                    provider: "Platform Provider"
+                  })}
+                  onRemoveFromCart={removeFromCart}
+                  height="100%"
+                />
+              </div>
+              
+              {cart.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 border-t p-4 max-h-[200px] overflow-auto">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-sm">Your Selections ({cart.length})</h3>
+                    <span className="font-bold text-[#FF385C]">${cartTotal}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {cart.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded p-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">${item.price}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="flex-shrink-0"
+                          onClick={() => removeFromCart(item.id)}
+                          data-testid={`button-map-remove-${item.id}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="flex-shrink-0"
-                        onClick={() => removeFromCart(item.id)}
-                        data-testid={`button-map-remove-${item.id}`}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
+              )}
+            </div>
+          </Panel>
+        </PanelGroup>
+
+        {/* Mobile Layout - Content stacked with collapsible map */}
+        <div className="lg:hidden flex flex-col min-h-screen">
+          {/* Mobile Hero Section */}
+          <div className="relative h-48 flex-shrink-0 overflow-hidden">
+            <div 
+              className="absolute inset-0 bg-cover bg-center"
+              style={{ backgroundImage: `url('${config.heroImage}')` }}
+            />
+            <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-end gap-2 z-10">
+              <Link href="/credits">
+                <Button variant="outline" size="sm" className="gap-1 text-xs">
+                  <Coins className="w-3 h-3 text-amber-500" />
+                  {userCredits}
+                  <Plus className="w-2 h-2" />
+                </Button>
+              </Link>
+              <Button
+                size="sm"
+                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-1 text-xs"
+                onClick={generateItinerary}
+                disabled={!canGenerateItinerary || generatingItinerary}
+              >
+                {generatingItinerary ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                Generate
+              </Button>
+            </div>
+          </div>
+
+          {/* Mobile Trip Details Card */}
+          <Card className="bg-white dark:bg-gray-800 rounded-xl shadow-md border p-4 w-full max-w-md mx-auto mt-[-80px] z-20 relative">
+            <CardContent className="p-0">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold">{experienceType.name} Details</h2>
+                <Users className="w-4 h-4 text-gray-400" />
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm font-medium">{config.locationLabel}</Label>
+                  <Input
+                    placeholder="Eg: Paris, New York"
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    className="mt-1"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-xs text-muted-foreground">From</span>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="w-full mt-1 justify-start text-xs">
+                          <Calendar className="mr-1 h-3 w-3" />
+                          {startDate ? format(startDate, "M/d/yy") : "Select"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <CalendarComponent mode="single" selected={startDate} onSelect={setStartDate} />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">To</span>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="w-full mt-1 justify-start text-xs">
+                          <Calendar className="mr-1 h-3 w-3" />
+                          {endDate ? format(endDate, "M/d/yy") : "Select"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <CalendarComponent mode="single" selected={endDate} onSelect={handleEndDateSelect} disabled={(date) => startDate ? date < startDate : false} />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+                <Button className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white" disabled={!!dateError}>
+                  Submit Details
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Mobile Tabs */}
+          <div className="bg-white dark:bg-gray-800 border-b mt-4 px-2 overflow-x-auto">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="h-auto bg-transparent p-0 gap-0 flex-nowrap">
+                {config.tabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.id}
+                    value={tab.id}
+                    className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm data-[state=active]:border-[#FF385C] data-[state=active]:text-[#FF385C] whitespace-nowrap"
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {/* Mobile Content */}
+          <div className="flex-1 p-4 pb-20">
+            {activeTab === "ai" ? (
+              <AIOptimizationTab experienceType={experienceType} destination={destination} date={startDate} cart={cart} />
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {servicesLoading ? (
+                  [1, 2, 3, 4].map((i) => (
+                    <Card key={i}><Skeleton className="h-40 w-full" /></Card>
+                  ))
+                ) : filteredServices.length > 0 ? (
+                  filteredServices.slice(0, 6).map((service) => (
+                    <Card key={service.id} className="overflow-hidden">
+                      <div className="h-32 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                        <Building2 className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <CardContent className="p-3">
+                        <h3 className="font-medium text-sm truncate">{service.serviceName}</h3>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="font-bold">${service.price || 0}</span>
+                          <Button
+                            size="sm"
+                            className="bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs"
+                            onClick={() => addToCart({
+                              id: service.id.toString(),
+                              type: activeTab,
+                              name: service.serviceName,
+                              price: Number(service.price) || 0,
+                              quantity: 1,
+                              provider: "Platform Provider",
+                            })}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />Add
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <div className="col-span-full text-center py-8">
+                    <Building2 className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                    <p className="text-muted-foreground text-sm">No providers available yet</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
+        {/* Mobile Map Collapsible */}
         <div className="lg:hidden">
           <Collapsible>
             <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t shadow-lg z-40">
