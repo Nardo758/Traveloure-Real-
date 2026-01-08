@@ -65,6 +65,19 @@ const experienceConfigs: Record<string, {
   locationLabel: string;
   dateLabel: string;
 }> = {
+  travel: {
+    heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
+    tabs: [
+      { id: "flights", label: "Flights", icon: Building2, category: "flights" },
+      { id: "hotels", label: "Hotels", icon: Building2, category: "hotels" },
+      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
+      { id: "transportation", label: "Transportation", icon: Building2, category: "transportation" },
+      { id: "dining", label: "Dining", icon: Building2, category: "dining" },
+    ],
+    filters: ["Budget", "Luxury", "Family", "Adventure", "Business", "Beach", "City", "Nature"],
+    locationLabel: "Destination:",
+    dateLabel: "Travel Dates:",
+  },
   wedding: {
     heroImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80",
     tabs: [
@@ -73,7 +86,6 @@ const experienceConfigs: Record<string, {
       { id: "photography", label: "Photography", icon: Building2, category: "photography" },
       { id: "florist", label: "Florist", icon: Building2, category: "florist" },
       { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
     locationLabel: "Wedding Location:",
@@ -87,7 +99,6 @@ const experienceConfigs: Record<string, {
       { id: "dining", label: "Dining", icon: Building2, category: "dining" },
       { id: "rings", label: "Rings", icon: Gem, category: "jewelry" },
       { id: "transportation", label: "Transportation", icon: Building2, category: "transportation" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
     locationLabel: "Proposal Location:",
@@ -100,7 +111,6 @@ const experienceConfigs: Record<string, {
       { id: "dining", label: "Dining", icon: Building2, category: "dining" },
       { id: "activities", label: "Activities", icon: Building2, category: "activities" },
       { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Couples", "Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Beachfront"],
     locationLabel: "Destination:",
@@ -113,7 +123,6 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Building2, category: "catering" },
       { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
       { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Kids", "Adults", "Outdoor", "Indoor", "Theme Party", "Elegant", "Casual", "Adventure"],
     locationLabel: "Party Location:",
@@ -126,7 +135,6 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Building2, category: "catering" },
       { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
       { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
     locationLabel: "Event Location:",
@@ -139,7 +147,6 @@ const experienceConfigs: Record<string, {
       { id: "activities", label: "Adventures", icon: Building2, category: "adventures" },
       { id: "nightlife", label: "Nightlife", icon: Building2, category: "nightlife" },
       { id: "sports", label: "Sports", icon: Building2, category: "sports" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Adventure", "Sports", "Nightlife", "Beach", "Mountains", "City", "Bachelor", "Fishing"],
     locationLabel: "Destination:",
@@ -152,7 +159,6 @@ const experienceConfigs: Record<string, {
       { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
       { id: "shopping", label: "Shopping", icon: Building2, category: "shopping" },
       { id: "dining", label: "Dining & Wine", icon: Building2, category: "dining" },
-      { id: "ai", label: "AI Optimization", icon: Wand2, category: null },
     ],
     filters: ["Spa", "Shopping", "Beach", "Wine", "Brunch", "Wellness", "Bachelorette", "Luxury"],
     locationLabel: "Destination:",
@@ -414,6 +420,7 @@ export default function ExperienceTemplatePage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
 
   const { data: walletData } = useQuery<{ balance: number }>({
@@ -473,7 +480,7 @@ export default function ExperienceTemplatePage() {
         })
       });
       if (response.ok) {
-        setActiveTab("ai");
+        setAiOptimizeOpen(true);
       }
     } catch (error) {
       console.error("Failed to generate itinerary:", error);
@@ -637,7 +644,7 @@ export default function ExperienceTemplatePage() {
               style={{ backgroundImage: `url('${config.heroImage}')` }}
             />
 
-            {/* White ribbon bar with Credits and Generate Itinerary buttons */}
+            {/* White ribbon bar with Credits button */}
             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3 z-10">
               <Link href="/credits">
                 <Button
@@ -651,19 +658,6 @@ export default function ExperienceTemplatePage() {
                   <Plus className="w-3 h-3" />
                 </Button>
               </Link>
-              <Button
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
-                onClick={generateItinerary}
-                disabled={!canGenerateItinerary || generatingItinerary}
-                data-testid="button-generate-itinerary"
-              >
-                {generatingItinerary ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4" />
-                )}
-                Generate Itinerary
-              </Button>
             </div>
           </div>
 
@@ -981,14 +975,6 @@ export default function ExperienceTemplatePage() {
             </Button>
           </div>
 
-          {activeTab === "ai" ? (
-            <AIOptimizationTab 
-              experienceType={experienceType}
-              destination={destination}
-              date={startDate}
-              cart={cart}
-            />
-          ) : (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1058,7 +1044,6 @@ export default function ExperienceTemplatePage() {
               </div>
               
             </div>
-          )}
         </div>
           </Panel>
 
@@ -1087,12 +1072,12 @@ export default function ExperienceTemplatePage() {
               </div>
               
               {cart.length > 0 && (
-                <div className="bg-white dark:bg-gray-800 border-t p-4 max-h-[200px] overflow-auto">
+                <div className="bg-white dark:bg-gray-800 border-t p-4">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-sm">Your Selections ({cart.length})</h3>
                     <span className="font-bold text-[#FF385C]">${cartTotal}</span>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-[120px] overflow-auto mb-3">
                     {cart.map((item) => (
                       <div key={item.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700 rounded p-2">
                         <div className="flex-1 min-w-0">
@@ -1110,6 +1095,30 @@ export default function ExperienceTemplatePage() {
                         </Button>
                       </div>
                     ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => setAiOptimizeOpen(true)}
+                      data-testid="button-optimize-ai"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Optimize
+                    </Button>
+                    <Button
+                      className="flex-1 bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
+                      onClick={generateItinerary}
+                      disabled={!canGenerateItinerary || generatingItinerary}
+                      data-testid="button-generate-itinerary-cart"
+                    >
+                      {generatingItinerary ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-4 h-4" />
+                      )}
+                      Generate
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1133,15 +1142,6 @@ export default function ExperienceTemplatePage() {
                   <Plus className="w-2 h-2" />
                 </Button>
               </Link>
-              <Button
-                size="sm"
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-1 text-xs"
-                onClick={generateItinerary}
-                disabled={!canGenerateItinerary || generatingItinerary}
-              >
-                {generatingItinerary ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                Generate
-              </Button>
             </div>
           </div>
 
@@ -1218,9 +1218,6 @@ export default function ExperienceTemplatePage() {
 
           {/* Mobile Content */}
           <div className="flex-1 p-4 pb-20">
-            {activeTab === "ai" ? (
-              <AIOptimizationTab experienceType={experienceType} destination={destination} date={startDate} cart={cart} />
-            ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {servicesLoading ? (
                   [1, 2, 3, 4].map((i) => (
@@ -1261,7 +1258,6 @@ export default function ExperienceTemplatePage() {
                   </div>
                 )}
               </div>
-            )}
           </div>
         </div>
 
@@ -1314,19 +1310,52 @@ export default function ExperienceTemplatePage() {
                       <span className="font-medium text-sm">{cart.length} items</span>
                       <span className="font-bold text-[#FF385C]">${cartTotal}</span>
                     </div>
-                    <Button 
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                      onClick={() => setCartOpen(true)}
-                      data-testid="button-view-cart-mobile"
-                    >
-                      View Cart
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline"
+                        className="flex-1 gap-1"
+                        onClick={() => setAiOptimizeOpen(true)}
+                        data-testid="button-optimize-ai-mobile"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        Optimize
+                      </Button>
+                      <Button 
+                        className="flex-1 bg-[#FF385C] hover:bg-[#E23350] gap-1"
+                        onClick={generateItinerary}
+                        disabled={!canGenerateItinerary || generatingItinerary}
+                        data-testid="button-generate-mobile"
+                      >
+                        {generatingItinerary ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                        Generate
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CollapsibleContent>
             </div>
           </Collapsible>
         </div>
+
+        {/* AI Optimization Sheet */}
+        <Sheet open={aiOptimizeOpen} onOpenChange={setAiOptimizeOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                AI Optimization
+              </SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              <AIOptimizationTab 
+                experienceType={experienceType}
+                destination={destination}
+                date={startDate}
+                cart={cart}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
         
         <ExpertChatWidget
           experienceType={experienceType?.name}
