@@ -890,8 +890,8 @@ export default function ExperienceTemplatePage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
+                  <div className="flex flex-wrap gap-4">
+                    <div className="min-w-[200px] flex-1">
                       <Label className="text-sm font-medium">Price Range: ${priceRange[0]} - ${priceRange[1]}+</Label>
                       <Slider
                         value={priceRange}
@@ -903,9 +903,9 @@ export default function ExperienceTemplatePage() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-[200px] flex-1">
                       <Label className="text-sm font-medium">Minimum Rating</Label>
-                      <div className="flex gap-2 mt-2">
+                      <div className="flex flex-wrap gap-2 mt-2">
                         {[0, 3, 3.5, 4, 4.5].map((rating) => (
                           <Button
                             key={rating}
@@ -921,7 +921,7 @@ export default function ExperienceTemplatePage() {
                       </div>
                     </div>
 
-                    <div className="w-1/2">
+                    <div className="min-w-[140px] max-w-[180px]">
                       <Label className="text-sm font-medium">Sort By</Label>
                       <Select value={sortBy} onValueChange={setSortBy}>
                         <SelectTrigger className="mt-2" data-testid="select-sort">
