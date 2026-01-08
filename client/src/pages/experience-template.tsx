@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +51,7 @@ import type { ExperienceType, ProviderService } from "@shared/schema";
 
 interface CartItem {
   id: string;
+  cartItemId?: string;
   type: string;
   name: string;
   price: number;
@@ -389,6 +392,7 @@ function AIOptimizationTab({
 export default function ExperienceTemplatePage() {
   const [, params] = useRoute("/experiences/:slug");
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const slug = params?.slug || "";
   
   const { data: experienceType, isLoading: typeLoading } = useQuery<ExperienceType>({
@@ -405,6 +409,37 @@ export default function ExperienceTemplatePage() {
     queryKey: ["/api/provider-services"],
   });
 
+  interface ServerCartItem {
+    id: string;
+    serviceId: string;
+    quantity: number;
+    service: { id: string; serviceName: string; price: string; location?: string } | null;
+  }
+
+  interface ServerCartData {
+    items: ServerCartItem[];
+    subtotal: string;
+    total: string;
+    itemCount: number;
+  }
+
+  const { data: serverCart, refetch: refetchCart } = useQuery<ServerCartData>({
+    queryKey: ["/api/cart"],
+  });
+
+  const cart: CartItem[] = useMemo(() => {
+    if (!serverCart?.items) return [];
+    return serverCart.items.map((item) => ({
+      id: item.serviceId,
+      cartItemId: item.id,
+      type: "service",
+      name: item.service?.serviceName || "Unknown Service",
+      price: parseFloat(item.service?.price || "0"),
+      quantity: item.quantity || 1,
+      provider: "Platform Provider",
+    }));
+  }, [serverCart]);
+
   const config = experienceConfigs[slug] || experienceConfigs.wedding;
   
   const [destination, setDestination] = useState("");
@@ -416,7 +451,6 @@ export default function ExperienceTemplatePage() {
   const [minRating, setMinRating] = useState(0);
   const [sortBy, setSortBy] = useState("popular");
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
-  const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
@@ -499,25 +533,49 @@ export default function ExperienceTemplatePage() {
     );
   };
 
-  const addToCart = (item: CartItem) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
-      if (existing) {
-        return prev.map((i) => (i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i));
+  const addToCart = async (item: CartItem) => {
+    const existing = cart.find((i) => i.id === item.id);
+    if (existing && existing.cartItemId) {
+      try {
+        await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      } catch (error) {
+        toast({ variant: "destructive", title: "Failed to update cart" });
       }
-      return [...prev, { ...item, quantity: 1 }];
-    });
+    } else if (!existing) {
+      try {
+        await apiRequest("POST", "/api/cart", { serviceId: item.id, quantity: 1 });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      } catch (error) {
+        toast({ variant: "destructive", title: "Failed to add to cart" });
+      }
+    }
     setCartOpen(true);
   };
 
-  const removeFromCart = (id: string) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
+  const removeFromCart = async (id: string) => {
+    const item = cart.find((i) => i.id === id);
+    if (item?.cartItemId) {
+      try {
+        await apiRequest("DELETE", `/api/cart/${item.cartItemId}`);
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      } catch (error) {
+        toast({ variant: "destructive", title: "Failed to remove from cart" });
+      }
+    }
   };
 
-  const updateCartQuantity = (id: string, quantity: number) => {
-    setCart((prev) => prev.map((item) => 
-      item.id === id ? { ...item, quantity: Math.max(1, Math.min(10, quantity)) } : item
-    ));
+  const updateCartQuantity = async (id: string, quantity: number) => {
+    const item = cart.find((i) => i.id === id);
+    const clampedQty = Math.max(1, Math.min(10, quantity));
+    if (item?.cartItemId) {
+      try {
+        await apiRequest("PATCH", `/api/cart/${item.cartItemId}`, { quantity: clampedQty });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      } catch (error) {
+        toast({ variant: "destructive", title: "Failed to update quantity" });
+      }
+    }
   };
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);

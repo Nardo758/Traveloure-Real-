@@ -116,10 +116,13 @@ export default function CartPage() {
     <Layout>
       <div className="container py-8 max-w-4xl mx-auto">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" asChild data-testid="button-back">
-            <Link href="/discover">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => window.history.back()}
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-5 h-5" />
           </Button>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Your Cart</h1>
           {cart && cart.itemCount > 0 && (
