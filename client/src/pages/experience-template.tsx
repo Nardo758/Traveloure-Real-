@@ -1045,6 +1045,45 @@ export default function ExperienceTemplatePage() {
               
             </div>
         </div>
+        
+        {/* Sticky Cart Footer on Content Panel */}
+        {cart.length > 0 && (
+          <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t shadow-lg p-4 z-30">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-[#FF385C]" />
+                  <span className="font-semibold">{cart.length} items</span>
+                </div>
+                <span className="text-lg font-bold text-[#FF385C]">${cartTotal}</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => setAiOptimizeOpen(true)}
+                  data-testid="button-optimize-content"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Optimize
+                </Button>
+                <Button
+                  className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
+                  onClick={generateItinerary}
+                  disabled={!canGenerateItinerary || generatingItinerary}
+                  data-testid="button-generate-content"
+                >
+                  {generatingItinerary ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-4 h-4" />
+                  )}
+                  Generate Itinerary
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
           </Panel>
 
           <PanelResizeHandle className="w-2 bg-gray-200 dark:bg-gray-700 hover:bg-[#FF385C] transition-colors cursor-col-resize flex items-center justify-center">
