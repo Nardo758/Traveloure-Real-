@@ -76,6 +76,7 @@ export interface IStorage {
 
   // Provider Services
   getProviderServices(userId: string): Promise<ProviderService[]>;
+  getAllProviderServices(): Promise<ProviderService[]>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -343,6 +344,10 @@ export class DatabaseStorage implements IStorage {
   // Provider Services
   async getProviderServices(userId: string): Promise<ProviderService[]> {
     return await db.select().from(providerServices).where(eq(providerServices.userId, userId));
+  }
+
+  async getAllProviderServices(): Promise<ProviderService[]> {
+    return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {

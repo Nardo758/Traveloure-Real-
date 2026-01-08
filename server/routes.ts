@@ -536,6 +536,12 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // === Provider Services Routes ===
   
+  // Get all active provider services (public - for experience browsing)
+  app.get("/api/provider-services", async (req, res) => {
+    const services = await storage.getAllProviderServices();
+    res.json(services);
+  });
+  
   // Get provider's services
   app.get("/api/provider/services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
