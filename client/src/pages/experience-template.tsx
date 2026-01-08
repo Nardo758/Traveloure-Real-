@@ -35,6 +35,8 @@ import {
   Users,
   MessageCircle,
   ArrowLeft,
+  Coins,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -411,6 +413,73 @@ export default function ExperienceTemplatePage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  const [generatingItinerary, setGeneratingItinerary] = useState(false);
+
+  const { data: walletData } = useQuery<{ balance: number }>({
+    queryKey: ["/api/wallet"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/wallet", { credentials: "include" });
+        if (!res.ok) return { balance: 0 };
+        return res.json();
+      } catch {
+        return { balance: 0 };
+      }
+    },
+    retry: false,
+    staleTime: 30000,
+  });
+
+  const userCredits = walletData?.balance ?? 0;
+
+  const dateError = useMemo(() => {
+    if (startDate && endDate && endDate < startDate) {
+      return "End date cannot be before start date";
+    }
+    return null;
+  }, [startDate, endDate]);
+
+  const handleEndDateSelect = (date: Date | undefined) => {
+    if (date && startDate && date < startDate) {
+      setEndDate(startDate);
+    } else {
+      setEndDate(date);
+    }
+  };
+
+  const canGenerateItinerary = !dateError && destination.trim();
+
+  const generateItinerary = async () => {
+    if (!canGenerateItinerary) return;
+    setGeneratingItinerary(true);
+    try {
+      const response = await fetch("/api/ai/optimize-experience", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          experienceType: experienceType?.name,
+          destination,
+          startDate: startDate?.toISOString(),
+          endDate: endDate?.toISOString(),
+          selectedServices: cart.map(item => ({
+            name: item.name,
+            provider: item.provider,
+            price: item.price,
+            category: item.type
+          })),
+          preferences: {}
+        })
+      });
+      if (response.ok) {
+        setActiveTab("ai");
+      }
+    } catch (error) {
+      console.error("Failed to generate itinerary:", error);
+    } finally {
+      setGeneratingItinerary(false);
+    }
+  };
 
   const openExpertChat = () => {
     setChatOpen(true);
@@ -559,121 +628,145 @@ export default function ExperienceTemplatePage() {
     <Layout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col lg:flex-row">
         <div className="flex-1 lg:w-[60%] flex flex-col min-h-screen">
-          <div className="relative h-[280px] md:h-[320px] flex-shrink-0">
+          <div className="relative h-[420px] md:h-[460px] flex-shrink-0">
             <div 
               className="absolute inset-0 bg-cover bg-center"
               style={{ backgroundImage: `url('${config.heroImage}')` }}
             >
               <div className="absolute inset-0 bg-black/30" />
             </div>
+
+            <div className="absolute top-4 right-4 flex items-center gap-3 z-10">
+              <Link href="/credits">
+                <Button
+                  variant="outline"
+                  className="bg-white/90 dark:bg-gray-800/90 backdrop-blur border-0 gap-2"
+                  data-testid="button-credits"
+                >
+                  <Coins className="w-4 h-4 text-amber-500" />
+                  {userCredits} Credits
+                  <Plus className="w-3 h-3" />
+                </Button>
+              </Link>
+              <Button
+                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
+                onClick={generateItinerary}
+                disabled={!canGenerateItinerary || generatingItinerary}
+                data-testid="button-generate-itinerary"
+              >
+                {generatingItinerary ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Wand2 className="w-4 h-4" />
+                )}
+                Generate Itinerary
+              </Button>
+            </div>
             
-            <div className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 w-[320px] md:w-[380px]">
-            <Card className="bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl border-0">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                    {experienceType.name} Details
-                  </h2>
-                  <Sparkles className="w-5 h-5 text-[#FF385C]" />
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="location" className="text-sm text-gray-600 dark:text-gray-400">
-                      {config.locationLabel}
-                    </Label>
-                    <div className="relative mt-1">
-                      <Input
-                        id="location"
-                        placeholder="Enter location..."
-                        value={destination}
-                        onChange={(e) => setDestination(e.target.value)}
-                        className="pl-10"
-                        data-testid="input-location"
-                      />
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <div className="absolute inset-0 flex items-center justify-center p-4 md:p-8">
+              <Card className="bg-white/95 dark:bg-gray-800/95 backdrop-blur shadow-xl border-0 w-full max-w-md">
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                      {experienceType.name} Details
+                    </h2>
+                    <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="location" className="text-sm text-gray-600 dark:text-gray-400">
+                        {config.locationLabel}
+                      </Label>
+                      <div className="relative mt-1">
+                        <Input
+                          id="location"
+                          placeholder="Eg: Paris, New York, Japan"
+                          value={destination}
+                          onChange={(e) => setDestination(e.target.value)}
+                          className="pl-10"
+                          data-testid="input-location"
+                        />
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <Label className="text-sm text-gray-600 dark:text-gray-400">{config.dateLabel}</Label>
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "justify-start text-left font-normal",
-                              !startDate && "text-muted-foreground"
-                            )}
-                            data-testid="button-start-date"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {startDate ? format(startDate, "MM/dd/yyyy") : "From"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={startDate}
-                            onSelect={setStartDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "justify-start text-left font-normal",
-                              !endDate && "text-muted-foreground"
-                            )}
-                            data-testid="button-end-date"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {endDate ? format(endDate, "MM/dd/yyyy") : "To"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={endDate}
-                            onSelect={setEndDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
+                    <div>
+                      <Label className="text-sm text-gray-600 dark:text-gray-400">{config.dateLabel}</Label>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        <div>
+                          <Label className="text-xs text-gray-500 dark:text-gray-400">From</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !startDate && "text-muted-foreground",
+                                  dateError && "border-red-500"
+                                )}
+                                data-testid="button-start-date"
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {startDate ? format(startDate, "M/d/yyyy") : "Select"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <CalendarComponent
+                                mode="single"
+                                selected={startDate}
+                                onSelect={setStartDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-gray-500 dark:text-gray-400">To</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !endDate && "text-muted-foreground",
+                                  dateError && "border-red-500"
+                                )}
+                                data-testid="button-end-date"
+                              >
+                                <Calendar className="mr-2 h-4 w-4" />
+                                {endDate ? format(endDate, "M/d/yyyy") : "Select"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <CalendarComponent
+                                mode="single"
+                                selected={endDate}
+                                onSelect={handleEndDateSelect}
+                                disabled={(date) => startDate ? date < startDate : false}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      </div>
+                      {dateError && (
+                        <p className="text-xs text-red-500 mt-1" data-testid="text-date-error">{dateError}</p>
+                      )}
                     </div>
+
+                    <Button 
+                      className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
+                      disabled={!!dateError}
+                      data-testid="button-submit-details"
+                    >
+                      Submit {experienceType.name} Details
+                    </Button>
                   </div>
-
-                  <Button 
-                    className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
-                    data-testid="button-submit-details"
-                  >
-                    Submit {experienceType.name} Details
-                  </Button>
-
-                  <div className="flex items-center gap-2 pt-2">
-                    <div className="flex-1 border-t border-gray-200 dark:border-gray-600" />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">or</span>
-                    <div className="flex-1 border-t border-gray-200 dark:border-gray-600" />
-                  </div>
-
-                  <Button 
-                    variant="outline"
-                    className="w-full border-[#FF385C] text-[#FF385C] hover:bg-[#FF385C]/10"
-                    onClick={openExpertChat}
-                    data-testid="button-hero-expert"
-                  >
-                    <MessageCircle className="w-4 h-4 mr-2" />
-                    Plan with an Expert
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
