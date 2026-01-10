@@ -654,15 +654,29 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // === Experience Types Routes ===
   
-  // Get all experience types
+  // Slug aliasing for backward compatibility
+  const slugAliases: Record<string, string> = {
+    "romance": "date-night",
+    "corporate": "corporate-events",
+  };
+  
+  function resolveSlug(slug: string): string {
+    return slugAliases[slug] || slug;
+  }
+  
+  // Get all experience types (filter out legacy slugs for frontend)
   app.get("/api/experience-types", async (req, res) => {
     const types = await storage.getExperienceTypes();
-    res.json(types);
+    // Filter out legacy slugs that have been aliased
+    const legacySlugs = Object.keys(slugAliases);
+    const filteredTypes = types.filter(t => !legacySlugs.includes(t.slug));
+    res.json(filteredTypes);
   });
 
-  // Get experience type by slug
+  // Get experience type by slug (with alias resolution)
   app.get("/api/experience-types/:slug", async (req, res) => {
-    const type = await storage.getExperienceTypeBySlug(req.params.slug);
+    const resolvedSlug = resolveSlug(req.params.slug);
+    const type = await storage.getExperienceTypeBySlug(resolvedSlug);
     if (!type) {
       return res.status(404).json({ message: "Experience type not found" });
     }
@@ -1573,7 +1587,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get cart items
   app.get("/api/cart", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const experienceSlug = req.query.experience as string | undefined;
+    const rawSlug = req.query.experience as string | undefined;
+    const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
     
     // Calculate totals
@@ -1598,7 +1613,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { serviceId, quantity, tripId, scheduledDate, notes, experienceSlug } = req.body;
+      const { serviceId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       
       if (!serviceId) {
         return res.status(400).json({ message: "Service ID is required" });
@@ -1610,13 +1625,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(404).json({ message: "Service not found" });
       }
       
+      // Resolve slug aliases
+      const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
+      
       const item = await storage.addToCart(userId, {
         serviceId,
         quantity: quantity || 1,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
-        experienceSlug: experienceSlug || "general",
+        experienceSlug,
       });
       
       res.status(201).json(item);
