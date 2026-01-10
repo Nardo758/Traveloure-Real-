@@ -17,7 +17,20 @@ import {
   Facebook,
   Instagram,
   Twitter,
-  Linkedin
+  Linkedin,
+  Users,
+  CalendarHeart,
+  Mountain,
+  Baby,
+  GraduationCap,
+  Diamond,
+  Home,
+  PartyPopper,
+  Trophy,
+  HandHeart,
+  TreePine,
+  Bot,
+  UserCheck
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -41,9 +54,20 @@ const experienceCategories = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500" },
   { icon: Heart, label: "Wedding", slug: "wedding", color: "text-pink-500" },
   { icon: Gem, label: "Proposal", slug: "proposal", color: "text-purple-500" },
-  { icon: Sparkles, label: "Romance", slug: "romance", color: "text-red-500" },
+  { icon: Sparkles, label: "Date Night", slug: "date-night", color: "text-red-500" },
   { icon: Cake, label: "Birthday", slug: "birthday", color: "text-orange-500" },
-  { icon: Building2, label: "Corporate", slug: "corporate", color: "text-gray-600" },
+  { icon: Building2, label: "Corporate Events", slug: "corporate-events", color: "text-slate-600" },
+  { icon: Users, label: "Reunions", slug: "reunions", color: "text-indigo-500" },
+  { icon: CalendarHeart, label: "Wedding Anniversaries", slug: "wedding-anniversaries", color: "text-rose-500" },
+  { icon: Mountain, label: "Retreats", slug: "retreats", color: "text-emerald-500" },
+  { icon: Baby, label: "Baby Shower", slug: "baby-shower", color: "text-sky-400" },
+  { icon: GraduationCap, label: "Graduation Party", slug: "graduation-party", color: "text-amber-500" },
+  { icon: Diamond, label: "Engagement Party", slug: "engagement-party", color: "text-fuchsia-500" },
+  { icon: Home, label: "Housewarming Party", slug: "housewarming-party", color: "text-teal-500" },
+  { icon: PartyPopper, label: "Retirement Party", slug: "retirement-party", color: "text-violet-500" },
+  { icon: Trophy, label: "Career Achievement Party", slug: "career-achievement-party", color: "text-yellow-500" },
+  { icon: HandHeart, label: "Farewell Party", slug: "farewell-party", color: "text-cyan-500" },
+  { icon: TreePine, label: "Holiday Party", slug: "holiday-party", color: "text-green-600" },
 ];
 
 const faqItems = [
@@ -186,7 +210,7 @@ export default function LandingPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="max-w-2xl"
+            className="text-center mb-10"
           >
             {/* Beta Badge */}
             <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm text-white px-3 py-1.5 rounded-full text-sm font-medium mb-6">
@@ -194,76 +218,139 @@ export default function LandingPage() {
               BETA VERSION
             </div>
 
-            <h1 className="text-4xl md:text-5xl lg:text-[56px] font-bold text-white leading-[1.1] tracking-tight mb-6">
+            <h1 className="text-4xl md:text-5xl lg:text-[56px] font-bold text-white leading-[1.1] tracking-tight mb-4">
               Plan Your Perfect<br />
               Life Experiences
             </h1>
             
-            <p className="text-lg text-white/90 leading-relaxed mb-6 max-w-lg">
-              From dream vacations to unforgettable weddings — connect with local experts who make it happen.
+            <p className="text-lg text-white/90 leading-relaxed max-w-2xl mx-auto">
+              From dream vacations to unforgettable celebrations — plan it yourself with AI or get personalized help from experts.
             </p>
+          </motion.div>
 
-            {/* Feature bullets */}
-            <div className="flex flex-wrap gap-4 mb-8 text-sm text-white/80">
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#FF385C]" /> AI + Human Expertise
-              </span>
-              <span className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-[#FF385C]" /> Personalized Plans
-              </span>
-              <span className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-[#FF385C]" /> Global Network
-              </span>
-            </div>
+          {/* Two Pathway Cards */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
+            {/* Plan with AI Card */}
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <Card className="bg-white/10 backdrop-blur-md border-white/20 h-full">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+                      <Bot className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Plan with AI</h3>
+                      <p className="text-sm text-white/70">Build your perfect itinerary yourself</p>
+                    </div>
+                  </div>
+                  
+                  <p className="text-sm text-white/80 mb-4">
+                    Choose your experience and let our AI help you create the perfect plan:
+                  </p>
 
-            {/* Experience Category Buttons */}
-            <div className="flex flex-wrap gap-2 mb-8">
-              {experienceCategories.map((cat) => (
-                <Link key={cat.label} href={`/experiences/${cat.slug}`}>
-                  <Button
-                    variant="outline"
-                    className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 gap-2"
-                    data-testid={`button-category-${cat.label.toLowerCase()}`}
-                  >
-                    <cat.icon className={cn("w-4 h-4", cat.color)} />
-                    {cat.label}
-                  </Button>
-                </Link>
-              ))}
-            </div>
+                  {/* Experience Category Buttons */}
+                  <div className="flex flex-wrap gap-2 max-h-[280px] overflow-y-auto pr-1">
+                    {experienceCategories.map((cat) => (
+                      <Link key={cat.label} href={`/experiences/${cat.slug}`}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-white/10 border-white/30 text-white hover:bg-white/20 gap-1.5 text-xs"
+                          data-testid={`button-category-${cat.slug}`}
+                        >
+                          <cat.icon className={cn("w-3.5 h-3.5", cat.color)} />
+                          {cat.label}
+                        </Button>
+                      </Link>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
 
-            {/* CTA Buttons - 3 Main Paths */}
-            <div className="flex flex-wrap gap-3">
-              <Link href="/experiences/travel">
-                <Button 
-                  size="lg"
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6 h-12"
-                  data-testid="button-create-trip"
-                >
-                  Create a New Trip <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Link>
-              <Link href="/experts">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6 h-12"
-                  data-testid="button-build-with-expert"
-                >
-                  Build with an Expert
-                </Button>
-              </Link>
-              <Link href="/help-me-decide">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6 h-12"
-                  data-testid="button-help-me-decide"
-                >
-                  Help Me Decide
-                </Button>
-              </Link>
-            </div>
+            {/* Plan with Expert Card */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <Card className="bg-white/10 backdrop-blur-md border-white/20 h-full">
+                <CardContent className="p-6 flex flex-col h-full">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
+                      <UserCheck className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Plan with an Expert</h3>
+                      <p className="text-sm text-white/70">Get personalized guidance</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <p className="text-sm text-white/80 mb-4">
+                      Connect with local travel and event experts who know their destinations inside out. They provide:
+                    </p>
+                    
+                    <ul className="space-y-2 mb-6">
+                      <li className="flex items-center gap-2 text-sm text-white/80">
+                        <Sparkles className="w-4 h-4 text-emerald-400" />
+                        Authentic local recommendations
+                      </li>
+                      <li className="flex items-center gap-2 text-sm text-white/80">
+                        <Star className="w-4 h-4 text-emerald-400" />
+                        Personalized planning support
+                      </li>
+                      <li className="flex items-center gap-2 text-sm text-white/80">
+                        <Globe className="w-4 h-4 text-emerald-400" />
+                        Real-time assistance during your experience
+                      </li>
+                    </ul>
+                  </div>
+                  
+                  <Link href="/experts">
+                    <Button 
+                      size="lg"
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                      data-testid="button-find-expert"
+                    >
+                      Find an Expert <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* Additional CTAs */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="flex flex-wrap justify-center gap-4 mt-8"
+          >
+            <Link href="/experiences/travel">
+              <Button 
+                size="lg"
+                className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6"
+                data-testid="button-create-trip"
+              >
+                Create a Trip <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+            <Link href="/help-me-decide">
+              <Button
+                size="lg"
+                variant="outline"
+                className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6"
+                data-testid="button-help-me-decide"
+              >
+                Help Me Decide
+              </Button>
+            </Link>
           </motion.div>
         </div>
       </section>
