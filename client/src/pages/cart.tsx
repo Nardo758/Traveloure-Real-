@@ -190,12 +190,14 @@ export default function CartPage() {
       }
     }
 
-    const cartItems = cart.items.map(item => ({
+    // Build baseline items with all necessary info for AI optimization
+    const baselineItems = cart.items.map(item => ({
       name: item.service?.serviceName || "Service",
       category: item.service?.serviceType || "service",
       price: item.service?.price || "0",
       provider: item.service?.providerName || "Provider",
-      location: item.service?.location || ""
+      location: item.service?.location || "",
+      description: item.service?.shortDescription || ""
     }));
     
     try {
@@ -205,17 +207,18 @@ export default function CartPage() {
         startDate: experienceContext?.startDate || new Date().toISOString().split('T')[0],
         endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: cart.total,
-        travelers: experienceContext?.travelers || 2
+        travelers: experienceContext?.travelers || 2,
+        baselineItems // Include items so backend auto-generates AI alternatives
       });
       
       const comparison = await response.json();
-      sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
+      // Navigate immediately - AI generation happens in background
       setLocation(`/itinerary-comparison/${comparison.id}`);
     } catch (error: any) {
       console.error("Failed to create comparison:", error);
       toast({ 
         variant: "destructive", 
-        title: "Failed to create comparison",
+        title: "Failed to generate itinerary",
         description: error?.message || "Please try again"
       });
     } finally {

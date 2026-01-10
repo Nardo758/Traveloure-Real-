@@ -1767,7 +1767,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems } = req.body;
 
       const [comparison] = await db
         .insert(itineraryComparisons)
@@ -1781,9 +1781,82 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           endDate,
           budget: budget?.toString(),
           travelers: travelers || 1,
-          status: "pending",
+          status: "generating",
         })
         .returning();
+
+      // Auto-generate AI alternatives immediately
+      let baselineItems: any[] = [];
+
+      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
+        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
+          id: `inline-${index}`,
+          name: item.name,
+          description: item.description || "",
+          serviceType: item.category || "service",
+          price: parseFloat(item.price || "0"),
+          rating: item.rating || 4.5,
+          location: item.location || "",
+          duration: item.duration || 120,
+          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
+          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
+          category: item.category || "service",
+          provider: item.provider || "Provider"
+        }));
+      } else {
+        // Fall back to cart items
+        const cartItemsData = await db
+          .select({
+            cartItem: cartItems,
+            service: providerServices,
+          })
+          .from(cartItems)
+          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
+          .where(eq(cartItems.userId, userId));
+
+        baselineItems = cartItemsData.map((item, index) => ({
+          id: item.cartItem.id,
+          name: item.service?.serviceName || "Unknown Service",
+          description: item.service?.shortDescription,
+          serviceType: item.service?.serviceType,
+          price: parseFloat(item.service?.price || "0"),
+          rating: parseFloat(item.service?.averageRating || "4.5"),
+          location: item.service?.location,
+          duration: 120,
+          dayNumber: Math.floor(index / 3) + 1,
+          timeSlot: ["morning", "afternoon", "evening"][index % 3],
+          category: item.service?.serviceType || "service",
+          provider: "Provider"
+        }));
+      }
+
+      // Trigger AI optimization in background if we have items
+      if (baselineItems.length > 0) {
+        const availableServices = await db
+          .select()
+          .from(providerServices)
+          .where(eq(providerServices.status, "active"))
+          .limit(100);
+
+        // Ensure dates are in YYYY-MM-DD format
+        const formatDate = (d: string | undefined | null) => {
+          if (!d) return new Date().toISOString().split('T')[0];
+          if (d.includes('T')) return d.split('T')[0];
+          return d;
+        };
+
+        generateOptimizedItineraries(
+          comparison.id,
+          userId,
+          baselineItems,
+          availableServices,
+          destination || "Unknown",
+          formatDate(startDate),
+          formatDate(endDate),
+          budget ? parseFloat(budget) : undefined,
+          travelers || 1
+        ).catch((err) => console.error("Background optimization error:", err));
+      }
 
       res.status(201).json(comparison);
     } catch (error) {

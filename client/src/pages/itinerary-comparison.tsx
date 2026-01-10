@@ -22,13 +22,14 @@ import {
   TrendingUp,
   MapPin,
   Zap,
-  RefreshCw,
   ShoppingCart,
   ChevronRight,
   Calendar,
   Loader2,
   Award,
   Target,
+  RefreshCw,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -116,25 +117,16 @@ export default function ItineraryComparisonPage() {
     },
   });
 
-  const generateMutation = useMutation({
+  const retryMutation = useMutation({
     mutationFn: async () => {
-      let baselineItems: any[] = [];
-      const storedBaseline = sessionStorage.getItem(`comparison_baseline_${id}`);
-      if (storedBaseline) {
-        try {
-          baselineItems = JSON.parse(storedBaseline);
-        } catch (e) {
-          console.error("Failed to parse baseline items");
-        }
-      }
-      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, { baselineItems });
+      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, { baselineItems: [] });
     },
     onSuccess: () => {
-      toast({ title: "Generating alternatives", description: "AI is creating optimized versions of your itinerary..." });
+      toast({ title: "Regenerating alternatives", description: "AI is creating optimized versions..." });
       refetch();
     },
     onError: () => {
-      toast({ variant: "destructive", title: "Failed to generate", description: "Please try again" });
+      toast({ variant: "destructive", title: "Failed to regenerate", description: "Please try again" });
     },
   });
 
@@ -192,6 +184,7 @@ export default function ItineraryComparisonPage() {
   }
 
   const isGenerating = data?.comparison?.status === "generating";
+  const hasFailed = data?.comparison?.status === "failed";
   const hasVariants = data?.variants && data.variants.length > 0;
   const userVariant = data?.variants?.find((v) => v.source === "user");
   const aiVariants = data?.variants?.filter((v) => v.source === "ai_optimized") || [];
@@ -255,30 +248,55 @@ export default function ItineraryComparisonPage() {
           </Card>
         )}
 
-        {!hasVariants && !isGenerating && (
+        {hasFailed && (
+          <Card className="mb-6 border-destructive/50 bg-destructive/5">
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+              <h3 className="text-lg font-semibold mb-2">Generation failed</h3>
+              <p className="text-muted-foreground mb-6">
+                Something went wrong while optimizing your itinerary. Please try again.
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation("/cart")}
+                  data-testid="button-back-to-cart"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Cart
+                </Button>
+                <Button
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending}
+                  data-testid="button-retry"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Try Again
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {!hasVariants && !isGenerating && !hasFailed && (
           <Card className="mb-6">
             <CardContent className="p-8 text-center">
-              <Sparkles className="h-12 w-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-lg font-semibold mb-2">Ready to optimize your itinerary?</h3>
+              <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-semibold mb-2">No itinerary data found</h3>
               <p className="text-muted-foreground mb-6">
-                Our AI will analyze your selections and generate 2 optimized alternatives with detailed comparisons.
+                It looks like the comparison is empty. Please go back to your cart and try again.
               </p>
               <Button
-                onClick={() => generateMutation.mutate()}
-                disabled={generateMutation.isPending}
-                data-testid="button-generate-alternatives"
+                variant="outline"
+                onClick={() => setLocation("/cart")}
+                data-testid="button-back-to-cart"
               >
-                {generateMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Starting...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Generate Optimized Alternatives
-                  </>
-                )}
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Cart
               </Button>
             </CardContent>
           </Card>
@@ -492,17 +510,6 @@ export default function ItineraryComparisonPage() {
               </Card>
             )}
 
-            <div className="flex justify-center mt-6">
-              <Button
-                variant="outline"
-                onClick={() => generateMutation.mutate()}
-                disabled={generateMutation.isPending || isGenerating}
-                data-testid="button-regenerate"
-              >
-                <RefreshCw className={cn("mr-2 h-4 w-4", isGenerating && "animate-spin")} />
-                Regenerate Alternatives
-              </Button>
-            </div>
           </>
         )}
       </div>
