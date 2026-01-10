@@ -83,3 +83,6 @@ The application features a modern and responsive design using Tailwind CSS and s
 - Added expert assistance touchpoints throughout the experience planning flow (floating chat, hero CTA, sidebar card, checkout escalation)
 - Removed unused wizard-based experience planning in favor of streamlined template approach
 - Experience templates now use consistent tabbed navigation with category-specific provider tabs
+- Added "Services" tab to all 17 experience templates with aggregate category support
+- Created 10 experience-specific service bundle categories (services-travel, services-wedding, services-proposal, services-birthday, services-trip, services-romance, services-corporate, services-retreat, services-event, services-party)
+- Implemented servicesCategoryMapping for frontend filtering that expands services-* categories to canonical provider category slugs plus keywords

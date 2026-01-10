@@ -63,6 +63,8 @@ import {
   Landmark,
   Package,
   Building2,
+  Wrench,
+  Ticket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -85,6 +87,21 @@ interface CartItem {
   provider?: string;
 }
 
+// Mapping of services-* aggregate categories to underlying provider category slugs
+// Uses canonical slugs from seed-categories plus keywords for name/description matching
+const servicesCategoryMapping: Record<string, string[]> = {
+  "services-travel": ["photography-videography", "transportation-logistics", "language-translation", "personal-assistance", "tours-experiences", "travel", "guide", "concierge", "insurance", "visa"],
+  "services-wedding": ["photography-videography", "beauty-styling", "transportation-logistics", "food-culinary", "events-celebrations", "specialty-services", "wedding", "planner", "coordinator", "officiant", "florist", "baker"],
+  "services-proposal": ["photography-videography", "events-celebrations", "specialty-services", "transportation-logistics", "proposal", "planner", "musician", "lighting", "signage"],
+  "services-birthday": ["events-celebrations", "food-culinary", "specialty-services", "birthday", "party", "performer", "balloon", "entertainer", "decorator", "baker"],
+  "services-trip": ["tours-experiences", "photography-videography", "transportation-logistics", "personal-assistance", "trip", "guide", "adventure", "activity"],
+  "services-romance": ["photography-videography", "food-culinary", "transportation-logistics", "events-celebrations", "romance", "romantic", "private-chef", "dining", "flowers"],
+  "services-corporate": ["events-celebrations", "food-culinary", "transportation-logistics", "technology-connectivity", "specialty-services", "corporate", "speaker", "registration", "swag", "catering"],
+  "services-retreat": ["health-wellness", "food-culinary", "transportation-logistics", "tours-experiences", "retreat", "wellness", "yoga", "meditation", "spa", "facilitator", "instructor"],
+  "services-event": ["photography-videography", "transportation-logistics", "events-celebrations", "food-culinary", "event", "coordinator", "rental", "catering", "entertainment"],
+  "services-party": ["photography-videography", "events-celebrations", "food-culinary", "party", "dj", "performer", "entertainment", "catering", "decorator", "rental"],
+};
+
 const experienceConfigs: Record<string, {
   heroImage: string;
   tabs: { id: string; label: string; icon: any; category: string | null }[];
@@ -100,6 +117,7 @@ const experienceConfigs: Record<string, {
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
       { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
     ],
     filters: ["Budget", "Luxury", "Family", "Adventure", "Business", "Beach", "City", "Nature"],
     locationLabel: "Destination:",
@@ -113,6 +131,7 @@ const experienceConfigs: Record<string, {
       { id: "photography", label: "Photography", icon: Camera, category: "photography" },
       { id: "florist", label: "Florist", icon: Flower2, category: "florist" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
     locationLabel: "Wedding Location:",
@@ -124,8 +143,8 @@ const experienceConfigs: Record<string, {
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "photography", label: "Photography", icon: Camera, category: "photography" },
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "rings", label: "Rings", icon: Gem, category: "jewelry" },
-      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "decorations", label: "Decorations", icon: Flower2, category: "decorations" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-proposal" },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
     locationLabel: "Proposal Location:",
@@ -138,8 +157,9 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Cake, category: "catering" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "decorations", label: "Decorations", icon: PartyPopper, category: "decorations" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-birthday" },
     ],
-    filters: ["Kids", "Adults", "Outdoor", "Indoor", "Theme Party", "Elegant", "Casual", "Adventure"],
+    filters: ["Kids", "Teens", "Adults", "Milestone", "Outdoor", "Indoor", "Theme Party", "Elegant"],
     locationLabel: "Party Location:",
     dateLabel: "Party Date:",
   },
@@ -150,6 +170,7 @@ const experienceConfigs: Record<string, {
       { id: "activities", label: "Adventures", icon: Dumbbell, category: "adventures" },
       { id: "nightlife", label: "Nightlife", icon: Moon, category: "nightlife" },
       { id: "sports", label: "Sports", icon: Dumbbell, category: "sports" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-trip" },
     ],
     filters: ["Adventure", "Sports", "Nightlife", "Beach", "Mountains", "City", "Bachelor", "Fishing"],
     locationLabel: "Destination:",
@@ -162,6 +183,7 @@ const experienceConfigs: Record<string, {
       { id: "spa", label: "Spa & Wellness", icon: Heart, category: "spa" },
       { id: "shopping", label: "Shopping", icon: ShoppingBag, category: "shopping" },
       { id: "dining", label: "Dining & Wine", icon: Wine, category: "dining" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-trip" },
     ],
     filters: ["Spa", "Shopping", "Beach", "Wine", "Brunch", "Wellness", "Bachelorette", "Luxury"],
     locationLabel: "Destination:",
@@ -174,8 +196,9 @@ const experienceConfigs: Record<string, {
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "activities", label: "Activities", icon: Heart, category: "activities" },
       { id: "spa", label: "Spa & Wellness", icon: Heart, category: "spa" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-romance" },
     ],
-    filters: ["Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Rooftop", "Waterfront"],
+    filters: ["Romantic", "Casual", "Upscale", "Adventure", "Foodie", "First Date", "Anniversary"],
     locationLabel: "Location:",
     dateLabel: "Date:",
   },
@@ -186,8 +209,9 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "av", label: "A/V Equipment", icon: Briefcase, category: "av-equipment" },
       { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-corporate" },
     ],
-    filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
+    filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking"],
     locationLabel: "Event Location:",
     dateLabel: "Event Date:",
   },
@@ -197,7 +221,8 @@ const experienceConfigs: Record<string, {
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "activities", label: "Activities", icon: Users, category: "activities" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-event" },
     ],
     filters: ["Family", "School", "Friends", "Outdoor", "Indoor", "Casual", "Formal", "Weekend"],
     locationLabel: "Reunion Location:",
@@ -210,8 +235,9 @@ const experienceConfigs: Record<string, {
       { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
       { id: "activities", label: "Activities", icon: Heart, category: "activities" },
       { id: "photography", label: "Photography", icon: Camera, category: "photography" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-romance" },
     ],
-    filters: ["Romantic", "Elegant", "Intimate", "Luxury", "Destination", "Classic", "Modern", "Sentimental"],
+    filters: ["Romantic", "Elegant", "Intimate", "Luxury", "Destination", "Classic", "Milestone"],
     locationLabel: "Celebration Location:",
     dateLabel: "Anniversary Date:",
   },
@@ -222,6 +248,7 @@ const experienceConfigs: Record<string, {
       { id: "wellness", label: "Wellness Programs", icon: Heart, category: "wellness" },
       { id: "activities", label: "Activities", icon: TreePine, category: "activities" },
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-retreat" },
     ],
     filters: ["Wellness", "Yoga", "Meditation", "Nature", "Spiritual", "Detox", "Corporate", "Silent"],
     locationLabel: "Retreat Location:",
@@ -234,6 +261,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Cake, category: "catering" },
       { id: "decorations", label: "Decorations", icon: Baby, category: "decorations" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
     ],
     filters: ["Boy", "Girl", "Gender Neutral", "Garden", "Indoor", "Elegant", "Casual", "Theme"],
     locationLabel: "Party Location:",
@@ -246,6 +274,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "decorations", label: "Decorations", icon: GraduationCap, category: "decorations" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
     ],
     filters: ["High School", "College", "Masters", "PhD", "Outdoor", "Indoor", "Casual", "Formal"],
     locationLabel: "Party Location:",
@@ -258,6 +287,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Wine, category: "catering" },
       { id: "photography", label: "Photography", icon: Camera, category: "photography" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
     ],
     filters: ["Elegant", "Casual", "Garden", "Rooftop", "Beach", "Restaurant", "Home", "Cocktail"],
     locationLabel: "Party Location:",
@@ -270,6 +300,7 @@ const experienceConfigs: Record<string, {
       { id: "decorations", label: "Decorations", icon: Home, category: "decorations" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "rentals", label: "Rentals", icon: Package, category: "rentals" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
     ],
     filters: ["Casual", "Formal", "BBQ", "Cocktail", "Brunch", "Dinner", "Open House", "Theme"],
     locationLabel: "Party Location:",
@@ -282,6 +313,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Wine, category: "catering" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "decorations", label: "Decorations", icon: PartyPopper, category: "decorations" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
     ],
     filters: ["Elegant", "Casual", "Office", "Restaurant", "Garden", "Formal", "Surprise", "Milestone"],
     locationLabel: "Party Location:",
@@ -294,6 +326,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "av", label: "A/V Equipment", icon: Award, category: "av-equipment" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-corporate" },
     ],
     filters: ["Promotion", "Award", "Milestone", "Corporate", "Formal", "Cocktail", "Dinner", "Gala"],
     locationLabel: "Event Location:",
@@ -306,6 +339,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "decorations", label: "Decorations", icon: Gift, category: "decorations" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
     ],
     filters: ["Casual", "Formal", "Office", "Outdoor", "Restaurant", "Surprise", "Sentimental", "Fun"],
     locationLabel: "Party Location:",
@@ -318,6 +352,7 @@ const experienceConfigs: Record<string, {
       { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "decorations", label: "Decorations", icon: TreePine, category: "decorations" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "services", label: "Services", icon: Wrench, category: "services-party" },
     ],
     filters: ["Christmas", "New Year", "Thanksgiving", "Easter", "Halloween", "July 4th", "Corporate", "Family"],
     locationLabel: "Party Location:",
@@ -836,9 +871,22 @@ export default function ExperienceTemplatePage() {
     let filtered = [...services];
 
     if (currentTabCategory) {
+      // Check if this is an aggregate services-* category
+      const expandedCategories = servicesCategoryMapping[currentTabCategory];
+      
       filtered = filtered.filter(s => {
         const svcType = s.serviceType?.toLowerCase() || "";
         const svcName = s.serviceName.toLowerCase();
+        const svcDesc = (s.description || "").toLowerCase();
+        
+        // If we have expanded categories for this services-* tab, match against any of them
+        if (expandedCategories) {
+          return expandedCategories.some(cat => 
+            svcType.includes(cat) || svcName.includes(cat) || svcDesc.includes(cat)
+          );
+        }
+        
+        // Otherwise use direct category matching
         return svcType.includes(currentTabCategory) || svcName.includes(currentTabCategory);
       });
     }
