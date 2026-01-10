@@ -1,10 +1,15 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import {
   Search,
@@ -22,8 +27,33 @@ import {
   TrendingUp,
   Filter,
   ChevronRight,
+  ShoppingCart,
+  GitCompare,
+  Loader2,
+  Plus,
+  Building2,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface Service {
+  id: string;
+  serviceName: string;
+  shortDescription: string;
+  price: string;
+  location: string;
+  averageRating: string;
+  reviewCount: number;
+  categoryId: string;
+  status: string;
+}
+
+interface CartData {
+  items: any[];
+  itemCount: number;
+  subtotal: string;
+  total: string;
+}
 
 const categories = [
   { id: "all", label: "All", icon: Globe },
@@ -178,7 +208,80 @@ const upcomingEvents = [
 export default function HelpMeDecidePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
   const [favorites, setFavorites] = useState<number[]>([]);
+  const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
+  const [creatingComparison, setCreatingComparison] = useState(false);
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  const { data: services, isLoading: servicesLoading } = useQuery<Service[]>({
+    queryKey: ["/api/provider-services"],
+  });
+
+  const { data: cart } = useQuery<CartData>({
+    queryKey: ["/api/cart"],
+    enabled: !!user,
+  });
+
+  const addToCartMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      return apiRequest("POST", "/api/cart/items", { serviceId, quantity: 1 });
+    },
+    onSuccess: (_, serviceId) => {
+      setAddedServices(prev => new Set(prev).add(serviceId));
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      toast({ title: "Added to cart", description: "Service added to your trip" });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to add", description: "Please try again" });
+    },
+  });
+
+  const createComparison = async () => {
+    if (!cart || cart.items.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add some services first" });
+      return;
+    }
+    if (!user) {
+      toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
+      return;
+    }
+    setCreatingComparison(true);
+    
+    const cartItems = cart.items.map((item: any) => ({
+      name: item.service?.serviceName || "Service",
+      category: item.service?.category || "service",
+      price: item.service?.price || "0",
+      provider: item.service?.providerName || "Provider",
+      location: item.service?.location || ""
+    }));
+    
+    try {
+      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+        title: "My Trip",
+        destination: cart.items[0]?.service?.location || "Paris, France",
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        budget: cart.total,
+        travelers: 2
+      });
+      
+      const comparison = await response.json();
+      sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
+      setLocation(`/itinerary-comparison/${comparison.id}`);
+    } catch (error: any) {
+      console.error("Failed to create comparison:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Failed to create comparison",
+        description: error?.message || "Please try again"
+      });
+    } finally {
+      setCreatingComparison(false);
+    }
+  };
 
   const toggleFavorite = (id: number) => {
     setFavorites((prev) =>
@@ -196,6 +299,15 @@ export default function HelpMeDecidePage() {
       selectedCategory === "all" || trip.category === selectedCategory;
 
     return matchesSearch && matchesCategory;
+  });
+
+  const filteredServices = (services || []).filter((service) => {
+    if (service.status !== "active") return false;
+    if (!serviceSearchQuery) return true;
+    return (
+      service.serviceName.toLowerCase().includes(serviceSearchQuery.toLowerCase()) ||
+      service.location?.toLowerCase().includes(serviceSearchQuery.toLowerCase())
+    );
   });
 
   return (
@@ -253,8 +365,16 @@ export default function HelpMeDecidePage() {
       {/* Main Content */}
       <section className="py-12">
         <div className="container mx-auto px-4 max-w-6xl">
-          <Tabs defaultValue="packages" className="w-full">
-            <TabsList className="bg-white border border-[#E5E7EB] p-1 mb-8">
+          <Tabs defaultValue="services" className="w-full">
+            <TabsList className="bg-white border border-[#E5E7EB] p-1 mb-8 flex-wrap">
+              <TabsTrigger
+                value="services"
+                className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white"
+                data-testid="tab-services"
+              >
+                <Building2 className="w-4 h-4 mr-2" />
+                Browse Services
+              </TabsTrigger>
               <TabsTrigger
                 value="packages"
                 className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white"
@@ -280,6 +400,148 @@ export default function HelpMeDecidePage() {
                 Upcoming Events
               </TabsTrigger>
             </TabsList>
+
+            {/* Browse Services Tab */}
+            <TabsContent value="services">
+              {/* Cart Summary Bar */}
+              {cart && cart.items.length > 0 && (
+                <div className="mb-6 p-4 bg-white border border-[#E5E7EB] rounded-lg flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex items-center gap-3">
+                    <ShoppingCart className="w-5 h-5 text-[#FF385C]" />
+                    <span className="font-medium text-[#111827]">
+                      {cart.itemCount} items in cart
+                    </span>
+                    <span className="text-[#6B7280]">
+                      Total: ${cart.total}
+                    </span>
+                  </div>
+                  <div className="flex gap-3">
+                    <Link href="/cart">
+                      <Button variant="outline" data-testid="button-view-cart">
+                        View Cart
+                      </Button>
+                    </Link>
+                    <Button
+                      className="bg-[#FF385C] hover:bg-[#E23350]"
+                      onClick={createComparison}
+                      disabled={creatingComparison}
+                      data-testid="button-compare-ai"
+                    >
+                      {creatingComparison ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <GitCompare className="w-4 h-4 mr-2" />
+                      )}
+                      Compare AI Alternatives
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Search */}
+              <div className="mb-6">
+                <div className="relative max-w-md">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Input
+                    placeholder="Search services..."
+                    value={serviceSearchQuery}
+                    onChange={(e) => setServiceSearchQuery(e.target.value)}
+                    className="pl-10 h-12 border-[#E5E7EB]"
+                    data-testid="input-search-services"
+                  />
+                </div>
+              </div>
+
+              {/* Services Grid */}
+              {servicesLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <Skeleton key={i} className="h-64" />
+                  ))}
+                </div>
+              ) : filteredServices.length === 0 ? (
+                <div className="text-center py-16">
+                  <Building2 className="w-16 h-16 mx-auto text-[#9CA3AF] mb-4" />
+                  <h3 className="text-lg font-semibold text-[#111827] mb-2">
+                    No services found
+                  </h3>
+                  <p className="text-[#6B7280]">
+                    Try a different search term
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredServices.slice(0, 12).map((service, idx) => (
+                    <motion.div
+                      key={service.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                    >
+                      <Card
+                        className="bg-white border-[#E5E7EB] hover:shadow-lg transition-shadow overflow-hidden group"
+                        data-testid={`card-service-${service.id}`}
+                      >
+                        <CardContent className="p-0">
+                          <div className="h-32 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
+                            <Building2 className="w-10 h-10 text-gray-400" />
+                          </div>
+                          <div className="p-4">
+                            <div className="flex items-center gap-2 text-sm text-[#6B7280] mb-2">
+                              <MapPin className="w-4 h-4" />
+                              <span className="truncate">{service.location || "Various locations"}</span>
+                            </div>
+                            <h3 className="font-semibold text-[#111827] mb-2 line-clamp-1 group-hover:text-[#FF385C] transition-colors">
+                              {service.serviceName}
+                            </h3>
+                            <p className="text-sm text-[#6B7280] line-clamp-2 mb-3">
+                              {service.shortDescription}
+                            </p>
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                                <span className="text-sm font-medium">{service.averageRating || "4.5"}</span>
+                                <span className="text-sm text-[#6B7280]">({service.reviewCount || 0})</span>
+                              </div>
+                              <span className="font-bold text-[#111827]">${service.price}</span>
+                            </div>
+                            <Button
+                              className={cn(
+                                "w-full",
+                                addedServices.has(service.id)
+                                  ? "bg-green-600 hover:bg-green-700"
+                                  : "bg-[#FF385C] hover:bg-[#E23350]"
+                              )}
+                              onClick={() => {
+                                if (!user) {
+                                  toast({ title: "Please sign in", description: "Sign in to add items to cart" });
+                                  return;
+                                }
+                                addToCartMutation.mutate(service.id);
+                              }}
+                              disabled={addToCartMutation.isPending || addedServices.has(service.id)}
+                              data-testid={`button-add-service-${service.id}`}
+                            >
+                              {addedServices.has(service.id) ? (
+                                <>
+                                  <Check className="w-4 h-4 mr-2" />
+                                  Added
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4 mr-2" />
+                                  Add to Trip
+                                </>
+                              )}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
 
             {/* Trip Packages Tab */}
             <TabsContent value="packages">
