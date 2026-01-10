@@ -25,8 +25,7 @@ import {
   DollarSign,
   CheckCircle,
   Loader2,
-  AlertTriangle,
-  GitCompare
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -43,6 +42,7 @@ interface CartItem {
     location: string | null;
     shortDescription: string | null;
     userId: string;
+    serviceType: string | null;
   } | null;
 }
 
@@ -191,9 +191,9 @@ export default function CartPage() {
 
     const cartItems = cart.items.map(item => ({
       name: item.service?.serviceName || "Service",
-      category: item.service?.category || "service",
+      category: item.service?.serviceType || "service",
       price: item.service?.price || "0",
-      provider: item.service?.providerName || "Provider",
+      provider: "Provider",
       location: item.service?.location || ""
     }));
     
@@ -451,7 +451,7 @@ export default function CartPage() {
                   ))}
                 </div>
 
-                <div className="lg:col-span-1">
+                <div className="lg:col-span-1 space-y-4">
                   <Card className="sticky top-4">
                     <CardHeader>
                       <CardTitle>Order Summary</CardTitle>
@@ -472,44 +472,41 @@ export default function CartPage() {
                       </div>
                     </CardContent>
                     <CardFooter className="flex flex-col gap-3">
-                      <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                        size="lg"
-                        onClick={createComparison}
-                        disabled={creatingComparison}
-                        data-testid="button-compare-alternatives"
-                      >
-                        {creatingComparison ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <GitCompare className="w-4 h-4 mr-2" />
-                        )}
-                        {creatingComparison ? "Creating..." : "Compare AI Alternatives"}
-                      </Button>
+                      <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-[#FF385C]/20">
+                        <div className="flex items-start gap-2 mb-2">
+                          <Sparkles className="w-4 h-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
+                          <div>
+                            <h4 className="text-sm font-medium">Generate Your Itinerary</h4>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              See your selections organized into an itinerary, plus AI-optimized alternatives that could save you money or time.
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          size="lg"
+                          onClick={createComparison}
+                          disabled={creatingComparison}
+                          data-testid="button-generate-itinerary-comparison"
+                        >
+                          {creatingComparison ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 mr-2" />
+                          )}
+                          {creatingComparison ? "Creating..." : "Generate Itinerary"}
+                        </Button>
+                      </div>
+                      <Separator />
                       <Button
                         variant="outline"
-                        className="w-full"
-                        size="lg"
-                        onClick={generateItinerary}
-                        disabled={generating}
-                        data-testid="button-generate-itinerary"
-                      >
-                        {generating ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        ) : (
-                          <Wand2 className="w-4 h-4 mr-2" />
-                        )}
-                        {generating ? "Generating..." : "Quick Itinerary"}
-                      </Button>
-                      <Button
-                        variant="ghost"
                         className="w-full"
                         size="lg"
                         onClick={() => setFlowStep("payment")}
                         data-testid="button-skip-to-payment"
                       >
                         <CreditCard className="w-4 h-4 mr-2" />
-                        Skip to Payment
+                        Proceed to Payment
                       </Button>
                     </CardFooter>
                   </Card>
