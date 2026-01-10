@@ -6,7 +6,7 @@ import {
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
-  userExperiences, userExperienceItems,
+  userExperiences, userExperienceItems, users,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -768,10 +768,17 @@ export class DatabaseStorage implements IStorage {
   // Cart Methods
   async getCartItems(userId: string): Promise<any[]> {
     const items = await db.select().from(cartItems).where(eq(cartItems.userId, userId));
-    // Join with service details
+    // Join with service details and provider (user) name
     const enriched = await Promise.all(items.map(async (item) => {
       const [service] = await db.select().from(providerServices).where(eq(providerServices.id, item.serviceId));
-      return { ...item, service };
+      let providerName = "Provider";
+      if (service?.userId) {
+        const [provider] = await db.select().from(users).where(eq(users.id, service.userId));
+        if (provider) {
+          providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || "Provider";
+        }
+      }
+      return { ...item, service: service ? { ...service, providerName } : null };
     }));
     return enriched;
   }
