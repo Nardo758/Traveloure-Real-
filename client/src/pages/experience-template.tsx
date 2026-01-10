@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { useAuth } from "@/hooks/use-auth";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExperienceMap } from "@/components/experience-map";
@@ -393,6 +394,7 @@ export default function ExperienceTemplatePage() {
   const [, params] = useRoute("/experiences/:slug");
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const slug = params?.slug || "";
   
   const { data: experienceType, isLoading: typeLoading } = useQuery<ExperienceType>({
@@ -549,11 +551,22 @@ export default function ExperienceTemplatePage() {
   };
 
   const addToCart = async (item: CartItem) => {
+    if (!user) {
+      toast({ 
+        variant: "destructive", 
+        title: "Sign in required", 
+        description: "Please sign in to add items to your cart" 
+      });
+      window.location.href = "/api/login";
+      return;
+    }
+    
     const existing = cart.find((i) => i.id === item.id);
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        toast({ title: "Cart updated", description: "Item quantity increased" });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update cart" });
       }
@@ -561,6 +574,7 @@ export default function ExperienceTemplatePage() {
       try {
         await apiRequest("POST", "/api/cart", { serviceId: item.id, quantity: 1 });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to add to cart" });
       }
