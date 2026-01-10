@@ -176,9 +176,6 @@ function Router() {
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
       </Route>
-      <Route path="/experiences/travel">
-        <BrowsePage />
-      </Route>
       <Route path="/experiences/:slug">
         <ExperienceTemplatePage />
       </Route>
