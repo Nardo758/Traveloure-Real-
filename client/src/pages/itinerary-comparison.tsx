@@ -221,7 +221,7 @@ export default function ItineraryComparisonPage() {
     <Layout>
       <div className="max-w-7xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={() => setLocation("/cart")} data-testid="button-back">
+          <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
