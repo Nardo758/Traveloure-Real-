@@ -10,6 +10,7 @@ import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const sampleItinerary = [
@@ -68,11 +69,25 @@ export default function TripDetails() {
   const { data: trip, isLoading } = useTrip(id || "");
   const generateItinerary = useGenerateItinerary();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const { data: servicesResult, isLoading: servicesLoading } = useQuery<{ services: ProviderService[], total: number }>({
     queryKey: ["/api/services", { destination: trip?.destination }],
     enabled: !!trip?.destination,
   });
+
+  const handleAddToCart = (serviceId: string) => {
+    if (!user) {
+      toast({ 
+        variant: "destructive", 
+        title: "Sign in required", 
+        description: "Please sign in to add items to your cart" 
+      });
+      window.location.href = "/api/login";
+      return;
+    }
+    addToCartMutation.mutate(serviceId);
+  };
 
   const addToCartMutation = useMutation({
     mutationFn: async (serviceId: string) => {
@@ -342,7 +357,7 @@ export default function TripDetails() {
                                   <span className="font-bold text-lg">${parseFloat(service.basePrice).toFixed(0)}</span>
                                   <Button 
                                     size="sm"
-                                    onClick={() => addToCartMutation.mutate(service.id)}
+                                    onClick={() => handleAddToCart(service.id)}
                                     disabled={addToCartMutation.isPending}
                                     data-testid={`button-add-cart-${service.id}`}
                                   >

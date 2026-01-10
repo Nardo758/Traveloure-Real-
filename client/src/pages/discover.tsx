@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -385,6 +386,7 @@ export default function DiscoverPage() {
   };
 
   const { toast } = useToast();
+  const { user } = useAuth();
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
 
   const addToCartMutation = useMutation({
@@ -404,6 +406,15 @@ export default function DiscoverPage() {
   });
 
   const handleAddToCart = (serviceId: string) => {
+    if (!user) {
+      toast({ 
+        variant: "destructive", 
+        title: "Sign in required", 
+        description: "Please sign in to add items to your cart" 
+      });
+      window.location.href = "/api/login";
+      return;
+    }
     addToCartMutation.mutate(serviceId);
   };
 
