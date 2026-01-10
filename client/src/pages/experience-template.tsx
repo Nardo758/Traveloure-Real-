@@ -19,7 +19,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
   Search,
-  ShoppingCart,
   Plus,
   X,
   Star,
@@ -732,30 +731,41 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-4 h-4" />
                 Get Expert Help
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setCartOpen(true)}
-                data-testid="button-cart-ribbon"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                {cart.length > 0 ? `$${cartTotal}` : "Cart"}
-              </Button>
-              <Button
-                size="sm"
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-2"
-                onClick={generateItinerary}
-                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                data-testid="button-generate-ribbon"
-              >
-                {generatingItinerary ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4" />
-                )}
-                Generate Itinerary
-              </Button>
+              {/* Combined Cart Summary + Generate Itinerary Button */}
+              <div className="flex flex-col rounded-lg overflow-hidden border border-[#FF385C] bg-[#FF385C]" data-testid="cart-generate-combo">
+                {/* Top row: Items count | Total price - clickable to open cart */}
+                <button
+                  onClick={() => setCartOpen(true)}
+                  className="flex bg-white hover:bg-gray-50 transition-colors"
+                  data-testid="button-cart-summary"
+                  aria-label="View cart details"
+                >
+                  <div className="flex-1 px-3 py-1.5 text-center border-r border-gray-200">
+                    <span className="text-sm font-medium text-gray-700" data-testid="text-cart-items">
+                      {cart.length} {cart.length === 1 ? "Item" : "Items"}
+                    </span>
+                  </div>
+                  <div className="flex-1 px-3 py-1.5 text-center">
+                    <span className="text-sm font-medium text-gray-700" data-testid="text-cart-total">
+                      ${cartTotal.toLocaleString()}
+                    </span>
+                  </div>
+                </button>
+                {/* Bottom row: Generate Itinerary button */}
+                <button
+                  onClick={generateItinerary}
+                  disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
+                  className="flex items-center justify-center gap-2 px-4 py-2 text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#E23350] transition-colors"
+                  data-testid="button-generate-ribbon"
+                >
+                  {generatingItinerary ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-4 h-4" />
+                  )}
+                  {cart.length === 0 ? "Add services to generate" : "Generate Itinerary"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1201,30 +1211,39 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-3 h-3" />
                 Expert
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1 text-xs"
-                onClick={() => setCartOpen(true)}
-                data-testid="button-cart-ribbon-mobile"
-              >
-                <ShoppingCart className="w-3 h-3" />
-                {cart.length > 0 ? `$${cartTotal}` : "Cart"}
-              </Button>
-              <Button
-                size="sm"
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white gap-1 text-xs"
-                onClick={generateItinerary}
-                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                data-testid="button-generate-ribbon-mobile"
-              >
-                {generatingItinerary ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Wand2 className="w-3 h-3" />
-                )}
-                Generate
-              </Button>
+              {/* Mobile Combined Cart Summary + Generate Itinerary Button */}
+              <div className="flex flex-col rounded-md overflow-hidden border border-[#FF385C] bg-[#FF385C]" data-testid="cart-generate-combo-mobile">
+                <button
+                  onClick={() => setCartOpen(true)}
+                  className="flex bg-white hover:bg-gray-50 transition-colors"
+                  data-testid="button-cart-summary-mobile"
+                  aria-label="View cart details"
+                >
+                  <div className="flex-1 px-2 py-1 text-center border-r border-gray-200">
+                    <span className="text-xs font-medium text-gray-700" data-testid="text-cart-items-mobile">
+                      {cart.length}
+                    </span>
+                  </div>
+                  <div className="flex-1 px-2 py-1 text-center">
+                    <span className="text-xs font-medium text-gray-700" data-testid="text-cart-total-mobile">
+                      ${cartTotal.toLocaleString()}
+                    </span>
+                  </div>
+                </button>
+                <button
+                  onClick={generateItinerary}
+                  disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
+                  className="flex items-center justify-center gap-1 px-2 py-1.5 text-white font-medium text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#E23350] transition-colors"
+                  data-testid="button-generate-ribbon-mobile"
+                >
+                  {generatingItinerary ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-3 h-3" />
+                  )}
+                  {cart.length === 0 ? "Add" : "Generate"}
+                </button>
+              </div>
             </div>
           </div>
 
