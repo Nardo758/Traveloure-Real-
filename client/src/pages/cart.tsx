@@ -93,6 +93,29 @@ export default function CartPage() {
   const [flowStep, setFlowStep] = useState<FlowStep>("cart");
   const [generating, setGenerating] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
+  const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
+  const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
+
+  // Load experience context from sessionStorage on mount
+  useEffect(() => {
+    const storedContext = sessionStorage.getItem("experienceContext");
+    if (storedContext) {
+      try {
+        const context = JSON.parse(storedContext);
+        if (context.experienceSlug) {
+          setExperienceSlug(context.experienceSlug);
+          setExperienceTitle(context.title || context.experienceType);
+        } else {
+          setExperienceSlug("general");
+        }
+      } catch (e) {
+        console.error("Failed to parse experience context");
+        setExperienceSlug("general");
+      }
+    } else {
+      setExperienceSlug("general");
+    }
+  }, []);
 
   // Check for step query param and stored optimization result on mount
   useEffect(() => {
@@ -130,7 +153,13 @@ export default function CartPage() {
   }, [searchString, toast]);
 
   const { data: cart, isLoading } = useQuery<CartData>({
-    queryKey: ["/api/cart"],
+    queryKey: ["/api/cart", experienceSlug],
+    queryFn: async () => {
+      const url = experienceSlug ? `/api/cart?experience=${experienceSlug}` : "/api/cart";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch cart");
+      return res.json();
+    },
     enabled: !!user,
   });
 
@@ -139,7 +168,7 @@ export default function CartPage() {
       return apiRequest("PATCH", `/api/cart/${id}`, { quantity });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to update item" });
@@ -151,7 +180,7 @@ export default function CartPage() {
       return apiRequest("DELETE", `/api/cart/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       toast({ title: "Item removed from cart" });
     },
     onError: () => {
@@ -164,7 +193,7 @@ export default function CartPage() {
       return apiRequest("POST", "/api/checkout", {});
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
       toast({ title: "Booking created!", description: "Your services have been booked." });
       setLocation("/bookings");
@@ -346,11 +375,18 @@ export default function CartPage() {
           >
             <ArrowLeft className="w-5 h-5" />
           </Button>
-          <h1 className="text-2xl font-bold" data-testid="text-page-title">
-            {flowStep === "cart" && "Your Cart"}
-            {flowStep === "itinerary" && "Your Optimized Itinerary"}
-            {flowStep === "payment" && "Complete Payment"}
-          </h1>
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-bold" data-testid="text-page-title">
+              {flowStep === "cart" && "Your Cart"}
+              {flowStep === "itinerary" && "Your Optimized Itinerary"}
+              {flowStep === "payment" && "Complete Payment"}
+            </h1>
+            {flowStep === "cart" && (
+              <span className="text-sm text-muted-foreground" data-testid="text-experience-context">
+                {experienceTitle || "General"}
+              </span>
+            )}
+          </div>
           {cart && cart.itemCount > 0 && flowStep === "cart" && (
             <Badge variant="secondary" data-testid="badge-item-count">{cart.itemCount} items</Badge>
           )}
