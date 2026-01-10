@@ -678,12 +678,17 @@ export const itineraryVariantMetrics = pgTable("itinerary_variant_metrics", {
 
 // === Experience Types & Templates ===
 
-export const experienceTypeSlugEnum = ["travel", "wedding", "proposal", "romance", "birthday", "corporate", "boys-trip", "girls-trip"] as const;
+export const experienceTypeSlugEnum = [
+  "travel", "wedding", "proposal", "romance", "birthday", "corporate", "boys-trip", "girls-trip",
+  "date-night", "corporate-events", "reunions", "wedding-anniversaries", "retreats", "baby-shower",
+  "graduation-party", "engagement-party", "housewarming-party", "retirement-party",
+  "career-achievement-party", "farewell-party", "holiday-party"
+] as const;
 
 export const experienceTypes = pgTable("experience_types", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: varchar("name", { length: 100 }).notNull().unique(),
-  slug: varchar("slug", { length: 50 }).notNull().unique(), // travel, wedding, proposal, romance, birthday, corporate, boys-trip, girls-trip
+  slug: varchar("slug", { length: 50 }).notNull().unique(),
   description: text("description"),
   icon: varchar("icon", { length: 50 }), // Lucide icon name
   color: varchar("color", { length: 20 }), // Brand color for this experience

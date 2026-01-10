@@ -109,18 +109,6 @@ const experienceConfigs: Record<string, {
     locationLabel: "Proposal Location:",
     dateLabel: "Proposal Date:",
   },
-  romance: {
-    heroImage: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=1600&q=80",
-    tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Building2, category: "accommodations" },
-      { id: "dining", label: "Dining", icon: Building2, category: "dining" },
-      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
-      { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
-    ],
-    filters: ["Couples", "Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Beachfront"],
-    locationLabel: "Destination:",
-    dateLabel: "Travel Dates:",
-  },
   birthday: {
     heroImage: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1600&q=80",
     tabs: [
@@ -132,18 +120,6 @@ const experienceConfigs: Record<string, {
     filters: ["Kids", "Adults", "Outdoor", "Indoor", "Theme Party", "Elegant", "Casual", "Adventure"],
     locationLabel: "Party Location:",
     dateLabel: "Party Date:",
-  },
-  corporate: {
-    heroImage: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80",
-    tabs: [
-      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
-      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
-      { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
-      { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
-    ],
-    filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
-    locationLabel: "Event Location:",
-    dateLabel: "Event Dates:",
   },
   "boys-trip": {
     heroImage: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&q=80",
@@ -169,7 +145,172 @@ const experienceConfigs: Record<string, {
     locationLabel: "Destination:",
     dateLabel: "Trip Dates:",
   },
+  "date-night": {
+    heroImage: "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=1600&q=80",
+    tabs: [
+      { id: "dining", label: "Dining", icon: Building2, category: "dining" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
+      { id: "spa", label: "Spa & Wellness", icon: Building2, category: "spa" },
+    ],
+    filters: ["Romantic", "Scenic", "Private", "Luxury", "Intimate", "Sunset", "Rooftop", "Waterfront"],
+    locationLabel: "Location:",
+    dateLabel: "Date:",
+  },
+  "corporate-events": {
+    heroImage: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
+      { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
+    ],
+    filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking", "Training"],
+    locationLabel: "Event Location:",
+    dateLabel: "Event Date:",
+  },
+  "reunions": {
+    heroImage: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+    ],
+    filters: ["Family", "School", "Friends", "Outdoor", "Indoor", "Casual", "Formal", "Weekend"],
+    locationLabel: "Reunion Location:",
+    dateLabel: "Reunion Date:",
+  },
+  "wedding-anniversaries": {
+    heroImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80",
+    tabs: [
+      { id: "dining", label: "Dining", icon: Building2, category: "dining" },
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
+      { id: "photography", label: "Photography", icon: Building2, category: "photography" },
+    ],
+    filters: ["Romantic", "Elegant", "Intimate", "Luxury", "Destination", "Classic", "Modern", "Sentimental"],
+    locationLabel: "Celebration Location:",
+    dateLabel: "Anniversary Date:",
+  },
+  "retreats": {
+    heroImage: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=1600&q=80",
+    tabs: [
+      { id: "accommodations", label: "Accommodations", icon: Building2, category: "accommodations" },
+      { id: "wellness", label: "Wellness Programs", icon: Building2, category: "wellness" },
+      { id: "activities", label: "Activities", icon: Building2, category: "activities" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+    ],
+    filters: ["Wellness", "Yoga", "Meditation", "Nature", "Spiritual", "Detox", "Corporate", "Silent"],
+    locationLabel: "Retreat Location:",
+    dateLabel: "Retreat Dates:",
+  },
+  "baby-shower": {
+    heroImage: "https://images.unsplash.com/photo-1544776193-352d25ca82cd?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+    ],
+    filters: ["Boy", "Girl", "Gender Neutral", "Garden", "Indoor", "Elegant", "Casual", "Theme"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
+  "graduation-party": {
+    heroImage: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+    ],
+    filters: ["High School", "College", "Masters", "PhD", "Outdoor", "Indoor", "Casual", "Formal"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
+  "engagement-party": {
+    heroImage: "https://images.unsplash.com/photo-1519657814959-e2e3ae30fcd1?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "photography", label: "Photography", icon: Building2, category: "photography" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+    ],
+    filters: ["Elegant", "Casual", "Garden", "Rooftop", "Beach", "Restaurant", "Home", "Cocktail"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
+  "housewarming-party": {
+    heroImage: "https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=1600&q=80",
+    tabs: [
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "rentals", label: "Rentals", icon: Building2, category: "rentals" },
+    ],
+    filters: ["Casual", "Formal", "BBQ", "Cocktail", "Brunch", "Dinner", "Open House", "Theme"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
+  "retirement-party": {
+    heroImage: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+    ],
+    filters: ["Elegant", "Casual", "Office", "Restaurant", "Garden", "Formal", "Surprise", "Milestone"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
+  "career-achievement-party": {
+    heroImage: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "av", label: "A/V Equipment", icon: Building2, category: "av-equipment" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+    ],
+    filters: ["Promotion", "Award", "Milestone", "Corporate", "Formal", "Cocktail", "Dinner", "Gala"],
+    locationLabel: "Event Location:",
+    dateLabel: "Event Date:",
+  },
+  "farewell-party": {
+    heroImage: "https://images.unsplash.com/photo-1529156069898-49953e39b3ac?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+    ],
+    filters: ["Casual", "Formal", "Office", "Outdoor", "Restaurant", "Surprise", "Sentimental", "Fun"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
+  "holiday-party": {
+    heroImage: "https://images.unsplash.com/photo-1482517967863-00e15c9b44be?w=1600&q=80",
+    tabs: [
+      { id: "venue", label: "Venues", icon: Building2, category: "venue" },
+      { id: "catering", label: "Catering", icon: Building2, category: "catering" },
+      { id: "decorations", label: "Decorations", icon: Building2, category: "decorations" },
+      { id: "entertainment", label: "Entertainment", icon: Building2, category: "entertainment" },
+    ],
+    filters: ["Christmas", "New Year", "Thanksgiving", "Easter", "Halloween", "July 4th", "Corporate", "Family"],
+    locationLabel: "Party Location:",
+    dateLabel: "Party Date:",
+  },
 };
+
+const slugAliases: Record<string, string> = {
+  "romance": "date-night",
+  "corporate": "corporate-events",
+};
+
+function resolveSlug(slug: string): string {
+  return slugAliases[slug] || slug;
+}
 
 interface OptimizationResult {
   overallScore: number;
@@ -396,7 +537,8 @@ export default function ExperienceTemplatePage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
-  const slug = params?.slug || "";
+  const rawSlug = params?.slug || "";
+  const slug = resolveSlug(rawSlug);
   
   const { data: experienceType, isLoading: typeLoading } = useQuery<ExperienceType>({
     queryKey: ["/api/experience-types", slug],
