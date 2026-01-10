@@ -1,5 +1,5 @@
 import { useState, useMemo, Component, ReactNode } from "react";
-import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, Marker, InfoWindow } from "@vis.gl/react-google-maps";
 
 class MapErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode; fallback: ReactNode }) {
@@ -130,42 +130,15 @@ function MapContent({
     >
       {providers.map((provider) => {
         const selected = isSelected(provider.id);
-        const categoryColor = categoryColors[provider.category] || categoryColors.default;
         return (
-          <AdvancedMarker
+          <Marker
             key={provider.id}
             position={{ lat: provider.lat, lng: provider.lng }}
             onClick={() => setSelectedProvider(provider)}
-          >
-            {selected ? (
-              <div 
-                className="relative flex items-center justify-center"
-                style={{ transform: 'scale(1.3)' }}
-              >
-                <div 
-                  className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white"
-                  style={{ backgroundColor: '#FF385C' }}
-                >
-                  <Check className="w-4 h-4 text-white" />
-                </div>
-                <div 
-                  className="absolute -bottom-1 w-0 h-0"
-                  style={{
-                    borderLeft: '6px solid transparent',
-                    borderRight: '6px solid transparent',
-                    borderTop: '8px solid #FF385C'
-                  }}
-                />
-              </div>
-            ) : (
-              <Pin
-                background={categoryColor}
-                borderColor="#ffffff"
-                glyphColor="#ffffff"
-                scale={1}
-              />
-            )}
-          </AdvancedMarker>
+            icon={selected ? {
+              url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40"><path d="M16 0C7.16 0 0 7.16 0 16c0 12 16 24 16 24s16-12 16-24c0-8.84-7.16-16-16-16z" fill="#FF385C" stroke="white" stroke-width="2"/><circle cx="16" cy="16" r="6" fill="white"/><path d="M13 16l2 2 4-4" stroke="#FF385C" stroke-width="2" fill="none"/></svg>`),
+            } as any : undefined}
+          />
         );
       })}
 
