@@ -40,6 +40,7 @@ import {
   Coins,
   Loader2,
   ShoppingCart,
+  GitCompare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -458,6 +459,52 @@ export default function ExperienceTemplatePage() {
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
+  const [creatingComparison, setCreatingComparison] = useState(false);
+
+  const createComparison = async () => {
+    if (cart.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add some services first" });
+      return;
+    }
+    if (!user) {
+      toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
+      return;
+    }
+    setCreatingComparison(true);
+    
+    const cartItems = cart.map((item) => ({
+      name: item.name,
+      category: item.type,
+      price: item.price.toString(),
+      provider: item.provider || "Provider",
+      location: destination
+    }));
+    
+    try {
+      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+        title: `${experienceType?.name || "Trip"} Experience`,
+        destination: destination,
+        startDate: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
+        endDate: endDate?.toISOString().split('T')[0] || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        budget: cartTotal.toString(),
+        travelers: 2
+      });
+      
+      const comparison = await response.json();
+      sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
+      setCartOpen(false);
+      setLocation(`/itinerary-comparison/${comparison.id}`);
+    } catch (error: any) {
+      console.error("Failed to create comparison:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Failed to create comparison",
+        description: error?.message || "Please try again"
+      });
+    } finally {
+      setCreatingComparison(false);
+    }
+  };
 
   const { data: walletData } = useQuery<{ balance: number }>({
     queryKey: ["/api/wallet"],
@@ -984,16 +1031,32 @@ export default function ExperienceTemplatePage() {
                         <span className="font-medium">Total</span>
                         <span className="font-bold">${cartTotal}</span>
                       </div>
-                      <Button 
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                        onClick={() => {
-                          setCartOpen(false);
-                          setTimeout(() => setLocation("/cart"), 150);
-                        }}
-                        data-testid="button-checkout"
-                      >
-                        Proceed to Checkout
-                      </Button>
+                      <div className="space-y-2">
+                        <Button 
+                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          onClick={createComparison}
+                          disabled={creatingComparison}
+                          data-testid="button-compare-ai"
+                        >
+                          {creatingComparison ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <GitCompare className="w-4 h-4 mr-2" />
+                          )}
+                          Compare AI Alternatives
+                        </Button>
+                        <Button 
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => {
+                            setCartOpen(false);
+                            setTimeout(() => setLocation("/cart"), 150);
+                          }}
+                          data-testid="button-checkout"
+                        >
+                          Proceed to Checkout
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </SheetContent>
