@@ -736,7 +736,7 @@ export default function ExperienceTemplatePage() {
                 {/* Top row: Items count | Total price - clickable to open cart */}
                 <button
                   onClick={() => setCartOpen(true)}
-                  className="flex min-h-7 bg-white hover:bg-gray-50 transition-colors"
+                  className="flex min-h-8 bg-white hover:bg-gray-50 transition-colors"
                   data-testid="button-cart-summary"
                   aria-label="View cart details"
                 >
@@ -1215,7 +1215,7 @@ export default function ExperienceTemplatePage() {
               <div className="flex flex-col rounded-md overflow-hidden border border-[#FF385C] bg-[#FF385C]" data-testid="cart-generate-combo-mobile">
                 <button
                   onClick={() => setCartOpen(true)}
-                  className="flex min-h-6 bg-white hover:bg-gray-50 transition-colors"
+                  className="flex min-h-8 bg-white hover:bg-gray-50 transition-colors"
                   data-testid="button-cart-summary-mobile"
                   aria-label="View cart details"
                 >
@@ -1233,7 +1233,7 @@ export default function ExperienceTemplatePage() {
                 <button
                   onClick={generateItinerary}
                   disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                  className="flex min-h-7 items-center justify-center gap-1 px-2 text-white font-medium text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#E23350] transition-colors"
+                  className="flex min-h-8 items-center justify-center gap-1 px-2 text-white font-medium text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#E23350] transition-colors"
                   data-testid="button-generate-ribbon-mobile"
                 >
                   {generatingItinerary ? (
