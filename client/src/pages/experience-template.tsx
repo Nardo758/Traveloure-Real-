@@ -39,6 +39,7 @@ import {
   ArrowLeft,
   Coins,
   Loader2,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -491,32 +492,47 @@ export default function ExperienceTemplatePage() {
   const canGenerateItinerary = !dateError && destination.trim();
 
   const generateItinerary = async () => {
-    if (!canGenerateItinerary) return;
+    if (!canGenerateItinerary || cart.length === 0) return;
     setGeneratingItinerary(true);
+    
+    // Store experience context for cart page to use
+    const experienceContext = {
+      experienceType: experienceType?.name,
+      destination,
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString(),
+      selectedServices: cart.map(item => ({
+        name: item.name,
+        provider: item.provider,
+        price: item.price,
+        category: item.type
+      }))
+    };
+    sessionStorage.setItem("experienceContext", JSON.stringify(experienceContext));
+    
     try {
       const response = await fetch("/api/ai/optimize-experience", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          experienceType: experienceType?.name,
-          destination,
-          startDate: startDate?.toISOString(),
-          endDate: endDate?.toISOString(),
-          selectedServices: cart.map(item => ({
-            name: item.name,
-            provider: item.provider,
-            price: item.price,
-            category: item.type
-          })),
+          ...experienceContext,
           preferences: {}
         })
       });
       if (response.ok) {
-        setAiOptimizeOpen(true);
+        const result = await response.json();
+        // Store optimization result for cart page to pick up
+        sessionStorage.setItem("optimizationResult", JSON.stringify(result));
+        // Navigate to cart with itinerary step
+        setLocation("/cart?step=itinerary");
+      } else {
+        // Go to cart without optimization
+        setLocation("/cart");
       }
     } catch (error) {
       console.error("Failed to generate itinerary:", error);
+      setLocation("/cart");
     } finally {
       setGeneratingItinerary(false);
     }
@@ -731,41 +747,34 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-4 h-4" />
                 Get Expert Help
               </Button>
-              {/* Combined Cart Summary + Generate Itinerary Button - Horizontal Layout */}
-              <div className="flex rounded-md overflow-hidden border border-[#FF385C]" data-testid="cart-generate-combo">
-                {/* Left: Cart summary - clickable to open cart */}
-                <button
-                  onClick={() => setCartOpen(true)}
-                  className="flex min-h-8 bg-white hover:bg-gray-50 transition-colors"
-                  data-testid="button-cart-summary"
-                  aria-label="View cart details"
-                >
-                  <div className="px-2.5 flex items-center justify-center border-r border-gray-200">
-                    <span className="text-sm font-medium text-gray-700" data-testid="text-cart-items">
-                      {cart.length} {cart.length === 1 ? "Item" : "Items"}
-                    </span>
-                  </div>
-                  <div className="px-2.5 flex items-center justify-center">
-                    <span className="text-sm font-medium text-gray-700" data-testid="text-cart-total">
-                      ${cartTotal.toLocaleString()}
-                    </span>
-                  </div>
-                </button>
-                {/* Right: Generate Itinerary button */}
-                <button
-                  onClick={generateItinerary}
-                  disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                  className="flex min-h-8 items-center justify-center gap-1.5 px-3 bg-[#FF385C] text-white font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#E23350] transition-colors"
-                  data-testid="button-generate-ribbon"
-                >
-                  {generatingItinerary ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-4 h-4" />
-                  )}
-                  {cart.length === 0 ? "Add services" : "Generate Itinerary"}
-                </button>
-              </div>
+              {/* Separate Cart Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCartOpen(true)}
+                className="gap-1.5"
+                data-testid="button-cart-ribbon"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span data-testid="text-cart-items">{cart.length}</span>
+                <span className="text-muted-foreground">|</span>
+                <span data-testid="text-cart-total">${cartTotal.toLocaleString()}</span>
+              </Button>
+              {/* Separate Generate Itinerary Button */}
+              <Button
+                size="sm"
+                onClick={generateItinerary}
+                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
+                className="gap-1.5 bg-[#FF385C] hover:bg-[#E23350]"
+                data-testid="button-generate-ribbon"
+              >
+                {generatingItinerary ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Wand2 className="w-4 h-4" />
+                )}
+                Generate Itinerary
+              </Button>
             </div>
           </div>
 
@@ -1211,41 +1220,32 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-3 h-3" />
                 Expert
               </Button>
-              {/* Mobile Combined Cart Summary + Generate Itinerary Button - Horizontal Layout */}
-              <div className="flex rounded-md overflow-hidden border border-[#FF385C]" data-testid="cart-generate-combo-mobile">
-                {/* Left: Cart summary - clickable to open cart */}
-                <button
-                  onClick={() => setCartOpen(true)}
-                  className="flex min-h-8 bg-white hover:bg-gray-50 transition-colors"
-                  data-testid="button-cart-summary-mobile"
-                  aria-label="View cart details"
-                >
-                  <div className="px-1.5 flex items-center justify-center border-r border-gray-200">
-                    <span className="text-xs font-medium text-gray-700" data-testid="text-cart-items-mobile">
-                      {cart.length}
-                    </span>
-                  </div>
-                  <div className="px-1.5 flex items-center justify-center">
-                    <span className="text-xs font-medium text-gray-700" data-testid="text-cart-total-mobile">
-                      ${cartTotal.toLocaleString()}
-                    </span>
-                  </div>
-                </button>
-                {/* Right: Generate Itinerary button */}
-                <button
-                  onClick={generateItinerary}
-                  disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                  className="flex min-h-8 items-center justify-center gap-1 px-2 bg-[#FF385C] text-white font-medium text-xs disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#E23350] transition-colors"
-                  data-testid="button-generate-ribbon-mobile"
-                >
-                  {generatingItinerary ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Wand2 className="w-3 h-3" />
-                  )}
-                  {cart.length === 0 ? "Add" : "Go"}
-                </button>
-              </div>
+              {/* Mobile Cart Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCartOpen(true)}
+                className="gap-1 px-2"
+                data-testid="button-cart-ribbon-mobile"
+              >
+                <ShoppingCart className="w-3 h-3" />
+                <span data-testid="text-cart-items-mobile">{cart.length}</span>
+              </Button>
+              {/* Mobile Generate Itinerary Button */}
+              <Button
+                size="sm"
+                onClick={generateItinerary}
+                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
+                className="gap-1 px-2 bg-[#FF385C] hover:bg-[#E23350]"
+                data-testid="button-generate-ribbon-mobile"
+              >
+                {generatingItinerary ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Wand2 className="w-3 h-3" />
+                )}
+                Generate
+              </Button>
             </div>
           </div>
 
