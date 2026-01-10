@@ -427,7 +427,13 @@ export default function ExperienceTemplatePage() {
   }
 
   const { data: serverCart, refetch: refetchCart } = useQuery<ServerCartData>({
-    queryKey: ["/api/cart"],
+    queryKey: ["/api/cart", slug],
+    queryFn: async () => {
+      const res = await fetch(`/api/cart?experience=${slug}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch cart");
+      return res.json();
+    },
+    enabled: !!slug,
   });
 
   const cart: CartItem[] = useMemo(() => {
@@ -614,15 +620,15 @@ export default function ExperienceTemplatePage() {
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         toast({ title: "Cart updated", description: "Item quantity increased" });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update cart" });
       }
     } else if (!existing) {
       try {
-        await apiRequest("POST", "/api/cart", { serviceId: item.id, quantity: 1 });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        await apiRequest("POST", "/api/cart", { serviceId: item.id, quantity: 1, experienceSlug: slug });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to add to cart" });
@@ -636,7 +642,7 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("DELETE", `/api/cart/${item.cartItemId}`);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to remove from cart" });
       }
@@ -649,7 +655,7 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${item.cartItemId}`, { quantity: clampedQty });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update quantity" });
       }
@@ -819,6 +825,7 @@ export default function ExperienceTemplatePage() {
                   sessionStorage.setItem("experienceContext", JSON.stringify({
                     title: `${experienceType.name} Experience`,
                     experienceType: experienceType.name,
+                    experienceSlug: slug,
                     destination,
                     startDate: startDate?.toISOString().split('T')[0],
                     endDate: endDate?.toISOString().split('T')[0],

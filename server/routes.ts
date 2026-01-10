@@ -1573,7 +1573,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get cart items
   app.get("/api/cart", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const items = await storage.getCartItems(userId);
+    const experienceSlug = req.query.experience as string | undefined;
+    const items = await storage.getCartItems(userId, experienceSlug);
     
     // Calculate totals
     const subtotal = items.reduce((sum, item) => {
@@ -1597,7 +1598,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { serviceId, quantity, tripId, scheduledDate, notes } = req.body;
+      const { serviceId, quantity, tripId, scheduledDate, notes, experienceSlug } = req.body;
       
       if (!serviceId) {
         return res.status(400).json({ message: "Service ID is required" });
@@ -1615,6 +1616,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
+        experienceSlug: experienceSlug || "general",
       });
       
       res.status(201).json(item);
@@ -1658,7 +1660,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.delete("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      await storage.clearCart(userId);
+      const experienceSlug = req.query.experience as string | undefined;
+      await storage.clearCart(userId, experienceSlug);
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to clear cart" });

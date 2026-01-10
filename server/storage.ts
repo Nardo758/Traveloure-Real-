@@ -149,11 +149,11 @@ export interface IStorage {
   }): Promise<{ services: ProviderService[]; total: number }>;
 
   // Cart
-  getCartItems(userId: string): Promise<any[]>;
-  addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string }): Promise<any>;
+  getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
+  addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any>;
   updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
-  clearCart(userId: string): Promise<void>;
+  clearCart(userId: string, experienceSlug?: string): Promise<void>;
 
   // Contracts
   getContract(id: string): Promise<any | undefined>;
@@ -766,8 +766,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Cart Methods
-  async getCartItems(userId: string): Promise<any[]> {
-    const items = await db.select().from(cartItems).where(eq(cartItems.userId, userId));
+  async getCartItems(userId: string, experienceSlug?: string): Promise<any[]> {
+    let whereCondition = eq(cartItems.userId, userId);
+    if (experienceSlug) {
+      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug)) as any;
+    }
+    const items = await db.select().from(cartItems).where(whereCondition);
     // Join with service details and provider (user) name
     const enriched = await Promise.all(items.map(async (item) => {
       const [service] = await db.select().from(providerServices).where(eq(providerServices.id, item.serviceId));
@@ -783,10 +787,13 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string }): Promise<any> {
-    // Check if item already in cart
-    const [existing] = await db.select().from(cartItems)
-      .where(and(eq(cartItems.userId, userId), eq(cartItems.serviceId, item.serviceId)));
+  async addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any> {
+    // Check if item already in cart for this experience
+    let whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.serviceId, item.serviceId));
+    if (item.experienceSlug) {
+      whereCondition = and(whereCondition, eq(cartItems.experienceSlug, item.experienceSlug));
+    }
+    const [existing] = await db.select().from(cartItems).where(whereCondition);
     
     if (existing) {
       const [updated] = await db.update(cartItems)
@@ -799,6 +806,7 @@ export class DatabaseStorage implements IStorage {
     const [newItem] = await db.insert(cartItems).values({
       userId,
       serviceId: item.serviceId,
+      experienceSlug: item.experienceSlug,
       quantity: item.quantity || 1,
       tripId: item.tripId,
       scheduledDate: item.scheduledDate,
@@ -819,8 +827,12 @@ export class DatabaseStorage implements IStorage {
     await db.delete(cartItems).where(eq(cartItems.id, id));
   }
 
-  async clearCart(userId: string): Promise<void> {
-    await db.delete(cartItems).where(eq(cartItems.userId, userId));
+  async clearCart(userId: string, experienceSlug?: string): Promise<void> {
+    if (experienceSlug) {
+      await db.delete(cartItems).where(and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug)));
+    } else {
+      await db.delete(cartItems).where(eq(cartItems.userId, userId));
+    }
   }
 
   // Contract Methods
