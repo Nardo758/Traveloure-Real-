@@ -814,7 +814,18 @@ export default function ExperienceTemplatePage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCartOpen(true)}
+                onClick={() => {
+                  // Store experience context for cart page
+                  sessionStorage.setItem("experienceContext", JSON.stringify({
+                    title: `${experienceType.name} Experience`,
+                    experienceType: experienceType.name,
+                    destination,
+                    startDate: startDate?.toISOString().split('T')[0],
+                    endDate: endDate?.toISOString().split('T')[0],
+                    travelers: 2
+                  }));
+                  setLocation("/cart");
+                }}
                 className="gap-1.5"
                 data-testid="button-cart-ribbon"
               >
@@ -1303,7 +1314,17 @@ export default function ExperienceTemplatePage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCartOpen(true)}
+                onClick={() => {
+                  sessionStorage.setItem("experienceContext", JSON.stringify({
+                    title: `${experienceType.name} Experience`,
+                    experienceType: experienceType.name,
+                    destination,
+                    startDate: startDate?.toISOString().split('T')[0],
+                    endDate: endDate?.toISOString().split('T')[0],
+                    travelers: 2
+                  }));
+                  setLocation("/cart");
+                }}
                 className="gap-1 px-2"
                 data-testid="button-cart-ribbon-mobile"
               >
