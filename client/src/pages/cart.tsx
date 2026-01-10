@@ -43,6 +43,7 @@ interface CartItem {
     shortDescription: string | null;
     userId: string;
     serviceType: string | null;
+    providerName: string | null;
   } | null;
 }
 
@@ -193,7 +194,7 @@ export default function CartPage() {
       name: item.service?.serviceName || "Service",
       category: item.service?.serviceType || "service",
       price: item.service?.price || "0",
-      provider: "Provider",
+      provider: item.service?.providerName || "Provider",
       location: item.service?.location || ""
     }));
     
