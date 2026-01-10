@@ -557,7 +557,9 @@ export default function ExperienceTemplatePage() {
         title: "Sign in required", 
         description: "Please sign in to add items to your cart" 
       });
-      window.location.href = "/api/login";
+      setTimeout(() => {
+        window.location.href = "/api/login";
+      }, 1500);
       return;
     }
     
