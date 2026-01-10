@@ -90,6 +90,7 @@ import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
 import LayoutMock from "@/pages/layout-mock";
+import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -150,6 +151,9 @@ function Router() {
       </Route>
       <Route path="/cart">
         <CartPage />
+      </Route>
+      <Route path="/itinerary-comparison/:id">
+        {() => <ProtectedRoute component={ItineraryComparisonPage} />}
       </Route>
       <Route path="/bookings">
         <MyBookingsPage />

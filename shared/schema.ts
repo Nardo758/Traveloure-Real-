@@ -597,6 +597,84 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
 });
 
 
+// === AI Itinerary Optimization ===
+
+export const itineraryVariantStatusEnum = ["pending", "generating", "generated", "failed", "selected"] as const;
+export const itineraryVariantSourceEnum = ["user", "ai_optimized"] as const;
+
+export const itineraryComparisons = pgTable("itinerary_comparisons", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userExperienceId: varchar("user_experience_id").references(() => userExperiences.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }),
+  destination: varchar("destination", { length: 255 }),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  budget: decimal("budget", { precision: 10, scale: 2 }),
+  travelers: integer("travelers").default(1),
+  status: varchar("status", { length: 30 }).default("pending"),
+  selectedVariantId: varchar("selected_variant_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const itineraryVariants = pgTable("itinerary_variants", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  comparisonId: varchar("comparison_id").notNull().references(() => itineraryComparisons.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  source: varchar("source", { length: 30 }).default("user"),
+  status: varchar("status", { length: 30 }).default("pending"),
+  totalCost: decimal("total_cost", { precision: 10, scale: 2 }),
+  totalTravelTime: integer("total_travel_time"),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
+  freeTimeMinutes: integer("free_time_minutes"),
+  optimizationScore: integer("optimization_score"),
+  aiReasoning: text("ai_reasoning"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const itineraryVariantItems = pgTable("itinerary_variant_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  dayNumber: integer("day_number").notNull(),
+  timeSlot: varchar("time_slot", { length: 50 }),
+  startTime: varchar("start_time", { length: 20 }),
+  endTime: varchar("end_time", { length: 20 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  serviceType: varchar("service_type", { length: 50 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  rating: decimal("rating", { precision: 3, scale: 2 }),
+  location: varchar("location", { length: 255 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  duration: integer("duration"),
+  travelTimeFromPrevious: integer("travel_time_from_previous"),
+  isReplacement: boolean("is_replacement").default(false),
+  replacementReason: text("replacement_reason"),
+  metadata: jsonb("metadata").default({}),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const itineraryVariantMetrics = pgTable("itinerary_variant_metrics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  metricKey: varchar("metric_key", { length: 50 }).notNull(),
+  metricLabel: varchar("metric_label", { length: 100 }).notNull(),
+  value: decimal("value", { precision: 10, scale: 2 }).notNull(),
+  unit: varchar("unit", { length: 30 }),
+  betterIsLower: boolean("better_is_lower").default(true),
+  comparison: varchar("comparison", { length: 50 }),
+  improvementPercentage: decimal("improvement_percentage", { precision: 5, scale: 2 }),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === Experience Types & Templates ===
 
 export const experienceTypeSlugEnum = ["travel", "wedding", "proposal", "romance", "birthday", "corporate", "boys-trip", "girls-trip"] as const;
@@ -789,3 +867,18 @@ export type UserExperience = typeof userExperiences.$inferSelect;
 export type InsertUserExperience = z.infer<typeof insertUserExperienceSchema>;
 export type UserExperienceItem = typeof userExperienceItems.$inferSelect;
 export type InsertUserExperienceItem = z.infer<typeof insertUserExperienceItemSchema>;
+
+// AI Itinerary Optimization schemas and types
+export const insertItineraryComparisonSchema = createInsertSchema(itineraryComparisons).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertItineraryVariantSchema = createInsertSchema(itineraryVariants).omit({ id: true, createdAt: true });
+export const insertItineraryVariantItemSchema = createInsertSchema(itineraryVariantItems).omit({ id: true, createdAt: true });
+export const insertItineraryVariantMetricSchema = createInsertSchema(itineraryVariantMetrics).omit({ id: true, createdAt: true });
+
+export type ItineraryComparison = typeof itineraryComparisons.$inferSelect;
+export type InsertItineraryComparison = z.infer<typeof insertItineraryComparisonSchema>;
+export type ItineraryVariant = typeof itineraryVariants.$inferSelect;
+export type InsertItineraryVariant = z.infer<typeof insertItineraryVariantSchema>;
+export type ItineraryVariantItem = typeof itineraryVariantItems.$inferSelect;
+export type InsertItineraryVariantItem = z.infer<typeof insertItineraryVariantItemSchema>;
+export type ItineraryVariantMetric = typeof itineraryVariantMetrics.$inferSelect;
+export type InsertItineraryVariantMetric = z.infer<typeof insertItineraryVariantMetricSchema>;

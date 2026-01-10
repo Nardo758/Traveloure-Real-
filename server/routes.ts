@@ -10,11 +10,14 @@ import {
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
-  insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema
+  insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
+  itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
+  userExperienceItems, userExperiences, providerServices, cartItems
 } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import OpenAI from "openai";
+import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -1757,6 +1760,251 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       return res.status(404).json({ message: "Contract not found" });
     }
     res.json(contract);
+  });
+
+  // === Itinerary Comparison & Optimization Routes ===
+
+  app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers } = req.body;
+
+      const [comparison] = await db
+        .insert(itineraryComparisons)
+        .values({
+          userId,
+          userExperienceId,
+          tripId,
+          title: title || "My Itinerary Comparison",
+          destination,
+          startDate,
+          endDate,
+          budget: budget?.toString(),
+          travelers: travelers || 1,
+          status: "pending",
+        })
+        .returning();
+
+      res.status(201).json(comparison);
+    } catch (error) {
+      console.error("Error creating comparison:", error);
+      res.status(500).json({ message: "Failed to create comparison" });
+    }
+  });
+
+  app.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const comparisons = await db
+        .select()
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.userId, userId))
+        .orderBy(itineraryComparisons.createdAt);
+
+      res.json(comparisons);
+    } catch (error) {
+      console.error("Error fetching comparisons:", error);
+      res.status(500).json({ message: "Failed to fetch comparisons" });
+    }
+  });
+
+  app.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const result = await getComparisonWithVariants(req.params.id);
+
+      if (!result) {
+        return res.status(404).json({ message: "Comparison not found" });
+      }
+
+      if (result.comparison.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching comparison:", error);
+      res.status(500).json({ message: "Failed to fetch comparison" });
+    }
+  });
+
+  app.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const comparisonId = req.params.id;
+      const { baselineItems: inlineBaselineItems } = req.body;
+
+      const comparison = await db.query.itineraryComparisons.findFirst({
+        where: eq(itineraryComparisons.id, comparisonId),
+      });
+
+      if (!comparison) {
+        return res.status(404).json({ message: "Comparison not found" });
+      }
+
+      if (comparison.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      let baselineItems: any[] = [];
+
+      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
+        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
+          id: `inline-${index}`,
+          name: item.name,
+          description: item.description || "",
+          serviceType: "external",
+          price: parseFloat(item.price || "0"),
+          rating: item.rating || 4.5,
+          location: item.location || "",
+          duration: item.duration || 120,
+          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
+          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
+          category: item.category || "service",
+          provider: item.provider || "Provider"
+        }));
+      } else if (comparison.userExperienceId) {
+        const items = await db
+          .select()
+          .from(userExperienceItems)
+          .where(eq(userExperienceItems.userExperienceId, comparison.userExperienceId));
+
+        baselineItems = items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          serviceType: item.providerServiceId ? "provider" : "external",
+          price: parseFloat(item.price || "0"),
+          rating: 4.5,
+          location: item.location,
+          duration: 120,
+          dayNumber: 1,
+          timeSlot: item.scheduledTime || "morning",
+        }));
+      } else {
+        const cartItemsData = await db
+          .select({
+            cartItem: cartItems,
+            service: providerServices,
+          })
+          .from(cartItems)
+          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
+          .where(eq(cartItems.userId, userId));
+
+        baselineItems = cartItemsData.map((item, index) => ({
+          id: item.cartItem.id,
+          name: item.service?.serviceName || "Unknown Service",
+          description: item.service?.shortDescription,
+          serviceType: item.service?.serviceType,
+          price: parseFloat(item.service?.price || "0"),
+          rating: parseFloat(item.service?.averageRating || "4.5"),
+          location: item.service?.location,
+          duration: 120,
+          dayNumber: Math.floor(index / 3) + 1,
+          timeSlot: ["morning", "afternoon", "evening"][index % 3],
+        }));
+      }
+
+      if (baselineItems.length === 0) {
+        return res.status(400).json({ message: "No items to optimize. Add services to your cart or experience first." });
+      }
+
+      const availableServices = await db
+        .select()
+        .from(providerServices)
+        .where(eq(providerServices.status, "active"))
+        .limit(100);
+
+      res.json({ message: "Optimization started", status: "generating" });
+
+      generateOptimizedItineraries(
+        comparisonId,
+        userId,
+        baselineItems,
+        availableServices,
+        comparison.destination || "Unknown",
+        comparison.startDate || new Date().toISOString(),
+        comparison.endDate || new Date().toISOString(),
+        comparison.budget ? parseFloat(comparison.budget) : undefined,
+        comparison.travelers || 1
+      ).catch((err) => console.error("Background optimization error:", err));
+
+    } catch (error) {
+      console.error("Error starting optimization:", error);
+      res.status(500).json({ message: "Failed to start optimization" });
+    }
+  });
+
+  app.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { variantId } = req.body;
+
+      const comparison = await db.query.itineraryComparisons.findFirst({
+        where: eq(itineraryComparisons.id, req.params.id),
+      });
+
+      if (!comparison) {
+        return res.status(404).json({ message: "Comparison not found" });
+      }
+
+      if (comparison.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const result = await selectVariant(req.params.id, variantId);
+
+      if (!result.success) {
+        return res.status(400).json({ message: result.error });
+      }
+
+      res.json({ message: "Variant selected", variant: result.variant });
+    } catch (error) {
+      console.error("Error selecting variant:", error);
+      res.status(500).json({ message: "Failed to select variant" });
+    }
+  });
+
+  app.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const comparisonId = req.params.id;
+
+      const comparison = await db.query.itineraryComparisons.findFirst({
+        where: eq(itineraryComparisons.id, comparisonId),
+      });
+
+      if (!comparison || comparison.userId !== userId) {
+        return res.status(404).json({ message: "Comparison not found" });
+      }
+
+      if (!comparison.selectedVariantId) {
+        return res.status(400).json({ message: "No variant selected" });
+      }
+
+      const variantItems = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, comparison.selectedVariantId));
+
+      await db.delete(cartItems).where(eq(cartItems.userId, userId));
+
+      for (const item of variantItems) {
+        if (item.providerServiceId) {
+          await db.insert(cartItems).values({
+            userId,
+            serviceId: item.providerServiceId,
+            quantity: 1,
+            notes: `Day ${item.dayNumber} - ${item.timeSlot}`,
+          });
+        }
+      }
+
+      res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
+    } catch (error) {
+      console.error("Error applying to cart:", error);
+      res.status(500).json({ message: "Failed to apply itinerary to cart" });
+    }
   });
 
   // Call seed database

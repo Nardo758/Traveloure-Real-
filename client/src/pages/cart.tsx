@@ -25,7 +25,8 @@ import {
   DollarSign,
   CheckCircle,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  GitCompare
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -171,6 +172,55 @@ export default function CartPage() {
       toast({ variant: "destructive", title: "Checkout failed" });
     },
   });
+
+  const [creatingComparison, setCreatingComparison] = useState(false);
+
+  const createComparison = async () => {
+    if (!cart || cart.items.length === 0) return;
+    setCreatingComparison(true);
+    
+    let experienceContext;
+    const storedContext = sessionStorage.getItem("experienceContext");
+    if (storedContext) {
+      try {
+        experienceContext = JSON.parse(storedContext);
+      } catch (e) {
+        console.error("Failed to parse experience context");
+      }
+    }
+
+    const cartItems = cart.items.map(item => ({
+      name: item.service?.serviceName || "Service",
+      category: item.service?.category || "service",
+      price: item.service?.price || "0",
+      provider: item.service?.providerName || "Provider",
+      location: item.service?.location || ""
+    }));
+    
+    try {
+      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+        title: experienceContext?.title || "My Trip",
+        destination: experienceContext?.destination || cart.items[0]?.service?.location || "Paris, France",
+        startDate: experienceContext?.startDate || new Date().toISOString().split('T')[0],
+        endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        budget: cart.total,
+        travelers: experienceContext?.travelers || 2
+      });
+      
+      const comparison = await response.json();
+      sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
+      setLocation(`/itinerary-comparison/${comparison.id}`);
+    } catch (error: any) {
+      console.error("Failed to create comparison:", error);
+      toast({ 
+        variant: "destructive", 
+        title: "Failed to create comparison",
+        description: error?.message || "Please try again"
+      });
+    } finally {
+      setCreatingComparison(false);
+    }
+  };
 
   const generateItinerary = async () => {
     if (!cart || cart.items.length === 0) return;
@@ -425,6 +475,21 @@ export default function CartPage() {
                       <Button
                         className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                         size="lg"
+                        onClick={createComparison}
+                        disabled={creatingComparison}
+                        data-testid="button-compare-alternatives"
+                      >
+                        {creatingComparison ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <GitCompare className="w-4 h-4 mr-2" />
+                        )}
+                        {creatingComparison ? "Creating..." : "Compare AI Alternatives"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        size="lg"
                         onClick={generateItinerary}
                         disabled={generating}
                         data-testid="button-generate-itinerary"
@@ -434,10 +499,10 @@ export default function CartPage() {
                         ) : (
                           <Wand2 className="w-4 h-4 mr-2" />
                         )}
-                        {generating ? "Generating..." : "Generate Itinerary"}
+                        {generating ? "Generating..." : "Quick Itinerary"}
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         className="w-full"
                         size="lg"
                         onClick={() => setFlowStep("payment")}
