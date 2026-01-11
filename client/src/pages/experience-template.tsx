@@ -113,6 +113,8 @@ interface CartItem {
     checkInDate?: string;
     checkOutDate?: string;
     travelers?: number;
+    meetingPoint?: string;
+    meetingPointCoordinates?: { lat: number; lng: number };
     rawData?: any;
   };
 }
@@ -1806,6 +1808,24 @@ export default function ExperienceTemplatePage() {
                   const fullRefund = cancellation?.refundEligibility?.find(r => r.percentageRefundable === 100);
                   const isRefundable = !!fullRefund;
                   
+                  const logistics = activity.logistics as any;
+                  let meetingPoint: string | undefined;
+                  let meetingPointCoordinates: { lat: number; lng: number } | undefined;
+                  
+                  if (logistics?.start?.[0]) {
+                    const startLoc = logistics.start[0].location;
+                    const addr = startLoc?.address;
+                    meetingPoint = startLoc?.name || 
+                      [addr?.street, addr?.city, addr?.state, addr?.country].filter(Boolean).join(', ') ||
+                      logistics.start[0].description;
+                    if (startLoc?.coordinates) {
+                      meetingPointCoordinates = {
+                        lat: startLoc.coordinates.latitude,
+                        lng: startLoc.coordinates.longitude
+                      };
+                    }
+                  }
+                  
                   addToCart({
                     id: `activity-${activity.productCode}`,
                     type: "activities",
@@ -1813,12 +1833,14 @@ export default function ExperienceTemplatePage() {
                     price: (activity.pricing?.summary?.fromPrice || 0) * travelers,
                     quantity: 1,
                     provider: "Viator",
-                    details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}`,
+                    details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
                       duration: durationHours ? `${durationHours} hours` : undefined,
                       travelers: travelers,
+                      meetingPoint,
+                      meetingPointCoordinates,
                       rawData: activity,
                     },
                   });

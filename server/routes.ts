@@ -21,6 +21,7 @@ import OpenAI from "openai";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
+import { claudeService } from "./services/claude.service";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -2576,6 +2577,145 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Viator destinations error:', error);
       res.status(500).json({ message: error.message || "Failed to get destinations" });
+    }
+  });
+
+  // ============ CLAUDE AI ROUTES ============
+
+  // Zod schemas for Claude API validation
+  const claudeCartItemSchema = z.object({
+    id: z.string().max(100),
+    type: z.string().max(50),
+    name: z.string().max(500),
+    price: z.number().min(0).max(1000000),
+    details: z.string().max(1000).optional(),
+    metadata: z.object({
+      cabin: z.string().max(50).optional(),
+      baggage: z.string().max(100).optional(),
+      stops: z.number().min(0).max(10).optional(),
+      duration: z.string().max(50).optional(),
+      airline: z.string().max(100).optional(),
+      departureTime: z.string().max(50).optional(),
+      arrivalTime: z.string().max(50).optional(),
+      refundable: z.boolean().optional(),
+      cancellationDeadline: z.string().max(100).optional(),
+      boardType: z.string().max(50).optional(),
+      nights: z.number().min(0).max(365).optional(),
+      checkInDate: z.string().max(20).optional(),
+      checkOutDate: z.string().max(20).optional(),
+      meetingPoint: z.string().max(500).optional(),
+      meetingPointCoordinates: z.object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+      }).optional(),
+      travelers: z.number().min(1).max(100).optional(),
+    }).passthrough().optional(),
+  });
+
+  const claudeOptimizeSchema = z.object({
+    destination: z.string().min(1).max(200),
+    startDate: z.string().max(20),
+    endDate: z.string().max(20),
+    travelers: z.number().min(1).max(100).optional(),
+    budget: z.number().min(0).max(10000000).optional(),
+    cartItems: z.array(claudeCartItemSchema).max(50),
+    preferences: z.object({
+      pacePreference: z.enum(['relaxed', 'moderate', 'packed']).optional(),
+      prioritizeProximity: z.boolean().optional(),
+      prioritizeBudget: z.boolean().optional(),
+      prioritizeRatings: z.boolean().optional(),
+    }).optional(),
+  });
+
+  const claudeTransportSchema = z.object({
+    hotelLocation: z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+      address: z.string().max(500),
+    }),
+    activityLocations: z.array(z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+      address: z.string().max(500),
+      name: z.string().max(300),
+    })).max(20),
+  });
+
+  const claudeRecommendationsSchema = z.object({
+    destination: z.string().min(1).max(200),
+    dates: z.object({
+      start: z.string().max(20),
+      end: z.string().max(20),
+    }),
+    interests: z.array(z.string().max(50)).max(20),
+  });
+
+  // Optimize itinerary using Claude
+  app.post("/api/claude/optimize-itinerary", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = claudeOptimizeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const { destination, startDate, endDate, travelers, budget, cartItems, preferences } = parsed.data;
+      
+      // Strip rawData from cart items to prevent prompt injection and reduce payload size
+      const sanitizedCartItems = cartItems.map(item => ({
+        ...item,
+        metadata: item.metadata ? { ...item.metadata, rawData: undefined } : undefined,
+      }));
+      
+      const result = await claudeService.optimizeItinerary({
+        destination,
+        startDate,
+        endDate,
+        travelers: travelers || 1,
+        budget,
+        cartItems: sanitizedCartItems,
+        preferences,
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error('Claude itinerary optimization error:', error);
+      res.status(500).json({ message: error.message || "Itinerary optimization failed" });
+    }
+  });
+
+  // Analyze transportation needs
+  app.post("/api/claude/transportation-analysis", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = claudeTransportSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const { hotelLocation, activityLocations } = parsed.data;
+      
+      const result = await claudeService.analyzeTransportationNeeds(hotelLocation, activityLocations);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Claude transportation analysis error:', error);
+      res.status(500).json({ message: error.message || "Transportation analysis failed" });
+    }
+  });
+
+  // Get travel recommendations
+  app.post("/api/claude/recommendations", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = claudeRecommendationsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const { destination, dates, interests } = parsed.data;
+      
+      const result = await claudeService.generateTravelRecommendations(destination, dates, interests);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Claude recommendations error:', error);
+      res.status(500).json({ message: error.message || "Recommendations generation failed" });
     }
   });
 
