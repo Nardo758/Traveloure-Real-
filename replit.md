@@ -53,6 +53,7 @@ The application features a modern and responsive design using Tailwind CSS and s
 - **PostgreSQL**: The relational database management system for data persistence.
 - **OpenAI**: For AI-powered itinerary optimization and recommendations via gpt-4o.
 - **Google Maps**: For interactive mapping with provider locations and route visualization.
+- **Amadeus Self-Service API**: For real-time flight and hotel search in travel planning templates (test environment).
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management for React.
@@ -65,6 +66,7 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `lucide-react`: Icon library.
 - `@vis.gl/react-google-maps`: Google Maps React components for interactive mapping.
 - `openai`: OpenAI SDK for AI integration.
+- `amadeus`: Amadeus Node.js SDK for flight and hotel search APIs.
 
 ### Environment Variables
 - `DATABASE_URL`: Connection string for PostgreSQL.
@@ -73,8 +75,17 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `REPL_ID`: Identifier for the Replit environment.
 - `GOOGLE_MAPS_API_KEY`: API key for Google Maps integration.
 - `VITE_GOOGLE_MAPS_API_KEY`: Frontend-accessible Google Maps API key.
+- `AMADEUS_API_KEY`: API key for Amadeus Self-Service API (stored as secret).
+- `AMADEUS_API_SECRET`: API secret for Amadeus Self-Service API (stored as secret).
 
 ## Recent Changes (January 2026)
+- **Amadeus Self-Service API Integration**: Added flight and hotel search functionality
+  - `server/services/amadeus.service.ts`: Service layer with OAuth authentication for test environment
+  - `server/types/amadeus.d.ts`: TypeScript declarations for Amadeus SDK
+  - API endpoints: `/api/amadeus/locations`, `/api/amadeus/flights`, `/api/amadeus/hotels` (authenticated)
+  - `FlightSearch` component: Integrated into "travel" template's Flights tab
+  - `HotelSearch` component: Integrated into Hotels/Accommodations tabs across 5 templates (travel, boys-trip, girls-trip, reunions, retreats)
+  - Note: Amadeus results add to local cart state (external booking persistence requires future schema extension)
 - Implemented persistent 60/40 split-screen layout for experience planning (left: content, right: always-visible map)
 - Map markers use distinct visual states: selected providers show pink circle with checkmark icon at 1.3x scale, unselected use category-colored pins
 - Extended category color system to cover 30+ service type variations for consistent marker coloring
