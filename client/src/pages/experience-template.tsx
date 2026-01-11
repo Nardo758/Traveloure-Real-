@@ -90,6 +90,30 @@ interface CartItem {
   date?: string;
   details?: string;
   provider?: string;
+  metadata?: {
+    cabin?: string;
+    baggage?: string;
+    stops?: number;
+    duration?: string;
+    airline?: string;
+    flightNumber?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    seatsLeft?: number;
+    lastTicketingDate?: string;
+    refundable?: boolean;
+    cancellationDeadline?: string;
+    boardType?: string;
+    bedInfo?: string;
+    roomCategory?: string;
+    taxTotal?: number;
+    nights?: number;
+    pricePerNight?: number;
+    checkInDate?: string;
+    checkOutDate?: string;
+    travelers?: number;
+    rawData?: any;
+  };
 }
 
 const experienceConfigs: Record<string, {
@@ -1599,8 +1623,18 @@ export default function ExperienceTemplatePage() {
                 stops={flightStops}
                 sortBy={flightSortBy}
                 onSelectFlight={(flight) => {
-                  const firstSegment = flight.itineraries[0]?.segments[0];
-                  const lastSegment = flight.itineraries[0]?.segments[flight.itineraries[0].segments.length - 1];
+                  const outbound = flight.itineraries[0];
+                  const firstSegment = outbound?.segments[0];
+                  const lastSegment = outbound?.segments[outbound.segments.length - 1];
+                  const travelerPricing = flight.travelerPricings?.[0];
+                  const fareDetails = travelerPricing?.fareDetailsBySegment?.[0];
+                  const checkedBags = fareDetails?.includedCheckedBags;
+                  const bagsInfo = checkedBags?.quantity !== undefined 
+                    ? `${checkedBags.quantity} bag${checkedBags.quantity !== 1 ? 's' : ''}`
+                    : checkedBags?.weight 
+                      ? `${checkedBags.weight}${checkedBags.weightUnit || 'kg'}`
+                      : undefined;
+                  
                   addToCart({
                     id: `flight-${flight.id}`,
                     type: "flights",
@@ -1608,6 +1642,21 @@ export default function ExperienceTemplatePage() {
                     price: parseFloat(flight.price.total),
                     quantity: 1,
                     provider: `${firstSegment?.carrierCode} ${firstSegment?.number}`,
+                    details: `${fareDetails?.cabin || 'Economy'} class${bagsInfo ? `, ${bagsInfo}` : ''}`,
+                    metadata: {
+                      cabin: fareDetails?.cabin,
+                      baggage: bagsInfo,
+                      stops: outbound?.segments.length - 1,
+                      duration: outbound?.duration,
+                      airline: firstSegment?.carrierCode,
+                      flightNumber: `${firstSegment?.carrierCode}${firstSegment?.number}`,
+                      departureTime: firstSegment?.departure.at,
+                      arrivalTime: lastSegment?.arrival.at,
+                      seatsLeft: flight.numberOfBookableSeats,
+                      lastTicketingDate: flight.lastTicketingDate,
+                      travelers: travelers,
+                      rawData: flight,
+                    },
                   });
                 }}
               />
@@ -1639,13 +1688,49 @@ export default function ExperienceTemplatePage() {
                 onSelectHotel={(hotelData) => {
                   const hotel = hotelData.hotel;
                   const offer = hotelData.offers?.[0];
+                  
+                  const nights = offer 
+                    ? Math.max(1, Math.ceil((new Date(offer.checkOutDate).getTime() - new Date(offer.checkInDate).getTime()) / (1000 * 60 * 60 * 24)))
+                    : 1;
+                  const totalPrice = offer ? parseFloat(offer.price.total) : 0;
+                  const pricePerNight = totalPrice / nights;
+                  
+                  const refundStatus = offer?.policies?.refundable?.cancellationRefund;
+                  const isRefundable = refundStatus === "REFUNDABLE_UP_TO_DEADLINE" || refundStatus === "REFUNDABLE";
+                  const cancellationDeadline = offer?.policies?.cancellations?.[0]?.deadline;
+                  const boardType = offer?.boardType;
+                  
+                  const roomEstimate = offer?.room?.typeEstimated;
+                  const bedInfo = roomEstimate?.beds && roomEstimate?.bedType 
+                    ? `${roomEstimate.beds} ${roomEstimate.bedType.toLowerCase()}` 
+                    : undefined;
+                  const roomCategory = roomEstimate?.category?.replace(/_/g, " ").toLowerCase();
+                  
+                  const taxes = offer?.price?.taxes?.filter((t: any) => !t.included);
+                  const taxTotal = taxes?.reduce((sum: number, t: any) => sum + parseFloat(t.amount), 0) || 0;
+                  
                   addToCart({
                     id: `hotel-${hotel.hotelId}`,
                     type: activeTab,
                     name: hotel.name,
-                    price: offer ? parseFloat(offer.price.total) : 0,
+                    price: totalPrice,
                     quantity: 1,
                     provider: "Amadeus Hotels",
+                    details: `${nights} nights${boardType ? `, ${boardType.replace(/_/g, " ").toLowerCase()}` : ''}${isRefundable ? ', refundable' : ''}`,
+                    metadata: {
+                      refundable: isRefundable,
+                      cancellationDeadline: cancellationDeadline,
+                      boardType: boardType,
+                      bedInfo: bedInfo,
+                      roomCategory: roomCategory,
+                      taxTotal: taxTotal,
+                      nights: nights,
+                      pricePerNight: pricePerNight,
+                      checkInDate: offer?.checkInDate,
+                      checkOutDate: offer?.checkOutDate,
+                      travelers: travelers,
+                      rawData: hotelData,
+                    },
                   });
                 }}
               />

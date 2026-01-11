@@ -24,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Plane, Clock, ArrowRight, ChevronDown, Check, Loader2, Settings2, Calendar, Users, MapPin } from "lucide-react";
+import { Plane, Clock, ArrowRight, ChevronDown, Check, Loader2, Settings2, Calendar, Users, MapPin, Luggage, Briefcase, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -41,22 +41,101 @@ interface FlightSearchProps {
 }
 
 interface FlightSegment {
-  departure: { iataCode: string; at: string };
-  arrival: { iataCode: string; at: string };
+  departure: { iataCode: string; terminal?: string; at: string };
+  arrival: { iataCode: string; terminal?: string; at: string };
   carrierCode: string;
   number: string;
   duration: string;
   numberOfStops: number;
+  aircraft?: { code: string };
+  operating?: { carrierCode: string };
+}
+
+interface TravelerPricing {
+  travelerId: string;
+  fareOption: string;
+  travelerType: string;
+  price: { currency: string; total: string; base?: string };
+  fareDetailsBySegment?: Array<{
+    segmentId: string;
+    cabin?: string;
+    fareBasis?: string;
+    brandedFare?: string;
+    class?: string;
+    includedCheckedBags?: { weight?: number; weightUnit?: string; quantity?: number };
+  }>;
 }
 
 interface FlightOffer {
   id: string;
-  price: { total: string; currency: string };
+  source: string;
+  instantTicketingRequired?: boolean;
+  nonHomogeneous?: boolean;
+  oneWay?: boolean;
+  lastTicketingDate?: string;
+  numberOfBookableSeats?: number;
+  price: { 
+    total: string; 
+    currency: string; 
+    base?: string;
+    grandTotal?: string;
+    fees?: Array<{ amount: string; type: string }>;
+  };
+  pricingOptions?: {
+    fareType?: string[];
+    includedCheckedBagsOnly?: boolean;
+  };
+  validatingAirlineCodes?: string[];
   itineraries: Array<{
     duration: string;
     segments: FlightSegment[];
   }>;
+  travelerPricings?: TravelerPricing[];
 }
+
+const airlineNames: Record<string, string> = {
+  AA: "American Airlines",
+  UA: "United Airlines",
+  DL: "Delta Air Lines",
+  WN: "Southwest Airlines",
+  AS: "Alaska Airlines",
+  B6: "JetBlue Airways",
+  NK: "Spirit Airlines",
+  F9: "Frontier Airlines",
+  G4: "Allegiant Air",
+  HA: "Hawaiian Airlines",
+  AF: "Air France",
+  BA: "British Airways",
+  LH: "Lufthansa",
+  KL: "KLM Royal Dutch",
+  IB: "Iberia",
+  AZ: "ITA Airways",
+  LX: "Swiss International",
+  OS: "Austrian Airlines",
+  SK: "SAS Scandinavian",
+  AY: "Finnair",
+  TP: "TAP Air Portugal",
+  EI: "Aer Lingus",
+  EK: "Emirates",
+  QR: "Qatar Airways",
+  EY: "Etihad Airways",
+  TK: "Turkish Airlines",
+  SQ: "Singapore Airlines",
+  CX: "Cathay Pacific",
+  JL: "Japan Airlines",
+  NH: "ANA",
+  QF: "Qantas",
+  AC: "Air Canada",
+  AM: "Aeromexico",
+  LA: "LATAM Airlines",
+  AV: "Avianca",
+  CM: "Copa Airlines",
+  VS: "Virgin Atlantic",
+  FR: "Ryanair",
+  U2: "EasyJet",
+  VY: "Vueling",
+  W6: "Wizz Air",
+};
 
 interface LocationSuggestion {
   iataCode: string;
@@ -704,11 +783,27 @@ export function FlightSearch({
               const inbound = flight.itineraries[1];
               const firstSeg = outbound?.segments[0];
               const lastSeg = outbound?.segments[outbound.segments.length - 1];
+              const carrierCode = firstSeg?.carrierCode || "";
+              const airlineName = airlineNames[carrierCode] || carrierCode;
+              
+              const travelerPricing = flight.travelerPricings?.[0];
+              const fareDetails = travelerPricing?.fareDetailsBySegment?.[0];
+              const cabin = fareDetails?.cabin || "ECONOMY";
+              const cabinDisplay = cabin.charAt(0) + cabin.slice(1).toLowerCase().replace("_", " ");
+              const checkedBags = fareDetails?.includedCheckedBags;
+              const bagsInfo = checkedBags?.quantity !== undefined 
+                ? `${checkedBags.quantity} bag${checkedBags.quantity !== 1 ? 's' : ''}`
+                : checkedBags?.weight 
+                  ? `${checkedBags.weight}${checkedBags.weightUnit || 'kg'}`
+                  : null;
+              
+              const seatsLeft = flight.numberOfBookableSeats;
+              const lastTicketDate = flight.lastTicketingDate;
 
               return (
                 <Card key={flight.id} className="hover-elevate">
                   <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-3">
+                    <div className="flex justify-between items-start mb-2">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="font-bold text-lg">
@@ -723,22 +818,30 @@ export function FlightSearch({
                           {formatDate(firstSeg?.departure.at || "")}
                         </div>
                       </div>
-                      <Badge variant="secondary" className="text-lg font-bold">
-                        ${flight.price.total}
-                      </Badge>
+                      <div className="text-right">
+                        <Badge variant="secondary" className="text-lg font-bold">
+                          ${flight.price.total}
+                        </Badge>
+                        {adults > 1 && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            ${(parseFloat(flight.price.total) / adults).toFixed(2)}/person
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-medium">{airlineName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {carrierCode} {firstSeg?.number}
+                      </span>
                     </div>
 
                     <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           <span>{formatDuration(outbound?.duration || "")}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Plane className="h-3 w-3" />
-                          <span>
-                            {firstSeg?.carrierCode} {firstSeg?.number}
-                          </span>
                         </div>
                         <Badge variant="outline" className="text-xs">
                           {outbound?.segments.length === 1
@@ -747,11 +850,30 @@ export function FlightSearch({
                                 outbound?.segments.length > 2 ? "s" : ""
                               }`}
                         </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          <Briefcase className="h-3 w-3 mr-1" />
+                          {cabinDisplay}
+                        </Badge>
                       </div>
 
                       <div className="text-muted-foreground">
                         {formatTime(firstSeg?.departure.at || "")} -{" "}
                         {formatTime(lastSeg?.arrival.at || "")}
+                      </div>
+
+                      <div className="flex items-center gap-3 flex-wrap text-xs">
+                        {bagsInfo && (
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <Luggage className="h-3 w-3" />
+                            <span>{bagsInfo} included</span>
+                          </div>
+                        )}
+                        {seatsLeft && seatsLeft <= 5 && (
+                          <div className="flex items-center gap-1 text-amber-600">
+                            <AlertCircle className="h-3 w-3" />
+                            <span>Only {seatsLeft} seats left</span>
+                          </div>
+                        )}
                       </div>
 
                       {inbound && (
@@ -762,6 +884,12 @@ export function FlightSearch({
                             <span>•</span>
                             <span>{formatDuration(inbound.duration)}</span>
                           </div>
+                        </div>
+                      )}
+
+                      {lastTicketDate && (
+                        <div className="text-xs text-muted-foreground">
+                          Book by {formatDate(lastTicketDate + "T00:00:00")}
                         </div>
                       )}
                     </div>

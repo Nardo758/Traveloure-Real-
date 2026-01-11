@@ -24,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users } from "lucide-react";
+import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users, ShieldCheck, ShieldX, Coffee, BedDouble, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -60,23 +60,80 @@ interface HotelOffer {
       countryCode?: string;
     };
     rating?: string;
+    amenities?: string[];
+    contact?: {
+      phone?: string;
+      email?: string;
+    };
   };
   offers?: Array<{
     id: string;
     checkInDate: string;
     checkOutDate: string;
+    rateCode?: string;
+    category?: string;
+    boardType?: string;
     room: {
       type: string;
+      typeEstimated?: {
+        category?: string;
+        beds?: number;
+        bedType?: string;
+      };
       description?: {
         text: string;
       };
     };
+    guests?: {
+      adults?: number;
+    };
     price: {
       currency: string;
       total: string;
+      base?: string;
+      taxes?: Array<{
+        code?: string;
+        amount: string;
+        currency: string;
+        included?: boolean;
+      }>;
+      variations?: {
+        average?: {
+          base?: string;
+          total?: string;
+        };
+      };
+    };
+    policies?: {
+      cancellations?: Array<{
+        deadline?: string;
+        description?: { text: string };
+        policyType?: string;
+      }>;
+      paymentType?: string;
+      refundable?: {
+        cancellationRefund?: string;
+      };
+      guarantee?: {
+        acceptedPayments?: {
+          creditCards?: string[];
+          methods?: string[];
+        };
+      };
+    };
+    commission?: {
+      percentage?: string;
     };
   }>;
 }
+
+const boardTypeLabels: Record<string, string> = {
+  ROOM_ONLY: "Room Only",
+  BREAKFAST: "Breakfast Included",
+  HALF_BOARD: "Half Board",
+  FULL_BOARD: "Full Board",
+  ALL_INCLUSIVE: "All Inclusive",
+};
 
 export function HotelSearch({
   destination,
@@ -557,11 +614,39 @@ export function HotelSearch({
                 : 1;
               const totalPrice = offer ? parseFloat(offer.price.total) : 0;
               const pricePerNight = totalPrice / nights;
+              
+              const refundStatus = offer?.policies?.refundable?.cancellationRefund;
+              const isRefundable = refundStatus === "REFUNDABLE_UP_TO_DEADLINE" || refundStatus === "REFUNDABLE";
+              const isNonRefundable = refundStatus === "NON_REFUNDABLE";
+              const cancellationDeadline = offer?.policies?.cancellations?.[0]?.deadline;
+              const boardType = offer?.boardType;
+              const boardLabel = boardType ? boardTypeLabels[boardType] || boardType : null;
+              
+              const roomEstimate = offer?.room.typeEstimated;
+              const bedInfo = roomEstimate?.beds && roomEstimate?.bedType 
+                ? `${roomEstimate.beds} ${roomEstimate.bedType.toLowerCase()}` 
+                : null;
+              const roomCategory = roomEstimate?.category?.replace(/_/g, " ").toLowerCase();
+              
+              const taxes = offer?.price.taxes?.filter(t => !t.included);
+              const taxTotal = taxes?.reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
 
               return (
                 <Card key={hotel.hotelId} className="overflow-hidden hover-elevate">
-                  <div className="h-32 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800 flex items-center justify-center">
+                  <div className="h-32 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800 flex items-center justify-center relative">
                     <Hotel className="h-12 w-12 text-blue-400" />
+                    {isRefundable && (
+                      <Badge className="absolute top-2 left-2 bg-green-600 text-white text-xs">
+                        <ShieldCheck className="h-3 w-3 mr-1" />
+                        Refundable
+                      </Badge>
+                    )}
+                    {isNonRefundable && (
+                      <Badge className="absolute top-2 left-2 bg-amber-600 text-white text-xs">
+                        <ShieldX className="h-3 w-3 mr-1" />
+                        Non-refundable
+                      </Badge>
+                    )}
                   </div>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
@@ -575,7 +660,7 @@ export function HotelSearch({
                     </div>
 
                     {hotel.address && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground mb-3">
+                      <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                         <MapPin className="h-3 w-3" />
                         <span className="line-clamp-1">
                           {hotel.address.cityName || hotel.cityCode}
@@ -586,9 +671,30 @@ export function HotelSearch({
 
                     {offer && (
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 flex-wrap text-xs">
+                          {bedInfo && (
+                            <Badge variant="outline" className="text-xs">
+                              <BedDouble className="h-3 w-3 mr-1" />
+                              {bedInfo}
+                            </Badge>
+                          )}
+                          {boardLabel && (
+                            <Badge variant="outline" className="text-xs">
+                              <Coffee className="h-3 w-3 mr-1" />
+                              {boardLabel}
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        {roomCategory && (
+                          <div className="text-xs text-muted-foreground capitalize">
+                            {roomCategory}
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center justify-between pt-1">
                           <span className="text-sm text-muted-foreground">
-                            {offer.room.type}
+                            {nights} night{nights !== 1 ? 's' : ''}
                           </span>
                           <div className="text-right">
                             <span className="font-bold text-lg">
@@ -596,13 +702,24 @@ export function HotelSearch({
                             </span>
                           </div>
                         </div>
+                        
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{nights} night{nights !== 1 ? 's' : ''}</span>
+                          <span>{offer.checkInDate} - {offer.checkOutDate}</span>
                           <span className="font-medium">${totalPrice.toFixed(2)} total</span>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {offer.checkInDate} - {offer.checkOutDate}
-                        </div>
+                        
+                        {taxTotal > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            + ${taxTotal.toFixed(2)} taxes & fees
+                          </div>
+                        )}
+                        
+                        {cancellationDeadline && isRefundable && (
+                          <div className="flex items-center gap-1 text-xs text-green-600">
+                            <AlertCircle className="h-3 w-3" />
+                            Free cancellation until {new Date(cancellationDeadline).toLocaleDateString()}
+                          </div>
+                        )}
                       </div>
                     )}
 
