@@ -59,6 +59,7 @@ const categoryColors: Record<string, string> = {
   venue: "#FF385C",
   venues: "#FF385C",
   "venues-luxury": "#FF385C",
+  "custom-venue": "#8B5CF6",
   catering: "#00A699",
   photography: "#FC642D",
   florist: "#E91E63",
@@ -93,6 +94,8 @@ const categoryColors: Record<string, string> = {
   default: "#607D8B"
 };
 
+const isCustomVenue = (id: string) => id.startsWith("custom-");
+
 function MapContent({ 
   providers,
   selectedProviderIds = [],
@@ -113,10 +116,20 @@ function MapContent({
     if (providers.length === 0) {
       return { lat: 40.7128, lng: -74.0060 };
     }
-    const avgLat = providers.reduce((sum, p) => sum + p.lat, 0) / providers.length;
-    const avgLng = providers.reduce((sum, p) => sum + p.lng, 0) / providers.length;
+    
+    const customVenues = providers.filter(p => isCustomVenue(p.id));
+    const selectedItems = providers.filter(p => selectedProviderIds.includes(p.id));
+    
+    const priorityProviders = customVenues.length > 0 
+      ? customVenues 
+      : selectedItems.length > 0 
+        ? selectedItems 
+        : providers;
+    
+    const avgLat = priorityProviders.reduce((sum, p) => sum + p.lat, 0) / priorityProviders.length;
+    const avgLng = priorityProviders.reduce((sum, p) => sum + p.lng, 0) / priorityProviders.length;
     return { lat: avgLat, lng: avgLng };
-  }, [providers]);
+  }, [providers, selectedProviderIds]);
 
   return (
     <Map
@@ -130,14 +143,25 @@ function MapContent({
     >
       {providers.map((provider) => {
         const selected = isSelected(provider.id);
+        const isCustom = isCustomVenue(provider.id);
+        
+        let markerIcon = undefined;
+        if (isCustom) {
+          markerIcon = {
+            url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48"><path d="M20 0C9 0 0 9 0 20c0 15 20 28 20 28s20-13 20-28c0-11-9-20-20-20z" fill="#8B5CF6" stroke="white" stroke-width="3"/><path d="M20 10l2.5 5 5.5.8-4 3.9.9 5.3-4.9-2.6-4.9 2.6.9-5.3-4-3.9 5.5-.8z" fill="white"/></svg>`),
+          } as any;
+        } else if (selected) {
+          markerIcon = {
+            url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40"><path d="M16 0C7.16 0 0 7.16 0 16c0 12 16 24 16 24s16-12 16-24c0-8.84-7.16-16-16-16z" fill="#FF385C" stroke="white" stroke-width="2"/><circle cx="16" cy="16" r="6" fill="white"/><path d="M13 16l2 2 4-4" stroke="#FF385C" stroke-width="2" fill="none"/></svg>`),
+          } as any;
+        }
+        
         return (
           <Marker
             key={provider.id}
             position={{ lat: provider.lat, lng: provider.lng }}
             onClick={() => setSelectedProvider(provider)}
-            icon={selected ? {
-              url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40"><path d="M16 0C7.16 0 0 7.16 0 16c0 12 16 24 16 24s16-12 16-24c0-8.84-7.16-16-16-16z" fill="#FF385C" stroke="white" stroke-width="2"/><circle cx="16" cy="16" r="6" fill="white"/><path d="M13 16l2 2 4-4" stroke="#FF385C" stroke-width="2" fill="none"/></svg>`),
-            } as any : undefined}
+            icon={markerIcon}
           />
         );
       })}
@@ -154,7 +178,7 @@ function MapContent({
                 className="text-xs flex-shrink-0"
                 style={{ backgroundColor: categoryColors[selectedProvider.category] || categoryColors.default }}
               >
-                {selectedProvider.category}
+                {isCustomVenue(selectedProvider.id) ? "Custom Location" : selectedProvider.category}
               </Badge>
             </div>
             <div className="flex items-center gap-3 text-xs text-gray-600 mb-2">
@@ -279,7 +303,15 @@ export function ExperienceMap({
           <div className="bg-[#FF385C] text-white rounded-md shadow-md p-2">
             <div className="flex items-center gap-2 text-xs">
               <Check className="w-4 h-4" />
-              <span className="font-medium">{selectedCount} selected</span>
+              <span className="font-medium">{selectedCount} in plan</span>
+            </div>
+          </div>
+        )}
+        {providers.some(p => isCustomVenue(p.id)) && (
+          <div className="bg-[#8B5CF6] text-white rounded-md shadow-md p-2">
+            <div className="flex items-center gap-2 text-xs">
+              <Star className="w-4 h-4" />
+              <span className="font-medium">Custom locations</span>
             </div>
           </div>
         )}
