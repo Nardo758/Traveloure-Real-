@@ -76,6 +76,8 @@ import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
+import { FlightSearch } from "@/components/flight-search";
+import { HotelSearch } from "@/components/hotel-search";
 
 interface CartItem {
   id: string;
@@ -1414,6 +1416,52 @@ export default function ExperienceTemplatePage() {
               </Card>
             </CollapsibleContent>
           </Collapsible>
+
+          {activeTab === "flights" && (
+            <div className="mb-6">
+              <FlightSearch
+                destination={destination}
+                startDate={startDate}
+                endDate={endDate}
+                travelers={2}
+                onSelectFlight={(flight) => {
+                  const firstSegment = flight.itineraries[0]?.segments[0];
+                  const lastSegment = flight.itineraries[0]?.segments[flight.itineraries[0].segments.length - 1];
+                  addToCart({
+                    id: `flight-${flight.id}`,
+                    type: "flights",
+                    name: `${firstSegment?.departure.iataCode} → ${lastSegment?.arrival.iataCode}`,
+                    price: parseFloat(flight.price.total),
+                    quantity: 1,
+                    provider: `${firstSegment?.carrierCode} ${firstSegment?.number}`,
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          {(activeTab === "hotels" || activeTab === "accommodations") && (
+            <div className="mb-6">
+              <HotelSearch
+                destination={destination}
+                checkIn={startDate}
+                checkOut={endDate}
+                guests={2}
+                onSelectHotel={(hotelData) => {
+                  const hotel = hotelData.hotel;
+                  const offer = hotelData.offers?.[0];
+                  addToCart({
+                    id: `hotel-${hotel.hotelId}`,
+                    type: activeTab,
+                    name: hotel.name,
+                    price: offer ? parseFloat(offer.price.total) : 0,
+                    quantity: 1,
+                    provider: "Amadeus Hotels",
+                  });
+                }}
+              />
+            </div>
+          )}
 
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">

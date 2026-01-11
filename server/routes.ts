@@ -19,6 +19,7 @@ import { db } from "./db";
 import { eq, and } from "drizzle-orm";
 import OpenAI from "openai";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
+import { amadeusService } from "./services/amadeus.service";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -2422,6 +2423,88 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
+
+  // Amadeus Travel API Routes
+  
+  // Search airports/cities for autocomplete
+  app.get("/api/amadeus/locations", isAuthenticated, async (req, res) => {
+    try {
+      const { keyword, subType } = req.query;
+      if (!keyword || typeof keyword !== 'string') {
+        return res.status(400).json({ message: "Keyword is required" });
+      }
+      
+      const locations = subType === 'CITY' 
+        ? await amadeusService.searchCitiesByKeyword(keyword)
+        : await amadeusService.searchAirportsByKeyword(keyword);
+      
+      res.json(locations);
+    } catch (error: any) {
+      console.error('Location search error:', error);
+      res.status(500).json({ message: error.message || "Location search failed" });
+    }
+  });
+
+  // Search flights
+  app.get("/api/amadeus/flights", isAuthenticated, async (req, res) => {
+    try {
+      const { 
+        origin, destination, departureDate, returnDate, 
+        adults, children, infants, travelClass, nonStop, max 
+      } = req.query;
+      
+      if (!origin || !destination || !departureDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: origin, destination, departureDate, adults" 
+        });
+      }
+      
+      const flights = await amadeusService.searchFlights({
+        originLocationCode: origin as string,
+        destinationLocationCode: destination as string,
+        departureDate: departureDate as string,
+        returnDate: returnDate as string | undefined,
+        adults: parseInt(adults as string, 10),
+        children: children ? parseInt(children as string, 10) : undefined,
+        infants: infants ? parseInt(infants as string, 10) : undefined,
+        travelClass: travelClass as any,
+        nonStop: nonStop === 'true',
+        max: max ? parseInt(max as string, 10) : 10,
+      });
+      
+      res.json(flights);
+    } catch (error: any) {
+      console.error('Flight search error:', error);
+      res.status(500).json({ message: error.message || "Flight search failed" });
+    }
+  });
+
+  // Search hotels by city
+  app.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
+    try {
+      const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
+      
+      if (!cityCode || !checkInDate || !checkOutDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: cityCode, checkInDate, checkOutDate, adults" 
+        });
+      }
+      
+      const hotels = await amadeusService.searchHotels({
+        cityCode: cityCode as string,
+        checkInDate: checkInDate as string,
+        checkOutDate: checkOutDate as string,
+        adults: parseInt(adults as string, 10),
+        roomQuantity: rooms ? parseInt(rooms as string, 10) : 1,
+        currency: (currency as string) || 'USD',
+      });
+      
+      res.json(hotels);
+    } catch (error: any) {
+      console.error('Hotel search error:', error);
+      res.status(500).json({ message: error.message || "Hotel search failed" });
+    }
+  });
 
   return httpServer;
 }
