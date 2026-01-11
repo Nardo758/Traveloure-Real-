@@ -133,8 +133,8 @@ function MapContent({
 
   return (
     <Map
-      defaultCenter={center}
-      defaultZoom={12}
+      center={center}
+      zoom={12}
       gestureHandling="greedy"
       disableDefaultUI={false}
       mapTypeControl={false}
@@ -146,7 +146,11 @@ function MapContent({
         const isCustom = isCustomVenue(provider.id);
         
         let markerIcon = undefined;
-        if (isCustom) {
+        if (isCustom && selected) {
+          markerIcon = {
+            url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48"><path d="M20 0C9 0 0 9 0 20c0 15 20 28 20 28s20-13 20-28c0-11-9-20-20-20z" fill="#8B5CF6" stroke="white" stroke-width="3"/><circle cx="20" cy="18" r="8" fill="white"/><path d="M16 18l3 3 5-5" stroke="#8B5CF6" stroke-width="2" fill="none"/></svg>`),
+          } as any;
+        } else if (isCustom) {
           markerIcon = {
             url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48"><path d="M20 0C9 0 0 9 0 20c0 15 20 28 20 28s20-13 20-28c0-11-9-20-20-20z" fill="#8B5CF6" stroke="white" stroke-width="3"/><path d="M20 10l2.5 5 5.5.8-4 3.9.9 5.3-4.9-2.6-4.9 2.6.9-5.3-4-3.9 5.5-.8z" fill="white"/></svg>`),
           } as any;
