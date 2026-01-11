@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -19,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Hotel, Star, MapPin, Search, Users, Calendar, ChevronDown, Check, Loader2 } from "lucide-react";
+import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -88,8 +93,9 @@ export function HotelSearch({
   );
   const [adults, setAdults] = useState(guests);
   const [rooms, setRooms] = useState(1);
-  const [searchTriggered, setSearchTriggered] = useState(false);
   const [detectedCity, setDetectedCity] = useState<LocationSuggestion | null>(null);
+  const [showModify, setShowModify] = useState(false);
+  const hasAutoSearched = useRef(false);
 
   useEffect(() => {
     setCheckInDate(checkIn ? format(checkIn, "yyyy-MM-dd") : "");
@@ -106,7 +112,7 @@ export function HotelSearch({
   useEffect(() => {
     setCityCode("");
     setDetectedCity(null);
-    setSearchTriggered(false);
+    hasAutoSearched.current = false;
   }, [destination]);
 
   const { data: citySuggestions, isLoading: cityLoading } = useQuery<LocationSuggestion[]>({
@@ -151,10 +157,13 @@ export function HotelSearch({
     }
   }, [autoDetectedLocations, cityCode]);
 
+  const canAutoSearch = !!cityCode && !!checkInDate && !!checkOutDate && !!adults;
+
   const {
     data: hotels,
     isLoading,
     error,
+    refetch,
   } = useQuery<HotelOffer[]>({
     queryKey: [
       "/api/amadeus/hotels",
@@ -164,12 +173,7 @@ export function HotelSearch({
       adults,
       rooms,
     ],
-    enabled:
-      searchTriggered &&
-      !!cityCode &&
-      !!checkInDate &&
-      !!checkOutDate &&
-      !!adults,
+    enabled: canAutoSearch,
     queryFn: async () => {
       const params = new URLSearchParams({
         cityCode,
@@ -190,182 +194,264 @@ export function HotelSearch({
     },
   });
 
-  const handleSearch = () => {
-    if (cityCode && checkInDate && checkOutDate && adults) {
-      setSearchTriggered(true);
-    }
-  };
+  const isDetecting = autoDetectLoading && !cityCode && !!destination;
+  const detectionFailed = !autoDetectLoading && autoDetectedLocations && autoDetectedLocations.length === 0 && !cityCode && !!destination;
+  const needsManualInput = !canAutoSearch && !isDetecting;
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Hotel className="h-5 w-5" />
-            Search Hotels
-            {destination && detectedCity && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                In: {detectedCity.name} ({detectedCity.iataCode})
-              </Badge>
+    <div className="space-y-4">
+      {isDetecting && (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-muted-foreground" />
+            <p className="text-muted-foreground">Finding hotels in {destination}...</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {needsManualInput && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Hotel className="h-5 w-5" />
+              Search Hotels
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {detectionFailed && (
+              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
+                We couldn't find "{destination}" automatically. Please select a city below.
+              </div>
             )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-            <div className="space-y-2 lg:col-span-2">
-              <Label>City</Label>
-              <Popover open={cityOpen} onOpenChange={setCityOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={cityOpen}
-                    className={cn(
-                      "w-full justify-between font-normal",
-                      detectedCity && "border-green-500"
-                    )}
-                    data-testid="input-hotel-city"
-                  >
-                    {cityCode ? (
-                      <span>
-                        {cityCode}
-                        {detectedCity && (
-                          <span className="text-xs text-muted-foreground ml-1">
-                            ({detectedCity.name})
-                          </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="space-y-2 lg:col-span-1">
+                <Label>City</Label>
+                <Popover open={cityOpen} onOpenChange={setCityOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-between font-normal"
+                      data-testid="input-hotel-city"
+                    >
+                      {cityCode || "Search cities..."}
+                      <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[280px] p-0">
+                    <Command>
+                      <CommandInput
+                        placeholder="Type city..."
+                        value={citySearch}
+                        onValueChange={setCitySearch}
+                      />
+                      <CommandList>
+                        {cityLoading && (
+                          <div className="p-3 text-center text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                            Searching...
+                          </div>
                         )}
-                      </span>
-                    ) : autoDetectLoading ? (
-                      <span className="flex items-center text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Detecting...
-                      </span>
-                    ) : (
-                      "Search cities..."
-                    )}
-                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-0">
-                  <Command>
-                    <CommandInput
-                      placeholder="Type city name..."
-                      value={citySearch}
-                      onValueChange={setCitySearch}
-                    />
-                    <CommandList>
-                      {cityLoading && (
-                        <div className="p-4 text-center text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                          Searching...
-                        </div>
-                      )}
-                      <CommandEmpty>No cities found.</CommandEmpty>
-                      <CommandGroup>
-                        {citySuggestions?.map((loc) => (
-                          <CommandItem
-                            key={loc.iataCode}
-                            value={`${loc.name} ${loc.iataCode}`}
-                            onSelect={() => {
-                              setCityCode(loc.iataCode);
-                              setDetectedCity(loc);
-                              setCityOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                cityCode === loc.iataCode ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <div className="flex flex-col">
+                        <CommandEmpty>No cities found.</CommandEmpty>
+                        <CommandGroup>
+                          {citySuggestions?.map((loc) => (
+                            <CommandItem
+                              key={loc.iataCode}
+                              value={`${loc.name} ${loc.iataCode}`}
+                              onSelect={() => {
+                                setCityCode(loc.iataCode);
+                                setDetectedCity(loc);
+                                setCityOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", cityCode === loc.iataCode ? "opacity-100" : "opacity-0")} />
                               <span className="font-medium">{loc.iataCode}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {loc.name}{loc.countryCode ? `, ${loc.countryCode}` : ""}
-                              </span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {detectedCity && (
-                <p className="text-xs text-green-600">
-                  Auto-detected from "{destination}"
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="checkin">Check-in</Label>
-              <Input
-                id="checkin"
-                type="date"
-                value={checkInDate}
-                onChange={(e) => setCheckInDate(e.target.value)}
-                data-testid="input-hotel-checkin"
-              />
-              {checkIn && checkInDate === format(checkIn, "yyyy-MM-dd") && (
-                <p className="text-xs text-green-600">Synced from trip</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="checkout">Check-out</Label>
-              <Input
-                id="checkout"
-                type="date"
-                value={checkOutDate}
-                onChange={(e) => setCheckOutDate(e.target.value)}
-                data-testid="input-hotel-checkout"
-              />
-              {checkOut && checkOutDate === format(checkOut, "yyyy-MM-dd") && (
-                <p className="text-xs text-green-600">Synced from trip</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="guests">Guests</Label>
-              <Input
-                id="guests"
-                type="number"
-                min={1}
-                max={9}
-                value={adults}
-                onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
-                data-testid="input-hotel-guests"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="rooms">Rooms</Label>
-              <div className="flex items-center gap-2">
+                              <span className="ml-2 text-muted-foreground text-xs">{loc.name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-2">
+                <Label>Check-in</Label>
                 <Input
-                  id="rooms"
+                  type="date"
+                  value={checkInDate}
+                  onChange={(e) => setCheckInDate(e.target.value)}
+                  data-testid="input-hotel-checkin"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Check-out</Label>
+                <Input
+                  type="date"
+                  value={checkOutDate}
+                  onChange={(e) => setCheckOutDate(e.target.value)}
+                  data-testid="input-hotel-checkout"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Guests</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={9}
+                  value={adults}
+                  onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
+                  data-testid="input-hotel-guests"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Rooms</Label>
+                <Input
                   type="number"
                   min={1}
                   max={5}
                   value={rooms}
                   onChange={(e) => setRooms(parseInt(e.target.value) || 1)}
-                  className="w-16"
                   data-testid="input-hotel-rooms"
                 />
-                <Button
-                  onClick={handleSearch}
-                  disabled={!cityCode || !checkInDate || !checkOutDate}
-                  className="flex-1 bg-[#FF385C] hover:bg-[#E23350]"
-                  data-testid="button-search-hotels"
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isDetecting && canAutoSearch && (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+            <Badge variant="outline" className="gap-1">
+              <MapPin className="h-3 w-3" />
+              {detectedCity?.name || cityCode}
+            </Badge>
+            <Badge variant="outline" className="gap-1">
+              <Calendar className="h-3 w-3" />
+              {checkInDate} - {checkOutDate}
+            </Badge>
+            <Badge variant="outline" className="gap-1">
+              <Users className="h-3 w-3" />
+              {adults} guest{adults !== 1 ? "s" : ""}, {rooms} room{rooms !== 1 ? "s" : ""}
+            </Badge>
           </div>
-        </CardContent>
-      </Card>
+          <Collapsible open={showModify} onOpenChange={setShowModify}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1" data-testid="button-modify-hotel-search">
+                <Settings2 className="h-4 w-4" />
+                Modify
+                <ChevronDown className={cn("h-4 w-4 transition-transform", showModify && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-4">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    <div className="space-y-2 col-span-2 md:col-span-1">
+                      <Label>City</Label>
+                      <Popover open={cityOpen} onOpenChange={setCityOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className="w-full justify-between font-normal"
+                            data-testid="input-hotel-city"
+                          >
+                            {cityCode || "Select city"}
+                            <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[280px] p-0">
+                          <Command>
+                            <CommandInput
+                              placeholder="Type city..."
+                              value={citySearch}
+                              onValueChange={setCitySearch}
+                            />
+                            <CommandList>
+                              {cityLoading && (
+                                <div className="p-3 text-center text-sm text-muted-foreground">
+                                  <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                                  Searching...
+                                </div>
+                              )}
+                              <CommandEmpty>No cities found.</CommandEmpty>
+                              <CommandGroup>
+                                {citySuggestions?.map((loc) => (
+                                  <CommandItem
+                                    key={loc.iataCode}
+                                    value={`${loc.name} ${loc.iataCode}`}
+                                    onSelect={() => {
+                                      setCityCode(loc.iataCode);
+                                      setDetectedCity(loc);
+                                      setCityOpen(false);
+                                    }}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4", cityCode === loc.iataCode ? "opacity-100" : "opacity-0")} />
+                                    <span className="font-medium">{loc.iataCode}</span>
+                                    <span className="ml-2 text-muted-foreground text-xs">{loc.name}</span>
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Check-in</Label>
+                      <Input
+                        type="date"
+                        value={checkInDate}
+                        onChange={(e) => setCheckInDate(e.target.value)}
+                        data-testid="input-hotel-checkin"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Check-out</Label>
+                      <Input
+                        type="date"
+                        value={checkOutDate}
+                        onChange={(e) => setCheckOutDate(e.target.value)}
+                        data-testid="input-hotel-checkout"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Guests</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={9}
+                        value={adults}
+                        onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
+                        data-testid="input-hotel-guests"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Rooms</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={rooms}
+                        onChange={(e) => setRooms(parseInt(e.target.value) || 1)}
+                        data-testid="input-hotel-rooms"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => { refetch(); setShowModify(false); }}
+                    className="mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                    data-testid="button-search-hotels"
+                  >
+                    Update Search
+                  </Button>
+                </CardContent>
+              </Card>
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
+      )}
 
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -393,7 +479,7 @@ export function HotelSearch({
       {hotels && hotels.length > 0 && (
         <div className="space-y-4">
           <h3 className="font-semibold text-lg">
-            Found {hotels.length} hotel{hotels.length !== 1 ? "s" : ""}
+            {hotels.length} hotel{hotels.length !== 1 ? "s" : ""} available
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {hotels.map((hotelData) => {
@@ -459,14 +545,17 @@ export function HotelSearch({
         </div>
       )}
 
-      {hotels && hotels.length === 0 && searchTriggered && !isLoading && (
+      {hotels && hotels.length === 0 && !isLoading && (
         <Card>
           <CardContent className="p-8 text-center">
             <Hotel className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="font-medium mb-2">No hotels found</h3>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm mb-4">
               Try different dates or city for more options.
             </p>
+            <Button variant="outline" onClick={() => setShowModify(true)}>
+              Modify Search
+            </Button>
           </CardContent>
         </Card>
       )}

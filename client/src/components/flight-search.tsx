@@ -1,11 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Command,
   CommandEmpty,
@@ -19,7 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Plane, Clock, ArrowRight, Search, Users, Calendar, ChevronDown, Check, Loader2 } from "lucide-react";
+import { Plane, Clock, ArrowRight, ChevronDown, Check, Loader2, Settings2, Calendar, Users, MapPin } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +96,7 @@ export function FlightSearch({
   const [origin, setOrigin] = useState("");
   const [originOpen, setOriginOpen] = useState(false);
   const [originSearch, setOriginSearch] = useState("");
+  const [selectedOrigin, setSelectedOrigin] = useState<LocationSuggestion | null>(null);
   const [destinationCode, setDestinationCode] = useState("");
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [destinationSearch, setDestinationSearch] = useState("");
@@ -101,8 +107,8 @@ export function FlightSearch({
     endDate ? format(endDate, "yyyy-MM-dd") : ""
   );
   const [adults, setAdults] = useState(travelers);
-  const [searchTriggered, setSearchTriggered] = useState(false);
   const [detectedDestination, setDetectedDestination] = useState<LocationSuggestion | null>(null);
+  const [showModify, setShowModify] = useState(false);
 
   useEffect(() => {
     setDepartureDate(startDate ? format(startDate, "yyyy-MM-dd") : "");
@@ -119,7 +125,6 @@ export function FlightSearch({
   useEffect(() => {
     setDestinationCode("");
     setDetectedDestination(null);
-    setSearchTriggered(false);
   }, [destination]);
 
   const { data: originSuggestions, isLoading: originLoading } = useQuery<LocationSuggestion[]>({
@@ -181,10 +186,13 @@ export function FlightSearch({
     }
   }, [autoDetectedLocations, destinationCode]);
 
+  const canSearch = !!origin && !!destinationCode && !!departureDate && !!adults;
+
   const {
     data: flights,
     isLoading,
     error,
+    refetch,
   } = useQuery<FlightOffer[]>({
     queryKey: [
       "/api/amadeus/flights",
@@ -194,12 +202,7 @@ export function FlightSearch({
       returnDate,
       adults,
     ],
-    enabled:
-      searchTriggered &&
-      !!origin &&
-      !!destinationCode &&
-      !!departureDate &&
-      !!adults,
+    enabled: canSearch,
     queryFn: async () => {
       const params = new URLSearchParams({
         origin,
@@ -221,230 +224,353 @@ export function FlightSearch({
     },
   });
 
-  const handleSearch = () => {
-    if (origin && destinationCode && departureDate && adults) {
-      setSearchTriggered(true);
-    }
-  };
+  const isDetectingDestination = autoDetectLoading && !destinationCode && !!destination;
+  const detectionFailed = !autoDetectLoading && autoDetectedLocations && autoDetectedLocations.length === 0 && !destinationCode && !!destination;
 
-  return (
-    <div className="space-y-6">
+  if (isDetectingDestination) {
+    return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plane className="h-5 w-5" />
-            Search Flights
-            {destination && detectedDestination && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                Flying to: {detectedDestination.name} ({detectedDestination.iataCode})
-              </Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="space-y-2">
-              <Label>From (Departure Airport)</Label>
-              <Popover open={originOpen} onOpenChange={setOriginOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={originOpen}
-                    className="w-full justify-between font-normal"
-                    data-testid="input-flight-origin"
-                  >
-                    {origin || "Search airports..."}
-                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-0">
-                  <Command>
-                    <CommandInput
-                      placeholder="Type city or airport..."
-                      value={originSearch}
-                      onValueChange={setOriginSearch}
-                    />
-                    <CommandList>
-                      {originLoading && (
-                        <div className="p-4 text-center text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                          Searching...
-                        </div>
-                      )}
-                      <CommandEmpty>No airports found.</CommandEmpty>
-                      <CommandGroup>
-                        {originSuggestions?.map((loc) => (
-                          <CommandItem
-                            key={loc.iataCode}
-                            value={`${loc.name} ${loc.iataCode}`}
-                            onSelect={() => {
-                              setOrigin(loc.iataCode);
-                              setOriginOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                origin === loc.iataCode ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <div className="flex flex-col">
-                              <span className="font-medium">{loc.iataCode}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {loc.name}{loc.cityName ? `, ${loc.cityName}` : ""}
-                              </span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
+        <CardContent className="p-6 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-muted-foreground" />
+          <p className="text-muted-foreground">Finding flights to {destination}...</p>
+        </CardContent>
+      </Card>
+    );
+  }
 
-            <div className="space-y-2">
-              <Label>To (Arrival Airport)</Label>
-              <Popover open={destinationOpen} onOpenChange={setDestinationOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={destinationOpen}
-                    className={cn(
-                      "w-full justify-between font-normal",
-                      detectedDestination && "border-green-500"
-                    )}
-                    data-testid="input-flight-destination"
-                  >
-                    {destinationCode ? (
-                      <span>
-                        {destinationCode}
-                        {detectedDestination && (
-                          <span className="text-xs text-muted-foreground ml-1">
-                            ({detectedDestination.name})
-                          </span>
-                        )}
-                      </span>
-                    ) : autoDetectLoading ? (
-                      <span className="flex items-center text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Detecting...
-                      </span>
-                    ) : (
-                      "Search airports..."
-                    )}
-                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-0">
-                  <Command>
-                    <CommandInput
-                      placeholder="Type city or airport..."
-                      value={destinationSearch}
-                      onValueChange={setDestinationSearch}
-                    />
-                    <CommandList>
-                      {destinationLoading && (
-                        <div className="p-4 text-center text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
-                          Searching...
-                        </div>
-                      )}
-                      <CommandEmpty>No airports found.</CommandEmpty>
-                      <CommandGroup>
-                        {destinationSuggestions?.map((loc) => (
-                          <CommandItem
-                            key={loc.iataCode}
-                            value={`${loc.name} ${loc.iataCode}`}
-                            onSelect={() => {
-                              setDestinationCode(loc.iataCode);
-                              setDetectedDestination(loc);
-                              setDestinationOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                destinationCode === loc.iataCode ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <div className="flex flex-col">
-                              <span className="font-medium">{loc.iataCode}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {loc.name}{loc.cityName ? `, ${loc.cityName}` : ""}
-                              </span>
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              {detectedDestination && (
-                <p className="text-xs text-green-600">
-                  Auto-detected from "{destination}"
+  const needsInitialForm = !origin || !destinationCode || !departureDate;
+
+  if (needsInitialForm) {
+    return (
+      <div className="space-y-4">
+        <Card className="border-2 border-dashed">
+          <CardContent className="p-6">
+            <div className="text-center mb-4">
+              <Plane className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+              <h3 className="font-semibold text-lg mb-1">Search Flights</h3>
+              {destinationCode && detectedDestination && (
+                <p className="text-sm text-muted-foreground">
+                  Destination: {detectedDestination.name}
                 </p>
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="departure">Departure Date</Label>
-              <Input
-                id="departure"
-                type="date"
-                value={departureDate}
-                onChange={(e) => setDepartureDate(e.target.value)}
-                data-testid="input-flight-departure"
-              />
-              {startDate && departureDate === format(startDate, "yyyy-MM-dd") && (
-                <p className="text-xs text-green-600">Synced from trip dates</p>
-              )}
-            </div>
+            {detectionFailed && (
+              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
+                We couldn't find "{destination}" automatically. Please select your destination below.
+              </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="return">Return Date</Label>
-              <Input
-                id="return"
-                type="date"
-                value={returnDate}
-                onChange={(e) => setReturnDate(e.target.value)}
-                data-testid="input-flight-return"
-              />
-              {endDate && returnDate === format(endDate, "yyyy-MM-dd") && (
-                <p className="text-xs text-green-600">Synced from trip dates</p>
-              )}
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <Label>From (Departure)</Label>
+                <Popover open={originOpen} onOpenChange={setOriginOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={originOpen}
+                      className={cn("w-full justify-between h-11", origin && "border-green-500")}
+                      data-testid="input-flight-origin"
+                    >
+                      <span className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                        {selectedOrigin ? (
+                          <span>{selectedOrigin.iataCode} - {selectedOrigin.name}</span>
+                        ) : (
+                          <span className="text-muted-foreground">Search departure city...</span>
+                        )}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[350px] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Type city or airport..."
+                        value={originSearch}
+                        onValueChange={setOriginSearch}
+                      />
+                      <CommandList>
+                        {originLoading && (
+                          <div className="p-4 text-center text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                            Searching...
+                          </div>
+                        )}
+                        <CommandEmpty>No airports found.</CommandEmpty>
+                        <CommandGroup>
+                          {originSuggestions?.map((loc) => (
+                            <CommandItem
+                              key={loc.iataCode}
+                              value={`${loc.name} ${loc.iataCode} ${loc.cityName || ""}`}
+                              onSelect={() => {
+                                setOrigin(loc.iataCode);
+                                setSelectedOrigin(loc);
+                                setOriginOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", origin === loc.iataCode ? "opacity-100" : "opacity-0")} />
+                              <Badge variant="secondary" className="font-mono mr-2">{loc.iataCode}</Badge>
+                              <span className="text-sm">{loc.name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="adults">Travelers</Label>
-              <div className="flex items-center gap-2">
+              <div className="space-y-2">
+                <Label>To (Destination)</Label>
+                <Popover open={destinationOpen} onOpenChange={setDestinationOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={destinationOpen}
+                      className={cn("w-full justify-between h-11", destinationCode && "border-green-500")}
+                      data-testid="input-flight-destination"
+                    >
+                      <span className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
+                        {detectedDestination ? (
+                          <span>{detectedDestination.iataCode} - {detectedDestination.name}</span>
+                        ) : destinationCode ? (
+                          <span>{destinationCode}</span>
+                        ) : (
+                          <span className="text-muted-foreground">Search destination city...</span>
+                        )}
+                      </span>
+                      <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[350px] p-0" align="start">
+                    <Command>
+                      <CommandInput
+                        placeholder="Type city or airport..."
+                        value={destinationSearch}
+                        onValueChange={setDestinationSearch}
+                      />
+                      <CommandList>
+                        {destinationLoading && (
+                          <div className="p-4 text-center text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                            Searching...
+                          </div>
+                        )}
+                        <CommandEmpty>No airports found.</CommandEmpty>
+                        <CommandGroup>
+                          {destinationSuggestions?.map((loc) => (
+                            <CommandItem
+                              key={loc.iataCode}
+                              value={`${loc.name} ${loc.iataCode} ${loc.cityName || ""}`}
+                              onSelect={() => {
+                                setDestinationCode(loc.iataCode);
+                                setDetectedDestination(loc);
+                                setDestinationOpen(false);
+                              }}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4", destinationCode === loc.iataCode ? "opacity-100" : "opacity-0")} />
+                              <Badge variant="secondary" className="font-mono mr-2">{loc.iataCode}</Badge>
+                              <span className="text-sm">{loc.name}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Departure Date</Label>
                 <Input
-                  id="adults"
-                  type="number"
-                  min={1}
-                  max={9}
-                  value={adults}
-                  onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
-                  className="w-20"
-                  data-testid="input-flight-adults"
+                  type="date"
+                  value={departureDate}
+                  onChange={(e) => setDepartureDate(e.target.value)}
+                  className={cn(departureDate && "border-green-500")}
+                  data-testid="input-flight-departure-initial"
                 />
-                <Button
-                  onClick={handleSearch}
-                  disabled={!origin || !destinationCode || !departureDate}
-                  className="flex-1 bg-[#FF385C] hover:bg-[#E23350]"
-                  data-testid="button-search-flights"
-                >
-                  <Search className="h-4 w-4 mr-2" />
-                  Search
-                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Return Date (Optional)</Label>
+                <Input
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  data-testid="input-flight-return-initial"
+                />
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
+          <Badge variant="outline" className="gap-1">
+            <Plane className="h-3 w-3" />
+            {selectedOrigin?.name || origin} → {detectedDestination?.name || destinationCode}
+          </Badge>
+          <Badge variant="outline" className="gap-1">
+            <Calendar className="h-3 w-3" />
+            {departureDate}
+            {returnDate && ` - ${returnDate}`}
+          </Badge>
+          <Badge variant="outline" className="gap-1">
+            <Users className="h-3 w-3" />
+            {adults} traveler{adults !== 1 ? "s" : ""}
+          </Badge>
+        </div>
+        <Collapsible open={showModify} onOpenChange={setShowModify}>
+          <CollapsibleTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1" data-testid="button-modify-flight-search">
+              <Settings2 className="h-4 w-4" />
+              Modify
+              <ChevronDown className={cn("h-4 w-4 transition-transform", showModify && "rotate-180")} />
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-4">
+            <Card>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  <div className="space-y-2">
+                    <Label>From</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between font-normal">
+                          {origin}
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[280px] p-0">
+                        <Command>
+                          <CommandInput
+                            placeholder="Search..."
+                            value={originSearch}
+                            onValueChange={setOriginSearch}
+                          />
+                          <CommandList>
+                            {originLoading && (
+                              <div className="p-3 text-center text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                              </div>
+                            )}
+                            <CommandEmpty>No airports found.</CommandEmpty>
+                            <CommandGroup>
+                              {originSuggestions?.map((loc) => (
+                                <CommandItem
+                                  key={loc.iataCode}
+                                  value={`${loc.name} ${loc.iataCode}`}
+                                  onSelect={() => {
+                                    setOrigin(loc.iataCode);
+                                    setSelectedOrigin(loc);
+                                  }}
+                                >
+                                  <span className="font-medium">{loc.iataCode}</span>
+                                  <span className="ml-2 text-muted-foreground text-xs">{loc.name}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>To</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-between font-normal">
+                          {destinationCode}
+                          <ChevronDown className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[280px] p-0">
+                        <Command>
+                          <CommandInput
+                            placeholder="Search..."
+                            value={destinationSearch}
+                            onValueChange={setDestinationSearch}
+                          />
+                          <CommandList>
+                            {destinationLoading && (
+                              <div className="p-3 text-center text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin inline mr-2" />
+                              </div>
+                            )}
+                            <CommandEmpty>No airports found.</CommandEmpty>
+                            <CommandGroup>
+                              {destinationSuggestions?.map((loc) => (
+                                <CommandItem
+                                  key={loc.iataCode}
+                                  value={`${loc.name} ${loc.iataCode}`}
+                                  onSelect={() => {
+                                    setDestinationCode(loc.iataCode);
+                                    setDetectedDestination(loc);
+                                  }}
+                                >
+                                  <span className="font-medium">{loc.iataCode}</span>
+                                  <span className="ml-2 text-muted-foreground text-xs">{loc.name}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Departure</Label>
+                    <Input
+                      type="date"
+                      value={departureDate}
+                      onChange={(e) => setDepartureDate(e.target.value)}
+                      data-testid="input-flight-departure"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Return</Label>
+                    <Input
+                      type="date"
+                      value={returnDate}
+                      onChange={(e) => setReturnDate(e.target.value)}
+                      data-testid="input-flight-return"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Travelers</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={9}
+                      value={adults}
+                      onChange={(e) => setAdults(parseInt(e.target.value) || 1)}
+                      data-testid="input-flight-adults"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={() => { refetch(); setShowModify(false); }}
+                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      data-testid="button-search-flights"
+                    >
+                      Update
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </CollapsibleContent>
+        </Collapsible>
+      </div>
 
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -471,7 +597,7 @@ export function FlightSearch({
       {flights && flights.length > 0 && (
         <div className="space-y-4">
           <h3 className="font-semibold text-lg">
-            Found {flights.length} flight{flights.length !== 1 ? "s" : ""}
+            {flights.length} flight{flights.length !== 1 ? "s" : ""} available
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {flights.map((flight) => {
@@ -558,14 +684,17 @@ export function FlightSearch({
         </div>
       )}
 
-      {flights && flights.length === 0 && searchTriggered && !isLoading && (
+      {flights && flights.length === 0 && !isLoading && (
         <Card>
           <CardContent className="p-8 text-center">
             <Plane className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="font-medium mb-2">No flights found</h3>
-            <p className="text-muted-foreground text-sm">
+            <p className="text-muted-foreground text-sm mb-4">
               Try different dates or airports for more options.
             </p>
+            <Button variant="outline" onClick={() => setShowModify(true)}>
+              Modify Search
+            </Button>
           </CardContent>
         </Card>
       )}
