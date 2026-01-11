@@ -73,8 +73,9 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
-import type { ExperienceType, ProviderService } from "@shared/schema";
+import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
+import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 
 interface CartItem {
   id: string;
@@ -651,6 +652,17 @@ export default function ExperienceTemplatePage() {
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
+  const [addVenueModalOpen, setAddVenueModalOpen] = useState(false);
+
+  const { data: customVenues = [] } = useQuery<CustomVenue[]>({
+    queryKey: ["/api/custom-venues", slug],
+    queryFn: async () => {
+      const res = await fetch(`/api/custom-venues?experienceType=${slug}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!slug,
+  });
 
   const createComparison = async () => {
     if (cart.length === 0) {
@@ -909,7 +921,7 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    return filteredServices.map((s, index) => {
+    const serviceMarkers = filteredServices.map((s, index) => {
       const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
       const baseHash = numericId * 1000;
       const latOffset = ((baseHash % 100) - 50) / 1000;
@@ -925,7 +937,24 @@ export default function ExperienceTemplatePage() {
         description: s.shortDescription || s.description || undefined
       };
     });
-  }, [filteredServices, currentTabCategory]);
+    
+    const customVenueMarkers = (activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels")
+      ? customVenues
+          .filter(v => v.latitude && v.longitude)
+          .map(v => ({
+            id: `custom-${v.id}`,
+            name: v.name,
+            category: "custom-venue",
+            price: Number(v.estimatedCost) || 0,
+            rating: 5,
+            lat: Number(v.latitude),
+            lng: Number(v.longitude),
+            description: v.address || v.notes || "Custom location"
+          }))
+      : [];
+    
+    return [...customVenueMarkers, ...serviceMarkers];
+  }, [filteredServices, currentTabCategory, customVenues, activeTab]);
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
@@ -1368,19 +1397,57 @@ export default function ExperienceTemplatePage() {
             </CollapsibleContent>
           </Collapsible>
 
-          <div className="mb-4">
+          <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
-                ? `Showing ${filteredServices.length} ${filteredServices.length === 1 ? 'provider' : 'providers'}${destination ? ` in ${destination}` : ''}`
+                ? `Showing ${filteredServices.length} ${filteredServices.length === 1 ? 'provider' : 'providers'}${customVenues.length > 0 ? ` + ${customVenues.length} custom` : ''}${destination ? ` in ${destination}` : ''}`
                 : destination 
                   ? `No providers found in ${destination}` 
                   : "Enter a location to see available options"}
             </p>
+            {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddVenueModalOpen(true)}
+                data-testid="button-add-custom-venue"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Custom Location
+              </Button>
+            )}
           </div>
 
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && customVenues.length > 0 && customVenues.map((venue) => (
+                    <Card key={`custom-${venue.id}`} className="overflow-hidden hover-elevate border-dashed border-2 border-[#FF385C]/30">
+                      <div className="h-48 bg-gradient-to-br from-[#FF385C]/10 to-[#FF385C]/20 flex items-center justify-center">
+                        <MapPin className="w-12 h-12 text-[#FF385C]" />
+                      </div>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <h3 className="font-semibold text-lg">{venue.name}</h3>
+                          <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
+                            Custom
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                          {venue.address || venue.notes || "Custom location"}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-lg">
+                            {venue.estimatedCost ? `$${venue.estimatedCost}` : "Free"}
+                          </span>
+                          <Badge className="bg-green-500">
+                            <Check className="w-3 h-3 mr-1" />
+                            Added
+                          </Badge>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                   {servicesLoading ? (
                     [1, 2, 3, 4, 5, 6].map((i) => (
                       <Card key={i}>
@@ -1746,6 +1813,17 @@ export default function ExperienceTemplatePage() {
             <MessageCircle className="w-6 h-6" />
           </Button>
         )}
+        
+        <AddCustomVenueModal
+          open={addVenueModalOpen}
+          onOpenChange={setAddVenueModalOpen}
+          experienceType={slug}
+          userId={user?.id}
+          onVenueAdded={(venue) => {
+            queryClient.invalidateQueries({ queryKey: ["/api/custom-venues", slug] });
+            toast({ title: "Custom venue added", description: `${venue.name} is now in your plan` });
+          }}
+        />
       </div>
     </Layout>
   );
