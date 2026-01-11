@@ -41,40 +41,59 @@ interface ActivitySearchProps {
   onSelectActivity?: (activity: ViatorActivity) => void;
 }
 
-const TRANSPORT_KEYWORDS = [
-  'transfer', 'shuttle', 'airport', 'transportation', 'bus ticket',
-  'train ticket', 'ferry ticket', 'taxi', 'private car', 'limousine',
-  'pickup', 'drop-off', 'dropoff', 'one-way', 'round-trip transport',
-  'shared ride', 'private ride', 'car service', 'chauffeur',
+const STRONG_TRANSPORT_KEYWORDS = [
+  'transfer', 'shuttle', 'taxi service', 'private car service',
+  'limousine service', 'chauffeur', 'car service',
+];
+
+const WEAK_TRANSPORT_KEYWORDS = [
+  'pickup', 'drop-off', 'dropoff',
+];
+
+const TRANSPORT_EXCLUSION_KEYWORDS = [
+  'tour', 'experience', 'excursion', 'day trip', 'sightseeing',
+  'guided', 'walking', 'cruise', 'safari', 'adventure', 'cultural',
+  'visit', 'explore', 'discover', 'lounge', 'fast track', 'fast-track',
+  'priority', 'vip access', 'pass', 'ticket', 'admission', 'entry',
 ];
 
 function isTransportProduct(activity: ViatorActivity): boolean {
   const title = activity.title?.toLowerCase() || '';
-  const description = activity.description?.toLowerCase() || '';
   
-  const hasTransportKeyword = TRANSPORT_KEYWORDS.some(keyword => 
-    title.includes(keyword) || description.includes(keyword.toLowerCase())
+  const hasExclusion = TRANSPORT_EXCLUSION_KEYWORDS.some(keyword => 
+    title.includes(keyword)
   );
   
-  const isTourWithTransport = (
-    title.includes('tour') || 
-    title.includes('experience') || 
-    title.includes('excursion') ||
-    title.includes('day trip') ||
-    title.includes('sightseeing')
+  if (hasExclusion) {
+    return false;
+  }
+  
+  const hasStrongTransportKeyword = STRONG_TRANSPORT_KEYWORDS.some(keyword => 
+    title.includes(keyword)
   );
   
-  if (hasTransportKeyword && !isTourWithTransport) {
+  if (hasStrongTransportKeyword) {
     return true;
   }
   
   const transferPatterns = [
-    /^(private|shared)?\s*(airport|hotel|port|station)\s*(to|from|-)/i,
-    /transfer\s*(to|from|between)/i,
-    /^(one[- ]way|round[- ]trip)\s*(private|shared)?\s*transfer/i,
+    /^(private|shared)\s+(airport|hotel|port|station|city)\s+(transfer|shuttle)/i,
+    /\btransfer\s+(to|from|between)\b/i,
+    /\b(airport|hotel|port|station)\s+(to|from)\s+(airport|hotel|port|station|city|downtown)/i,
+    /^(one[- ]way|round[- ]trip)\s+(private|shared)?\s*transfer/i,
+    /\bshuttle\s+(service|bus|ride)\b/i,
   ];
   
-  return transferPatterns.some(pattern => pattern.test(title));
+  if (transferPatterns.some(pattern => pattern.test(title))) {
+    return true;
+  }
+  
+  const hasWeakKeyword = WEAK_TRANSPORT_KEYWORDS.some(keyword => 
+    title.includes(keyword)
+  );
+  const hasTransportContext = title.includes('airport') || title.includes('hotel') || title.includes('station');
+  
+  return hasWeakKeyword && hasTransportContext && !hasExclusion;
 }
 
 interface ViatorLocation {
