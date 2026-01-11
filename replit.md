@@ -91,3 +91,34 @@ The application features a modern and responsive design using Tailwind CSS and s
   - venueSubTypes: Defines venue sub-types (parks, beaches, estates) for Serp API integration
   - matchesCategory() helper function for consistent filtering across all tabs
   - ProviderSource type for future multi-source data handling (internal, serp, partner)
+
+### Coordination Hub Architecture (January 2026)
+- **Vendor Availability System** (`vendorAvailabilitySlots` table):
+  - Date/time slots with capacity tracking and booking counts
+  - Dynamic pricing and discount support via JSONB fields
+  - Booking requirements (minimum notice, cancellation policy, special requirements)
+  - Confirmation methods (instant vs manual approval)
+  - Status tracking: available, limited, fully_booked, blocked
+- **Coordination State Management** (`coordinationStates` table):
+  - Full planning lifecycle tracking from intake to completion
+  - Status flow: intake → expert_matching → vendor_discovery → itinerary_generation → optimization → booking_coordination → confirmed → in_progress → completed
+  - Path support: browse (self-service) vs expert (guided)
+  - User preferences storage: destination, dates, travelers, budget, preferences
+  - Expert assignment and recommendations tracking
+  - Selected vendors and custom venues linkage
+  - Generated itinerary with AI optimization scores and insights
+  - State history for audit trail
+- **Coordination Bookings** (`coordinationBookings` table):
+  - Individual item reservations linked to coordination states
+  - Vendor/service linkage with availability slot tracking
+  - Scheduling with date/time/duration
+  - Status tracking: pending → confirmed
+  - Booking references and confirmation details
+  - Multi-source support (platform, external, manual)
+- **API Endpoints**:
+  - `/api/vendor-availability/:serviceId` - Get availability for a service
+  - `/api/provider/availability` - Provider's own availability management (CRUD)
+  - `/api/coordination-states` - User's planning sessions (CRUD with ownership checks)
+  - `/api/coordination-states/:id/status` - Status transitions with history
+  - `/api/coordination-states/:coordinationId/bookings` - Bookings within a coordination
+  - `/api/coordination-bookings/:id/confirm` - Booking confirmation with reference
