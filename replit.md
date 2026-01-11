@@ -54,6 +54,7 @@ The application features a modern and responsive design using Tailwind CSS and s
 - **OpenAI**: For AI-powered itinerary optimization and recommendations via gpt-4o.
 - **Google Maps**: For interactive mapping with provider locations and route visualization.
 - **Amadeus Self-Service API**: For real-time flight and hotel search in travel planning templates (test environment).
+- **Viator Partner API**: For real-time tours and activities search in experience planning templates (sandbox environment).
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management for React.
@@ -77,8 +78,19 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `VITE_GOOGLE_MAPS_API_KEY`: Frontend-accessible Google Maps API key.
 - `AMADEUS_API_KEY`: API key for Amadeus Self-Service API (stored as secret).
 - `AMADEUS_API_SECRET`: API secret for Amadeus Self-Service API (stored as secret).
+- `VIATOR_API_KEY`: API key for Viator Partner API (stored as secret).
 
 ## Recent Changes (January 2026)
+- **Viator Partner API Integration**: Added real-time tours and activities search functionality
+  - `server/services/viator.service.ts`: Service layer with API-key authentication for sandbox environment
+  - API endpoints: `/api/viator/activities`, `/api/viator/activities/:productCode`, `/api/viator/availability`, `/api/viator/destinations` (authenticated)
+  - `ActivitySearch` component: Rich cards with images, ratings, duration, cancellation policies, pricing
+  - Integrated into "Activities" tabs across experience templates
+  - Cart metadata includes refundability, duration, travelers, and full rawData for AI optimization
+- **Enhanced Amadeus Data for AI**: Flight and hotel cart items now include full metadata
+  - Flight metadata: cabin class, baggage, stops, duration, airline, seats left, ticketing deadline
+  - Hotel metadata: refundable status, cancellation deadline, board type, bed info, room category, taxes
+  - All items include rawData for AI optimization analysis
 - **Amadeus Self-Service API Integration**: Added flight and hotel search functionality
   - `server/services/amadeus.service.ts`: Service layer with OAuth authentication for test environment
   - `server/types/amadeus.d.ts`: TypeScript declarations for Amadeus SDK
