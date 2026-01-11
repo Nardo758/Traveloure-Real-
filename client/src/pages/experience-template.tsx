@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -92,6 +92,7 @@ interface CartItem {
   date?: string;
   details?: string;
   provider?: string;
+  isExternal?: boolean;
   metadata?: {
     cabin?: string;
     baggage?: string;
@@ -653,9 +654,34 @@ export default function ExperienceTemplatePage() {
     enabled: !!slug,
   });
 
+  const [localExternalCart, setLocalExternalCart] = useState<CartItem[]>(() => {
+    try {
+      const stored = sessionStorage.getItem(`externalCart_${slug}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(`externalCart_${slug}`);
+      setLocalExternalCart(stored ? JSON.parse(stored) : []);
+    } catch {
+      setLocalExternalCart([]);
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    if (localExternalCart.length > 0) {
+      sessionStorage.setItem(`externalCart_${slug}`, JSON.stringify(localExternalCart));
+    } else {
+      sessionStorage.removeItem(`externalCart_${slug}`);
+    }
+  }, [localExternalCart, slug]);
+
   const cart: CartItem[] = useMemo(() => {
-    if (!serverCart?.items) return [];
-    return serverCart.items.map((item) => ({
+    const platformItems: CartItem[] = serverCart?.items ? serverCart.items.map((item) => ({
       id: item.serviceId,
       cartItemId: item.id,
       type: "service",
@@ -663,8 +689,9 @@ export default function ExperienceTemplatePage() {
       price: parseFloat(item.service?.price || "0"),
       quantity: item.quantity || 1,
       provider: "Platform Provider",
-    }));
-  }, [serverCart]);
+    })) : [];
+    return [...platformItems, ...localExternalCart];
+  }, [serverCart, localExternalCart]);
 
   const config = experienceConfigs[slug] || experienceConfigs.wedding;
   
@@ -845,6 +872,14 @@ export default function ExperienceTemplatePage() {
     );
   };
 
+  const isExternalProviderItem = (itemOrId: CartItem | string) => {
+    if (typeof itemOrId === 'object') {
+      return itemOrId.isExternal === true;
+    }
+    const item = cart.find(i => i.id === itemOrId);
+    return item?.isExternal === true;
+  };
+
   const addToCart = async (item: CartItem) => {
     if (!user) {
       toast({ 
@@ -859,7 +894,30 @@ export default function ExperienceTemplatePage() {
     }
     
     const isCustomVenue = item.id.startsWith("custom-");
+    const isExternal = item.isExternal === true;
     const existing = cart.find((i) => i.id === item.id);
+    
+    if (isExternal) {
+      if (existing) {
+        setLocalExternalCart(prev => prev.map(i => 
+          i.id === item.id ? { ...i, quantity: i.quantity + 1 } : i
+        ));
+        toast({ title: "Cart updated", description: "Item quantity increased" });
+      } else {
+        setLocalExternalCart(prev => [...prev, { ...item, quantity: item.quantity || 1 }]);
+        toast({ title: "Added to cart", description: `${item.name} added to your cart` });
+      }
+      sessionStorage.setItem("experienceContext", JSON.stringify({
+        title: `${experienceType?.name || slug} Experience`,
+        experienceType: experienceType?.name || slug,
+        experienceSlug: slug,
+        destination,
+        startDate: startDate?.toISOString().split('T')[0],
+        endDate: endDate?.toISOString().split('T')[0],
+        travelers: 2
+      }));
+      return;
+    }
     
     if (existing && existing.cartItemId) {
       try {
@@ -898,6 +956,12 @@ export default function ExperienceTemplatePage() {
   };
 
   const removeFromCart = async (id: string) => {
+    if (isExternalProviderItem(id)) {
+      setLocalExternalCart(prev => prev.filter(i => i.id !== id));
+      toast({ title: "Removed from cart" });
+      return;
+    }
+    
     const item = cart.find((i) => i.id === id);
     if (item?.cartItemId) {
       try {
@@ -910,8 +974,16 @@ export default function ExperienceTemplatePage() {
   };
 
   const updateCartQuantity = async (id: string, quantity: number) => {
-    const item = cart.find((i) => i.id === id);
     const clampedQty = Math.max(1, Math.min(10, quantity));
+    
+    if (isExternalProviderItem(id)) {
+      setLocalExternalCart(prev => prev.map(i => 
+        i.id === id ? { ...i, quantity: clampedQty } : i
+      ));
+      return;
+    }
+    
+    const item = cart.find((i) => i.id === id);
     if (item?.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${item.cartItemId}`, { quantity: clampedQty });
@@ -1679,6 +1751,7 @@ export default function ExperienceTemplatePage() {
                     quantity: 1,
                     provider: `${firstSegment?.carrierCode} ${firstSegment?.number}`,
                     details: `${fareDetails?.cabin || 'Economy'} class${bagsInfo ? `, ${bagsInfo}` : ''}`,
+                    isExternal: true,
                     metadata: {
                       cabin: fareDetails?.cabin,
                       baggage: bagsInfo,
@@ -1754,6 +1827,7 @@ export default function ExperienceTemplatePage() {
                     quantity: 1,
                     provider: "Amadeus Hotels",
                     details: `${nights} nights${boardType ? `, ${boardType.replace(/_/g, " ").toLowerCase()}` : ''}${isRefundable ? ', refundable' : ''}`,
+                    isExternal: true,
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: cancellationDeadline,
@@ -1857,6 +1931,7 @@ export default function ExperienceTemplatePage() {
                     quantity: 1,
                     provider: "Viator",
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
+                    isExternal: true,
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
@@ -1942,6 +2017,7 @@ export default function ExperienceTemplatePage() {
                     quantity: 1,
                     provider: "Viator",
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
+                    isExternal: true,
                     metadata: {
                       refundable: isRefundable,
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
