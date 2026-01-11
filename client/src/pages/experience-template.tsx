@@ -73,6 +73,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
+import { TransportationAnalysis } from "@/components/transportation-analysis";
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
@@ -1020,6 +1021,36 @@ export default function ExperienceTemplatePage() {
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
+  const activityLocations = useMemo(() => {
+    return cart
+      .filter(item => item.type === "activities" && item.metadata?.meetingPointCoordinates)
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        lat: item.metadata!.meetingPointCoordinates!.lat,
+        lng: item.metadata!.meetingPointCoordinates!.lng,
+        meetingPoint: item.metadata?.meetingPoint,
+        duration: item.metadata?.duration,
+      }));
+  }, [cart]);
+
+  const hotelLocation = useMemo(() => {
+    const hotelItem = cart.find(item => 
+      (item.type === "hotels" || item.type === "hotel" || item.type === "accommodations") && 
+      item.metadata?.rawData?.hotel?.latitude
+    );
+    if (hotelItem?.metadata?.rawData?.hotel) {
+      const hotel = hotelItem.metadata.rawData.hotel;
+      return {
+        id: hotelItem.id,
+        name: hotelItem.name,
+        lat: hotel.latitude,
+        lng: hotel.longitude,
+      };
+    }
+    return undefined;
+  }, [cart]);
+
   if (typeLoading) {
     return (
       <Layout>
@@ -1688,6 +1719,7 @@ export default function ExperienceTemplatePage() {
                 maxPrice={hotelMaxPrice}
                 starRating={hotelStarRating}
                 sortBy={hotelSortBy}
+                activityLocations={activityLocations}
                 onSelectHotel={(hotelData) => {
                   const hotel = hotelData.hotel;
                   const offer = hotelData.offers?.[0];
@@ -2007,9 +2039,9 @@ export default function ExperienceTemplatePage() {
             <div className="w-1 h-8 bg-gray-400 dark:bg-gray-500 rounded-full" />
           </PanelResizeHandle>
 
-          <Panel defaultSize={40} minSize={20} maxSize={60} className="flex flex-col">
-            <div className="h-full flex flex-col">
-              <div className="flex-1 relative">
+          <Panel defaultSize={40} minSize={20} maxSize={60} className="flex flex-col overflow-hidden">
+            <div className="h-full flex flex-col overflow-hidden">
+              <div className="flex-1 relative min-h-0">
                 <ExperienceMap
                   providers={mapProviders}
                   selectedProviderIds={selectedProviderIds}
@@ -2024,9 +2056,19 @@ export default function ExperienceTemplatePage() {
                   })}
                   onRemoveFromCart={removeFromCart}
                   height="100%"
+                  activityLocations={activityLocations}
+                  hotelLocation={hotelLocation}
                 />
               </div>
               
+              {(activityLocations.length > 0 || hotelLocation) && (
+                <div className="shrink-0 p-3 border-t bg-background overflow-y-auto max-h-[200px]">
+                  <TransportationAnalysis
+                    activityLocations={activityLocations}
+                    hotelLocation={hotelLocation}
+                  />
+                </div>
+              )}
             </div>
           </Panel>
         </PanelGroup>
@@ -2253,6 +2295,8 @@ export default function ExperienceTemplatePage() {
                     })}
                     onRemoveFromCart={removeFromCart}
                     height="100%"
+                    activityLocations={activityLocations}
+                    hotelLocation={hotelLocation}
                   />
                 </div>
               </CollapsibleContent>
