@@ -79,6 +79,7 @@ import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
+import { ActivitySearch } from "@/components/activity-search";
 
 interface CartItem {
   id: string;
@@ -1777,7 +1778,56 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && (
+          {activeTab === "activities" && !detailsSubmitted && (
+            <Card className="border-2 border-dashed mb-6">
+              <CardContent className="p-8 text-center">
+                <Palmtree className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <h3 className="font-semibold text-lg mb-2">Search Activities</h3>
+                <p className="text-muted-foreground">
+                  Fill in your Travel Details above and click "Submit" to search for tours and activities.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === "activities" && detailsSubmitted && (
+            <div className="mb-6">
+              <ActivitySearch
+                destination={destination}
+                startDate={startDate}
+                endDate={endDate}
+                travelers={travelers}
+                onSelectActivity={(activity) => {
+                  const durationMinutes = activity.duration?.fixedDurationInMinutes || 
+                    activity.duration?.variableDurationFromMinutes || 0;
+                  const durationHours = durationMinutes > 0 ? Math.ceil(durationMinutes / 60) : undefined;
+                  
+                  const cancellation = activity.cancellationPolicy;
+                  const fullRefund = cancellation?.refundEligibility?.find(r => r.percentageRefundable === 100);
+                  const isRefundable = !!fullRefund;
+                  
+                  addToCart({
+                    id: `activity-${activity.productCode}`,
+                    type: "activities",
+                    name: activity.title,
+                    price: (activity.pricing?.summary?.fromPrice || 0) * travelers,
+                    quantity: 1,
+                    provider: "Viator",
+                    details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}`,
+                    metadata: {
+                      refundable: isRefundable,
+                      cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
+                      duration: durationHours ? `${durationHours} hours` : undefined,
+                      travelers: travelers,
+                      rawData: activity,
+                    },
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -1800,7 +1850,7 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

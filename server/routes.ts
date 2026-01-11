@@ -20,6 +20,7 @@ import { eq, and } from "drizzle-orm";
 import OpenAI from "openai";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
+import { viatorService } from "./services/viator.service";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -2503,6 +2504,78 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Hotel search error:', error);
       res.status(500).json({ message: error.message || "Hotel search failed" });
+    }
+  });
+
+  // ============ VIATOR API ROUTES ============
+
+  // Search activities by destination (freetext search)
+  app.get("/api/viator/activities", isAuthenticated, async (req, res) => {
+    try {
+      const { destination, currency, count } = req.query;
+      
+      if (!destination || typeof destination !== 'string') {
+        return res.status(400).json({ message: "destination is required" });
+      }
+      
+      const result = await viatorService.searchByFreetext(
+        destination,
+        (currency as string) || 'USD',
+        count ? parseInt(count as string, 10) : 20
+      );
+      
+      res.json(result);
+    } catch (error: any) {
+      console.error('Viator activity search error:', error);
+      res.status(500).json({ message: error.message || "Activity search failed" });
+    }
+  });
+
+  // Get activity details by product code
+  app.get("/api/viator/activities/:productCode", isAuthenticated, async (req, res) => {
+    try {
+      const { productCode } = req.params;
+      
+      const product = await viatorService.getProductDetails(productCode);
+      
+      if (!product) {
+        return res.status(404).json({ message: "Activity not found" });
+      }
+      
+      res.json(product);
+    } catch (error: any) {
+      console.error('Viator product details error:', error);
+      res.status(500).json({ message: error.message || "Failed to get activity details" });
+    }
+  });
+
+  // Check availability for an activity
+  app.post("/api/viator/availability", isAuthenticated, async (req, res) => {
+    try {
+      const { productCode, travelDate, travelers } = req.body;
+      
+      if (!productCode || !travelDate) {
+        return res.status(400).json({ message: "productCode and travelDate are required" });
+      }
+      
+      const paxMix = [{ ageBand: 'ADULT', numberOfTravelers: travelers || 1 }];
+      const availability = await viatorService.checkAvailability(productCode, travelDate, paxMix);
+      
+      res.json(availability);
+    } catch (error: any) {
+      console.error('Viator availability check error:', error);
+      res.status(500).json({ message: error.message || "Availability check failed" });
+    }
+  });
+
+  // Get Viator destinations
+  app.get("/api/viator/destinations", isAuthenticated, async (req, res) => {
+    try {
+      const destinations = await viatorService.getDestinations();
+      res.json(destinations);
+    } catch (error: any) {
+      console.error('Viator destinations error:', error);
+      res.status(500).json({ message: error.message || "Failed to get destinations" });
     }
   });
 
