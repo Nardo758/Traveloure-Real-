@@ -2162,6 +2162,250 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // === COORDINATION HUB API ROUTES ===
+
+  // Vendor Availability Slots
+  app.get("/api/vendor-availability/:serviceId", async (req, res) => {
+    try {
+      const { serviceId } = req.params;
+      const { date } = req.query;
+      const slots = await storage.getVendorAvailabilitySlots(serviceId, date as string | undefined);
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching availability slots:", error);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const slots = await storage.getProviderAvailabilitySlots(userId);
+      res.json(slots);
+    } catch (error) {
+      console.error("Error fetching provider availability:", error);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
+  app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const slot = await storage.createVendorAvailabilitySlot({ ...req.body, providerId: userId });
+      res.status(201).json(slot);
+    } catch (error) {
+      console.error("Error creating availability slot:", error);
+      res.status(500).json({ message: "Failed to create availability slot" });
+    }
+  });
+
+  app.patch("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
+      if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
+      if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const slot = await storage.updateVendorAvailabilitySlot(req.params.id, req.body);
+      res.json(slot);
+    } catch (error) {
+      console.error("Error updating availability slot:", error);
+      res.status(500).json({ message: "Failed to update availability slot" });
+    }
+  });
+
+  app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
+      if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
+      if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      await storage.deleteVendorAvailabilitySlot(req.params.id);
+      res.json({ message: "Slot deleted" });
+    } catch (error) {
+      console.error("Error deleting availability slot:", error);
+      res.status(500).json({ message: "Failed to delete availability slot" });
+    }
+  });
+
+  app.post("/api/vendor-availability/:id/book", isAuthenticated, async (req, res) => {
+    try {
+      const slot = await storage.bookSlot(req.params.id);
+      if (!slot) return res.status(404).json({ message: "Slot not found" });
+      res.json(slot);
+    } catch (error) {
+      console.error("Error booking slot:", error);
+      res.status(500).json({ message: "Failed to book slot" });
+    }
+  });
+
+  // Coordination States
+  app.get("/api/coordination-states", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const states = await storage.getCoordinationStates(userId);
+      res.json(states);
+    } catch (error) {
+      console.error("Error fetching coordination states:", error);
+      res.status(500).json({ message: "Failed to fetch coordination states" });
+    }
+  });
+
+  app.get("/api/coordination-states/:id", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      res.json(state);
+    } catch (error) {
+      console.error("Error fetching coordination state:", error);
+      res.status(500).json({ message: "Failed to fetch coordination state" });
+    }
+  });
+
+  app.get("/api/coordination-states/active/:experienceType", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const state = await storage.getActiveCoordinationState(userId, req.params.experienceType);
+      res.json(state || null);
+    } catch (error) {
+      console.error("Error fetching active coordination state:", error);
+      res.status(500).json({ message: "Failed to fetch active coordination state" });
+    }
+  });
+
+  app.post("/api/coordination-states", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const state = await storage.createCoordinationState({ ...req.body, userId });
+      res.status(201).json(state);
+    } catch (error) {
+      console.error("Error creating coordination state:", error);
+      res.status(500).json({ message: "Failed to create coordination state" });
+    }
+  });
+
+  app.patch("/api/coordination-states/:id", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const updated = await storage.updateCoordinationState(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating coordination state:", error);
+      res.status(500).json({ message: "Failed to update coordination state" });
+    }
+  });
+
+  app.patch("/api/coordination-states/:id/status", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const { status, ...historyEntry } = req.body;
+      const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating coordination status:", error);
+      res.status(500).json({ message: "Failed to update coordination status" });
+    }
+  });
+
+  app.delete("/api/coordination-states/:id", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.id);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      await storage.deleteCoordinationState(req.params.id);
+      res.json({ message: "Coordination state deleted" });
+    } catch (error) {
+      console.error("Error deleting coordination state:", error);
+      res.status(500).json({ message: "Failed to delete coordination state" });
+    }
+  });
+
+  // Coordination Bookings
+  app.get("/api/coordination-states/:coordinationId/bookings", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.coordinationId);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const bookings = await storage.getCoordinationBookings(req.params.coordinationId);
+      res.json(bookings);
+    } catch (error) {
+      console.error("Error fetching coordination bookings:", error);
+      res.status(500).json({ message: "Failed to fetch bookings" });
+    }
+  });
+
+  app.post("/api/coordination-states/:coordinationId/bookings", isAuthenticated, async (req, res) => {
+    try {
+      const state = await storage.getCoordinationState(req.params.coordinationId);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      const userId = (req.user as any).claims.sub;
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const booking = await storage.createCoordinationBooking({ 
+        ...req.body, 
+        coordinationId: req.params.coordinationId 
+      });
+      res.status(201).json(booking);
+    } catch (error) {
+      console.error("Error creating coordination booking:", error);
+      res.status(500).json({ message: "Failed to create booking" });
+    }
+  });
+
+  app.patch("/api/coordination-bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getCoordinationBooking(req.params.id);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      const state = await storage.getCoordinationState(booking.coordinationId);
+      if (!state || state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const updated = await storage.updateCoordinationBooking(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating coordination booking:", error);
+      res.status(500).json({ message: "Failed to update booking" });
+    }
+  });
+
+  app.post("/api/coordination-bookings/:id/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getCoordinationBooking(req.params.id);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      const state = await storage.getCoordinationState(booking.coordinationId);
+      if (!state || state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      const { bookingReference, confirmationDetails } = req.body;
+      const updated = await storage.confirmCoordinationBooking(req.params.id, bookingReference, confirmationDetails);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error confirming booking:", error);
+      res.status(500).json({ message: "Failed to confirm booking" });
+    }
+  });
+
+  app.delete("/api/coordination-bookings/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getCoordinationBooking(req.params.id);
+      if (!booking) return res.status(404).json({ message: "Booking not found" });
+      const state = await storage.getCoordinationState(booking.coordinationId);
+      if (!state || state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      await storage.deleteCoordinationBooking(req.params.id);
+      res.json({ message: "Booking deleted" });
+    } catch (error) {
+      console.error("Error deleting booking:", error);
+      res.status(500).json({ message: "Failed to delete booking" });
+    }
+  });
+
   // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
 
