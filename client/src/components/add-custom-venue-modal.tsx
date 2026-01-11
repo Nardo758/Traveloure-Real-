@@ -49,7 +49,7 @@ export function AddCustomVenueModal({
     },
     onSuccess: (venue) => {
       toast({ title: "Venue added", description: `${venue.name} has been added to your plan` });
-      queryClient.invalidateQueries({ queryKey: ["/api/custom-venues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/custom-venues", experienceType] });
       onVenueAdded?.(venue);
       resetForm();
       onOpenChange(false);
@@ -85,16 +85,39 @@ export function AddCustomVenueModal({
       return;
     }
 
+    const parsedLat = latitude ? parseFloat(latitude) : null;
+    const parsedLng = longitude ? parseFloat(longitude) : null;
+    const parsedCost = estimatedCost ? parseFloat(estimatedCost) : null;
+
+    if ((latitude && (parsedLat === null || isNaN(parsedLat))) || 
+        (longitude && (parsedLng === null || isNaN(parsedLng)))) {
+      toast({ 
+        variant: "destructive", 
+        title: "Invalid coordinates", 
+        description: "Latitude and longitude must be valid numbers" 
+      });
+      return;
+    }
+
+    if (estimatedCost && (parsedCost === null || isNaN(parsedCost) || parsedCost < 0)) {
+      toast({ 
+        variant: "destructive", 
+        title: "Invalid cost", 
+        description: "Cost must be a valid positive number" 
+      });
+      return;
+    }
+
     createVenueMutation.mutate({
       userId,
       tripId,
       experienceType,
       name: name.trim(),
       address: address.trim() || null,
-      latitude: latitude ? parseFloat(latitude) : null,
-      longitude: longitude ? parseFloat(longitude) : null,
+      latitude: parsedLat,
+      longitude: parsedLng,
       notes: notes.trim() || null,
-      estimatedCost: estimatedCost ? parseFloat(estimatedCost) : null,
+      estimatedCost: parsedCost,
       venueType: "custom",
       source: "custom",
     });
