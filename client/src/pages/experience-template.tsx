@@ -78,6 +78,7 @@ import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
 import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
+import { ServiceBrowser } from "@/components/service-browser";
 
 interface CartItem {
   id: string;
@@ -1651,7 +1652,47 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && (
+          {activeTab === "services" && (
+            <div className="mb-6">
+              <ServiceBrowser
+                defaultLocation={destination}
+                showCategoryFilter={true}
+                onAddToCart={(service) => {
+                  addToCart({
+                    id: `service-${service.id}`,
+                    type: "services",
+                    name: service.serviceName,
+                    price: parseFloat(service.price) || 0,
+                    quantity: 1,
+                    provider: "Platform Service",
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab === "transportation" && (
+            <div className="mb-6">
+              <ServiceBrowser
+                defaultLocation={destination}
+                categorySlug="transportation-logistics"
+                showCategoryFilter={false}
+                title="Transportation Services"
+                onAddToCart={(service) => {
+                  addToCart({
+                    id: `transport-${service.id}`,
+                    type: "transportation",
+                    name: service.serviceName,
+                    price: parseFloat(service.price) || 0,
+                    quantity: 1,
+                    provider: "Platform Service",
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -1674,7 +1715,7 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
