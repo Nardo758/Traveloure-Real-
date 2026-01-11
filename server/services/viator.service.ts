@@ -18,6 +18,50 @@ export interface ViatorSearchParams {
   };
 }
 
+export interface ViatorLocation {
+  ref?: string;
+  name?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postcode?: string;
+  };
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  googleMapsUrl?: string;
+}
+
+export interface ViatorLogistics {
+  start?: Array<{
+    location: ViatorLocation;
+    description?: string;
+    localizedDescription?: string;
+  }>;
+  end?: Array<{
+    location: ViatorLocation;
+    description?: string;
+  }>;
+  travelerPickup?: {
+    allowCustomTravelerPickup?: boolean;
+    pickupOptionType?: string;
+    additionalInfo?: string;
+    locations?: Array<{
+      location: ViatorLocation;
+      pickupType?: string;
+    }>;
+  };
+  redemption?: {
+    redemptionType?: string;
+    locations?: Array<{
+      location: ViatorLocation;
+    }>;
+  };
+}
+
 export interface ViatorProduct {
   productCode: string;
   title: string;
@@ -68,6 +112,7 @@ export interface ViatorProduct {
     tagId: number;
     allNamesByLocale?: Record<string, string>;
   }>;
+  logistics?: ViatorLogistics;
   itinerary?: {
     itineraryType: string;
     duration?: {
@@ -78,6 +123,10 @@ export interface ViatorProduct {
         location?: {
           name?: string;
           address?: string;
+          coordinates?: {
+            latitude: number;
+            longitude: number;
+          };
         };
       };
       description?: string;
