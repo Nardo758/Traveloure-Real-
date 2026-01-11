@@ -26,7 +26,8 @@ import {
   AlertCircle,
   Camera,
   Ticket,
-  RefreshCw
+  RefreshCw,
+  Car
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +37,44 @@ interface ActivitySearchProps {
   endDate?: Date;
   travelers?: number;
   sortBy?: "TOP_SELLERS" | "PRICE_LOW_TO_HIGH" | "PRICE_HIGH_TO_LOW" | "TRAVELER_RATING";
+  filterType?: "activities" | "transport" | "all";
   onSelectActivity?: (activity: ViatorActivity) => void;
+}
+
+const TRANSPORT_KEYWORDS = [
+  'transfer', 'shuttle', 'airport', 'transportation', 'bus ticket',
+  'train ticket', 'ferry ticket', 'taxi', 'private car', 'limousine',
+  'pickup', 'drop-off', 'dropoff', 'one-way', 'round-trip transport',
+  'shared ride', 'private ride', 'car service', 'chauffeur',
+];
+
+function isTransportProduct(activity: ViatorActivity): boolean {
+  const title = activity.title?.toLowerCase() || '';
+  const description = activity.description?.toLowerCase() || '';
+  
+  const hasTransportKeyword = TRANSPORT_KEYWORDS.some(keyword => 
+    title.includes(keyword) || description.includes(keyword.toLowerCase())
+  );
+  
+  const isTourWithTransport = (
+    title.includes('tour') || 
+    title.includes('experience') || 
+    title.includes('excursion') ||
+    title.includes('day trip') ||
+    title.includes('sightseeing')
+  );
+  
+  if (hasTransportKeyword && !isTourWithTransport) {
+    return true;
+  }
+  
+  const transferPatterns = [
+    /^(private|shared)?\s*(airport|hotel|port|station)\s*(to|from|-)/i,
+    /transfer\s*(to|from|between)/i,
+    /^(one[- ]way|round[- ]trip)\s*(private|shared)?\s*transfer/i,
+  ];
+  
+  return transferPatterns.some(pattern => pattern.test(title));
 }
 
 interface ViatorLocation {
@@ -217,6 +255,7 @@ export function ActivitySearch({
   endDate,
   travelers = 1,
   sortBy = "TOP_SELLERS",
+  filterType = "activities",
   onSelectActivity,
 }: ActivitySearchProps) {
   const [currentSortBy, setCurrentSortBy] = useState(sortBy);
@@ -246,22 +285,28 @@ export function ActivitySearch({
   const activities = useMemo(() => {
     if (!data?.products) return [];
     
-    let sorted = [...data.products];
+    let filtered = [...data.products];
+    
+    if (filterType === "activities") {
+      filtered = filtered.filter(p => !isTransportProduct(p));
+    } else if (filterType === "transport") {
+      filtered = filtered.filter(p => isTransportProduct(p));
+    }
     
     switch (currentSortBy) {
       case "PRICE_LOW_TO_HIGH":
-        sorted.sort((a, b) => (a.pricing?.summary?.fromPrice || 0) - (b.pricing?.summary?.fromPrice || 0));
+        filtered.sort((a, b) => (a.pricing?.summary?.fromPrice || 0) - (b.pricing?.summary?.fromPrice || 0));
         break;
       case "PRICE_HIGH_TO_LOW":
-        sorted.sort((a, b) => (b.pricing?.summary?.fromPrice || 0) - (a.pricing?.summary?.fromPrice || 0));
+        filtered.sort((a, b) => (b.pricing?.summary?.fromPrice || 0) - (a.pricing?.summary?.fromPrice || 0));
         break;
       case "TRAVELER_RATING":
-        sorted.sort((a, b) => (b.reviews?.combinedAverageRating || 0) - (a.reviews?.combinedAverageRating || 0));
+        filtered.sort((a, b) => (b.reviews?.combinedAverageRating || 0) - (a.reviews?.combinedAverageRating || 0));
         break;
     }
     
-    return sorted;
-  }, [data?.products, currentSortBy]);
+    return filtered;
+  }, [data?.products, currentSortBy, filterType]);
 
   const handleSelectActivity = (activity: ViatorActivity) => {
     const newSelected = new Set(selectedActivities);
@@ -274,14 +319,22 @@ export function ActivitySearch({
     setSelectedActivities(newSelected);
   };
 
+  const isTransportMode = filterType === "transport";
+  const itemLabel = isTransportMode ? "transfers" : "activities";
+  const ItemIcon = isTransportMode ? Car : Camera;
+
   if (!destination) {
     return (
       <Card className="border-2 border-dashed">
         <CardContent className="p-8 text-center">
-          <Camera className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-          <h3 className="font-semibold text-lg mb-2">Search Activities</h3>
+          <ItemIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+          <h3 className="font-semibold text-lg mb-2">
+            {isTransportMode ? "Search Transport Services" : "Search Activities"}
+          </h3>
           <p className="text-muted-foreground">
-            Enter a destination in your Travel Details to search for tours and activities.
+            {isTransportMode 
+              ? "Enter a destination in your Travel Details to search for transfers and transport services."
+              : "Enter a destination in your Travel Details to search for tours and activities."}
           </p>
         </CardContent>
       </Card>
@@ -294,7 +347,9 @@ export function ActivitySearch({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm text-muted-foreground">Searching activities in {destination}...</span>
+            <span className="text-sm text-muted-foreground">
+              Searching {itemLabel} in {destination}...
+            </span>
           </div>
         </div>
         {[1, 2, 3].map((i) => (
@@ -321,9 +376,11 @@ export function ActivitySearch({
       <Card className="border-destructive">
         <CardContent className="p-6 text-center">
           <AlertCircle className="h-10 w-10 mx-auto mb-3 text-destructive" />
-          <h3 className="font-semibold mb-2">Unable to load activities</h3>
+          <h3 className="font-semibold mb-2">
+            Unable to load {itemLabel}
+          </h3>
           <p className="text-muted-foreground text-sm mb-4">
-            {error instanceof Error ? error.message : "An error occurred while searching for activities."}
+            {error instanceof Error ? error.message : `An error occurred while searching for ${itemLabel}.`}
           </p>
           <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
@@ -338,10 +395,14 @@ export function ActivitySearch({
     return (
       <Card className="border-2 border-dashed">
         <CardContent className="p-8 text-center">
-          <Ticket className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-          <h3 className="font-semibold text-lg mb-2">No Activities Found</h3>
+          <ItemIcon className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+          <h3 className="font-semibold text-lg mb-2">
+            {isTransportMode ? "No Transport Services Found" : "No Activities Found"}
+          </h3>
           <p className="text-muted-foreground">
-            No tours or activities available for "{destination}". Try a different destination.
+            {isTransportMode
+              ? `No transfers or transport services available for "${destination}". Try a different destination.`
+              : `No tours or activities available for "${destination}". Try a different destination.`}
           </p>
         </CardContent>
       </Card>
@@ -356,7 +417,7 @@ export function ActivitySearch({
             <MapPin className="h-3 w-3" />
             {destination}
           </Badge>
-          <Badge variant="secondary">{activities.length} activities</Badge>
+          <Badge variant="secondary">{activities.length} {itemLabel}</Badge>
           {travelers > 1 && (
             <Badge variant="outline" className="gap-1">
               <Users className="h-3 w-3" />
