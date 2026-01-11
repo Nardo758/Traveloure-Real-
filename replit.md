@@ -51,7 +51,8 @@ The application features a modern and responsive design using Tailwind CSS and s
 ### Third-Party Services
 - **Replit Auth**: For OpenID Connect-based user authentication.
 - **PostgreSQL**: The relational database management system for data persistence.
-- **OpenAI**: For AI-powered itinerary optimization and recommendations via gpt-4o.
+- **OpenAI**: For AI-powered chat and existing itinerary comparison features via gpt-4o.
+- **Anthropic Claude**: For advanced itinerary optimization, transportation analysis, and travel recommendations via claude-sonnet-4-20250514.
 - **Google Maps**: For interactive mapping with provider locations and route visualization.
 - **Amadeus Self-Service API**: For real-time flight and hotel search in travel planning templates (test environment).
 - **Viator Partner API**: For real-time tours and activities search in experience planning templates (sandbox environment).
@@ -67,6 +68,7 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `lucide-react`: Icon library.
 - `@vis.gl/react-google-maps`: Google Maps React components for interactive mapping.
 - `openai`: OpenAI SDK for AI integration.
+- `@anthropic-ai/sdk`: Anthropic SDK for Claude AI integration.
 - `amadeus`: Amadeus Node.js SDK for flight and hotel search APIs.
 
 ### Environment Variables
@@ -79,8 +81,21 @@ The application features a modern and responsive design using Tailwind CSS and s
 - `AMADEUS_API_KEY`: API key for Amadeus Self-Service API (stored as secret).
 - `AMADEUS_API_SECRET`: API secret for Amadeus Self-Service API (stored as secret).
 - `VIATOR_API_KEY`: API key for Viator Partner API (stored as secret).
+- `ANTHROPIC_API_KEY`: API key for Anthropic Claude AI integration (stored as secret).
 
 ## Recent Changes (January 2026)
+- **Claude AI Integration**: Added Anthropic Claude as the AI brain for advanced itinerary optimization
+  - `server/services/claude.service.ts`: Service layer using claude-sonnet-4-20250514 model
+  - API endpoints: `/api/claude/optimize-itinerary`, `/api/claude/transportation-analysis`, `/api/claude/recommendations` (authenticated)
+  - Itinerary optimization analyzes cart items with full metadata (flights, hotels, activities) and generates day-by-day schedules with efficiency scores
+  - Transportation analysis recommends optimal travel modes between hotel and activity meeting points using coordinate data
+  - Travel recommendations generate personalized activity suggestions based on destination, dates, and interests
+  - Multi-LLM architecture: Claude for itinerary optimization, OpenAI for existing chat/comparison features
+- **Enhanced Viator Activity Logistics Data**: Activity cards and cart now include meeting point information
+  - `ViatorLogistics` interface captures start/end locations, traveler pickup points with coordinates
+  - `getMeetingPointInfo()` helper extracts address and coordinates from Viator logistics data
+  - Activity cards display meeting point address when available
+  - Cart metadata includes `meetingPoint` (address) and `meetingPointCoordinates` (lat/lng) for AI proximity analysis
 - **Viator Partner API Integration**: Added real-time tours and activities search functionality
   - `server/services/viator.service.ts`: Service layer with API-key authentication for sandbox environment
   - API endpoints: `/api/viator/activities`, `/api/viator/activities/:productCode`, `/api/viator/availability`, `/api/viator/destinations` (authenticated)
