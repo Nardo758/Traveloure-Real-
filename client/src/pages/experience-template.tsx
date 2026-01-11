@@ -640,6 +640,8 @@ export default function ExperienceTemplatePage() {
   const config = experienceConfigs[slug] || experienceConfigs.wedding;
   
   const [destination, setDestination] = useState("");
+  const [originCity, setOriginCity] = useState("");
+  const [originCode, setOriginCode] = useState("");
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
   const [activeTab, setActiveTab] = useState(config.tabs[0]?.id || "venue");
@@ -1122,6 +1124,23 @@ export default function ExperienceTemplatePage() {
                 </div>
 
                 <div>
+                  <Label htmlFor="origin" className="text-sm font-medium">
+                    City of Origin:
+                  </Label>
+                  <Input
+                    id="origin"
+                    placeholder="Eg: Los Angeles, Chicago, Miami"
+                    value={originCity}
+                    onChange={(e) => {
+                      setOriginCity(e.target.value);
+                      setOriginCode("");
+                    }}
+                    className="mt-1"
+                    data-testid="input-origin"
+                  />
+                </div>
+
+                <div>
                   <Label className="text-sm font-medium">{config.dateLabel}</Label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <div>
@@ -1421,6 +1440,7 @@ export default function ExperienceTemplatePage() {
             <div className="mb-6">
               <FlightSearch
                 destination={destination}
+                origin={originCity}
                 startDate={startDate}
                 endDate={endDate}
                 travelers={2}

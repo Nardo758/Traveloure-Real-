@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 interface FlightSearchProps {
   destination?: string;
+  origin?: string;
   startDate?: Date;
   endDate?: Date;
   travelers?: number;
@@ -88,12 +89,13 @@ function formatDate(dateTime: string): string {
 
 export function FlightSearch({
   destination,
+  origin: originProp,
   startDate,
   endDate,
   travelers = 1,
   onSelectFlight,
 }: FlightSearchProps) {
-  const [origin, setOrigin] = useState("");
+  const [originCode, setOriginCode] = useState("");
   const [originOpen, setOriginOpen] = useState(false);
   const [originSearch, setOriginSearch] = useState("");
   const [selectedOrigin, setSelectedOrigin] = useState<LocationSuggestion | null>(null);
@@ -108,6 +110,7 @@ export function FlightSearch({
   );
   const [adults, setAdults] = useState(travelers);
   const [detectedDestination, setDetectedDestination] = useState<LocationSuggestion | null>(null);
+  const [detectedOrigin, setDetectedOrigin] = useState<LocationSuggestion | null>(null);
   const [showModify, setShowModify] = useState(false);
 
   useEffect(() => {
@@ -126,6 +129,11 @@ export function FlightSearch({
     setDestinationCode("");
     setDetectedDestination(null);
   }, [destination]);
+
+  useEffect(() => {
+    setOriginCode("");
+    setDetectedOrigin(null);
+  }, [originProp]);
 
   const { data: originSuggestions, isLoading: originLoading } = useQuery<LocationSuggestion[]>({
     queryKey: ["/api/amadeus/locations", "origin", originSearch],
@@ -161,8 +169,8 @@ export function FlightSearch({
     staleTime: 60000,
   });
 
-  const { data: autoDetectedLocations, isLoading: autoDetectLoading } = useQuery<LocationSuggestion[]>({
-    queryKey: ["/api/amadeus/locations", "autodetect", destination],
+  const { data: autoDetectedDestinations, isLoading: autoDetectDestLoading } = useQuery<LocationSuggestion[]>({
+    queryKey: ["/api/amadeus/locations", "autodetect-dest", destination],
     enabled: !!destination && destination.length >= 2 && !destinationCode,
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -178,15 +186,41 @@ export function FlightSearch({
     staleTime: 60000,
   });
 
+  const { data: autoDetectedOrigins, isLoading: autoDetectOriginLoading } = useQuery<LocationSuggestion[]>({
+    queryKey: ["/api/amadeus/locations", "autodetect-origin", originProp],
+    enabled: !!originProp && originProp.length >= 2 && !originCode,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        keyword: originProp!,
+        subType: "AIRPORT,CITY",
+      });
+      const res = await fetch(`/api/amadeus/locations?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+
   useEffect(() => {
-    if (autoDetectedLocations && autoDetectedLocations.length > 0 && !destinationCode) {
-      const best = autoDetectedLocations[0];
+    if (autoDetectedDestinations && autoDetectedDestinations.length > 0 && !destinationCode) {
+      const best = autoDetectedDestinations[0];
       setDestinationCode(best.iataCode);
       setDetectedDestination(best);
     }
-  }, [autoDetectedLocations, destinationCode]);
+  }, [autoDetectedDestinations, destinationCode]);
 
-  const canSearch = !!origin && !!destinationCode && !!departureDate && !!adults;
+  useEffect(() => {
+    if (autoDetectedOrigins && autoDetectedOrigins.length > 0 && !originCode) {
+      const best = autoDetectedOrigins[0];
+      setOriginCode(best.iataCode);
+      setDetectedOrigin(best);
+      setSelectedOrigin(best);
+    }
+  }, [autoDetectedOrigins, originCode]);
+
+  const canSearch = !!originCode && !!destinationCode && !!departureDate && !!adults;
 
   const {
     data: flights,
@@ -196,7 +230,7 @@ export function FlightSearch({
   } = useQuery<FlightOffer[]>({
     queryKey: [
       "/api/amadeus/flights",
-      origin,
+      originCode,
       destinationCode,
       departureDate,
       returnDate,
@@ -205,7 +239,7 @@ export function FlightSearch({
     enabled: canSearch,
     queryFn: async () => {
       const params = new URLSearchParams({
-        origin,
+        origin: originCode,
         destination: destinationCode,
         departureDate,
         adults: adults.toString(),
@@ -224,21 +258,23 @@ export function FlightSearch({
     },
   });
 
-  const isDetectingDestination = autoDetectLoading && !destinationCode && !!destination;
-  const detectionFailed = !autoDetectLoading && autoDetectedLocations && autoDetectedLocations.length === 0 && !destinationCode && !!destination;
+  const isDetecting = (autoDetectDestLoading && !destinationCode && !!destination) || 
+                      (autoDetectOriginLoading && !originCode && !!originProp);
+  const destDetectionFailed = !autoDetectDestLoading && autoDetectedDestinations && autoDetectedDestinations.length === 0 && !destinationCode && !!destination;
+  const originDetectionFailed = !autoDetectOriginLoading && autoDetectedOrigins && autoDetectedOrigins.length === 0 && !originCode && !!originProp;
 
-  if (isDetectingDestination) {
+  if (isDetecting) {
     return (
       <Card>
         <CardContent className="p-6 text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-muted-foreground" />
-          <p className="text-muted-foreground">Finding flights to {destination}...</p>
+          <p className="text-muted-foreground">Finding flights...</p>
         </CardContent>
       </Card>
     );
   }
 
-  const needsInitialForm = !origin || !destinationCode || !departureDate;
+  const needsInitialForm = !originCode || !destinationCode || !departureDate;
 
   if (needsInitialForm) {
     return (
@@ -255,9 +291,14 @@ export function FlightSearch({
               )}
             </div>
 
-            {detectionFailed && (
+            {(destDetectionFailed || originDetectionFailed) && (
               <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
-                We couldn't find "{destination}" automatically. Please select your destination below.
+                {destDetectionFailed && originDetectionFailed 
+                  ? `We couldn't detect airports for "${originProp}" or "${destination}" automatically. Please select them below.`
+                  : destDetectionFailed 
+                    ? `We couldn't find "${destination}" automatically. Please select your destination below.`
+                    : `We couldn't find "${originProp}" automatically. Please select your origin below.`
+                }
               </div>
             )}
 
@@ -270,7 +311,7 @@ export function FlightSearch({
                       variant="outline"
                       role="combobox"
                       aria-expanded={originOpen}
-                      className={cn("w-full justify-between h-11", origin && "border-green-500")}
+                      className={cn("w-full justify-between h-11", originCode && "border-green-500")}
                       data-testid="input-flight-origin"
                     >
                       <span className="flex items-center gap-2">
@@ -305,12 +346,12 @@ export function FlightSearch({
                               key={loc.iataCode}
                               value={`${loc.name} ${loc.iataCode} ${loc.cityName || ""}`}
                               onSelect={() => {
-                                setOrigin(loc.iataCode);
+                                setOriginCode(loc.iataCode);
                                 setSelectedOrigin(loc);
                                 setOriginOpen(false);
                               }}
                             >
-                              <Check className={cn("mr-2 h-4 w-4", origin === loc.iataCode ? "opacity-100" : "opacity-0")} />
+                              <Check className={cn("mr-2 h-4 w-4", originCode === loc.iataCode ? "opacity-100" : "opacity-0")} />
                               <Badge variant="secondary" className="font-mono mr-2">{loc.iataCode}</Badge>
                               <span className="text-sm">{loc.name}</span>
                             </CommandItem>
@@ -446,7 +487,7 @@ export function FlightSearch({
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant="outline" className="w-full justify-between font-normal">
-                          {origin}
+                          {originCode}
                           <ChevronDown className="h-4 w-4 opacity-50" />
                         </Button>
                       </PopoverTrigger>
@@ -470,7 +511,7 @@ export function FlightSearch({
                                   key={loc.iataCode}
                                   value={`${loc.name} ${loc.iataCode}`}
                                   onSelect={() => {
-                                    setOrigin(loc.iataCode);
+                                    setOriginCode(loc.iataCode);
                                     setSelectedOrigin(loc);
                                   }}
                                 >
