@@ -28,6 +28,14 @@ import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, 
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
+interface ActivityLocationForProximity {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  meetingPoint?: string;
+}
+
 interface HotelSearchProps {
   destination?: string;
   checkIn?: Date;
@@ -37,6 +45,7 @@ interface HotelSearchProps {
   starRating?: number;
   sortBy?: "price" | "rating";
   onSelectHotel?: (hotel: any) => void;
+  activityLocations?: ActivityLocationForProximity[];
 }
 
 interface LocationSuggestion {
@@ -135,6 +144,35 @@ const boardTypeLabels: Record<string, string> = {
   ALL_INCLUSIVE: "All Inclusive",
 };
 
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function getProximityScore(hotelLat: number, hotelLng: number, activities: ActivityLocationForProximity[]): { label: string; variant: "default" | "secondary" | "outline" | "destructive"; avgDistance: number } | null {
+  if (activities.length === 0) return null;
+  
+  const avgDistance = activities.reduce((sum, activity) => {
+    return sum + haversineDistance(hotelLat, hotelLng, activity.lat, activity.lng);
+  }, 0) / activities.length;
+
+  if (avgDistance < 2) {
+    return { label: "Very Close", variant: "default", avgDistance };
+  } else if (avgDistance < 5) {
+    return { label: "Close", variant: "secondary", avgDistance };
+  } else if (avgDistance < 10) {
+    return { label: "Moderate", variant: "outline", avgDistance };
+  }
+  return { label: "Far", variant: "destructive", avgDistance };
+}
+
 export function HotelSearch({
   destination,
   checkIn,
@@ -144,6 +182,7 @@ export function HotelSearch({
   starRating = 0,
   sortBy = "price" as "price" | "rating",
   onSelectHotel,
+  activityLocations = [],
 }: HotelSearchProps) {
   const [cityCode, setCityCode] = useState("");
   const [cityOpen, setCityOpen] = useState(false);
@@ -631,6 +670,10 @@ export function HotelSearch({
               const taxes = offer?.price.taxes?.filter(t => !t.included);
               const taxTotal = taxes?.reduce((sum, t) => sum + parseFloat(t.amount), 0) || 0;
 
+              const proximityScore = hotel.latitude && hotel.longitude && activityLocations.length > 0
+                ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+                : null;
+
               return (
                 <Card key={hotel.hotelId} className="overflow-hidden hover-elevate">
                   <div className="h-32 bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900 dark:to-blue-800 flex items-center justify-center relative">
@@ -666,6 +709,15 @@ export function HotelSearch({
                           {hotel.address.cityName || hotel.cityCode}
                           {hotel.address.countryCode && `, ${hotel.address.countryCode}`}
                         </span>
+                      </div>
+                    )}
+
+                    {proximityScore && (
+                      <div className="mb-2">
+                        <Badge variant={proximityScore.variant} className="text-xs">
+                          <MapPin className="h-3 w-3 mr-1" />
+                          {proximityScore.label} to activities ({proximityScore.avgDistance.toFixed(1)} km avg)
+                        </Badge>
                       </div>
                     )}
 

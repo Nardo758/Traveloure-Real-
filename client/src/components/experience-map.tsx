@@ -46,6 +46,22 @@ interface MapProvider {
   description?: string;
 }
 
+interface ActivityLocation {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  meetingPoint?: string;
+  duration?: string;
+}
+
+interface HotelLocation {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 interface ExperienceMapProps {
   providers: MapProvider[];
   selectedProviderIds?: string[];
@@ -54,6 +70,8 @@ interface ExperienceMapProps {
   onRemoveFromCart?: (providerId: string) => void;
   className?: string;
   height?: string;
+  activityLocations?: ActivityLocation[];
+  hotelLocation?: HotelLocation;
 }
 
 const categoryColors: Record<string, string> = {
@@ -102,16 +120,21 @@ function MapContent({
   selectedProviderIds = [],
   destinationCenter,
   onAddToCart,
-  onRemoveFromCart
+  onRemoveFromCart,
+  activityLocations = [],
+  hotelLocation
 }: { 
   providers: MapProvider[]; 
   selectedProviderIds?: string[];
   destinationCenter?: { lat: number; lng: number } | null;
   onAddToCart?: (provider: MapProvider) => void;
   onRemoveFromCart?: (providerId: string) => void;
+  activityLocations?: ActivityLocation[];
+  hotelLocation?: HotelLocation;
 }) {
   const [selectedProvider, setSelectedProvider] = useState<MapProvider | null>(null);
   const [hoveredProvider, setHoveredProvider] = useState<string | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<ActivityLocation | null>(null);
   
   const isSelected = (id: string) => selectedProviderIds.includes(id);
 
@@ -235,6 +258,57 @@ function MapContent({
           </div>
         </InfoWindow>
       )}
+
+      {/* Activity meeting point markers */}
+      {activityLocations.map((activity) => (
+        <Marker
+          key={`activity-${activity.id}`}
+          position={{ lat: activity.lat, lng: activity.lng }}
+          onClick={() => setSelectedActivity(activity)}
+          icon={{
+            url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44"><path d="M18 0C8.06 0 0 8.06 0 18c0 13.5 18 26 18 26s18-12.5 18-26c0-9.94-8.06-18-18-18z" fill="#4CAF50" stroke="white" stroke-width="2"/><circle cx="18" cy="16" r="7" fill="white"/><path d="M14 16h8M18 12v8" stroke="#4CAF50" stroke-width="2" stroke-linecap="round"/></svg>`),
+          } as any}
+        />
+      ))}
+
+      {selectedActivity && (
+        <InfoWindow
+          position={{ lat: selectedActivity.lat, lng: selectedActivity.lng }}
+          onCloseClick={() => setSelectedActivity(null)}
+        >
+          <div className="p-2 max-w-[250px]">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <h4 className="font-semibold text-sm">{selectedActivity.name}</h4>
+              <Badge className="text-xs flex-shrink-0 bg-green-500">
+                Activity
+              </Badge>
+            </div>
+            {selectedActivity.meetingPoint && (
+              <div className="flex items-start gap-1 text-xs text-gray-600 mb-2">
+                <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
+                <span>{selectedActivity.meetingPoint}</span>
+              </div>
+            )}
+            {selectedActivity.duration && (
+              <div className="flex items-center gap-1 text-xs text-gray-500">
+                <Clock className="w-3 h-3" />
+                <span>{selectedActivity.duration}</span>
+              </div>
+            )}
+          </div>
+        </InfoWindow>
+      )}
+
+      {/* Hotel location marker */}
+      {hotelLocation && (
+        <Marker
+          key={`hotel-${hotelLocation.id}`}
+          position={{ lat: hotelLocation.lat, lng: hotelLocation.lng }}
+          icon={{
+            url: "data:image/svg+xml," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48"><path d="M20 0C9 0 0 9 0 20c0 15 20 28 20 28s20-13 20-28c0-11-9-20-20-20z" fill="#3F51B5" stroke="white" stroke-width="3"/><rect x="12" y="10" width="16" height="16" rx="2" fill="white"/><rect x="15" y="13" width="4" height="4" fill="#3F51B5"/><rect x="21" y="13" width="4" height="4" fill="#3F51B5"/><rect x="15" y="19" width="4" height="4" fill="#3F51B5"/><rect x="21" y="19" width="4" height="4" fill="#3F51B5"/></svg>`),
+          } as any}
+        />
+      )}
     </Map>
   );
 }
@@ -246,7 +320,9 @@ export function ExperienceMap({
   onAddToCart,
   onRemoveFromCart,
   className,
-  height = "100%"
+  height = "100%",
+  activityLocations = [],
+  hotelLocation
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -331,6 +407,8 @@ export function ExperienceMap({
             destinationCenter={destinationCenter}
             onAddToCart={onAddToCart}
             onRemoveFromCart={onRemoveFromCart}
+            activityLocations={activityLocations}
+            hotelLocation={hotelLocation}
           />
         </APIProvider>
       </MapErrorBoundary>
