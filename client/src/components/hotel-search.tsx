@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,9 @@ interface HotelSearchProps {
   checkIn?: Date;
   checkOut?: Date;
   guests?: number;
+  maxPrice?: number;
+  starRating?: number;
+  sortBy?: "price" | "rating";
   onSelectHotel?: (hotel: any) => void;
 }
 
@@ -80,6 +83,9 @@ export function HotelSearch({
   checkIn,
   checkOut,
   guests = 2,
+  maxPrice = 1000,
+  starRating = 0,
+  sortBy = "price" as "price" | "rating",
   onSelectHotel,
 }: HotelSearchProps) {
   const [cityCode, setCityCode] = useState("");
@@ -197,32 +203,77 @@ export function HotelSearch({
   const isDetecting = autoDetectLoading && !cityCode && !!destination;
   const detectionFailed = !autoDetectLoading && autoDetectedLocations && autoDetectedLocations.length === 0 && !cityCode && !!destination;
   const needsManualInput = !canAutoSearch && !isDetecting;
+  const hasTravelDetails = !!destination && !!checkIn && !!checkOut;
 
-  return (
-    <div className="space-y-4">
-      {isDetecting && (
-        <Card>
-          <CardContent className="p-6 text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-muted-foreground" />
-            <p className="text-muted-foreground">Finding hotels in {destination}...</p>
-          </CardContent>
-        </Card>
-      )}
+  const filteredAndSortedHotels = useMemo(() => {
+    if (!hotels) return [];
+    
+    let result = hotels.filter((hotel) => {
+      const offer = hotel.offers?.[0];
+      if (offer) {
+        const price = parseFloat(offer.price.total);
+        if (price > maxPrice) return false;
+      }
+      
+      if (starRating > 0 && hotel.hotel.rating) {
+        const hotelStars = parseInt(hotel.hotel.rating);
+        if (hotelStars < starRating) return false;
+      }
+      
+      return true;
+    });
 
-      {needsManualInput && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Hotel className="h-5 w-5" />
-              Search Hotels
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {detectionFailed && (
-              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
-                We couldn't find "{destination}" automatically. Please select a city below.
-              </div>
-            )}
+    result.sort((a, b) => {
+      if (sortBy === "price") {
+        const priceA = parseFloat(a.offers?.[0]?.price.total || "0");
+        const priceB = parseFloat(b.offers?.[0]?.price.total || "0");
+        return priceA - priceB;
+      } else {
+        const ratingA = parseInt(a.hotel.rating || "0");
+        const ratingB = parseInt(b.hotel.rating || "0");
+        return ratingB - ratingA;
+      }
+    });
+
+    return result;
+  }, [hotels, maxPrice, starRating, sortBy]);
+
+  if (isDetecting) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-muted-foreground" />
+          <p className="text-muted-foreground">Finding hotels in {destination}...</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (needsManualInput && !hasTravelDetails) {
+    return (
+      <Card className="border-2 border-dashed">
+        <CardContent className="p-8 text-center">
+          <Hotel className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+          <h3 className="font-semibold text-lg mb-2">Search Hotels</h3>
+          <p className="text-muted-foreground">
+            Fill in your Travel Details above (destination and dates) to search for hotels.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (needsManualInput && hasTravelDetails && detectionFailed) {
+    return (
+      <Card className="border-2 border-dashed">
+        <CardContent className="p-6">
+          <div className="text-center mb-4">
+            <Hotel className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+            <h3 className="font-semibold text-lg mb-1">City Detection Failed</h3>
+          </div>
+          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
+            We couldn't find "{destination}" automatically. Please select a city below.
+          </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="space-y-2 lg:col-span-1">
                 <Label>City</Label>
@@ -317,8 +368,11 @@ export function HotelSearch({
             </div>
           </CardContent>
         </Card>
-      )}
+    );
+  }
 
+  return (
+    <div className="space-y-4">
       {!isDetecting && canAutoSearch && (
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
@@ -476,13 +530,18 @@ export function HotelSearch({
         </Card>
       )}
 
-      {hotels && hotels.length > 0 && (
+      {filteredAndSortedHotels && filteredAndSortedHotels.length > 0 && (
         <div className="space-y-4">
           <h3 className="font-semibold text-lg">
-            {hotels.length} hotel{hotels.length !== 1 ? "s" : ""} available
+            {filteredAndSortedHotels.length} hotel{filteredAndSortedHotels.length !== 1 ? "s" : ""} available
+            {hotels && hotels.length !== filteredAndSortedHotels.length && (
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                (filtered from {hotels.length})
+              </span>
+            )}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {hotels.map((hotelData) => {
+            {filteredAndSortedHotels.map((hotelData) => {
               const hotel = hotelData.hotel;
               const offer = hotelData.offers?.[0];
 

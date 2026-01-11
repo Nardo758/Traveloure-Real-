@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,9 @@ interface FlightSearchProps {
   startDate?: Date;
   endDate?: Date;
   travelers?: number;
+  maxPrice?: number;
+  stops?: "any" | "nonstop" | "1stop";
+  sortBy?: "price" | "duration" | "departure";
   onSelectFlight?: (flight: any) => void;
 }
 
@@ -93,6 +96,9 @@ export function FlightSearch({
   startDate,
   endDate,
   travelers = 1,
+  maxPrice = 5000,
+  stops = "any",
+  sortBy = "price",
   onSelectFlight,
 }: FlightSearchProps) {
   const [originCode, setOriginCode] = useState("");
@@ -263,6 +269,50 @@ export function FlightSearch({
   const destDetectionFailed = !autoDetectDestLoading && autoDetectedDestinations && autoDetectedDestinations.length === 0 && !destinationCode && !!destination;
   const originDetectionFailed = !autoDetectOriginLoading && autoDetectedOrigins && autoDetectedOrigins.length === 0 && !originCode && !!originProp;
 
+  const parseDuration = (duration: string): number => {
+    const match = duration.match(/PT(\d+)H?(\d+)?M?/);
+    if (!match) return 0;
+    const hours = parseInt(match[1] || "0");
+    const minutes = parseInt(match[2] || "0");
+    return hours * 60 + minutes;
+  };
+
+  const filteredAndSortedFlights = useMemo(() => {
+    if (!flights) return [];
+    
+    let result = flights.filter((flight) => {
+      const price = parseFloat(flight.price.total);
+      if (price > maxPrice) return false;
+      
+      const outboundStops = (flight.itineraries[0]?.segments.length || 1) - 1;
+      
+      if (stops === "nonstop" && outboundStops > 0) return false;
+      if (stops === "1stop" && outboundStops > 1) return false;
+      
+      return true;
+    });
+
+    result.sort((a, b) => {
+      if (sortBy === "price") {
+        return parseFloat(a.price.total) - parseFloat(b.price.total);
+      } else if (sortBy === "duration") {
+        const durationA = a.itineraries.reduce((sum, it) => sum + parseDuration(it.duration), 0);
+        const durationB = b.itineraries.reduce((sum, it) => sum + parseDuration(it.duration), 0);
+        return durationA - durationB;
+      } else if (sortBy === "departure") {
+        const depA = new Date(a.itineraries[0]?.segments[0]?.departure.at || 0).getTime();
+        const depB = new Date(b.itineraries[0]?.segments[0]?.departure.at || 0).getTime();
+        return depA - depB;
+      }
+      return 0;
+    });
+
+    return result;
+  }, [flights, maxPrice, stops, sortBy]);
+
+  const hasTravelDetails = !!originProp && !!destination && !!startDate;
+  const needsInitialForm = !originCode || !destinationCode || !departureDate;
+
   if (isDetecting) {
     return (
       <Card>
@@ -274,33 +324,37 @@ export function FlightSearch({
     );
   }
 
-  const needsInitialForm = !originCode || !destinationCode || !departureDate;
-
-  if (needsInitialForm) {
+  if (needsInitialForm && !hasTravelDetails) {
     return (
-      <div className="space-y-4">
-        <Card className="border-2 border-dashed">
-          <CardContent className="p-6">
-            <div className="text-center mb-4">
-              <Plane className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
-              <h3 className="font-semibold text-lg mb-1">Search Flights</h3>
-              {destinationCode && detectedDestination && (
-                <p className="text-sm text-muted-foreground">
-                  Destination: {detectedDestination.name}
-                </p>
-              )}
-            </div>
+      <Card className="border-2 border-dashed">
+        <CardContent className="p-8 text-center">
+          <Plane className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+          <h3 className="font-semibold text-lg mb-2">Search Flights</h3>
+          <p className="text-muted-foreground">
+            Fill in your Travel Details above (origin city, destination, and dates) to search for flights.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
-            {(destDetectionFailed || originDetectionFailed) && (
-              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
-                {destDetectionFailed && originDetectionFailed 
-                  ? `We couldn't detect airports for "${originProp}" or "${destination}" automatically. Please select them below.`
-                  : destDetectionFailed 
-                    ? `We couldn't find "${destination}" automatically. Please select your destination below.`
-                    : `We couldn't find "${originProp}" automatically. Please select your origin below.`
-                }
-              </div>
-            )}
+  if (needsInitialForm && hasTravelDetails && (destDetectionFailed || originDetectionFailed)) {
+    return (
+      <Card className="border-2 border-dashed">
+        <CardContent className="p-6">
+          <div className="text-center mb-4">
+            <Plane className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+            <h3 className="font-semibold text-lg mb-1">Airport Detection Failed</h3>
+          </div>
+
+          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
+            {destDetectionFailed && originDetectionFailed 
+              ? `We couldn't detect airports for "${originProp}" or "${destination}" automatically. Please select them below.`
+              : destDetectionFailed 
+                ? `We couldn't find "${destination}" automatically. Please select your destination below.`
+                : `We couldn't find "${originProp}" automatically. Please select your origin below.`
+            }
+          </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="space-y-2">
@@ -448,7 +502,6 @@ export function FlightSearch({
             </div>
           </CardContent>
         </Card>
-      </div>
     );
   }
 
@@ -635,13 +688,18 @@ export function FlightSearch({
         </Card>
       )}
 
-      {flights && flights.length > 0 && (
+      {filteredAndSortedFlights && filteredAndSortedFlights.length > 0 && (
         <div className="space-y-4">
           <h3 className="font-semibold text-lg">
-            {flights.length} flight{flights.length !== 1 ? "s" : ""} available
+            {filteredAndSortedFlights.length} flight{filteredAndSortedFlights.length !== 1 ? "s" : ""} available
+            {flights && flights.length !== filteredAndSortedFlights.length && (
+              <span className="text-sm font-normal text-muted-foreground ml-2">
+                (filtered from {flights.length})
+              </span>
+            )}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {flights.map((flight) => {
+            {filteredAndSortedFlights.map((flight) => {
               const outbound = flight.itineraries[0];
               const inbound = flight.itineraries[1];
               const firstSeg = outbound?.segments[0];

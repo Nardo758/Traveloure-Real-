@@ -650,6 +650,16 @@ export default function ExperienceTemplatePage() {
   const [minRating, setMinRating] = useState(0);
   const [sortBy, setSortBy] = useState("popular");
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+  
+  // Flight-specific filters
+  const [flightMaxPrice, setFlightMaxPrice] = useState(2000);
+  const [flightStops, setFlightStops] = useState<"any" | "nonstop" | "1stop">("any");
+  const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">("price");
+  
+  // Hotel-specific filters
+  const [hotelMaxPrice, setHotelMaxPrice] = useState(500);
+  const [hotelStarRating, setHotelStarRating] = useState<number>(0);
+  const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">("price");
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
@@ -1351,86 +1361,191 @@ export default function ExperienceTemplatePage() {
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
-                  <div>
-                    <Label className="text-sm font-medium">Search</Label>
-                    <div className="relative mt-1">
-                      <Input
-                        placeholder="Search by name, provider, or description..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-10"
-                        data-testid="input-search"
-                      />
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    </div>
-                  </div>
+                  {activeTab === "flights" ? (
+                    <>
+                      <div className="flex flex-wrap gap-4">
+                        <div className="min-w-[200px] flex-1">
+                          <Label className="text-sm font-medium">Max Price: ${flightMaxPrice}</Label>
+                          <Slider
+                            value={[flightMaxPrice]}
+                            onValueChange={(v) => setFlightMaxPrice(v[0])}
+                            min={100}
+                            max={5000}
+                            step={100}
+                            className="mt-2"
+                            data-testid="slider-flight-price"
+                          />
+                        </div>
 
-                  <div className="flex flex-wrap gap-4">
-                    <div className="min-w-[200px] flex-1">
-                      <Label className="text-sm font-medium">Price Range: ${priceRange[0]} - ${priceRange[1]}+</Label>
-                      <Slider
-                        value={priceRange}
-                        onValueChange={setPriceRange}
-                        max={500}
-                        step={10}
-                        className="mt-2"
-                        data-testid="slider-price"
-                      />
-                    </div>
+                        <div className="min-w-[200px] flex-1">
+                          <Label className="text-sm font-medium">Stops</Label>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {[
+                              { value: "any", label: "Any" },
+                              { value: "nonstop", label: "Nonstop" },
+                              { value: "1stop", label: "1 Stop" },
+                            ].map((option) => (
+                              <Button
+                                key={option.value}
+                                variant={flightStops === option.value ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setFlightStops(option.value as "any" | "nonstop" | "1stop")}
+                                className={flightStops === option.value ? "bg-[#FF385C]" : ""}
+                                data-testid={`button-stops-${option.value}`}
+                              >
+                                {option.label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
 
-                    <div className="min-w-[200px] flex-1">
-                      <Label className="text-sm font-medium">Minimum Rating</Label>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {[0, 3, 3.5, 4, 4.5].map((rating) => (
-                          <Button
-                            key={rating}
-                            variant={minRating === rating ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setMinRating(rating)}
-                            className={minRating === rating ? "bg-[#FF385C]" : ""}
-                            data-testid={`button-rating-${rating}`}
-                          >
-                            {rating === 0 ? "All" : <><Star className="w-3 h-3 mr-1" />{rating}+</>}
-                          </Button>
-                        ))}
+                        <div className="min-w-[140px] max-w-[180px]">
+                          <Label className="text-sm font-medium">Sort By</Label>
+                          <Select value={flightSortBy} onValueChange={(v) => setFlightSortBy(v as "price" | "duration" | "departure")}>
+                            <SelectTrigger className="mt-2" data-testid="select-flight-sort">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="price">Lowest Price</SelectItem>
+                              <SelectItem value="duration">Shortest Duration</SelectItem>
+                              <SelectItem value="departure">Earliest Departure</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                    </div>
+                    </>
+                  ) : activeTab === "hotels" || activeTab === "accommodations" ? (
+                    <>
+                      <div className="flex flex-wrap gap-4">
+                        <div className="min-w-[200px] flex-1">
+                          <Label className="text-sm font-medium">Max Price/Night: ${hotelMaxPrice}</Label>
+                          <Slider
+                            value={[hotelMaxPrice]}
+                            onValueChange={(v) => setHotelMaxPrice(v[0])}
+                            min={50}
+                            max={1000}
+                            step={25}
+                            className="mt-2"
+                            data-testid="slider-hotel-price"
+                          />
+                        </div>
 
-                    <div className="min-w-[140px] max-w-[180px]">
-                      <Label className="text-sm font-medium">Sort By</Label>
-                      <Select value={sortBy} onValueChange={setSortBy}>
-                        <SelectTrigger className="mt-2" data-testid="select-sort">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="popular">Most Popular</SelectItem>
-                          <SelectItem value="price-low">Price: Low to High</SelectItem>
-                          <SelectItem value="price-high">Price: High to Low</SelectItem>
-                          <SelectItem value="rating">Highest Rated</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                        <div className="min-w-[200px] flex-1">
+                          <Label className="text-sm font-medium">Star Rating</Label>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {[0, 3, 4, 5].map((stars) => (
+                              <Button
+                                key={stars}
+                                variant={hotelStarRating === stars ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setHotelStarRating(stars)}
+                                className={hotelStarRating === stars ? "bg-[#FF385C]" : ""}
+                                data-testid={`button-stars-${stars}`}
+                              >
+                                {stars === 0 ? "All" : <><Star className="w-3 h-3 mr-1 fill-current" />{stars}+</>}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
 
-                  <div>
-                    <Label className="text-sm font-medium mb-2 block">Preferences</Label>
-                    <div className="flex flex-wrap gap-2">
-                      {config.filters.map((filter) => (
-                        <Badge
-                          key={filter}
-                          variant={selectedFilters.includes(filter) ? "default" : "outline"}
-                          className={cn(
-                            "cursor-pointer",
-                            selectedFilters.includes(filter) && "bg-[#FF385C]"
-                          )}
-                          onClick={() => toggleFilter(filter)}
-                          data-testid={`filter-${filter.toLowerCase()}`}
-                        >
-                          {filter}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+                        <div className="min-w-[140px] max-w-[180px]">
+                          <Label className="text-sm font-medium">Sort By</Label>
+                          <Select value={hotelSortBy} onValueChange={(v) => setHotelSortBy(v as "price" | "rating")}>
+                            <SelectTrigger className="mt-2" data-testid="select-hotel-sort">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="price">Lowest Price</SelectItem>
+                              <SelectItem value="rating">Highest Rating</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <Label className="text-sm font-medium">Search</Label>
+                        <div className="relative mt-1">
+                          <Input
+                            placeholder="Search by name, provider, or description..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-10"
+                            data-testid="input-search"
+                          />
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-4">
+                        <div className="min-w-[200px] flex-1">
+                          <Label className="text-sm font-medium">Price Range: ${priceRange[0]} - ${priceRange[1]}+</Label>
+                          <Slider
+                            value={priceRange}
+                            onValueChange={setPriceRange}
+                            max={500}
+                            step={10}
+                            className="mt-2"
+                            data-testid="slider-price"
+                          />
+                        </div>
+
+                        <div className="min-w-[200px] flex-1">
+                          <Label className="text-sm font-medium">Minimum Rating</Label>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {[0, 3, 3.5, 4, 4.5].map((rating) => (
+                              <Button
+                                key={rating}
+                                variant={minRating === rating ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setMinRating(rating)}
+                                className={minRating === rating ? "bg-[#FF385C]" : ""}
+                                data-testid={`button-rating-${rating}`}
+                              >
+                                {rating === 0 ? "All" : <><Star className="w-3 h-3 mr-1" />{rating}+</>}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="min-w-[140px] max-w-[180px]">
+                          <Label className="text-sm font-medium">Sort By</Label>
+                          <Select value={sortBy} onValueChange={setSortBy}>
+                            <SelectTrigger className="mt-2" data-testid="select-sort">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="popular">Most Popular</SelectItem>
+                              <SelectItem value="price-low">Price: Low to High</SelectItem>
+                              <SelectItem value="price-high">Price: High to Low</SelectItem>
+                              <SelectItem value="rating">Highest Rated</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium mb-2 block">Preferences</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {config.filters.map((filter) => (
+                            <Badge
+                              key={filter}
+                              variant={selectedFilters.includes(filter) ? "default" : "outline"}
+                              className={cn(
+                                "cursor-pointer",
+                                selectedFilters.includes(filter) && "bg-[#FF385C]"
+                              )}
+                              onClick={() => toggleFilter(filter)}
+                              data-testid={`filter-${filter.toLowerCase()}`}
+                            >
+                              {filter}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </CollapsibleContent>
@@ -1444,6 +1559,9 @@ export default function ExperienceTemplatePage() {
                 startDate={startDate}
                 endDate={endDate}
                 travelers={2}
+                maxPrice={flightMaxPrice}
+                stops={flightStops}
+                sortBy={flightSortBy}
                 onSelectFlight={(flight) => {
                   const firstSegment = flight.itineraries[0]?.segments[0];
                   const lastSegment = flight.itineraries[0]?.segments[flight.itineraries[0].segments.length - 1];
@@ -1467,6 +1585,9 @@ export default function ExperienceTemplatePage() {
                 checkIn={startDate}
                 checkOut={endDate}
                 guests={2}
+                maxPrice={hotelMaxPrice}
+                starRating={hotelStarRating}
+                sortBy={hotelSortBy}
                 onSelectHotel={(hotelData) => {
                   const hotel = hotelData.hotel;
                   const offer = hotelData.offers?.[0];
