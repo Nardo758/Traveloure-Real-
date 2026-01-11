@@ -1421,33 +1421,62 @@ export default function ExperienceTemplatePage() {
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && customVenues.length > 0 && customVenues.map((venue) => (
-                    <Card key={`custom-${venue.id}`} className="overflow-hidden hover-elevate border-dashed border-2 border-[#FF385C]/30">
-                      <div className="h-48 bg-gradient-to-br from-[#FF385C]/10 to-[#FF385C]/20 flex items-center justify-center">
-                        <MapPin className="w-12 h-12 text-[#FF385C]" />
-                      </div>
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <h3 className="font-semibold text-lg">{venue.name}</h3>
-                          <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
-                            Custom
-                          </Badge>
+                  {(activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels") && customVenues.length > 0 && customVenues.map((venue) => {
+                    const venueId = `custom-${venue.id}`;
+                    const isInCart = selectedProviderIds.includes(venueId);
+                    return (
+                      <Card key={venueId} className="overflow-hidden hover-elevate border-dashed border-2 border-[#FF385C]/30">
+                        <div className="h-48 bg-gradient-to-br from-[#FF385C]/10 to-[#FF385C]/20 flex items-center justify-center">
+                          <MapPin className="w-12 h-12 text-[#FF385C]" />
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                          {venue.address || venue.notes || "Custom location"}
-                        </p>
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-lg">
-                            {venue.estimatedCost ? `$${venue.estimatedCost}` : "Free"}
-                          </span>
-                          <Badge className="bg-green-500">
-                            <Check className="w-3 h-3 mr-1" />
-                            Added
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between mb-2">
+                            <h3 className="font-semibold text-lg">{venue.name}</h3>
+                            <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
+                              Custom
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+                            {venue.address || venue.notes || "Custom location"}
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-lg">
+                              {venue.estimatedCost ? `$${venue.estimatedCost}` : "Free"}
+                            </span>
+                            {isInCart ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-500 text-red-500 hover:bg-red-50"
+                                onClick={() => removeFromCart(venueId)}
+                                data-testid={`button-remove-custom-${venue.id}`}
+                              >
+                                <X className="w-4 h-4 mr-1" />
+                                Remove
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="bg-[#FF385C] hover:bg-[#E23350]"
+                                onClick={() => addToCart({
+                                  id: venueId,
+                                  type: "venue",
+                                  name: venue.name,
+                                  price: Number(venue.estimatedCost) || 0,
+                                  quantity: 1,
+                                  provider: "Custom Venue",
+                                })}
+                                data-testid={`button-add-custom-${venue.id}`}
+                              >
+                                <Plus className="w-4 h-4 mr-1" />
+                                Add
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                   {servicesLoading ? (
                     [1, 2, 3, 4, 5, 6].map((i) => (
                       <Card key={i}>
@@ -1821,6 +1850,14 @@ export default function ExperienceTemplatePage() {
           userId={user?.id}
           onVenueAdded={(venue) => {
             queryClient.invalidateQueries({ queryKey: ["/api/custom-venues", slug] });
+            addToCart({
+              id: `custom-${venue.id}`,
+              type: "venue",
+              name: venue.name,
+              price: Number(venue.estimatedCost) || 0,
+              quantity: 1,
+              provider: "Custom Venue",
+            });
             toast({ title: "Custom venue added", description: `${venue.name} is now in your plan` });
           }}
         />
