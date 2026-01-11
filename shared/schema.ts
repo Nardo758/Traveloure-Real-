@@ -407,6 +407,25 @@ export const serviceTemplates = pgTable("service_templates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Custom Venues (User-added locations) ===
+
+export const customVenues = pgTable("custom_venues", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  experienceType: varchar("experience_type", { length: 50 }),
+  name: varchar("name", { length: 255 }).notNull(),
+  address: text("address"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  venueType: varchar("venue_type", { length: 50 }).default("custom"),
+  notes: text("notes"),
+  estimatedCost: decimal("estimated_cost", { precision: 10, scale: 2 }),
+  imageUrl: text("image_url"),
+  source: varchar("source", { length: 20 }).default("custom"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === Service Bookings ===
 
 export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", "completed", "cancelled", "refunded"] as const;
@@ -888,3 +907,8 @@ export type ItineraryVariantItem = typeof itineraryVariantItems.$inferSelect;
 export type InsertItineraryVariantItem = z.infer<typeof insertItineraryVariantItemSchema>;
 export type ItineraryVariantMetric = typeof itineraryVariantMetrics.$inferSelect;
 export type InsertItineraryVariantMetric = z.infer<typeof insertItineraryVariantMetricSchema>;
+
+// Custom Venues schemas and types
+export const insertCustomVenueSchema = createInsertSchema(customVenues).omit({ id: true, createdAt: true });
+export type CustomVenue = typeof customVenues.$inferSelect;
+export type InsertCustomVenue = z.infer<typeof insertCustomVenueSchema>;
