@@ -1793,13 +1793,87 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "transportation" && (
+          {activeTab === "transportation" && !detailsSubmitted && (
             <div className="mb-6">
               <ServiceBrowser
                 defaultLocation={destination}
                 categorySlug="transportation-logistics"
                 showCategoryFilter={false}
                 title="Transportation Services"
+                onAddToCart={(service) => {
+                  addToCart({
+                    id: `transport-${service.id}`,
+                    type: "transportation",
+                    name: service.serviceName,
+                    price: parseFloat(service.price) || 0,
+                    quantity: 1,
+                    provider: "Platform Service",
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab === "transportation" && detailsSubmitted && (
+            <div className="mb-6 space-y-6">
+              <ActivitySearch
+                destination={destination}
+                startDate={startDate}
+                endDate={endDate}
+                travelers={travelers}
+                filterType="transport"
+                onSelectActivity={(activity) => {
+                  const durationMinutes = activity.duration?.fixedDurationInMinutes || 
+                    activity.duration?.variableDurationFromMinutes || 0;
+                  const durationHours = durationMinutes > 0 ? Math.ceil(durationMinutes / 60) : undefined;
+                  
+                  const cancellation = activity.cancellationPolicy;
+                  const fullRefund = cancellation?.refundEligibility?.find(r => r.percentageRefundable === 100);
+                  const isRefundable = !!fullRefund;
+                  
+                  const logistics = activity.logistics as any;
+                  let meetingPoint: string | undefined;
+                  let meetingPointCoordinates: { lat: number; lng: number } | undefined;
+                  
+                  if (logistics?.start?.[0]) {
+                    const startLoc = logistics.start[0].location;
+                    const addr = startLoc?.address;
+                    meetingPoint = startLoc?.name || 
+                      [addr?.street, addr?.city, addr?.state, addr?.country].filter(Boolean).join(', ') ||
+                      logistics.start[0].description;
+                    if (startLoc?.coordinates) {
+                      meetingPointCoordinates = {
+                        lat: startLoc.coordinates.latitude,
+                        lng: startLoc.coordinates.longitude
+                      };
+                    }
+                  }
+                  
+                  addToCart({
+                    id: `transport-viator-${activity.productCode}`,
+                    type: "transportation",
+                    name: activity.title,
+                    price: (activity.pricing?.summary?.fromPrice || 0) * travelers,
+                    quantity: 1,
+                    provider: "Viator",
+                    details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
+                    metadata: {
+                      refundable: isRefundable,
+                      cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
+                      duration: durationHours ? `${durationHours} hours` : undefined,
+                      travelers: travelers,
+                      meetingPoint,
+                      meetingPointCoordinates,
+                      rawData: activity,
+                    },
+                  });
+                }}
+              />
+              <ServiceBrowser
+                defaultLocation={destination}
+                categorySlug="transportation-logistics"
+                showCategoryFilter={false}
+                title="Local Transportation Services"
                 onAddToCart={(service) => {
                   addToCart({
                     id: `transport-${service.id}`,
