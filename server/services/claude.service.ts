@@ -295,6 +295,102 @@ Provide 5-8 recommendations in JSON format:
       throw error;
     }
   }
+  async analyzeFullItineraryGraph(
+    flightInfo: {
+      arrivalAirport?: string;
+      arrivalAirportCoords?: { lat: number; lng: number };
+      departureAirport?: string;
+      departureAirportCoords?: { lat: number; lng: number };
+      arrivalTime?: string;
+      departureTime?: string;
+    },
+    hotelLocation: { lat: number; lng: number; address: string; name: string },
+    activityLocations: Array<{ lat: number; lng: number; address: string; name: string; date?: string; time?: string }>
+  ): Promise<{
+    journeyLegs: Array<{
+      from: string;
+      to: string;
+      legType: 'airport-to-hotel' | 'hotel-to-activity' | 'activity-to-activity' | 'activity-to-hotel' | 'hotel-to-airport';
+      recommendedMode: string;
+      alternativeMode?: string;
+      estimatedTime: number;
+      estimatedCost?: { low: number; high: number; currency: string };
+      reason: string;
+      tips?: string;
+    }>;
+    totalEstimatedTransportTime: number;
+    totalEstimatedTransportCost: { low: number; high: number; currency: string };
+    overallRecommendation: string;
+  }> {
+    const prompt = `Analyze the complete transportation needs for this travel itinerary. Consider the full journey from airport arrival to airport departure.
+
+**Flight Information:**
+${flightInfo.arrivalAirport ? `- Arrival Airport: ${flightInfo.arrivalAirport}${flightInfo.arrivalTime ? ` at ${flightInfo.arrivalTime}` : ''}` : '- No arrival flight info'}
+${flightInfo.departureAirport ? `- Departure Airport: ${flightInfo.departureAirport}${flightInfo.departureTime ? ` at ${flightInfo.departureTime}` : ''}` : '- No departure flight info'}
+
+**Hotel:**
+- ${hotelLocation.name}: ${hotelLocation.address} (${hotelLocation.lat}, ${hotelLocation.lng})
+
+**Activities (in order):**
+${activityLocations.map((a, i) => `${i + 1}. ${a.name}: ${a.address} (${a.lat}, ${a.lng})${a.date ? ` on ${a.date}` : ''}${a.time ? ` at ${a.time}` : ''}`).join('\n')}
+
+Analyze the full journey graph:
+1. Airport → Hotel (if flight info available)
+2. Hotel → Each Activity
+3. Between consecutive activities (if applicable)
+4. Back to Hotel after activities
+5. Hotel → Airport (if departure flight info available)
+
+For each leg, recommend:
+- Best transportation mode considering time of day, distance, convenience
+- Alternative option
+- Estimated time in minutes
+- Estimated cost range in USD
+- Brief reasoning and any tips
+
+Return JSON:
+{
+  "journeyLegs": [
+    {
+      "from": "<location name>",
+      "to": "<location name>",
+      "legType": "<airport-to-hotel|hotel-to-activity|activity-to-activity|activity-to-hotel|hotel-to-airport>",
+      "recommendedMode": "<taxi|uber|metro|walk|bus|train|airport-shuttle|rental-car>",
+      "alternativeMode": "<optional alternative>",
+      "estimatedTime": <minutes>,
+      "estimatedCost": { "low": <USD>, "high": <USD>, "currency": "USD" },
+      "reason": "<brief explanation>",
+      "tips": "<optional helpful tip>"
+    }
+  ],
+  "totalEstimatedTransportTime": <total minutes>,
+  "totalEstimatedTransportCost": { "low": <USD>, "high": <USD>, "currency": "USD" },
+  "overallRecommendation": "<summary of best transportation strategy for this trip>"
+}`;
+
+    try {
+      const message = await anthropic.messages.create({
+        model: DEFAULT_MODEL,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: prompt }],
+      });
+
+      const content = message.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type');
+      }
+
+      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('No valid JSON in response');
+      }
+
+      return JSON.parse(jsonMatch[0]);
+    } catch (error: any) {
+      console.error('Claude full itinerary graph analysis error:', error);
+      throw error;
+    }
+  }
 }
 
 export const claudeService = new ClaudeService();

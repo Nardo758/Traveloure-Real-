@@ -2702,6 +2702,53 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Full itinerary graph analysis (Airport → Hotel → Activities → Hotel → Airport)
+  app.post("/api/claude/full-itinerary-graph", isAuthenticated, async (req, res) => {
+    try {
+      const schema = z.object({
+        flightInfo: z.object({
+          arrivalAirport: z.string().optional(),
+          arrivalAirportCoords: z.object({ lat: z.number(), lng: z.number() }).optional(),
+          departureAirport: z.string().optional(),
+          departureAirportCoords: z.object({ lat: z.number(), lng: z.number() }).optional(),
+          arrivalTime: z.string().optional(),
+          departureTime: z.string().optional(),
+        }).optional().default({}),
+        hotelLocation: z.object({
+          lat: z.number(),
+          lng: z.number(),
+          address: z.string(),
+          name: z.string(),
+        }),
+        activityLocations: z.array(z.object({
+          lat: z.number(),
+          lng: z.number(),
+          address: z.string(),
+          name: z.string(),
+          date: z.string().optional(),
+          time: z.string().optional(),
+        })),
+      });
+
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const { flightInfo, hotelLocation, activityLocations } = parsed.data;
+      
+      const result = await claudeService.analyzeFullItineraryGraph(
+        flightInfo || {},
+        hotelLocation,
+        activityLocations
+      );
+      res.json(result);
+    } catch (error: any) {
+      console.error('Claude full itinerary graph analysis error:', error);
+      res.status(500).json({ message: error.message || "Full itinerary graph analysis failed" });
+    }
+  });
+
   // Get travel recommendations
   app.post("/api/claude/recommendations", isAuthenticated, async (req, res) => {
     try {
