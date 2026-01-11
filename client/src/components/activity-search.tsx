@@ -39,6 +39,44 @@ interface ActivitySearchProps {
   onSelectActivity?: (activity: ViatorActivity) => void;
 }
 
+interface ViatorLocation {
+  ref?: string;
+  name?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    postcode?: string;
+  };
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  googleMapsUrl?: string;
+}
+
+interface ViatorLogistics {
+  start?: Array<{
+    location: ViatorLocation;
+    description?: string;
+    localizedDescription?: string;
+  }>;
+  end?: Array<{
+    location: ViatorLocation;
+    description?: string;
+  }>;
+  travelerPickup?: {
+    allowCustomTravelerPickup?: boolean;
+    pickupOptionType?: string;
+    additionalInfo?: string;
+    locations?: Array<{
+      location: ViatorLocation;
+      pickupType?: string;
+    }>;
+  };
+}
+
 interface ViatorActivity {
   productCode: string;
   title: string;
@@ -89,6 +127,7 @@ interface ViatorActivity {
     tagId: number;
     allNamesByLocale?: Record<string, string>;
   }>;
+  logistics?: ViatorLogistics;
   inclusions?: Array<{
     otherDescription?: string;
     categoryDescription?: string;
@@ -105,6 +144,21 @@ interface ViatorActivity {
     confirmationTypeDescription?: string;
   };
   productUrl?: string;
+}
+
+function getMeetingPointInfo(logistics?: ViatorLogistics): { address: string; coordinates?: { lat: number; lng: number } } | null {
+  if (!logistics?.start?.[0]) return null;
+  
+  const startLocation = logistics.start[0].location;
+  const addr = startLocation.address;
+  const addressParts = [addr?.street, addr?.city, addr?.state, addr?.country].filter(Boolean);
+  const address = startLocation.name || addressParts.join(', ') || logistics.start[0].description || '';
+  
+  const coordinates = startLocation.coordinates 
+    ? { lat: startLocation.coordinates.latitude, lng: startLocation.coordinates.longitude }
+    : undefined;
+  
+  return address ? { address, coordinates } : null;
 }
 
 function formatDuration(duration?: ViatorActivity['duration']): string {
@@ -384,7 +438,7 @@ export function ActivitySearch({
                         </div>
                       </div>
                       
-                      <div className="flex flex-wrap gap-1.5 mb-3">
+                      <div className="flex flex-wrap gap-1.5 mb-2">
                         {cancellation && (
                           <Badge variant={cancellation.variant} className="text-xs gap-1">
                             <Shield className="h-3 w-3" />
@@ -404,6 +458,15 @@ export function ActivitySearch({
                           </Badge>
                         )}
                       </div>
+                      
+                      {getMeetingPointInfo(activity.logistics) && (
+                        <div className="flex items-start gap-1.5 text-xs text-muted-foreground mb-2">
+                          <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                          <span className="line-clamp-1">
+                            Meeting point: {getMeetingPointInfo(activity.logistics)?.address}
+                          </span>
+                        </div>
+                      )}
 
                       {isExpanded && activity.description && (
                         <p className="text-sm text-muted-foreground mb-3 line-clamp-4">
