@@ -658,7 +658,7 @@ export default function ExperienceTemplatePage() {
   const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">("price");
   
   // Hotel-specific filters
-  const [hotelMaxPrice, setHotelMaxPrice] = useState(500);
+  const [hotelMaxPrice, setHotelMaxPrice] = useState(5000);
   const [hotelStarRating, setHotelStarRating] = useState<number>(0);
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">("price");
   const [travelers, setTravelers] = useState(2);

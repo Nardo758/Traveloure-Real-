@@ -1,5 +1,6 @@
 import { useState, useMemo, Component, ReactNode } from "react";
 import { APIProvider, Map, Marker, InfoWindow } from "@vis.gl/react-google-maps";
+import { useQuery } from "@tanstack/react-query";
 
 class MapErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode; fallback: ReactNode }) {
@@ -99,11 +100,13 @@ const isCustomVenue = (id: string) => id.startsWith("custom-");
 function MapContent({ 
   providers,
   selectedProviderIds = [],
+  destinationCenter,
   onAddToCart,
   onRemoveFromCart
 }: { 
   providers: MapProvider[]; 
   selectedProviderIds?: string[];
+  destinationCenter?: { lat: number; lng: number } | null;
   onAddToCart?: (provider: MapProvider) => void;
   onRemoveFromCart?: (providerId: string) => void;
 }) {
@@ -113,23 +116,27 @@ function MapContent({
   const isSelected = (id: string) => selectedProviderIds.includes(id);
 
   const center = useMemo(() => {
-    if (providers.length === 0) {
-      return { lat: 40.7128, lng: -74.0060 };
+    if (providers.length > 0) {
+      const customVenues = providers.filter(p => isCustomVenue(p.id));
+      const selectedItems = providers.filter(p => selectedProviderIds.includes(p.id));
+      
+      const priorityProviders = customVenues.length > 0 
+        ? customVenues 
+        : selectedItems.length > 0 
+          ? selectedItems 
+          : providers;
+      
+      const avgLat = priorityProviders.reduce((sum, p) => sum + p.lat, 0) / priorityProviders.length;
+      const avgLng = priorityProviders.reduce((sum, p) => sum + p.lng, 0) / priorityProviders.length;
+      return { lat: avgLat, lng: avgLng };
     }
     
-    const customVenues = providers.filter(p => isCustomVenue(p.id));
-    const selectedItems = providers.filter(p => selectedProviderIds.includes(p.id));
+    if (destinationCenter) {
+      return destinationCenter;
+    }
     
-    const priorityProviders = customVenues.length > 0 
-      ? customVenues 
-      : selectedItems.length > 0 
-        ? selectedItems 
-        : providers;
-    
-    const avgLat = priorityProviders.reduce((sum, p) => sum + p.lat, 0) / priorityProviders.length;
-    const avgLng = priorityProviders.reduce((sum, p) => sum + p.lng, 0) / priorityProviders.length;
-    return { lat: avgLat, lng: avgLng };
-  }, [providers, selectedProviderIds]);
+    return { lat: 40.7128, lng: -74.0060 };
+  }, [providers, selectedProviderIds, destinationCenter]);
 
   return (
     <Map
@@ -239,6 +246,33 @@ export function ExperienceMap({
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+  const { data: locationData } = useQuery<Array<{ geoCode?: { latitude: number; longitude: number } }>>({
+    queryKey: ["/api/amadeus/locations", "geocode-map", destination],
+    enabled: !!destination && destination.length >= 2,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        keyword: destination!,
+        subType: "CITY",
+      });
+      const res = await fetch(`/api/amadeus/locations?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 300000,
+  });
+
+  const destinationCenter = useMemo(() => {
+    if (locationData && locationData.length > 0 && locationData[0].geoCode) {
+      return {
+        lat: locationData[0].geoCode.latitude,
+        lng: locationData[0].geoCode.longitude,
+      };
+    }
+    return null;
+  }, [locationData]);
+
   if (!apiKey) {
     return (
       <div className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)} style={{ height }}>
@@ -253,7 +287,7 @@ export function ExperienceMap({
     );
   }
 
-  if (providers.length === 0) {
+  if (providers.length === 0 && !destinationCenter) {
     return (
       <div className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)} style={{ height }}>
         <div className="text-center p-6">
@@ -290,6 +324,7 @@ export function ExperienceMap({
           <MapContent 
             providers={providers} 
             selectedProviderIds={selectedProviderIds}
+            destinationCenter={destinationCenter}
             onAddToCart={onAddToCart}
             onRemoveFromCart={onRemoveFromCart}
           />
