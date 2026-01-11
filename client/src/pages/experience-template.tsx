@@ -101,12 +101,12 @@ const experienceConfigs: Record<string, {
   travel: {
     heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
     tabs: [
-      { id: "flights", label: "Flights", icon: Plane, category: "flights" },
-      { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
-      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
       { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
+      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "flights", label: "Flights", icon: Plane, category: "flights" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
     ],
     filters: ["Budget", "Luxury", "Family", "Adventure", "Business", "Beach", "City", "Nature"],
     locationLabel: "Destination:",
@@ -660,6 +660,8 @@ export default function ExperienceTemplatePage() {
   const [hotelMaxPrice, setHotelMaxPrice] = useState(500);
   const [hotelStarRating, setHotelStarRating] = useState<number>(0);
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">("price");
+  const [travelers, setTravelers] = useState(2);
+  const [detailsSubmitted, setDetailsSubmitted] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
@@ -1115,7 +1117,21 @@ export default function ExperienceTemplatePage() {
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                   {experienceType.name} Details
                 </h2>
-                <Users className="w-5 h-5 text-gray-400" />
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-gray-500" />
+                  <Select value={travelers.toString()} onValueChange={(v) => setTravelers(parseInt(v))}>
+                    <SelectTrigger className="w-[140px] h-8" data-testid="select-travelers">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <SelectItem key={n} value={n.toString()} data-testid={`select-travelers-${n}`}>
+                          {n} {n === 1 ? 'traveler' : 'travelers'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               <div className="space-y-4">
@@ -1218,7 +1234,14 @@ export default function ExperienceTemplatePage() {
 
                 <Button 
                   className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
-                  disabled={!!dateError}
+                  disabled={!!dateError || !destination.trim()}
+                  onClick={() => {
+                    setDetailsSubmitted(true);
+                    toast({
+                      title: "Details Saved",
+                      description: "Your travel details have been applied. Browse the tabs to find flights, hotels, and more!"
+                    });
+                  }}
                   data-testid="button-submit-details"
                 >
                   Submit {experienceType.name} Details
@@ -1551,14 +1574,26 @@ export default function ExperienceTemplatePage() {
             </CollapsibleContent>
           </Collapsible>
 
-          {activeTab === "flights" && (
+          {activeTab === "flights" && !detailsSubmitted && (
+            <Card className="border-2 border-dashed mb-6">
+              <CardContent className="p-8 text-center">
+                <Plane className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <h3 className="font-semibold text-lg mb-2">Search Flights</h3>
+                <p className="text-muted-foreground">
+                  Fill in your Travel Details above and click "Submit" to search for available flights.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTab === "flights" && detailsSubmitted && (
             <div className="mb-6">
               <FlightSearch
                 destination={destination}
                 origin={originCity}
                 startDate={startDate}
                 endDate={endDate}
-                travelers={2}
+                travelers={travelers}
                 maxPrice={flightMaxPrice}
                 stops={flightStops}
                 sortBy={flightSortBy}
@@ -1578,13 +1613,25 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && (
+          {(activeTab === "hotels" || activeTab === "accommodations") && !detailsSubmitted && (
+            <Card className="border-2 border-dashed mb-6">
+              <CardContent className="p-8 text-center">
+                <Hotel className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                <h3 className="font-semibold text-lg mb-2">Search Hotels</h3>
+                <p className="text-muted-foreground">
+                  Fill in your Travel Details above and click "Submit" to search for available hotels.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {(activeTab === "hotels" || activeTab === "accommodations") && detailsSubmitted && (
             <div className="mb-6">
               <HotelSearch
                 destination={destination}
                 checkIn={startDate}
                 checkOut={endDate}
-                guests={2}
+                guests={travelers}
                 maxPrice={hotelMaxPrice}
                 starRating={hotelStarRating}
                 sortBy={hotelSortBy}
