@@ -1674,23 +1674,37 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { serviceId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
+      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       
-      if (!serviceId) {
-        return res.status(400).json({ message: "Service ID is required" });
+      if (!serviceId && !customVenueId) {
+        return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
       }
       
-      // Verify service exists
-      const service = await storage.getProviderServiceById(serviceId);
-      if (!service) {
-        return res.status(404).json({ message: "Service not found" });
+      // Verify service or custom venue exists
+      if (serviceId) {
+        const service = await storage.getProviderServiceById(serviceId);
+        if (!service) {
+          return res.status(404).json({ message: "Service not found" });
+        }
+      }
+      
+      if (customVenueId) {
+        const venue = await storage.getCustomVenue(customVenueId);
+        if (!venue) {
+          return res.status(404).json({ message: "Custom venue not found" });
+        }
+        // Verify user owns the custom venue
+        if (venue.userId !== userId) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
       }
       
       // Resolve slug aliases
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
       
       const item = await storage.addToCart(userId, {
-        serviceId,
+        serviceId: serviceId || undefined,
+        customVenueId: customVenueId || undefined,
         quantity: quantity || 1,
         tripId,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,

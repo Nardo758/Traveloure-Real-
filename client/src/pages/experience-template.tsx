@@ -813,7 +813,9 @@ export default function ExperienceTemplatePage() {
       return;
     }
     
+    const isCustomVenue = item.id.startsWith("custom-");
     const existing = cart.find((i) => i.id === item.id);
+    
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
@@ -824,14 +826,30 @@ export default function ExperienceTemplatePage() {
       }
     } else if (!existing) {
       try {
-        await apiRequest("POST", "/api/cart", { serviceId: item.id, quantity: 1, experienceSlug: slug });
+        const payload: any = { quantity: 1, experienceSlug: slug };
+        if (isCustomVenue) {
+          payload.customVenueId = item.id.replace("custom-", "");
+        } else {
+          payload.serviceId = item.id;
+        }
+        await apiRequest("POST", "/api/cart", payload);
         queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to add to cart" });
       }
     }
-    setCartOpen(true);
+    // Store experience context and navigate to full cart page
+    sessionStorage.setItem("experienceContext", JSON.stringify({
+      title: `${experienceType?.name || slug} Experience`,
+      experienceType: experienceType?.name || slug,
+      experienceSlug: slug,
+      destination,
+      startDate: startDate?.toISOString().split('T')[0],
+      endDate: endDate?.toISOString().split('T')[0],
+      travelers: 2
+    }));
+    setLocation("/cart");
   };
 
   const removeFromCart = async (id: string) => {
