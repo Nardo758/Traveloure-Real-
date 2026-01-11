@@ -912,3 +912,130 @@ export type InsertItineraryVariantMetric = z.infer<typeof insertItineraryVariant
 export const insertCustomVenueSchema = createInsertSchema(customVenues).omit({ id: true, createdAt: true });
 export type CustomVenue = typeof customVenues.$inferSelect;
 export type InsertCustomVenue = z.infer<typeof insertCustomVenueSchema>;
+
+// === COORDINATION HUB: Vendor Availability System ===
+
+export const vendorAvailabilityStatusEnum = ["available", "limited", "fully_booked", "blocked"] as const;
+
+export const vendorAvailabilitySlots = pgTable("vendor_availability_slots", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  date: date("date").notNull(),
+  startTime: varchar("start_time", { length: 10 }), // "09:00", "14:00"
+  endTime: varchar("end_time", { length: 10 }),
+  
+  capacity: integer("capacity").default(1),
+  bookedCount: integer("booked_count").default(0),
+  status: varchar("status", { length: 20 }).default("available"),
+  
+  pricing: jsonb("pricing").default({}),
+  discounts: jsonb("discounts").default([]),
+  
+  minimumNotice: varchar("minimum_notice", { length: 50 }).default("24 hours"),
+  cancellationPolicy: varchar("cancellation_policy", { length: 100 }),
+  specialRequirements: jsonb("special_requirements").default([]),
+  
+  confirmationMethod: varchar("confirmation_method", { length: 20 }).default("instant"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === COORDINATION HUB: Itinerary Coordination State ===
+
+export const coordinationStatusEnum = [
+  "intake",
+  "expert_matching", 
+  "vendor_discovery",
+  "itinerary_generation",
+  "optimization",
+  "booking_coordination",
+  "confirmed",
+  "in_progress",
+  "completed",
+  "cancelled"
+] as const;
+
+export const coordinationStates = pgTable("coordination_states", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  experienceType: varchar("experience_type", { length: 50 }).notNull(),
+  
+  status: varchar("status", { length: 30 }).default("intake"),
+  path: varchar("path", { length: 20 }).default("browse"),
+  
+  userRequest: jsonb("user_request").default({}),
+  destination: varchar("destination", { length: 255 }),
+  dates: jsonb("dates").default({}),
+  travelers: jsonb("travelers").default({}),
+  budget: jsonb("budget").default({}),
+  preferences: jsonb("preferences").default({}),
+  
+  assignedExpertId: varchar("assigned_expert_id").references(() => users.id, { onDelete: "set null" }),
+  expertRecommendations: jsonb("expert_recommendations").default({}),
+  
+  selectedVendors: jsonb("selected_vendors").default([]),
+  customVenueIds: jsonb("custom_venue_ids").default([]),
+  
+  generatedItinerary: jsonb("generated_itinerary").default({}),
+  optimizationScore: decimal("optimization_score", { precision: 5, scale: 2 }),
+  aiInsights: jsonb("ai_insights").default({}),
+  
+  bookingStatuses: jsonb("booking_statuses").default([]),
+  confirmations: jsonb("confirmations").default([]),
+  
+  timeline: jsonb("timeline").default([]),
+  stateHistory: jsonb("state_history").default([]),
+  
+  totalEstimatedCost: decimal("total_estimated_cost", { precision: 10, scale: 2 }),
+  totalConfirmedCost: decimal("total_confirmed_cost", { precision: 10, scale: 2 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const coordinationBookings = pgTable("coordination_bookings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  coordinationId: varchar("coordination_id").notNull().references(() => coordinationStates.id, { onDelete: "cascade" }),
+  
+  itemType: varchar("item_type", { length: 30 }).notNull(),
+  itemId: varchar("item_id", { length: 255 }).notNull(),
+  itemName: varchar("item_name", { length: 255 }).notNull(),
+  
+  vendorId: varchar("vendor_id").references(() => users.id, { onDelete: "set null" }),
+  serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  availabilitySlotId: varchar("availability_slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
+  
+  scheduledDate: date("scheduled_date"),
+  scheduledTime: varchar("scheduled_time", { length: 10 }),
+  duration: varchar("duration", { length: 50 }),
+  
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  
+  status: varchar("status", { length: 30 }).default("pending"),
+  bookingReference: varchar("booking_reference", { length: 100 }),
+  confirmationDetails: jsonb("confirmation_details").default({}),
+  
+  source: varchar("source", { length: 30 }).default("platform"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+});
+
+// Coordination Hub schemas and types
+export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertCoordinationStateSchema = createInsertSchema(coordinationStates).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
+export const insertCoordinationBookingSchema = createInsertSchema(coordinationBookings).omit({ id: true, createdAt: true, updatedAt: true, confirmedAt: true });
+
+export type VendorAvailabilitySlot = typeof vendorAvailabilitySlots.$inferSelect;
+export type InsertVendorAvailabilitySlot = z.infer<typeof insertVendorAvailabilitySlotSchema>;
+export type CoordinationState = typeof coordinationStates.$inferSelect;
+export type InsertCoordinationState = z.infer<typeof insertCoordinationStateSchema>;
+export type CoordinationBooking = typeof coordinationBookings.$inferSelect;
+export type InsertCoordinationBooking = z.infer<typeof insertCoordinationBookingSchema>;

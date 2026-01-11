@@ -7,6 +7,7 @@ import {
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
   userExperiences, userExperienceItems, users, customVenues,
+  vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -30,7 +31,10 @@ import {
   type ExpertExperienceType, type InsertExpertExperienceType,
   type UserExperience, type InsertUserExperience,
   type UserExperienceItem, type InsertUserExperienceItem,
-  type CustomVenue, type InsertCustomVenue
+  type CustomVenue, type InsertCustomVenue,
+  type VendorAvailabilitySlot, type InsertVendorAvailabilitySlot,
+  type CoordinationState, type InsertCoordinationState,
+  type CoordinationBooking, type InsertCoordinationBooking
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -200,6 +204,30 @@ export interface IStorage {
   createCustomVenue(venue: InsertCustomVenue): Promise<CustomVenue>;
   updateCustomVenue(id: string, venue: Partial<InsertCustomVenue>): Promise<CustomVenue | undefined>;
   deleteCustomVenue(id: string): Promise<void>;
+
+  // Vendor Availability Slots
+  getVendorAvailabilitySlots(serviceId: string, date?: string): Promise<VendorAvailabilitySlot[]>;
+  getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]>;
+  createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot>;
+  updateVendorAvailabilitySlot(id: string, updates: Partial<InsertVendorAvailabilitySlot>): Promise<VendorAvailabilitySlot | undefined>;
+  deleteVendorAvailabilitySlot(id: string): Promise<void>;
+  bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
+
+  // Coordination States
+  getCoordinationStates(userId: string): Promise<CoordinationState[]>;
+  getCoordinationState(id: string): Promise<CoordinationState | undefined>;
+  getActiveCoordinationState(userId: string, experienceType: string): Promise<CoordinationState | undefined>;
+  createCoordinationState(state: InsertCoordinationState): Promise<CoordinationState>;
+  updateCoordinationState(id: string, updates: Partial<InsertCoordinationState>): Promise<CoordinationState | undefined>;
+  updateCoordinationStatus(id: string, status: string, historyEntry?: any): Promise<CoordinationState | undefined>;
+  deleteCoordinationState(id: string): Promise<void>;
+
+  // Coordination Bookings
+  getCoordinationBookings(coordinationId: string): Promise<CoordinationBooking[]>;
+  createCoordinationBooking(booking: InsertCoordinationBooking): Promise<CoordinationBooking>;
+  updateCoordinationBooking(id: string, updates: Partial<InsertCoordinationBooking>): Promise<CoordinationBooking | undefined>;
+  confirmCoordinationBooking(id: string, bookingReference: string, confirmationDetails?: any): Promise<CoordinationBooking | undefined>;
+  deleteCoordinationBooking(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1044,6 +1072,160 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCustomVenue(id: string): Promise<void> {
     await db.delete(customVenues).where(eq(customVenues.id, id));
+  }
+
+  // Vendor Availability Slots
+  async getVendorAvailabilitySlots(serviceId: string, date?: string): Promise<VendorAvailabilitySlot[]> {
+    const conditions = [eq(vendorAvailabilitySlots.serviceId, serviceId)];
+    if (date) conditions.push(eq(vendorAvailabilitySlots.date, date));
+    return await db.select().from(vendorAvailabilitySlots).where(and(...conditions)).orderBy(vendorAvailabilitySlots.date);
+  }
+
+  async getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]> {
+    return await db.select().from(vendorAvailabilitySlots)
+      .where(eq(vendorAvailabilitySlots.providerId, providerId))
+      .orderBy(vendorAvailabilitySlots.date);
+  }
+
+  async createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot> {
+    const [created] = await db.insert(vendorAvailabilitySlots).values(slot).returning();
+    return created;
+  }
+
+  async updateVendorAvailabilitySlot(id: string, updates: Partial<InsertVendorAvailabilitySlot>): Promise<VendorAvailabilitySlot | undefined> {
+    const [updated] = await db.update(vendorAvailabilitySlots)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(vendorAvailabilitySlots.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVendorAvailabilitySlot(id: string): Promise<void> {
+    await db.delete(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
+  }
+
+  async bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined> {
+    const [slot] = await db.select().from(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
+    if (!slot) return undefined;
+    
+    const newBookedCount = (slot.bookedCount || 0) + 1;
+    const newStatus = newBookedCount >= (slot.capacity || 1) ? "fully_booked" : "available";
+    
+    const [updated] = await db.update(vendorAvailabilitySlots)
+      .set({ bookedCount: newBookedCount, status: newStatus, updatedAt: new Date() })
+      .where(eq(vendorAvailabilitySlots.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Coordination States
+  async getCoordinationStates(userId: string): Promise<CoordinationState[]> {
+    return await db.select().from(coordinationStates)
+      .where(eq(coordinationStates.userId, userId))
+      .orderBy(desc(coordinationStates.updatedAt));
+  }
+
+  async getCoordinationState(id: string): Promise<CoordinationState | undefined> {
+    const [state] = await db.select().from(coordinationStates).where(eq(coordinationStates.id, id));
+    return state;
+  }
+
+  async getActiveCoordinationState(userId: string, experienceType: string): Promise<CoordinationState | undefined> {
+    const [state] = await db.select().from(coordinationStates)
+      .where(and(
+        eq(coordinationStates.userId, userId),
+        eq(coordinationStates.experienceType, experienceType),
+        or(
+          eq(coordinationStates.status, "intake"),
+          eq(coordinationStates.status, "expert_matching"),
+          eq(coordinationStates.status, "vendor_discovery"),
+          eq(coordinationStates.status, "itinerary_generation"),
+          eq(coordinationStates.status, "optimization"),
+          eq(coordinationStates.status, "booking_coordination")
+        )
+      ))
+      .orderBy(desc(coordinationStates.updatedAt));
+    return state;
+  }
+
+  async createCoordinationState(state: InsertCoordinationState): Promise<CoordinationState> {
+    const stateWithHistory = {
+      ...state,
+      stateHistory: [{ status: "intake", timestamp: new Date().toISOString(), action: "created" }]
+    };
+    const [created] = await db.insert(coordinationStates).values(stateWithHistory).returning();
+    return created;
+  }
+
+  async updateCoordinationState(id: string, updates: Partial<InsertCoordinationState>): Promise<CoordinationState | undefined> {
+    const [updated] = await db.update(coordinationStates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(coordinationStates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateCoordinationStatus(id: string, status: string, historyEntry?: any): Promise<CoordinationState | undefined> {
+    const [current] = await db.select().from(coordinationStates).where(eq(coordinationStates.id, id));
+    if (!current) return undefined;
+    
+    const currentHistory = (current.stateHistory as any[]) || [];
+    const newHistory = [...currentHistory, {
+      status,
+      timestamp: new Date().toISOString(),
+      ...historyEntry
+    }];
+    
+    const updateData: any = { status, stateHistory: newHistory, updatedAt: new Date() };
+    if (status === "completed") updateData.completedAt = new Date();
+    
+    const [updated] = await db.update(coordinationStates)
+      .set(updateData)
+      .where(eq(coordinationStates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCoordinationState(id: string): Promise<void> {
+    await db.delete(coordinationStates).where(eq(coordinationStates.id, id));
+  }
+
+  // Coordination Bookings
+  async getCoordinationBookings(coordinationId: string): Promise<CoordinationBooking[]> {
+    return await db.select().from(coordinationBookings)
+      .where(eq(coordinationBookings.coordinationId, coordinationId))
+      .orderBy(coordinationBookings.scheduledDate);
+  }
+
+  async createCoordinationBooking(booking: InsertCoordinationBooking): Promise<CoordinationBooking> {
+    const [created] = await db.insert(coordinationBookings).values(booking).returning();
+    return created;
+  }
+
+  async updateCoordinationBooking(id: string, updates: Partial<InsertCoordinationBooking>): Promise<CoordinationBooking | undefined> {
+    const [updated] = await db.update(coordinationBookings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(coordinationBookings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async confirmCoordinationBooking(id: string, bookingReference: string, confirmationDetails?: any): Promise<CoordinationBooking | undefined> {
+    const [updated] = await db.update(coordinationBookings)
+      .set({
+        status: "confirmed",
+        bookingReference,
+        confirmationDetails: confirmationDetails || {},
+        confirmedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(coordinationBookings.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCoordinationBooking(id: string): Promise<void> {
+    await db.delete(coordinationBookings).where(eq(coordinationBookings.id, id));
   }
 }
 
