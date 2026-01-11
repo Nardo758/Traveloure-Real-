@@ -511,7 +511,7 @@ export function FlightSearch({
         <div className="flex items-center gap-3 text-sm text-muted-foreground flex-wrap">
           <Badge variant="outline" className="gap-1">
             <Plane className="h-3 w-3" />
-            {selectedOrigin?.name || origin} → {detectedDestination?.name || destinationCode}
+            {selectedOrigin?.name || originProp} → {detectedDestination?.name || destinationCode}
           </Badge>
           <Badge variant="outline" className="gap-1">
             <Calendar className="h-3 w-3" />
