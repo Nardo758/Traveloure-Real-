@@ -187,38 +187,56 @@ export function FlightSearch({
   const [destinationCode, setDestinationCode] = useState("");
   const [destinationOpen, setDestinationOpen] = useState(false);
   const [destinationSearch, setDestinationSearch] = useState("");
+  // Default dates: if not provided, use tomorrow and +7 days
+  const defaultDeparture = format(new Date(Date.now() + 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+  const defaultReturn = format(new Date(Date.now() + 8 * 24 * 60 * 60 * 1000), "yyyy-MM-dd");
+  
   const [departureDate, setDepartureDate] = useState(
-    startDate ? format(startDate, "yyyy-MM-dd") : ""
+    startDate ? format(startDate, "yyyy-MM-dd") : defaultDeparture
   );
   const [returnDate, setReturnDate] = useState(
-    endDate ? format(endDate, "yyyy-MM-dd") : ""
+    endDate ? format(endDate, "yyyy-MM-dd") : defaultReturn
   );
   const [adults, setAdults] = useState(travelers);
   const [detectedDestination, setDetectedDestination] = useState<LocationSuggestion | null>(null);
   const [detectedOrigin, setDetectedOrigin] = useState<LocationSuggestion | null>(null);
   const [showModify, setShowModify] = useState(false);
+  const [prevDestination, setPrevDestination] = useState(destination);
+  const [prevOrigin, setPrevOrigin] = useState(originProp);
 
   useEffect(() => {
-    setDepartureDate(startDate ? format(startDate, "yyyy-MM-dd") : "");
+    if (startDate) {
+      setDepartureDate(format(startDate, "yyyy-MM-dd"));
+    }
   }, [startDate]);
 
   useEffect(() => {
-    setReturnDate(endDate ? format(endDate, "yyyy-MM-dd") : "");
+    if (endDate) {
+      setReturnDate(format(endDate, "yyyy-MM-dd"));
+    }
   }, [endDate]);
 
   useEffect(() => {
     setAdults(travelers || 1);
   }, [travelers]);
 
+  // Only reset destination code when destination prop actually changes to a different value
   useEffect(() => {
-    setDestinationCode("");
-    setDetectedDestination(null);
-  }, [destination]);
+    if (destination !== prevDestination) {
+      setPrevDestination(destination);
+      setDestinationCode("");
+      setDetectedDestination(null);
+    }
+  }, [destination, prevDestination]);
 
+  // Only reset origin code when origin prop actually changes to a different value
   useEffect(() => {
-    setOriginCode("");
-    setDetectedOrigin(null);
-  }, [originProp]);
+    if (originProp !== prevOrigin) {
+      setPrevOrigin(originProp);
+      setOriginCode("");
+      setDetectedOrigin(null);
+    }
+  }, [originProp, prevOrigin]);
 
   const { data: originSuggestions, isLoading: originLoading } = useQuery<LocationSuggestion[]>({
     queryKey: ["/api/amadeus/locations", "origin", originSearch],
@@ -877,12 +895,37 @@ export function FlightSearch({
                       </div>
 
                       {inbound && (
-                        <div className="pt-2 border-t mt-2">
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>Return:</span>
-                            <span>{formatDate(inbound.segments[0]?.departure.at || "")}</span>
-                            <span>•</span>
-                            <span>{formatDuration(inbound.duration)}</span>
+                        <div className="pt-3 border-t mt-3 space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium text-[#FF385C]">
+                            <ArrowRight className="h-3 w-3 rotate-180" />
+                            <span>Return Flight</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">
+                              {inbound.segments[0]?.departure.iataCode}
+                            </span>
+                            <ArrowRight className="h-3 w-3" />
+                            <span className="font-semibold">
+                              {inbound.segments[inbound.segments.length - 1]?.arrival.iataCode}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 flex-wrap text-sm">
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Calendar className="h-3 w-3" />
+                              <span>{formatDate(inbound.segments[0]?.departure.at || "")}</span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              <span>{formatDuration(inbound.duration)}</span>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {inbound.segments.length === 1
+                                ? "Direct"
+                                : `${inbound.segments.length - 1} stop${inbound.segments.length > 2 ? "s" : ""}`}
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatTime(inbound.segments[0]?.departure.at || "")} - {formatTime(inbound.segments[inbound.segments.length - 1]?.arrival.at || "")}
                           </div>
                         </div>
                       )}

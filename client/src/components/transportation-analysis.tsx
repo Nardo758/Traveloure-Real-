@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Car, 
   Train, 
@@ -18,7 +19,9 @@ import {
   Hotel,
   Palmtree,
   ArrowRight,
-  Route
+  Route,
+  Sparkles,
+  Plane
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -69,9 +72,18 @@ interface TransitRoute {
   steps: TransitStep[];
 }
 
+interface ClaudeRecommendation {
+  activity: string;
+  from: string;
+  recommendedMode: string;
+  estimatedTime: number;
+  reason: string;
+}
+
 interface TransportationAnalysisProps {
   activityLocations: ActivityLocation[];
   hotelLocation?: HotelLocation;
+  flightInfo?: { arrivalAirport?: string; departureAirport?: string; arrivalTime?: string; departureTime?: string };
   className?: string;
   onTransitRoutesLoaded?: (routes: Map<string, TransitRoute | null>) => void;
 }
@@ -102,12 +114,17 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 export function TransportationAnalysis({ 
   activityLocations, 
   hotelLocation,
+  flightInfo,
   className,
   onTransitRoutesLoaded
 }: TransportationAnalysisProps) {
   const [expanded, setExpanded] = useState(true);
   const [transitRoutes, setTransitRoutes] = useState<Record<string, TransitRoute | null>>({});
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<"routes" | "ai">("routes");
+  const [aiRecommendations, setAiRecommendations] = useState<ClaudeRecommendation[]>([]);
+  const [modeFilter, setModeFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"time" | "cost">("time");
 
   const activityKey = activityLocations.map(a => `${a.id}:${a.lat},${a.lng}`).join("|");
   const hotelKey = hotelLocation ? `${hotelLocation.id}:${hotelLocation.lat},${hotelLocation.lng}` : "";
@@ -167,6 +184,44 @@ export function TransportationAnalysis({
     },
   });
 
+  const claudeMutation = useMutation({
+    mutationFn: async () => {
+      if (!hotelLocation || activityLocations.length === 0) {
+        return { recommendations: [] };
+      }
+      
+      const res = await fetch("/api/claude/transportation-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          hotelLocation: {
+            lat: hotelLocation.lat,
+            lng: hotelLocation.lng,
+            address: hotelLocation.name,
+          },
+          activityLocations: activityLocations.map(a => ({
+            lat: a.lat,
+            lng: a.lng,
+            address: a.meetingPoint || a.name,
+            name: a.name,
+          })),
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to get AI recommendations");
+      }
+      
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data?.recommendations) {
+        setAiRecommendations(data.recommendations);
+      }
+    },
+  });
+
   useEffect(() => {
     if (hotelLocation && activityLocations.length > 0) {
       transitMutation.mutate();
@@ -178,6 +233,31 @@ export function TransportationAnalysis({
       }
     }
   }, [hotelKey, activityKey]);
+
+  const modeIcons: Record<string, any> = {
+    taxi: Car,
+    uber: Car,
+    metro: Train,
+    subway: Train,
+    walk: Footprints,
+    bus: Bus,
+    "rental car": Car,
+    train: Train,
+  };
+
+  const filteredAiRecommendations = useMemo(() => {
+    let result = [...aiRecommendations];
+    
+    if (modeFilter !== "all") {
+      result = result.filter(r => r.recommendedMode.toLowerCase().includes(modeFilter));
+    }
+    
+    if (sortBy === "time") {
+      result.sort((a, b) => a.estimatedTime - b.estimatedTime);
+    }
+    
+    return result;
+  }, [aiRecommendations, modeFilter, sortBy]);
 
   const activityData = useMemo(() => {
     if (!hotelLocation) return [];
@@ -217,7 +297,7 @@ export function TransportationAnalysis({
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Navigation className="h-4 w-4 text-blue-600" />
-            Transit Directions
+            Transportation Options
           </CardTitle>
           <Button
             variant="ghost"
@@ -237,143 +317,300 @@ export function TransportationAnalysis({
             <div className="flex items-start gap-2 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 p-2 rounded-md">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium">Add a hotel to see transit directions</p>
+                <p className="font-medium">Add a hotel to see transportation options</p>
                 <p className="text-amber-700 dark:text-amber-300">We'll show you the best routes to your activities.</p>
               </div>
             </div>
           )}
 
           {hotelLocation && (
-            <div className="flex items-center gap-2 text-xs bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-md">
-              <Hotel className="h-4 w-4 text-indigo-600" />
-              <span className="font-medium truncate">{hotelLocation.name}</span>
-            </div>
-          )}
+            <>
+              <div className="flex items-center gap-2 text-xs bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-md">
+                <Hotel className="h-4 w-4 text-indigo-600" />
+                <span className="font-medium truncate">{hotelLocation.name}</span>
+              </div>
 
-          {transitMutation.isPending && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Loading transit routes...</p>
-              <Skeleton className="h-12 w-full" />
-              <Skeleton className="h-12 w-full" />
-            </div>
-          )}
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "routes" | "ai")} className="w-full">
+                <TabsList className="grid w-full grid-cols-2 h-8">
+                  <TabsTrigger value="routes" className="text-xs gap-1" data-testid="tab-routes">
+                    <Route className="h-3 w-3" />
+                    Transit Routes
+                  </TabsTrigger>
+                  <TabsTrigger value="ai" className="text-xs gap-1" data-testid="tab-ai-transport">
+                    <Sparkles className="h-3 w-3" />
+                    AI Suggestions
+                  </TabsTrigger>
+                </TabsList>
 
-          {hotelLocation && hasActivities && activityData.length > 0 && !transitMutation.isPending && (
-            <div className="space-y-2">
-              {activityData.map(({ activity, straightDistance, transitRoute }) => {
-                const isExpanded = expandedRoutes.has(activity.id);
-                const hasTransit = transitRoute && transitRoute.steps.some(s => s.mode === "TRANSIT");
-                
-                return (
-                  <div 
-                    key={activity.id}
-                    className="bg-white dark:bg-gray-800 rounded-md border overflow-hidden"
-                  >
-                    <button
-                      onClick={() => transitRoute && toggleRouteExpanded(activity.id)}
-                      className="w-full flex items-start justify-between gap-2 p-2 text-xs text-left hover:bg-gray-50 dark:hover:bg-gray-750"
-                      disabled={!transitRoute}
+                <TabsContent value="ai" className="mt-2 space-y-3">
+                  {!claudeMutation.isPending && aiRecommendations.length === 0 && (
+                    <Button
+                      onClick={() => claudeMutation.mutate()}
+                      className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                      size="sm"
+                      data-testid="button-get-ai-transport"
                     >
-                      <div className="flex items-start gap-2 flex-1 min-w-0">
-                        <Palmtree className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-                        <div className="min-w-0">
-                          <p className="font-medium truncate">{activity.name}</p>
-                          {activity.meetingPoint && (
-                            <p className="text-muted-foreground truncate text-[10px]">{activity.meetingPoint}</p>
-                          )}
-                        </div>
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      Get AI Transportation Recommendations
+                    </Button>
+                  )}
+
+                  {claudeMutation.isPending && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground flex items-center gap-2">
+                        <Sparkles className="h-3 w-3 animate-pulse" />
+                        Analyzing your itinerary...
+                      </p>
+                      <Skeleton className="h-16 w-full" />
+                      <Skeleton className="h-16 w-full" />
+                    </div>
+                  )}
+
+                  {aiRecommendations.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge
+                          variant={modeFilter === "all" ? "default" : "outline"}
+                          className="cursor-pointer text-xs"
+                          onClick={() => setModeFilter("all")}
+                          data-testid="badge-filter-all"
+                        >
+                          All
+                        </Badge>
+                        <Badge
+                          variant={modeFilter === "taxi" ? "default" : "outline"}
+                          className="cursor-pointer text-xs gap-1"
+                          onClick={() => setModeFilter("taxi")}
+                          data-testid="badge-filter-taxi"
+                        >
+                          <Car className="h-3 w-3" /> Taxi/Uber
+                        </Badge>
+                        <Badge
+                          variant={modeFilter === "metro" ? "default" : "outline"}
+                          className="cursor-pointer text-xs gap-1"
+                          onClick={() => setModeFilter("metro")}
+                          data-testid="badge-filter-metro"
+                        >
+                          <Train className="h-3 w-3" /> Metro
+                        </Badge>
+                        <Badge
+                          variant={modeFilter === "walk" ? "default" : "outline"}
+                          className="cursor-pointer text-xs gap-1"
+                          onClick={() => setModeFilter("walk")}
+                          data-testid="badge-filter-walk"
+                        >
+                          <Footprints className="h-3 w-3" /> Walk
+                        </Badge>
+                        <Badge
+                          variant={modeFilter === "bus" ? "default" : "outline"}
+                          className="cursor-pointer text-xs gap-1"
+                          onClick={() => setModeFilter("bus")}
+                          data-testid="badge-filter-bus"
+                        >
+                          <Bus className="h-3 w-3" /> Bus
+                        </Badge>
                       </div>
-                      
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        {transitRoute ? (
-                          <>
-                            <Badge variant="default" className="gap-1 text-xs bg-blue-600">
-                              <Clock className="h-3 w-3" />
-                              {transitRoute.durationText}
-                            </Badge>
-                            <span className="text-[10px] text-muted-foreground">
-                              {transitRoute.distanceText}
-                            </span>
-                          </>
-                        ) : (
-                          <Badge variant="outline" className="gap-1 text-xs">
-                            <MapPin className="h-3 w-3" />
-                            {straightDistance.toFixed(1)} km
-                          </Badge>
-                        )}
-                      </div>
-                    </button>
-                    
-                    {isExpanded && transitRoute && (
-                      <div className="border-t px-2 py-2 space-y-1.5 bg-gray-50 dark:bg-gray-850">
-                        {transitRoute.steps.map((step, idx) => {
-                          if (step.mode === "WALK") {
-                            return (
-                              <div key={idx} className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                                <Footprints className="h-3 w-3" />
-                                <span>Walk {step.durationMinutes} min</span>
-                                {step.instruction && <span className="truncate">- {step.instruction}</span>}
-                              </div>
-                            );
-                          }
-                          
-                          const transit = step.transit!;
-                          const VehicleIcon = vehicleIcons[transit.vehicleType] || Bus;
-                          
+
+                      <div className="space-y-2">
+                        {filteredAiRecommendations.map((rec, idx) => {
+                          const ModeIcon = modeIcons[rec.recommendedMode.toLowerCase()] || Car;
                           return (
                             <div 
-                              key={idx} 
-                              className="flex items-start gap-2 p-1.5 rounded bg-white dark:bg-gray-800 border text-[10px]"
+                              key={idx}
+                              className="bg-white dark:bg-gray-800 rounded-md border p-3 space-y-2"
                             >
-                              <div 
-                                className="shrink-0 w-5 h-5 rounded flex items-center justify-center"
-                                style={{ 
-                                  backgroundColor: transit.lineColor || "#3B82F6",
-                                  color: transit.lineTextColor || "#FFFFFF"
-                                }}
-                              >
-                                <VehicleIcon className="h-3 w-3" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1 font-medium">
-                                  <span style={{ color: transit.lineColor }}>{transit.lineNameShort || transit.lineName}</span>
-                                  <ArrowRight className="h-2 w-2 text-muted-foreground" />
-                                  <span className="truncate text-muted-foreground">{transit.headsign}</span>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-start gap-2 flex-1 min-w-0">
+                                  <Palmtree className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-sm truncate">{rec.activity}</p>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <span>{transit.departureStop}</span>
-                                  <ArrowRight className="h-2 w-2" />
-                                  <span>{transit.arrivalStop}</span>
-                                  <span className="ml-1">({transit.stopCount} stops)</span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Badge className="gap-1 text-xs bg-purple-600">
+                                    <ModeIcon className="h-3 w-3" />
+                                    {rec.recommendedMode}
+                                  </Badge>
+                                  <Badge variant="secondary" className="gap-1 text-xs">
+                                    <Clock className="h-3 w-3" />
+                                    {rec.estimatedTime} min
+                                  </Badge>
                                 </div>
                               </div>
-                              <Badge variant="secondary" className="shrink-0 text-[10px]">
-                                {step.durationMinutes} min
-                              </Badge>
+                              <p className="text-xs text-muted-foreground italic">
+                                {rec.reason}
+                              </p>
                             </div>
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+
+                      {flightInfo?.arrivalAirport && (
+                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800 p-3 space-y-1">
+                          <div className="flex items-center gap-2 text-xs font-medium text-blue-700 dark:text-blue-300">
+                            <Plane className="h-3 w-3" />
+                            Airport Transfer
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            From {flightInfo.arrivalAirport} to your hotel - Consider taxi, rideshare, or airport shuttle for convenience.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {claudeMutation.isError && (
+                    <div className="flex items-start gap-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 rounded-md">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Couldn't get AI recommendations</p>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-auto p-0 text-xs text-red-700 underline"
+                          onClick={() => claudeMutation.mutate()}
+                        >
+                          Try again
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="routes" className="mt-2 space-y-2">
+                  {transitMutation.isPending && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Loading transit routes...</p>
+                      <Skeleton className="h-12 w-full" />
+                      <Skeleton className="h-12 w-full" />
+                    </div>
+                  )}
+
+                  {hasActivities && activityData.length > 0 && !transitMutation.isPending && (
+                    <div className="space-y-2">
+                      {activityData.map(({ activity, straightDistance, transitRoute }) => {
+                        const isExpanded = expandedRoutes.has(activity.id);
+                        
+                        return (
+                          <div 
+                            key={activity.id}
+                            className="bg-white dark:bg-gray-800 rounded-md border overflow-hidden"
+                          >
+                            <button
+                              onClick={() => transitRoute && toggleRouteExpanded(activity.id)}
+                              className="w-full flex items-start justify-between gap-2 p-2 text-xs text-left hover:bg-gray-50 dark:hover:bg-gray-750"
+                              disabled={!transitRoute}
+                            >
+                              <div className="flex items-start gap-2 flex-1 min-w-0">
+                                <Palmtree className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                                <div className="min-w-0">
+                                  <p className="font-medium truncate">{activity.name}</p>
+                                  {activity.meetingPoint && (
+                                    <p className="text-muted-foreground truncate text-[10px]">{activity.meetingPoint}</p>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                {transitRoute ? (
+                                  <>
+                                    <Badge variant="default" className="gap-1 text-xs bg-blue-600">
+                                      <Clock className="h-3 w-3" />
+                                      {transitRoute.durationText}
+                                    </Badge>
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {transitRoute.distanceText}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <Badge variant="outline" className="gap-1 text-xs">
+                                    <MapPin className="h-3 w-3" />
+                                    {straightDistance.toFixed(1)} km
+                                  </Badge>
+                                )}
+                              </div>
+                            </button>
+                            
+                            {isExpanded && transitRoute && (
+                              <div className="border-t px-2 py-2 space-y-1.5 bg-gray-50 dark:bg-gray-850">
+                                {transitRoute.steps.map((step, idx) => {
+                                  if (step.mode === "WALK") {
+                                    return (
+                                      <div key={idx} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                        <Footprints className="h-3 w-3" />
+                                        <span>Walk {step.durationMinutes} min</span>
+                                        {step.instruction && <span className="truncate">- {step.instruction}</span>}
+                                      </div>
+                                    );
+                                  }
+                                  
+                                  const transit = step.transit!;
+                                  const VehicleIcon = vehicleIcons[transit.vehicleType] || Bus;
+                                  
+                                  return (
+                                    <div 
+                                      key={idx} 
+                                      className="flex items-start gap-2 p-1.5 rounded bg-white dark:bg-gray-800 border text-[10px]"
+                                    >
+                                      <div 
+                                        className="shrink-0 w-5 h-5 rounded flex items-center justify-center"
+                                        style={{ 
+                                          backgroundColor: transit.lineColor || "#3B82F6",
+                                          color: transit.lineTextColor || "#FFFFFF"
+                                        }}
+                                      >
+                                        <VehicleIcon className="h-3 w-3" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center gap-1 font-medium">
+                                          <span style={{ color: transit.lineColor }}>{transit.lineNameShort || transit.lineName}</span>
+                                          <ArrowRight className="h-2 w-2 text-muted-foreground" />
+                                          <span className="truncate text-muted-foreground">{transit.headsign}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-muted-foreground">
+                                          <span>{transit.departureStop}</span>
+                                          <ArrowRight className="h-2 w-2" />
+                                          <span>{transit.arrivalStop}</span>
+                                          <span className="ml-1">({transit.stopCount} stops)</span>
+                                        </div>
+                                      </div>
+                                      <Badge variant="secondary" className="shrink-0 text-[10px]">
+                                        {step.durationMinutes} min
+                                      </Badge>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {transitMutation.isError && (
+                    <div className="flex items-start gap-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 rounded-md">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Couldn't load transit routes</p>
+                        <p className="text-red-700 dark:text-red-300">Showing straight-line distances instead.</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!hasActivities && (
+                    <p className="text-xs text-muted-foreground">
+                      Add activities to see transit directions from your hotel.
+                    </p>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </>
           )}
 
-          {transitMutation.isError && (
-            <div className="flex items-start gap-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 rounded-md">
-              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-medium">Couldn't load transit routes</p>
-                <p className="text-red-700 dark:text-red-300">Showing straight-line distances instead.</p>
-              </div>
-            </div>
-          )}
-
-          {!hasActivities && hotelLocation && (
+          {!hotelLocation && !hasActivities && (
             <p className="text-xs text-muted-foreground">
-              Add activities to see transit directions from your hotel.
+              Add a hotel and activities to see transportation options.
             </p>
           )}
         </CardContent>
