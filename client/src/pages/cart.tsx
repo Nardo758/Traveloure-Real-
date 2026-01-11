@@ -55,6 +55,44 @@ interface CartData {
   itemCount: number;
 }
 
+interface ExternalCartItem {
+  id: string;
+  type: string;
+  name: string;
+  price: number;
+  quantity: number;
+  date?: string;
+  details?: string;
+  provider?: string;
+  isExternal?: boolean;
+  metadata?: {
+    cabin?: string;
+    baggage?: string;
+    stops?: number;
+    duration?: string;
+    airline?: string;
+    flightNumber?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+    seatsLeft?: number;
+    lastTicketingDate?: string;
+    refundable?: boolean;
+    cancellationDeadline?: string;
+    boardType?: string;
+    bedInfo?: string;
+    roomCategory?: string;
+    taxTotal?: number;
+    nights?: number;
+    pricePerNight?: number;
+    checkInDate?: string;
+    checkOutDate?: string;
+    travelers?: number;
+    meetingPoint?: string;
+    meetingPointCoordinates?: { lat: number; lng: number };
+    rawData?: any;
+  };
+}
+
 interface Recommendation {
   type: string;
   title: string;
@@ -95,6 +133,7 @@ export default function CartPage() {
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
   const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
+  const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
 
   // Load experience context from sessionStorage on mount
   useEffect(() => {
@@ -106,7 +145,10 @@ export default function CartPage() {
           setExperienceSlug(context.experienceSlug);
           setExperienceTitle(context.title || context.experienceType);
         } else {
-          setExperienceSlug("general");
+          // Use experienceType + destination as fallback key to avoid cross-experience contamination
+          const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
+          setExperienceSlug(fallbackKey);
+          setExperienceTitle(context.title || context.experienceType);
         }
       } catch (e) {
         console.error("Failed to parse experience context");
@@ -116,6 +158,29 @@ export default function CartPage() {
       setExperienceSlug("general");
     }
   }, []);
+
+  // Load external cart items from sessionStorage when experience slug changes
+  useEffect(() => {
+    if (experienceSlug) {
+      try {
+        const stored = sessionStorage.getItem(`externalCart_${experienceSlug}`);
+        setExternalItems(stored ? JSON.parse(stored) : []);
+      } catch {
+        setExternalItems([]);
+      }
+    }
+  }, [experienceSlug]);
+
+  // Save external items to sessionStorage whenever they change
+  useEffect(() => {
+    if (experienceSlug) {
+      if (externalItems.length > 0) {
+        sessionStorage.setItem(`externalCart_${experienceSlug}`, JSON.stringify(externalItems));
+      } else {
+        sessionStorage.removeItem(`externalCart_${experienceSlug}`);
+      }
+    }
+  }, [externalItems, experienceSlug]);
 
   // Check for step query param and stored optimization result on mount
   useEffect(() => {
@@ -163,6 +228,17 @@ export default function CartPage() {
     enabled: !!user,
   });
 
+  // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
+  useEffect(() => {
+    if (flowStep === "payment" && !isLoading && (cart?.items?.length || 0) === 0) {
+      setFlowStep("cart");
+      toast({
+        title: "External bookings only",
+        description: "Complete external bookings on their provider websites. Platform checkout requires at least one platform service."
+      });
+    }
+  }, [flowStep, cart?.items?.length, isLoading, toast]);
+
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
       return apiRequest("PATCH", `/api/cart/${id}`, { quantity });
@@ -190,6 +266,9 @@ export default function CartPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
+      if ((cart?.items?.length || 0) === 0) {
+        throw new Error("No platform items to checkout");
+      }
       return apiRequest("POST", "/api/checkout", {});
     },
     onSuccess: (data: any) => {
@@ -198,18 +277,42 @@ export default function CartPage() {
       toast({ title: "Booking created!", description: "Your services have been booked." });
       setLocation("/bookings");
     },
-    onError: () => {
-      toast({ variant: "destructive", title: "Checkout failed" });
+    onError: (error: any) => {
+      if (error?.message === "No platform items to checkout") {
+        toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
+      } else {
+        toast({ variant: "destructive", title: "Checkout failed" });
+      }
     },
   });
+
+  const updateExternalItem = (id: string, quantity: number) => {
+    const clampedQty = Math.max(1, Math.min(10, quantity));
+    setExternalItems(prev => prev.map(item => 
+      item.id === id ? { ...item, quantity: clampedQty } : item
+    ));
+  };
+
+  const removeExternalItem = (id: string) => {
+    setExternalItems(prev => prev.filter(item => item.id !== id));
+    toast({ title: "Item removed from cart" });
+  };
+
+  const externalSubtotal = externalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const platformSubtotal = parseFloat(cart?.subtotal || "0");
+  const combinedSubtotal = platformSubtotal + externalSubtotal;
+  const platformFee = parseFloat(cart?.platformFee || "0");
+  const combinedTotal = combinedSubtotal + platformFee;
+  const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const [creatingComparison, setCreatingComparison] = useState(false);
 
   const createComparison = async () => {
-    if (!cart || cart.items.length === 0) return;
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) return;
     setCreatingComparison(true);
     
-    let experienceContext;
+    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string } | undefined;
     const storedContext = sessionStorage.getItem("experienceContext");
     if (storedContext) {
       try {
@@ -219,8 +322,8 @@ export default function CartPage() {
       }
     }
 
-    // Build baseline items with all necessary info for AI optimization
-    const baselineItems = cart.items.map(item => ({
+    // Build baseline items from platform items
+    const platformBaselineItems = platformItems.map(item => ({
       name: item.service?.serviceName || "Service",
       category: item.service?.serviceType || "service",
       price: item.service?.price || "0",
@@ -229,19 +332,64 @@ export default function CartPage() {
       description: item.service?.shortDescription || ""
     }));
     
+    // Build baseline items from external items
+    const externalBaselineItems = externalItems.map(item => ({
+      name: item.name,
+      category: item.type,
+      price: String(item.price),
+      provider: item.provider || "External Provider",
+      location: item.metadata?.meetingPoint || "",
+      description: item.details || ""
+    }));
+    
+    const baselineItems = [...platformBaselineItems, ...externalBaselineItems];
+    
+    // Derive destination from available data
+    const getComparisonDestination = () => {
+      if (experienceContext?.destination) return experienceContext.destination;
+      if (platformItems[0]?.service?.location) return platformItems[0].service.location;
+      
+      // Check external items for destination data
+      for (const extItem of externalItems) {
+        if (extItem?.metadata?.meetingPoint) return extItem.metadata.meetingPoint;
+        // Flight destination (from name like "NYC → LAX")
+        if (extItem?.name?.includes('→')) {
+          const destCode = extItem.name.split('→')[1]?.trim();
+          if (destCode) return destCode;
+        }
+        // Hotel location (from rawData if available)
+        if (extItem?.type === 'hotels' || extItem?.type === 'accommodations') {
+          const rawData = extItem?.metadata?.rawData;
+          // Check various Amadeus hotel location fields
+          if (rawData?.hotel?.address?.cityName) return rawData.hotel.address.cityName;
+          if (rawData?.hotel?.cityCode) return rawData.hotel.cityCode;
+          if (rawData?.destinationLocation) return rawData.destinationLocation;
+        }
+        // Flight destination from rawData
+        if (extItem?.type === 'flights') {
+          const rawData = extItem?.metadata?.rawData;
+          if (rawData?.itineraries?.[0]?.segments) {
+            const segments = rawData.itineraries[0].segments;
+            const lastSegment = segments[segments.length - 1];
+            if (lastSegment?.arrival?.iataCode) return lastSegment.arrival.iataCode;
+          }
+        }
+      }
+      return "Your destination";
+    };
+    
     try {
       const response = await apiRequest("POST", "/api/itinerary-comparisons", {
         title: experienceContext?.title || "My Trip",
-        destination: experienceContext?.destination || cart.items[0]?.service?.location || "Paris, France",
+        destination: getComparisonDestination(),
         startDate: experienceContext?.startDate || new Date().toISOString().split('T')[0],
         endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        budget: cart.total,
+        budget: String(combinedTotal),
         travelers: experienceContext?.travelers || 2,
-        baselineItems // Include items so backend auto-generates AI alternatives
+        baselineItems
       });
       
       const comparison = await response.json();
-      // Navigate immediately - AI generation happens in background
       setLocation(`/itinerary-comparison/${comparison.id}`);
     } catch (error: any) {
       console.error("Failed to create comparison:", error);
@@ -256,11 +404,12 @@ export default function CartPage() {
   };
 
   const generateItinerary = async () => {
-    if (!cart || cart.items.length === 0) return;
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) return;
     setGenerating(true);
     
     // Try to get experience context from session storage
-    let experienceContext;
+    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string } | undefined;
     const storedContext = sessionStorage.getItem("experienceContext");
     if (storedContext) {
       try {
@@ -270,18 +419,63 @@ export default function CartPage() {
       }
     }
     
+    // Build services from platform items
+    const platformServices = platformItems.map(item => ({
+      name: item.service?.serviceName,
+      provider: item.service?.providerName || "Provider",
+      price: parseFloat(item.service?.price || "0"),
+      category: item.service?.serviceType || "service"
+    }));
+    
+    // Build services from external items  
+    const externalServices = externalItems.map(item => ({
+      name: item.name,
+      provider: item.provider || "External Provider",
+      price: item.price,
+      category: item.type
+    }));
+    
+    // Derive destination from available data
+    const getDestination = () => {
+      if (experienceContext?.destination) return experienceContext.destination;
+      if (platformItems[0]?.service?.location) return platformItems[0].service.location;
+      
+      // Check external items for destination data
+      for (const extItem of externalItems) {
+        if (extItem?.metadata?.meetingPoint) return extItem.metadata.meetingPoint;
+        // Flight destination (from name like "NYC → LAX")
+        if (extItem?.name?.includes('→')) {
+          const destCode = extItem.name.split('→')[1]?.trim();
+          if (destCode) return destCode;
+        }
+        // Hotel location (from rawData if available)
+        if (extItem?.type === 'hotels' || extItem?.type === 'accommodations') {
+          const rawData = extItem?.metadata?.rawData;
+          // Check various Amadeus hotel location fields
+          if (rawData?.hotel?.address?.cityName) return rawData.hotel.address.cityName;
+          if (rawData?.hotel?.cityCode) return rawData.hotel.cityCode;
+          if (rawData?.destinationLocation) return rawData.destinationLocation;
+        }
+        // Flight destination from rawData
+        if (extItem?.type === 'flights') {
+          const rawData = extItem?.metadata?.rawData;
+          if (rawData?.itineraries?.[0]?.segments) {
+            const segments = rawData.itineraries[0].segments;
+            const lastSegment = segments[segments.length - 1];
+            if (lastSegment?.arrival?.iataCode) return lastSegment.arrival.iataCode;
+          }
+        }
+      }
+      return "Your destination";
+    };
+    
     // Build request payload with context or fallback values
     const payload = {
       experienceType: experienceContext?.experienceType || "General",
-      destination: experienceContext?.destination || cart.items[0]?.service?.location || "Unknown",
+      destination: getDestination(),
       startDate: experienceContext?.startDate,
       endDate: experienceContext?.endDate,
-      selectedServices: experienceContext?.selectedServices || cart.items.map(item => ({
-        name: item.service?.serviceName,
-        provider: "Provider",
-        price: parseFloat(item.service?.price || "0"),
-        category: "service"
-      })),
+      selectedServices: [...platformServices, ...externalServices],
       preferences: {}
     };
     
@@ -387,8 +581,8 @@ export default function CartPage() {
               </span>
             )}
           </div>
-          {cart && cart.itemCount > 0 && flowStep === "cart" && (
-            <Badge variant="secondary" data-testid="badge-item-count">{cart.itemCount} items</Badge>
+          {totalItemCount > 0 && flowStep === "cart" && (
+            <Badge variant="secondary" data-testid="badge-item-count">{totalItemCount} items</Badge>
           )}
         </div>
 
@@ -397,7 +591,7 @@ export default function CartPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : !cart || cart.items.length === 0 ? (
+        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -414,7 +608,7 @@ export default function CartPage() {
             {flowStep === "cart" && (
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-4">
-                  {cart.items.map((item) => (
+                  {(cart?.items || []).map((item) => (
                     <Card key={item.id} data-testid={`card-cart-item-${item.id}`}>
                       <CardContent className="p-4">
                         <div className="flex gap-4">
@@ -489,6 +683,97 @@ export default function CartPage() {
                       </CardContent>
                     </Card>
                   ))}
+                  
+                  {externalItems.map((item) => (
+                    <Card key={item.id} data-testid={`card-cart-item-${item.id}`} className="border-[#FF385C]/20">
+                      <CardContent className="p-4">
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold" data-testid={`text-service-name-${item.id}`}>
+                                {item.name}
+                              </h3>
+                              <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
+                                {item.provider}
+                              </Badge>
+                            </div>
+                            {item.details && (
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {item.details}
+                              </p>
+                            )}
+                            <div className="flex flex-wrap gap-3 mt-2 text-sm text-muted-foreground">
+                              {item.metadata?.meetingPoint && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  {item.metadata.meetingPoint}
+                                </span>
+                              )}
+                              {item.metadata?.checkInDate && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  {format(new Date(item.metadata.checkInDate), "PP")} - {format(new Date(item.metadata.checkOutDate || item.metadata.checkInDate), "PP")}
+                                </span>
+                              )}
+                              {item.metadata?.departureTime && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {format(new Date(item.metadata.departureTime), "PP p")}
+                                </span>
+                              )}
+                              {item.metadata?.duration && (
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {item.metadata.duration}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
+                              ${item.price.toFixed(2)}
+                            </p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => updateExternalItem(item.id, (item.quantity || 1) - 1)}
+                                disabled={item.quantity <= 1}
+                                data-testid={`button-decrease-${item.id}`}
+                              >
+                                <Minus className="w-3 h-3" />
+                              </Button>
+                              <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
+                                {item.quantity || 1}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => updateExternalItem(item.id, (item.quantity || 1) + 1)}
+                                data-testid={`button-increase-${item.id}`}
+                              >
+                                <Plus className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex justify-end mt-3">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            onClick={() => removeExternalItem(item.id)}
+                            data-testid={`button-remove-${item.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Remove
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
 
                 <div className="lg:col-span-1 space-y-4">
@@ -499,16 +784,16 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span data-testid="text-subtotal">${cart.subtotal}</span>
+                        <span data-testid="text-subtotal">${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span data-testid="text-platform-fee">${cart.platformFee}</span>
+                        <span data-testid="text-platform-fee">${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span data-testid="text-total">${cart.total}</span>
+                        <span data-testid="text-total">${combinedTotal.toFixed(2)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex flex-col gap-3">
@@ -658,7 +943,7 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>${cart.subtotal}</span>
+                        <span>${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
@@ -668,24 +953,40 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>${cart.platformFee}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>${(parseFloat(cart.total) - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
+                        <span>${(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
-                      <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                        size="lg"
-                        onClick={proceedToPayment}
-                        data-testid="button-proceed-payment"
-                      >
-                        <CreditCard className="w-4 h-4 mr-2" />
-                        Proceed to Payment
-                      </Button>
+                      {externalItems.length > 0 && (
+                        <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-amber-700 dark:text-amber-300">
+                              <strong>{externalItems.length} external booking{externalItems.length > 1 ? 's' : ''}</strong> (flights, hotels, activities) will need to be completed on the provider's website.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {(cart?.items?.length || 0) > 0 ? (
+                        <Button
+                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          size="lg"
+                          onClick={proceedToPayment}
+                          data-testid="button-proceed-payment"
+                        >
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          Proceed to Payment
+                        </Button>
+                      ) : (
+                        <div className="w-full text-center text-muted-foreground text-sm">
+                          External bookings must be completed on provider websites
+                        </div>
+                      )}
                       {optimizationResult?.warnings && optimizationResult.warnings.length > 0 && (
                         <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
                           <div className="flex items-start gap-2">
@@ -731,7 +1032,7 @@ export default function CartPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {cart.items.map((item) => (
+                        {(cart?.items || []).map((item) => (
                           <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
                             <div>
                               <div className="font-medium">{item.service?.serviceName}</div>
@@ -739,6 +1040,17 @@ export default function CartPage() {
                             </div>
                             <div className="font-medium">
                               ${(parseFloat(item.service?.price || "0") * item.quantity).toFixed(2)}
+                            </div>
+                          </div>
+                        ))}
+                        {externalItems.map((item) => (
+                          <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
+                            <div>
+                              <div className="font-medium">{item.name}</div>
+                              <div className="text-sm text-muted-foreground">Qty: {item.quantity} | {item.provider}</div>
+                            </div>
+                            <div className="font-medium">
+                              ${(item.price * item.quantity).toFixed(2)}
                             </div>
                           </div>
                         ))}
@@ -755,7 +1067,7 @@ export default function CartPage() {
                     <CardContent className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>${cart.subtotal}</span>
+                        <span>${combinedSubtotal.toFixed(2)}</span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
@@ -765,25 +1077,41 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>${cart.platformFee}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>${(parseFloat(cart.total) - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
+                        <span>${(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0)).toFixed(2)}</span>
                       </div>
                     </CardContent>
-                    <CardFooter>
-                      <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350]"
-                        size="lg"
-                        onClick={() => checkoutMutation.mutate()}
-                        disabled={checkoutMutation.isPending}
-                        data-testid="button-complete-booking"
-                      >
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        {checkoutMutation.isPending ? "Processing..." : "Complete Booking"}
-                      </Button>
+                    <CardFooter className="flex-col gap-3">
+                      {externalItems.length > 0 && (
+                        <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                            <div className="text-sm text-amber-700 dark:text-amber-300">
+                              <strong>{externalItems.length} external booking{externalItems.length > 1 ? 's' : ''}</strong> (flights, hotels, activities) will need to be completed on the provider's website.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {(cart?.items?.length || 0) > 0 ? (
+                        <Button
+                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          size="lg"
+                          onClick={() => checkoutMutation.mutate()}
+                          disabled={checkoutMutation.isPending}
+                          data-testid="button-complete-booking"
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          {checkoutMutation.isPending ? "Processing..." : "Complete Booking"}
+                        </Button>
+                      ) : (
+                        <div className="w-full text-center text-muted-foreground text-sm">
+                          External bookings must be completed on provider websites
+                        </div>
+                      )}
                     </CardFooter>
                   </Card>
                 </div>
