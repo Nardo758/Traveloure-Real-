@@ -155,7 +155,7 @@ export interface IStorage {
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
-  addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any>;
+  addToCart(userId: string, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any>;
   updateCartItem(id: string, updates: { quantity?: number; scheduledDate?: Date; notes?: string }): Promise<any | undefined>;
   removeFromCart(id: string): Promise<void>;
   clearCart(userId: string, experienceSlug?: string): Promise<void>;
@@ -810,24 +810,55 @@ export class DatabaseStorage implements IStorage {
       whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug)) as any;
     }
     const items = await db.select().from(cartItems).where(whereCondition);
-    // Join with service details and provider (user) name
+    // Join with service details or custom venue details
     const enriched = await Promise.all(items.map(async (item) => {
-      const [service] = await db.select().from(providerServices).where(eq(providerServices.id, item.serviceId));
-      let providerName = "Provider";
-      if (service?.userId) {
-        const [provider] = await db.select().from(users).where(eq(users.id, service.userId));
-        if (provider) {
-          providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || "Provider";
+      // Handle custom venues
+      if (item.customVenueId) {
+        const [venue] = await db.select().from(customVenues).where(eq(customVenues.id, item.customVenueId));
+        if (venue) {
+          return {
+            ...item,
+            isCustomVenue: true,
+            service: {
+              id: `custom-${venue.id}`,
+              name: venue.name,
+              description: venue.notes || venue.address || "",
+              price: venue.estimatedCost || "0",
+              location: venue.address,
+              providerName: "Custom Venue"
+            },
+            customVenue: venue
+          };
         }
       }
-      return { ...item, service: service ? { ...service, providerName } : null };
+      // Handle regular provider services
+      if (item.serviceId) {
+        const [service] = await db.select().from(providerServices).where(eq(providerServices.id, item.serviceId));
+        let providerName = "Provider";
+        if (service?.userId) {
+          const [provider] = await db.select().from(users).where(eq(users.id, service.userId));
+          if (provider) {
+            providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || "Provider";
+          }
+        }
+        return { ...item, isCustomVenue: false, service: service ? { ...service, providerName } : null };
+      }
+      return { ...item, service: null };
     }));
     return enriched;
   }
 
-  async addToCart(userId: string, item: { serviceId: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any> {
+  async addToCart(userId: string, item: { serviceId?: string; customVenueId?: string; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string }): Promise<any> {
     // Check if item already in cart for this experience
-    let whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.serviceId, item.serviceId));
+    let whereCondition;
+    if (item.customVenueId) {
+      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.customVenueId, item.customVenueId));
+    } else if (item.serviceId) {
+      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.serviceId, item.serviceId));
+    } else {
+      throw new Error("Either serviceId or customVenueId is required");
+    }
+    
     if (item.experienceSlug) {
       whereCondition = and(whereCondition, eq(cartItems.experienceSlug, item.experienceSlug));
     }
@@ -843,7 +874,8 @@ export class DatabaseStorage implements IStorage {
     
     const [newItem] = await db.insert(cartItems).values({
       userId,
-      serviceId: item.serviceId,
+      serviceId: item.serviceId || null,
+      customVenueId: item.customVenueId || null,
       experienceSlug: item.experienceSlug,
       quantity: item.quantity || 1,
       tripId: item.tripId,
