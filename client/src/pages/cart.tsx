@@ -308,8 +308,19 @@ export default function CartPage() {
   const [creatingComparison, setCreatingComparison] = useState(false);
 
   const createComparison = async () => {
+    // Prevent double-clicks
+    if (creatingComparison) return;
+    
     const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) return;
+    // Wait for data to be ready
+    if (isLoading) {
+      toast({ title: "Loading cart...", description: "Please wait a moment" });
+      return;
+    }
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
+      return;
+    }
     setCreatingComparison(true);
     
     let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string } | undefined;
@@ -404,8 +415,19 @@ export default function CartPage() {
   };
 
   const generateItinerary = async () => {
+    // Prevent double-clicks
+    if (generating) return;
+    
     const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) return;
+    // Wait for data to be ready
+    if (isLoading) {
+      toast({ title: "Loading cart...", description: "Please wait a moment" });
+      return;
+    }
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
+      return;
+    }
     setGenerating(true);
     
     // Try to get experience context from session storage
