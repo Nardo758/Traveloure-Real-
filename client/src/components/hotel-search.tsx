@@ -371,6 +371,10 @@ export function HotelSearch({
     );
   }
 
+  const tripNights = checkInDate && checkOutDate 
+    ? Math.max(1, Math.ceil((new Date(checkOutDate).getTime() - new Date(checkInDate).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
   return (
     <div className="space-y-4">
       {!isDetecting && canAutoSearch && (
@@ -383,6 +387,9 @@ export function HotelSearch({
             <Badge variant="outline" className="gap-1">
               <Calendar className="h-3 w-3" />
               {checkInDate} - {checkOutDate}
+            </Badge>
+            <Badge className="gap-1 bg-[#FF385C] text-white">
+              {tripNights} night{tripNights !== 1 ? "s" : ""}
             </Badge>
             <Badge variant="outline" className="gap-1">
               <Users className="h-3 w-3" />
@@ -544,6 +551,12 @@ export function HotelSearch({
             {filteredAndSortedHotels.map((hotelData) => {
               const hotel = hotelData.hotel;
               const offer = hotelData.offers?.[0];
+              
+              const nights = offer 
+                ? Math.max(1, Math.ceil((new Date(offer.checkOutDate).getTime() - new Date(offer.checkInDate).getTime()) / (1000 * 60 * 60 * 24)))
+                : 1;
+              const totalPrice = offer ? parseFloat(offer.price.total) : 0;
+              const pricePerNight = totalPrice / nights;
 
               return (
                 <Card key={hotel.hotelId} className="overflow-hidden hover-elevate">
@@ -577,9 +590,15 @@ export function HotelSearch({
                           <span className="text-sm text-muted-foreground">
                             {offer.room.type}
                           </span>
-                          <span className="font-bold text-lg">
-                            ${offer.price.total}
-                          </span>
+                          <div className="text-right">
+                            <span className="font-bold text-lg">
+                              ${pricePerNight.toFixed(2)}/night
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>{nights} night{nights !== 1 ? 's' : ''}</span>
+                          <span className="font-medium">${totalPrice.toFixed(2)} total</span>
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {offer.checkInDate} - {offer.checkOutDate}
