@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,13 +11,14 @@ import {
   Bus, 
   MapPin, 
   Clock, 
-  DollarSign,
   Navigation,
   AlertCircle,
   ChevronDown,
   ChevronUp,
   Hotel,
-  Palmtree
+  Palmtree,
+  ArrowRight,
+  Route
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,28 +37,54 @@ interface HotelLocation {
   lng: number;
 }
 
-interface TransportRecommendation {
-  activity: string;
-  from: string;
-  recommendedMode: string;
-  estimatedTime: number;
-  reason: string;
+interface TransitStep {
+  mode: "WALK" | "TRANSIT";
+  distance: number;
+  duration: number;
+  durationMinutes: number;
+  instruction?: string;
+  transit?: {
+    lineName: string;
+    lineNameShort?: string;
+    lineColor?: string;
+    lineTextColor?: string;
+    vehicleType: string;
+    vehicleIcon?: string;
+    agencyName: string;
+    departureStop: string;
+    arrivalStop: string;
+    departureTime: string;
+    arrivalTime: string;
+    headsign: string;
+    stopCount: number;
+  };
+}
+
+interface TransitRoute {
+  totalDistance: number;
+  totalDuration: number;
+  durationText: string;
+  distanceText: string;
+  polyline?: string;
+  steps: TransitStep[];
 }
 
 interface TransportationAnalysisProps {
   activityLocations: ActivityLocation[];
   hotelLocation?: HotelLocation;
   className?: string;
+  onTransitRoutesLoaded?: (routes: Map<string, TransitRoute | null>) => void;
 }
 
-const modeIcons: Record<string, any> = {
-  taxi: Car,
-  uber: Car,
-  metro: Train,
-  walk: Footprints,
-  bus: Bus,
-  "rental car": Car,
-  train: Train,
+const vehicleIcons: Record<string, any> = {
+  BUS: Bus,
+  SUBWAY: Train,
+  METRO: Train,
+  TRAIN: Train,
+  LIGHT_RAIL: Train,
+  RAIL: Train,
+  TRAM: Train,
+  FERRY: Route,
 };
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -75,45 +102,54 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 export function TransportationAnalysis({ 
   activityLocations, 
   hotelLocation,
-  className 
+  className,
+  onTransitRoutesLoaded
 }: TransportationAnalysisProps) {
   const [expanded, setExpanded] = useState(true);
-  const [recommendations, setRecommendations] = useState<TransportRecommendation[]>([]);
+  const [transitRoutes, setTransitRoutes] = useState<Record<string, TransitRoute | null>>({});
+  const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
 
-  const transportMutation = useMutation({
-    mutationFn: async (): Promise<{ recommendations: TransportRecommendation[] }> => {
+  const transitMutation = useMutation({
+    mutationFn: async (): Promise<{ routes: Record<string, TransitRoute | null> }> => {
       if (!hotelLocation || activityLocations.length === 0) {
-        return { recommendations: [] };
+        return { routes: {} };
       }
       
-      const res = await fetch("/api/claude/transportation-analysis", {
+      const res = await fetch("/api/routes/transit-multi", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          hotelLocation: {
+          origin: {
             lat: hotelLocation.lat,
             lng: hotelLocation.lng,
-            address: hotelLocation.name,
+            name: hotelLocation.name,
           },
-          activityLocations: activityLocations.map(a => ({
+          destinations: activityLocations.map(a => ({
+            id: a.id,
             lat: a.lat,
             lng: a.lng,
-            address: a.meetingPoint || a.name,
             name: a.name,
           })),
         }),
       });
       
       if (!res.ok) {
-        throw new Error("Failed to analyze transportation");
+        throw new Error("Failed to fetch transit routes");
       }
       
       return res.json();
     },
     onSuccess: (data) => {
-      if (data?.recommendations) {
-        setRecommendations(data.recommendations);
+      if (data?.routes) {
+        setTransitRoutes(data.routes);
+        if (onTransitRoutesLoaded) {
+          const routeMap = new Map<string, TransitRoute | null>();
+          Object.entries(data.routes).forEach(([id, route]) => {
+            routeMap.set(id, route);
+          });
+          onTransitRoutesLoaded(routeMap);
+        }
       }
     },
   });
@@ -123,22 +159,41 @@ export function TransportationAnalysis({
 
   useEffect(() => {
     if (hotelLocation && activityLocations.length > 0) {
-      transportMutation.mutate();
+      transitMutation.mutate();
     }
   }, [hotelKey, activityKey]);
+
+  const activityData = useMemo(() => {
+    if (!hotelLocation) return [];
+    
+    return activityLocations.map(activity => ({
+      activity,
+      straightDistance: haversineDistance(hotelLocation.lat, hotelLocation.lng, activity.lat, activity.lng),
+      transitRoute: transitRoutes[activity.id] || null,
+    })).sort((a, b) => {
+      const aDur = a.transitRoute?.totalDuration || Infinity;
+      const bDur = b.transitRoute?.totalDuration || Infinity;
+      return aDur - bDur;
+    });
+  }, [activityLocations, hotelLocation, transitRoutes]);
 
   if (!hotelLocation && activityLocations.length === 0) {
     return null;
   }
 
-  const hasActivitiesWithCoords = activityLocations.length > 0;
+  const hasActivities = activityLocations.length > 0;
 
-  const basicDistances = hasActivitiesWithCoords && hotelLocation
-    ? activityLocations.map(activity => ({
-        activity,
-        distance: haversineDistance(hotelLocation.lat, hotelLocation.lng, activity.lat, activity.lng),
-      })).sort((a, b) => a.distance - b.distance)
-    : [];
+  const toggleRouteExpanded = (id: string) => {
+    setExpandedRoutes(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   return (
     <Card className={cn("bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-900 border-blue-200 dark:border-blue-800", className)}>
@@ -146,7 +201,7 @@ export function TransportationAnalysis({
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Navigation className="h-4 w-4 text-blue-600" />
-            Transportation Overview
+            Transit Directions
           </CardTitle>
           <Button
             variant="ghost"
@@ -162,12 +217,12 @@ export function TransportationAnalysis({
 
       {expanded && (
         <CardContent className="pt-0 space-y-3">
-          {!hotelLocation && hasActivitiesWithCoords && (
+          {!hotelLocation && hasActivities && (
             <div className="flex items-start gap-2 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 p-2 rounded-md">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <div>
-                <p className="font-medium">Add a hotel to see transportation recommendations</p>
-                <p className="text-amber-700 dark:text-amber-300">We'll help you find the best way to get to your activities.</p>
+                <p className="font-medium">Add a hotel to see transit directions</p>
+                <p className="text-amber-700 dark:text-amber-300">We'll show you the best routes to your activities.</p>
               </div>
             </div>
           )}
@@ -175,81 +230,134 @@ export function TransportationAnalysis({
           {hotelLocation && (
             <div className="flex items-center gap-2 text-xs bg-indigo-100 dark:bg-indigo-900/30 p-2 rounded-md">
               <Hotel className="h-4 w-4 text-indigo-600" />
-              <span className="font-medium">Hotel: {hotelLocation.name}</span>
+              <span className="font-medium truncate">{hotelLocation.name}</span>
             </div>
           )}
 
-          {hasActivitiesWithCoords && hotelLocation && basicDistances.length > 0 && (
+          {transitMutation.isPending && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Distance from hotel:</p>
-              {basicDistances.map(({ activity, distance }) => {
-                const rec = recommendations.find(r => 
-                  r.activity.toLowerCase().includes(activity.name.toLowerCase().slice(0, 20)) ||
-                  activity.name.toLowerCase().includes(r.activity.toLowerCase().slice(0, 20))
-                );
-                const ModeIcon = rec ? modeIcons[rec.recommendedMode.toLowerCase()] || Car : MapPin;
+              <p className="text-xs text-muted-foreground">Loading transit routes...</p>
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          )}
+
+          {hotelLocation && hasActivities && activityData.length > 0 && !transitMutation.isPending && (
+            <div className="space-y-2">
+              {activityData.map(({ activity, straightDistance, transitRoute }) => {
+                const isExpanded = expandedRoutes.has(activity.id);
+                const hasTransit = transitRoute && transitRoute.steps.some(s => s.mode === "TRANSIT");
                 
                 return (
                   <div 
                     key={activity.id}
-                    className="flex items-start justify-between gap-2 p-2 bg-white dark:bg-gray-800 rounded-md border text-xs"
+                    className="bg-white dark:bg-gray-800 rounded-md border overflow-hidden"
                   >
-                    <div className="flex items-start gap-2 flex-1 min-w-0">
-                      <Palmtree className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">{activity.name}</p>
-                        {activity.meetingPoint && (
-                          <p className="text-muted-foreground truncate">{activity.meetingPoint}</p>
+                    <button
+                      onClick={() => transitRoute && toggleRouteExpanded(activity.id)}
+                      className="w-full flex items-start justify-between gap-2 p-2 text-xs text-left hover:bg-gray-50 dark:hover:bg-gray-750"
+                      disabled={!transitRoute}
+                    >
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Palmtree className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{activity.name}</p>
+                          {activity.meetingPoint && (
+                            <p className="text-muted-foreground truncate text-[10px]">{activity.meetingPoint}</p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {transitRoute ? (
+                          <>
+                            <Badge variant="default" className="gap-1 text-xs bg-blue-600">
+                              <Clock className="h-3 w-3" />
+                              {transitRoute.durationText}
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground">
+                              {transitRoute.distanceText}
+                            </span>
+                          </>
+                        ) : (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <MapPin className="h-3 w-3" />
+                            {straightDistance.toFixed(1)} km
+                          </Badge>
                         )}
                       </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <Badge variant="outline" className="gap-1 text-xs">
-                        <MapPin className="h-3 w-3" />
-                        {distance.toFixed(1)} km
-                      </Badge>
-                      {rec && (
-                        <Badge variant="secondary" className="gap-1 text-xs">
-                          <ModeIcon className="h-3 w-3" />
-                          {rec.estimatedTime} min
-                        </Badge>
-                      )}
-                    </div>
+                    </button>
+                    
+                    {isExpanded && transitRoute && (
+                      <div className="border-t px-2 py-2 space-y-1.5 bg-gray-50 dark:bg-gray-850">
+                        {transitRoute.steps.map((step, idx) => {
+                          if (step.mode === "WALK") {
+                            return (
+                              <div key={idx} className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                <Footprints className="h-3 w-3" />
+                                <span>Walk {step.durationMinutes} min</span>
+                                {step.instruction && <span className="truncate">- {step.instruction}</span>}
+                              </div>
+                            );
+                          }
+                          
+                          const transit = step.transit!;
+                          const VehicleIcon = vehicleIcons[transit.vehicleType] || Bus;
+                          
+                          return (
+                            <div 
+                              key={idx} 
+                              className="flex items-start gap-2 p-1.5 rounded bg-white dark:bg-gray-800 border text-[10px]"
+                            >
+                              <div 
+                                className="shrink-0 w-5 h-5 rounded flex items-center justify-center"
+                                style={{ 
+                                  backgroundColor: transit.lineColor || "#3B82F6",
+                                  color: transit.lineTextColor || "#FFFFFF"
+                                }}
+                              >
+                                <VehicleIcon className="h-3 w-3" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1 font-medium">
+                                  <span style={{ color: transit.lineColor }}>{transit.lineNameShort || transit.lineName}</span>
+                                  <ArrowRight className="h-2 w-2 text-muted-foreground" />
+                                  <span className="truncate text-muted-foreground">{transit.headsign}</span>
+                                </div>
+                                <div className="flex items-center gap-1 text-muted-foreground">
+                                  <span>{transit.departureStop}</span>
+                                  <ArrowRight className="h-2 w-2" />
+                                  <span>{transit.arrivalStop}</span>
+                                  <span className="ml-1">({transit.stopCount} stops)</span>
+                                </div>
+                              </div>
+                              <Badge variant="secondary" className="shrink-0 text-[10px]">
+                                {step.durationMinutes} min
+                              </Badge>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
 
-          {transportMutation.isPending && (
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="h-4 w-3/4" />
+          {transitMutation.isError && (
+            <div className="flex items-start gap-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 rounded-md">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Couldn't load transit routes</p>
+                <p className="text-red-700 dark:text-red-300">Showing straight-line distances instead.</p>
+              </div>
             </div>
           )}
 
-          {recommendations.length > 0 && (
-            <div className="space-y-2 pt-2 border-t">
-              <p className="text-xs font-medium text-muted-foreground">AI Recommendations:</p>
-              {recommendations.map((rec, idx) => {
-                const ModeIcon = modeIcons[rec.recommendedMode.toLowerCase()] || Car;
-                return (
-                  <div 
-                    key={idx}
-                    className="flex items-center gap-2 text-xs p-2 bg-green-50 dark:bg-green-900/20 rounded-md"
-                  >
-                    <ModeIcon className="h-4 w-4 text-green-600" />
-                    <span className="flex-1">{rec.reason}</span>
-                    <Badge className="bg-green-600 text-xs">{rec.recommendedMode}</Badge>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {!hasActivitiesWithCoords && hotelLocation && (
+          {!hasActivities && hotelLocation && (
             <p className="text-xs text-muted-foreground">
-              Add activities with meeting points to see transportation options.
+              Add activities to see transit directions from your hotel.
             </p>
           )}
         </CardContent>

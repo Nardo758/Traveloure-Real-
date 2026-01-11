@@ -22,6 +22,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant 
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
 import { claudeService } from "./services/claude.service";
+import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -2716,6 +2717,64 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Claude recommendations error:', error);
       res.status(500).json({ message: error.message || "Recommendations generation failed" });
+    }
+  });
+
+  // Google Routes API - Single transit route
+  app.post("/api/routes/transit", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = TransitRequestSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const route = await getTransitRoute(parsed.data);
+      
+      if (!route) {
+        return res.status(404).json({ message: "No transit route found" });
+      }
+      
+      res.json(route);
+    } catch (error: any) {
+      console.error('Routes API error:', error);
+      res.status(500).json({ message: error.message || "Transit route lookup failed" });
+    }
+  });
+
+  // Google Routes API - Multiple transit routes from one origin to many destinations
+  const multiTransitSchema = z.object({
+    origin: z.object({
+      lat: z.number(),
+      lng: z.number(),
+      name: z.string().optional(),
+    }),
+    destinations: z.array(z.object({
+      id: z.string(),
+      lat: z.number(),
+      lng: z.number(),
+      name: z.string(),
+    })),
+  });
+
+  app.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = multiTransitSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const { origin, destinations } = parsed.data;
+      const routesMap = await getMultipleTransitRoutes(origin, destinations);
+      
+      const routes: Record<string, any> = {};
+      routesMap.forEach((route, id) => {
+        routes[id] = route;
+      });
+      
+      res.json({ routes });
+    } catch (error: any) {
+      console.error('Routes API multi error:', error);
+      res.status(500).json({ message: error.message || "Transit routes lookup failed" });
     }
   });
 
