@@ -1483,6 +1483,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
+          {activeTab !== "flights" && activeTab !== "hotels" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -1503,7 +1504,9 @@ export default function ExperienceTemplatePage() {
               </Button>
             )}
           </div>
+          )}
 
+          {activeTab !== "flights" && activeTab !== "hotels" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1629,6 +1632,7 @@ export default function ExperienceTemplatePage() {
               </div>
               
             </div>
+          )}
         </div>
         
           </Panel>
