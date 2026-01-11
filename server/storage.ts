@@ -821,8 +821,8 @@ export class DatabaseStorage implements IStorage {
             isCustomVenue: true,
             service: {
               id: `custom-${venue.id}`,
-              name: venue.name,
-              description: venue.notes || venue.address || "",
+              serviceName: "Venue Location",
+              shortDescription: venue.name || venue.notes || "",
               price: venue.estimatedCost || "0",
               location: venue.address,
               providerName: "Custom Venue"
