@@ -208,6 +208,7 @@ export interface IStorage {
   // Vendor Availability Slots
   getVendorAvailabilitySlots(serviceId: string, date?: string): Promise<VendorAvailabilitySlot[]>;
   getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]>;
+  getVendorAvailabilitySlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
   createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot>;
   updateVendorAvailabilitySlot(id: string, updates: Partial<InsertVendorAvailabilitySlot>): Promise<VendorAvailabilitySlot | undefined>;
   deleteVendorAvailabilitySlot(id: string): Promise<void>;
@@ -224,6 +225,7 @@ export interface IStorage {
 
   // Coordination Bookings
   getCoordinationBookings(coordinationId: string): Promise<CoordinationBooking[]>;
+  getCoordinationBooking(id: string): Promise<CoordinationBooking | undefined>;
   createCoordinationBooking(booking: InsertCoordinationBooking): Promise<CoordinationBooking>;
   updateCoordinationBooking(id: string, updates: Partial<InsertCoordinationBooking>): Promise<CoordinationBooking | undefined>;
   confirmCoordinationBooking(id: string, bookingReference: string, confirmationDetails?: any): Promise<CoordinationBooking | undefined>;
@@ -1087,6 +1089,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(vendorAvailabilitySlots.date);
   }
 
+  async getVendorAvailabilitySlot(id: string): Promise<VendorAvailabilitySlot | undefined> {
+    const [slot] = await db.select().from(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
+    return slot;
+  }
+
   async createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot> {
     const [created] = await db.insert(vendorAvailabilitySlots).values(slot).returning();
     return created;
@@ -1195,6 +1202,11 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(coordinationBookings)
       .where(eq(coordinationBookings.coordinationId, coordinationId))
       .orderBy(coordinationBookings.scheduledDate);
+  }
+
+  async getCoordinationBooking(id: string): Promise<CoordinationBooking | undefined> {
+    const [booking] = await db.select().from(coordinationBookings).where(eq(coordinationBookings.id, id));
+    return booking;
   }
 
   async createCoordinationBooking(booking: InsertCoordinationBooking): Promise<CoordinationBooking> {
