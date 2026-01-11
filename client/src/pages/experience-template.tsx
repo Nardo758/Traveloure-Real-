@@ -74,6 +74,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import type { ExperienceType, ProviderService } from "@shared/schema";
+import { matchesCategory } from "@shared/constants/providerCategories";
 
 interface CartItem {
   id: string;
@@ -86,21 +87,6 @@ interface CartItem {
   details?: string;
   provider?: string;
 }
-
-// Mapping of services-* aggregate categories to underlying provider category slugs
-// Uses canonical slugs from seed-categories plus keywords for name/description matching
-const servicesCategoryMapping: Record<string, string[]> = {
-  "services-travel": ["photography-videography", "transportation-logistics", "language-translation", "personal-assistance", "tours-experiences", "travel", "guide", "concierge", "insurance", "visa"],
-  "services-wedding": ["photography-videography", "beauty-styling", "transportation-logistics", "food-culinary", "events-celebrations", "specialty-services", "wedding", "planner", "coordinator", "officiant", "florist", "baker"],
-  "services-proposal": ["photography-videography", "events-celebrations", "specialty-services", "transportation-logistics", "proposal", "planner", "musician", "lighting", "signage"],
-  "services-birthday": ["events-celebrations", "food-culinary", "specialty-services", "birthday", "party", "performer", "balloon", "entertainer", "decorator", "baker"],
-  "services-trip": ["tours-experiences", "photography-videography", "transportation-logistics", "personal-assistance", "trip", "guide", "adventure", "activity"],
-  "services-romance": ["photography-videography", "food-culinary", "transportation-logistics", "events-celebrations", "romance", "romantic", "private-chef", "dining", "flowers"],
-  "services-corporate": ["events-celebrations", "food-culinary", "transportation-logistics", "technology-connectivity", "specialty-services", "corporate", "speaker", "registration", "swag", "catering"],
-  "services-retreat": ["health-wellness", "food-culinary", "transportation-logistics", "tours-experiences", "retreat", "wellness", "yoga", "meditation", "spa", "facilitator", "instructor"],
-  "services-event": ["photography-videography", "transportation-logistics", "events-celebrations", "food-culinary", "event", "coordinator", "rental", "catering", "entertainment"],
-  "services-party": ["photography-videography", "events-celebrations", "food-culinary", "party", "dj", "performer", "entertainment", "catering", "decorator", "rental"],
-};
 
 const experienceConfigs: Record<string, {
   heroImage: string;
@@ -871,24 +857,14 @@ export default function ExperienceTemplatePage() {
     let filtered = [...services];
 
     if (currentTabCategory) {
-      // Check if this is an aggregate services-* category
-      const expandedCategories = servicesCategoryMapping[currentTabCategory];
-      
-      filtered = filtered.filter(s => {
-        const svcType = s.serviceType?.toLowerCase() || "";
-        const svcName = s.serviceName.toLowerCase();
-        const svcDesc = (s.description || "").toLowerCase();
-        
-        // If we have expanded categories for this services-* tab, match against any of them
-        if (expandedCategories) {
-          return expandedCategories.some(cat => 
-            svcType.includes(cat) || svcName.includes(cat) || svcDesc.includes(cat)
-          );
-        }
-        
-        // Otherwise use direct category matching
-        return svcType.includes(currentTabCategory) || svcName.includes(currentTabCategory);
-      });
+      filtered = filtered.filter(s => 
+        matchesCategory(
+          s.serviceType || "",
+          s.serviceName,
+          s.description || "",
+          currentTabCategory
+        )
+      );
     }
 
     if (searchQuery) {
