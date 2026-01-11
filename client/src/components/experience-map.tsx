@@ -116,6 +116,13 @@ function MapContent({
   const isSelected = (id: string) => selectedProviderIds.includes(id);
 
   const center = useMemo(() => {
+    // Prioritize destination center when available - this ensures the map
+    // follows the user's Travel Details destination, not stale provider data
+    if (destinationCenter) {
+      return destinationCenter;
+    }
+    
+    // Fall back to provider-based centering only if no destination is set
     if (providers.length > 0) {
       const customVenues = providers.filter(p => isCustomVenue(p.id));
       const selectedItems = providers.filter(p => selectedProviderIds.includes(p.id));
@@ -131,10 +138,7 @@ function MapContent({
       return { lat: avgLat, lng: avgLng };
     }
     
-    if (destinationCenter) {
-      return destinationCenter;
-    }
-    
+    // Default to New York if nothing else is available
     return { lat: 40.7128, lng: -74.0060 };
   }, [providers, selectedProviderIds, destinationCenter]);
 
