@@ -6,7 +6,7 @@ import {
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
-  userExperiences, userExperienceItems, users,
+  userExperiences, userExperienceItems, users, customVenues,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -29,7 +29,8 @@ import {
   type ExperienceTemplateStep, type InsertExperienceTemplateStep,
   type ExpertExperienceType, type InsertExpertExperienceType,
   type UserExperience, type InsertUserExperience,
-  type UserExperienceItem, type InsertUserExperienceItem
+  type UserExperienceItem, type InsertUserExperienceItem,
+  type CustomVenue, type InsertCustomVenue
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -192,6 +193,13 @@ export interface IStorage {
   getExpertsByExperienceType(experienceTypeId: string): Promise<any[]>;
   addExpertExperienceType(data: InsertExpertExperienceType): Promise<ExpertExperienceType>;
   removeExpertExperienceType(id: string): Promise<void>;
+
+  // Custom Venues
+  getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
+  getCustomVenue(id: string): Promise<CustomVenue | undefined>;
+  createCustomVenue(venue: InsertCustomVenue): Promise<CustomVenue>;
+  updateCustomVenue(id: string, venue: Partial<InsertCustomVenue>): Promise<CustomVenue | undefined>;
+  deleteCustomVenue(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1004,6 +1012,38 @@ export class DatabaseStorage implements IStorage {
 
   async removeExpertExperienceType(id: string): Promise<void> {
     await db.delete(expertExperienceTypes).where(eq(expertExperienceTypes.id, id));
+  }
+
+  // Custom Venues
+  async getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]> {
+    const conditions = [];
+    if (userId) conditions.push(eq(customVenues.userId, userId));
+    if (tripId) conditions.push(eq(customVenues.tripId, tripId));
+    if (experienceType) conditions.push(eq(customVenues.experienceType, experienceType));
+    
+    if (conditions.length === 0) {
+      return await db.select().from(customVenues).orderBy(desc(customVenues.createdAt));
+    }
+    return await db.select().from(customVenues).where(and(...conditions)).orderBy(desc(customVenues.createdAt));
+  }
+
+  async getCustomVenue(id: string): Promise<CustomVenue | undefined> {
+    const [venue] = await db.select().from(customVenues).where(eq(customVenues.id, id));
+    return venue;
+  }
+
+  async createCustomVenue(venue: InsertCustomVenue): Promise<CustomVenue> {
+    const [created] = await db.insert(customVenues).values(venue).returning();
+    return created;
+  }
+
+  async updateCustomVenue(id: string, updates: Partial<InsertCustomVenue>): Promise<CustomVenue | undefined> {
+    const [updated] = await db.update(customVenues).set(updates).where(eq(customVenues.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCustomVenue(id: string): Promise<void> {
+    await db.delete(customVenues).where(eq(customVenues.id, id));
   }
 }
 

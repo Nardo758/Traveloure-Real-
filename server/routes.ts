@@ -12,7 +12,8 @@ import {
   insertServiceSubcategorySchema, insertFaqSchema,
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
-  userExperienceItems, userExperiences, providerServices, cartItems
+  userExperienceItems, userExperiences, providerServices, cartItems,
+  insertCustomVenueSchema
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
@@ -650,6 +651,66 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       }
       res.status(500).json({ message: "Failed to create subcategory" });
     }
+  });
+
+  // === Custom Venues Routes ===
+  
+  // Get custom venues (with optional filters)
+  app.get("/api/custom-venues", async (req, res) => {
+    const { userId, tripId, experienceType } = req.query;
+    const venues = await storage.getCustomVenues(
+      userId as string | undefined,
+      tripId as string | undefined,
+      experienceType as string | undefined
+    );
+    res.json(venues);
+  });
+
+  // Get single custom venue
+  app.get("/api/custom-venues/:id", async (req, res) => {
+    const venue = await storage.getCustomVenue(req.params.id);
+    if (!venue) {
+      return res.status(404).json({ message: "Custom venue not found" });
+    }
+    res.json(venue);
+  });
+
+  // Create custom venue
+  app.post("/api/custom-venues", async (req, res) => {
+    try {
+      const input = insertCustomVenueSchema.parse(req.body);
+      const venue = await storage.createCustomVenue(input);
+      res.status(201).json(venue);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      console.error("Error creating custom venue:", err);
+      res.status(500).json({ message: "Failed to create custom venue" });
+    }
+  });
+
+  // Update custom venue
+  app.patch("/api/custom-venues/:id", async (req, res) => {
+    try {
+      const input = insertCustomVenueSchema.partial().parse(req.body);
+      const updated = await storage.updateCustomVenue(req.params.id, input);
+      if (!updated) {
+        return res.status(404).json({ message: "Custom venue not found" });
+      }
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update custom venue" });
+    }
+  });
+
+  // Delete custom venue
+  app.delete("/api/custom-venues/:id", async (req, res) => {
+    await storage.deleteCustomVenue(req.params.id);
+    res.status(204).send();
   });
 
   // === Experience Types Routes ===
