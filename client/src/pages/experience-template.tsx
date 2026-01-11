@@ -1051,6 +1051,8 @@ export default function ExperienceTemplatePage() {
     return undefined;
   }, [cart]);
 
+  const [transitRoutes, setTransitRoutes] = useState<Map<string, { polyline?: string; durationText?: string } | null>>(new Map());
+
   if (typeLoading) {
     return (
       <Layout>
@@ -2058,6 +2060,7 @@ export default function ExperienceTemplatePage() {
                   height="100%"
                   activityLocations={activityLocations}
                   hotelLocation={hotelLocation}
+                  transitRoutes={transitRoutes}
                 />
               </div>
               
@@ -2066,6 +2069,7 @@ export default function ExperienceTemplatePage() {
                   <TransportationAnalysis
                     activityLocations={activityLocations}
                     hotelLocation={hotelLocation}
+                    onTransitRoutesLoaded={setTransitRoutes}
                   />
                 </div>
               )}
@@ -2297,6 +2301,7 @@ export default function ExperienceTemplatePage() {
                     height="100%"
                     activityLocations={activityLocations}
                     hotelLocation={hotelLocation}
+                    transitRoutes={transitRoutes}
                   />
                 </div>
               </CollapsibleContent>

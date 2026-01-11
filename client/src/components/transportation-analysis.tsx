@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -109,10 +109,18 @@ export function TransportationAnalysis({
   const [transitRoutes, setTransitRoutes] = useState<Record<string, TransitRoute | null>>({});
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
 
+  const activityKey = activityLocations.map(a => `${a.id}:${a.lat},${a.lng}`).join("|");
+  const hotelKey = hotelLocation ? `${hotelLocation.id}:${hotelLocation.lat},${hotelLocation.lng}` : "";
+  const requestKeyRef = useRef<string>("");
+  const currentRequestKey = `${hotelKey}|${activityKey}`;
+
   const transitMutation = useMutation({
-    mutationFn: async (): Promise<{ routes: Record<string, TransitRoute | null> }> => {
+    mutationFn: async (): Promise<{ routes: Record<string, TransitRoute | null>; requestKey: string }> => {
+      const reqKey = currentRequestKey;
+      requestKeyRef.current = reqKey;
+      
       if (!hotelLocation || activityLocations.length === 0) {
-        return { routes: {} };
+        return { routes: {}, requestKey: reqKey };
       }
       
       const res = await fetch("/api/routes/transit-multi", {
@@ -138,9 +146,14 @@ export function TransportationAnalysis({
         throw new Error("Failed to fetch transit routes");
       }
       
-      return res.json();
+      const data = await res.json();
+      return { ...data, requestKey: reqKey };
     },
     onSuccess: (data) => {
+      if (data.requestKey !== requestKeyRef.current) {
+        return;
+      }
+      
       if (data?.routes) {
         setTransitRoutes(data.routes);
         if (onTransitRoutesLoaded) {
@@ -154,12 +167,15 @@ export function TransportationAnalysis({
     },
   });
 
-  const activityKey = activityLocations.map(a => `${a.id}:${a.lat},${a.lng}`).join("|");
-  const hotelKey = hotelLocation ? `${hotelLocation.id}:${hotelLocation.lat},${hotelLocation.lng}` : "";
-
   useEffect(() => {
     if (hotelLocation && activityLocations.length > 0) {
       transitMutation.mutate();
+    } else {
+      requestKeyRef.current = currentRequestKey;
+      setTransitRoutes({});
+      if (onTransitRoutesLoaded) {
+        onTransitRoutesLoaded(new Map());
+      }
     }
   }, [hotelKey, activityKey]);
 

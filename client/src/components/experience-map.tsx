@@ -1,6 +1,7 @@
 import { useState, useMemo, Component, ReactNode } from "react";
 import { APIProvider, Map, Marker, InfoWindow } from "@vis.gl/react-google-maps";
 import { useQuery } from "@tanstack/react-query";
+import { Polyline } from "@/components/ui/map-polyline";
 
 class MapErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { hasError: boolean }> {
   constructor(props: { children: ReactNode; fallback: ReactNode }) {
@@ -62,6 +63,11 @@ interface HotelLocation {
   lng: number;
 }
 
+interface TransitRoute {
+  polyline?: string;
+  durationText?: string;
+}
+
 interface ExperienceMapProps {
   providers: MapProvider[];
   selectedProviderIds?: string[];
@@ -72,6 +78,7 @@ interface ExperienceMapProps {
   height?: string;
   activityLocations?: ActivityLocation[];
   hotelLocation?: HotelLocation;
+  transitRoutes?: Map<string, TransitRoute | null>;
 }
 
 const categoryColors: Record<string, string> = {
@@ -122,7 +129,8 @@ function MapContent({
   onAddToCart,
   onRemoveFromCart,
   activityLocations = [],
-  hotelLocation
+  hotelLocation,
+  transitRoutes
 }: { 
   providers: MapProvider[]; 
   selectedProviderIds?: string[];
@@ -131,6 +139,7 @@ function MapContent({
   onRemoveFromCart?: (providerId: string) => void;
   activityLocations?: ActivityLocation[];
   hotelLocation?: HotelLocation;
+  transitRoutes?: Map<string, TransitRoute | null>;
 }) {
   const [selectedProvider, setSelectedProvider] = useState<MapProvider | null>(null);
   const [hoveredProvider, setHoveredProvider] = useState<string | null>(null);
@@ -299,6 +308,21 @@ function MapContent({
         </InfoWindow>
       )}
 
+      {/* Transit route polylines */}
+      {transitRoutes && activityLocations.map((activity) => {
+        const route = transitRoutes.get(activity.id);
+        if (!route?.polyline) return null;
+        return (
+          <Polyline
+            key={`route-${activity.id}`}
+            encodedPath={route.polyline}
+            strokeColor="#3B82F6"
+            strokeWeight={4}
+            strokeOpacity={0.8}
+          />
+        );
+      })}
+
       {/* Hotel location marker */}
       {hotelLocation && (
         <Marker
@@ -322,7 +346,8 @@ export function ExperienceMap({
   className,
   height = "100%",
   activityLocations = [],
-  hotelLocation
+  hotelLocation,
+  transitRoutes
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -409,6 +434,7 @@ export function ExperienceMap({
             onRemoveFromCart={onRemoveFromCart}
             activityLocations={activityLocations}
             hotelLocation={hotelLocation}
+            transitRoutes={transitRoutes}
           />
         </APIProvider>
       </MapErrorBoundary>
