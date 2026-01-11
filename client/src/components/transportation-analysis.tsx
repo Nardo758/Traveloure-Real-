@@ -80,6 +80,25 @@ interface ClaudeRecommendation {
   reason: string;
 }
 
+interface JourneyLeg {
+  from: string;
+  to: string;
+  legType: 'airport-to-hotel' | 'hotel-to-activity' | 'activity-to-activity' | 'activity-to-hotel' | 'hotel-to-airport';
+  recommendedMode: string;
+  alternativeMode?: string;
+  estimatedTime: number;
+  estimatedCost?: { low: number; high: number; currency: string };
+  reason: string;
+  tips?: string;
+}
+
+interface FullItineraryGraph {
+  journeyLegs: JourneyLeg[];
+  totalEstimatedTransportTime: number;
+  totalEstimatedTransportCost: { low: number; high: number; currency: string };
+  overallRecommendation: string;
+}
+
 interface TransportationAnalysisProps {
   activityLocations: ActivityLocation[];
   hotelLocation?: HotelLocation;
@@ -121,8 +140,9 @@ export function TransportationAnalysis({
   const [expanded, setExpanded] = useState(true);
   const [transitRoutes, setTransitRoutes] = useState<Record<string, TransitRoute | null>>({});
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<"routes" | "ai">("routes");
+  const [activeTab, setActiveTab] = useState<"routes" | "ai" | "journey">("routes");
   const [aiRecommendations, setAiRecommendations] = useState<ClaudeRecommendation[]>([]);
+  const [fullJourneyGraph, setFullJourneyGraph] = useState<FullItineraryGraph | null>(null);
   const [modeFilter, setModeFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"time" | "cost">("time");
 
@@ -222,6 +242,46 @@ export function TransportationAnalysis({
     },
   });
 
+  const fullJourneyMutation = useMutation({
+    mutationFn: async () => {
+      if (!hotelLocation) {
+        return null;
+      }
+      
+      const res = await fetch("/api/claude/full-itinerary-graph", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          flightInfo: flightInfo || {},
+          hotelLocation: {
+            lat: hotelLocation.lat,
+            lng: hotelLocation.lng,
+            address: hotelLocation.name,
+            name: hotelLocation.name,
+          },
+          activityLocations: activityLocations.map(a => ({
+            lat: a.lat,
+            lng: a.lng,
+            address: a.meetingPoint || a.name,
+            name: a.name,
+          })),
+        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to analyze full journey");
+      }
+      
+      return res.json();
+    },
+    onSuccess: (data) => {
+      if (data) {
+        setFullJourneyGraph(data);
+      }
+    },
+  });
+
   useEffect(() => {
     if (hotelLocation && activityLocations.length > 0) {
       transitMutation.mutate();
@@ -232,6 +292,9 @@ export function TransportationAnalysis({
         onTransitRoutesLoaded(new Map());
       }
     }
+    // Clear stale AI data when inputs change
+    setAiRecommendations([]);
+    setFullJourneyGraph(null);
   }, [hotelKey, activityKey]);
 
   const modeIcons: Record<string, any> = {
@@ -330,15 +393,19 @@ export function TransportationAnalysis({
                 <span className="font-medium truncate">{hotelLocation.name}</span>
               </div>
 
-              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "routes" | "ai")} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 h-8">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "routes" | "ai" | "journey")} className="w-full">
+                <TabsList className="grid w-full grid-cols-3 h-8">
                   <TabsTrigger value="routes" className="text-xs gap-1" data-testid="tab-routes">
                     <Route className="h-3 w-3" />
-                    Transit Routes
+                    Routes
                   </TabsTrigger>
                   <TabsTrigger value="ai" className="text-xs gap-1" data-testid="tab-ai-transport">
                     <Sparkles className="h-3 w-3" />
-                    AI Suggestions
+                    AI Tips
+                  </TabsTrigger>
+                  <TabsTrigger value="journey" className="text-xs gap-1" data-testid="tab-full-journey">
+                    <Plane className="h-3 w-3" />
+                    Full Trip
                   </TabsTrigger>
                 </TabsList>
 
@@ -601,6 +668,138 @@ export function TransportationAnalysis({
                   {!hasActivities && (
                     <p className="text-xs text-muted-foreground">
                       Add activities to see transit directions from your hotel.
+                    </p>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="journey" className="mt-2 space-y-3">
+                  {!fullJourneyMutation.isPending && !fullJourneyGraph && (
+                    <Button
+                      onClick={() => fullJourneyMutation.mutate()}
+                      className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 disabled:opacity-50"
+                      size="sm"
+                      disabled={!hasActivities}
+                      data-testid="button-analyze-journey"
+                    >
+                      <Plane className="h-3 w-3 mr-1" />
+                      {hasActivities ? "Analyze Full Trip Transportation" : "Add activities to analyze"}
+                    </Button>
+                  )}
+
+                  {fullJourneyMutation.isPending && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground flex items-center gap-2">
+                        <Plane className="h-3 w-3 animate-pulse" />
+                        Analyzing your complete journey...
+                      </p>
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                    </div>
+                  )}
+
+                  {fullJourneyGraph && (
+                    <>
+                      <div className="bg-gradient-to-r from-blue-100 to-cyan-100 dark:from-blue-900/30 dark:to-cyan-900/30 rounded-md p-3 space-y-2">
+                        <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                          {fullJourneyGraph.overallRecommendation}
+                        </p>
+                        <div className="flex items-center gap-4 text-xs text-blue-700 dark:text-blue-300">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            ~{Math.round(fullJourneyGraph.totalEstimatedTransportTime / 60)}h {fullJourneyGraph.totalEstimatedTransportTime % 60}m total travel
+                          </span>
+                          {fullJourneyGraph.totalEstimatedTransportCost && (
+                            <span className="flex items-center gap-1">
+                              ${fullJourneyGraph.totalEstimatedTransportCost.low}-${fullJourneyGraph.totalEstimatedTransportCost.high}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        {fullJourneyGraph.journeyLegs.map((leg, idx) => {
+                          const ModeIcon = modeIcons[leg.recommendedMode.toLowerCase()] || Car;
+                          const legTypeColors: Record<string, string> = {
+                            'airport-to-hotel': 'bg-blue-500',
+                            'hotel-to-activity': 'bg-green-500',
+                            'activity-to-activity': 'bg-amber-500',
+                            'activity-to-hotel': 'bg-purple-500',
+                            'hotel-to-airport': 'bg-red-500',
+                          };
+                          const legColor = legTypeColors[leg.legType] || 'bg-gray-500';
+
+                          return (
+                            <div 
+                              key={idx}
+                              className="bg-white dark:bg-gray-800 rounded-md border p-3 space-y-2"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${legColor}`} />
+                                  <div className="text-xs">
+                                    <span className="font-medium">{leg.from}</span>
+                                    <ArrowRight className="h-3 w-3 inline mx-1 text-muted-foreground" />
+                                    <span className="font-medium">{leg.to}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <Badge className="gap-1 text-xs bg-blue-600">
+                                    <ModeIcon className="h-3 w-3" />
+                                    {leg.recommendedMode}
+                                  </Badge>
+                                  <Badge variant="secondary" className="gap-1 text-xs">
+                                    <Clock className="h-3 w-3" />
+                                    {leg.estimatedTime} min
+                                  </Badge>
+                                </div>
+                              </div>
+                              
+                              <p className="text-xs text-muted-foreground">
+                                {leg.reason}
+                              </p>
+                              
+                              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                                {leg.estimatedCost && (
+                                  <span>${leg.estimatedCost.low}-${leg.estimatedCost.high}</span>
+                                )}
+                                {leg.alternativeMode && (
+                                  <span>Alt: {leg.alternativeMode}</span>
+                                )}
+                              </div>
+                              
+                              {leg.tips && (
+                                <p className="text-[10px] text-blue-600 dark:text-blue-400 italic">
+                                  Tip: {leg.tips}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {fullJourneyMutation.isError && (
+                    <div className="flex items-start gap-2 text-xs bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-2 rounded-md">
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium">Couldn't analyze full journey</p>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-auto p-0 text-xs text-red-700 underline"
+                          onClick={() => fullJourneyMutation.mutate()}
+                        >
+                          Try again
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!hasActivities && (
+                    <p className="text-xs text-muted-foreground">
+                      Add activities to analyze your full trip transportation.
                     </p>
                   )}
                 </TabsContent>
