@@ -74,6 +74,7 @@ import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
 import ExperienceTemplatePage from "@/pages/experience-template";
+import ExperiencesPage from "@/pages/experiences";
 import DealsPage from "@/pages/deals";
 import PaymentPage from "@/pages/payment";
 import TravelExpertsPage from "@/pages/travel-experts";
@@ -175,6 +176,9 @@ function Router() {
       </Route>
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
+      </Route>
+      <Route path="/experiences">
+        <ExperiencesPage />
       </Route>
       <Route path="/experiences/:slug">
         <ExperienceTemplatePage />
