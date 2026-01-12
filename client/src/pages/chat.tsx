@@ -365,10 +365,10 @@ export default function Chat() {
                       />
                       <Button 
                         type="submit" 
-                        disabled={sendMessage.isPending || !message.trim()}
+                        disabled={sendMessageMutation.isPending || !message.trim()}
                         data-testid="button-send"
                       >
-                        {sendMessage.isPending ? (
+                        {sendMessageMutation.isPending ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
                         ) : (
                           <Send className="w-5 h-5" />

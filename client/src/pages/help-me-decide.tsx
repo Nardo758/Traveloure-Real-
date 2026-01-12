@@ -227,7 +227,7 @@ export default function HelpMeDecidePage() {
 
   const addToCartMutation = useMutation({
     mutationFn: async (serviceId: string) => {
-      return apiRequest("POST", "/api/cart/items", { serviceId, quantity: 1 });
+      return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
     },
     onSuccess: (_, serviceId) => {
       setAddedServices(prev => new Set(prev).add(serviceId));
