@@ -190,7 +190,7 @@ export default function PricingPage() {
                         </li>
                       ))}
                     </ul>
-                    <Link href="/api/login">
+                    <a href="/api/login">
                       <Button 
                         variant={plan.variant} 
                         className="w-full mt-6"
@@ -198,7 +198,7 @@ export default function PricingPage() {
                       >
                         {plan.cta}
                       </Button>
-                    </Link>
+                    </a>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -367,11 +367,11 @@ export default function PricingPage() {
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
               Get 5 free credits when you sign up. No credit card required.
             </p>
-            <Link href="/api/login">
+            <a href="/api/login">
               <Button size="lg" variant="secondary" data-testid="button-get-started-free">
                 Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-            </Link>
+            </a>
           </motion.div>
         </div>
       </section>

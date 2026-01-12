@@ -96,11 +96,11 @@ export default function HowItWorksPage() {
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
               From dream to destination in three simple steps. Our AI-powered platform and expert network make travel planning effortless.
             </p>
-            <Link href="/api/login">
+            <a href="/api/login">
               <Button size="lg" data-testid="button-get-started">
                 Get Started <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-            </Link>
+            </a>
           </motion.div>
         </div>
       </section>
@@ -218,11 +218,11 @@ export default function HowItWorksPage() {
               Join thousands of travelers who have discovered the joy of effortless trip planning.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/api/login">
+              <a href="/api/login">
                 <Button size="lg" variant="secondary" data-testid="button-create-trip-cta">
                   Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
-              </Link>
+              </a>
               <Link href="/explore">
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-browse-experts">
                   Browse Experts

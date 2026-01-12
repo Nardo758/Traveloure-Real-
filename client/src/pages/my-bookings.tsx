@@ -94,9 +94,9 @@ export default function MyBookingsPage() {
           <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">My Bookings</h1>
           <p className="text-muted-foreground mb-6">Please sign in to view your bookings</p>
-          <Button asChild data-testid="button-sign-in">
-            <Link href="/api/login">Sign In</Link>
-          </Button>
+          <a href="/api/login">
+            <Button data-testid="button-sign-in">Sign In</Button>
+          </a>
         </div>
       </Layout>
     );

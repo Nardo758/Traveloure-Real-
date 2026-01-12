@@ -171,7 +171,7 @@ export default function LandingPage() {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="/api/login">
+              <a href="/api/login">
                 <Button 
                   size="sm"
                   variant="outline"
@@ -180,7 +180,7 @@ export default function LandingPage() {
                 >
                   Apply Now <ArrowRight className="w-3 h-3 ml-1" />
                 </Button>
-              </Link>
+              </a>
               <button 
                 onClick={() => setShowBanner(false)}
                 className="text-white/70 hover:text-white"
@@ -484,11 +484,11 @@ export default function LandingPage() {
             Join thousands who've planned with local experts
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/api/login">
+            <a href="/api/login">
               <Button size="lg" className="bg-white text-[#FF385C] hover:bg-white/90 font-semibold px-8 h-12" data-testid="button-cta-get-started">
                 Get Started - Free
               </Button>
-            </Link>
+            </a>
             <Link href="/vendors">
               <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 font-medium px-8 h-12" data-testid="button-cta-browse">
                 Browse Experts

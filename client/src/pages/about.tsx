@@ -98,11 +98,11 @@ export default function AboutPage() {
                 combining the power of AI with the wisdom of local experts.
               </p>
               <div className="flex flex-wrap gap-4">
-                <Link href="/api/login">
+                <a href="/api/login">
                   <Button size="lg" data-testid="button-join-us">
                     Join Our Journey <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
-                </Link>
+                </a>
                 <Link href="/explore">
                   <Button size="lg" variant="outline" data-testid="button-meet-experts">
                     Meet Our Experts
@@ -345,11 +345,11 @@ export default function AboutPage() {
               there's a place for you at Traveloure.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/api/login">
+              <a href="/api/login">
                 <Button size="lg" variant="secondary" data-testid="button-start-planning">
                   Start Planning <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
-              </Link>
+              </a>
               <Link href="/partner">
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-become-expert">
                   Become an Expert
