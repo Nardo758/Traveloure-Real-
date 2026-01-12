@@ -25,15 +25,21 @@ import {
   Bell,
   LogOut,
   Compass,
+  ShoppingCart,
+  Package,
+  Sparkles,
 } from "lucide-react";
 
 const menuItems = [
   { title: "Home", href: "/dashboard", icon: Home },
+  { title: "Plan Experience", href: "/experiences", icon: Sparkles },
   { title: "All Events", href: "/my-trips", icon: Calendar },
+  { title: "My Bookings", href: "/bookings", icon: Package },
+  { title: "Cart", href: "/cart", icon: ShoppingCart },
   { title: "AI Planner", href: "/ai-assistant", icon: Bot },
   { title: "Messages", href: "/chat", icon: MessageSquare },
   { title: "Experts", href: "/explore", icon: Users },
-  { title: "Credits", href: "/credits", icon: CreditCard },
+  { title: "Credits", href: "/credits-billing", icon: CreditCard },
   { title: "Profile", href: "/profile", icon: User },
   { title: "Notifications", href: "/notifications", icon: Bell },
 ];
