@@ -105,6 +105,8 @@ interface TransportationAnalysisProps {
   flightInfo?: { arrivalAirport?: string; departureAirport?: string; arrivalTime?: string; departureTime?: string };
   className?: string;
   onTransitRoutesLoaded?: (routes: Map<string, TransitRoute | null>) => void;
+  initialTransitRoutes?: Map<string, TransitRoute | null>;
+  onActivitySelect?: (activityId: string | null) => void;
 }
 
 const vehicleIcons: Record<string, any> = {
@@ -135,11 +137,23 @@ export function TransportationAnalysis({
   hotelLocation,
   flightInfo,
   className,
-  onTransitRoutesLoaded
+  onTransitRoutesLoaded,
+  initialTransitRoutes,
+  onActivitySelect
 }: TransportationAnalysisProps) {
   const [expanded, setExpanded] = useState(true);
-  const [transitRoutes, setTransitRoutes] = useState<Record<string, TransitRoute | null>>({});
+  const [transitRoutes, setTransitRoutes] = useState<Record<string, TransitRoute | null>>(() => {
+    if (initialTransitRoutes) {
+      const obj: Record<string, TransitRoute | null> = {};
+      initialTransitRoutes.forEach((route, id) => {
+        obj[id] = route;
+      });
+      return obj;
+    }
+    return {};
+  });
   const [expandedRoutes, setExpandedRoutes] = useState<Set<string>>(new Set());
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"routes" | "ai" | "journey">("routes");
   const [aiRecommendations, setAiRecommendations] = useState<ClaudeRecommendation[]>([]);
   const [fullJourneyGraph, setFullJourneyGraph] = useState<FullItineraryGraph | null>(null);
@@ -149,6 +163,30 @@ export function TransportationAnalysis({
   const activityKey = activityLocations.map(a => `${a.id}:${a.lat},${a.lng}`).join("|");
   const hotelKey = hotelLocation ? `${hotelLocation.id}:${hotelLocation.lat},${hotelLocation.lng}` : "";
   const requestKeyRef = useRef<string>("");
+
+  // Sync transitRoutes when initialTransitRoutes changes
+  useEffect(() => {
+    if (initialTransitRoutes) {
+      if (initialTransitRoutes.size > 0) {
+        const obj: Record<string, TransitRoute | null> = {};
+        initialTransitRoutes.forEach((route, id) => {
+          obj[id] = route;
+        });
+        setTransitRoutes(obj);
+      } else {
+        // Clear routes when parent passes empty map
+        setTransitRoutes({});
+      }
+    }
+  }, [initialTransitRoutes]);
+
+  // Clear selection when inputs change
+  useEffect(() => {
+    setSelectedRouteId(null);
+    if (onActivitySelect) {
+      onActivitySelect(null);
+    }
+  }, [hotelKey, activityKey]);
   const currentRequestKey = `${hotelKey}|${activityKey}`;
 
   const transitMutation = useMutation({
@@ -283,9 +321,10 @@ export function TransportationAnalysis({
   });
 
   useEffect(() => {
-    if (hotelLocation && activityLocations.length > 0) {
+    // Only fetch routes if not provided by parent and we have hotel + activities
+    if (hotelLocation && activityLocations.length > 0 && !initialTransitRoutes) {
       transitMutation.mutate();
-    } else {
+    } else if (!hotelLocation || activityLocations.length === 0) {
       requestKeyRef.current = currentRequestKey;
       setTransitRoutes({});
       if (onTransitRoutesLoaded) {
@@ -295,7 +334,7 @@ export function TransportationAnalysis({
     // Clear stale AI data when inputs change
     setAiRecommendations([]);
     setFullJourneyGraph(null);
-  }, [hotelKey, activityKey]);
+  }, [hotelKey, activityKey, initialTransitRoutes]);
 
   const modeIcons: Record<string, any> = {
     taxi: Car,
@@ -557,16 +596,32 @@ export function TransportationAnalysis({
                     <div className="space-y-2">
                       {activityData.map(({ activity, straightDistance, transitRoute }) => {
                         const isExpanded = expandedRoutes.has(activity.id);
+                        const isSelected = selectedRouteId === activity.id;
                         
                         return (
                           <div 
                             key={activity.id}
-                            className="bg-white dark:bg-gray-800 rounded-md border overflow-hidden"
+                            className={cn(
+                              "rounded-md border overflow-hidden transition-all",
+                              isSelected 
+                                ? "bg-[#FF385C]/10 border-[#FF385C] ring-2 ring-[#FF385C]/30" 
+                                : "bg-white dark:bg-gray-800"
+                            )}
                           >
                             <button
-                              onClick={() => transitRoute && toggleRouteExpanded(activity.id)}
+                              onClick={() => {
+                                if (transitRoute) {
+                                  toggleRouteExpanded(activity.id);
+                                  const newSelectedId = isSelected ? null : activity.id;
+                                  setSelectedRouteId(newSelectedId);
+                                  if (onActivitySelect) {
+                                    onActivitySelect(newSelectedId);
+                                  }
+                                }
+                              }}
                               className="w-full flex items-start justify-between gap-2 p-2 text-xs text-left hover:bg-gray-50 dark:hover:bg-gray-750"
                               disabled={!transitRoute}
+                              data-testid={`button-route-${activity.id}`}
                             >
                               <div className="flex items-start gap-2 flex-1 min-w-0">
                                 <Palmtree className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />

@@ -1123,7 +1123,59 @@ export default function ExperienceTemplatePage() {
     return undefined;
   }, [cart]);
 
-  const [transitRoutes, setTransitRoutes] = useState<Map<string, { polyline?: string; durationText?: string } | null>>(new Map());
+  const [transitRoutes, setTransitRoutes] = useState<Map<string, any>>(new Map());
+  const [highlightedActivityId, setHighlightedActivityId] = useState<string | null>(null);
+
+  // Auto-fetch transit routes when hotel and activities are available
+  useEffect(() => {
+    if (!hotelLocation || activityLocations.length === 0) {
+      setTransitRoutes(new Map());
+      return;
+    }
+    
+    const fetchTransitRoutes = async () => {
+      try {
+        const res = await fetch("/api/routes/transit-multi", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            origin: {
+              lat: hotelLocation.lat,
+              lng: hotelLocation.lng,
+              name: hotelLocation.name,
+            },
+            destinations: activityLocations.map(a => ({
+              id: a.id,
+              lat: a.lat,
+              lng: a.lng,
+              name: a.name,
+            })),
+          }),
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.routes) {
+            const routeMap = new Map<string, any>();
+            Object.entries(data.routes).forEach(([id, route]) => {
+              routeMap.set(id, route);
+            });
+            setTransitRoutes(routeMap);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch transit routes:", error);
+      }
+    };
+    
+    fetchTransitRoutes();
+  }, [
+    hotelLocation?.id, 
+    hotelLocation?.lat, 
+    hotelLocation?.lng,
+    JSON.stringify(activityLocations.map(a => ({ id: a.id, lat: a.lat, lng: a.lng })))
+  ]);
 
   if (typeLoading) {
     return (
@@ -1960,6 +2012,22 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+              
+              {/* Transportation Analysis - Google Transit Routes & AI Tips */}
+              {(activityLocations.length > 0 || hotelLocation) && (
+                <div className="mt-6 border-t pt-6">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <Car className="h-5 w-5 text-[#FF385C]" />
+                    Getting Around
+                  </h3>
+                  <TransportationAnalysis
+                    activityLocations={activityLocations}
+                    hotelLocation={hotelLocation}
+                    initialTransitRoutes={transitRoutes}
+                    onActivitySelect={setHighlightedActivityId}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -2211,18 +2279,9 @@ export default function ExperienceTemplatePage() {
                   activityLocations={activityLocations}
                   hotelLocation={hotelLocation}
                   transitRoutes={transitRoutes}
+                  highlightedActivityId={highlightedActivityId}
                 />
               </div>
-              
-              {(activityLocations.length > 0 || hotelLocation) && (
-                <div className="shrink-0 p-3 border-t bg-background overflow-y-auto max-h-[200px]">
-                  <TransportationAnalysis
-                    activityLocations={activityLocations}
-                    hotelLocation={hotelLocation}
-                    onTransitRoutesLoaded={setTransitRoutes}
-                  />
-                </div>
-              )}
             </div>
           </Panel>
         </PanelGroup>

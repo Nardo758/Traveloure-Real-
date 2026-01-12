@@ -79,6 +79,7 @@ interface ExperienceMapProps {
   activityLocations?: ActivityLocation[];
   hotelLocation?: HotelLocation;
   transitRoutes?: Map<string, TransitRoute | null>;
+  highlightedActivityId?: string | null;
 }
 
 const categoryColors: Record<string, string> = {
@@ -130,7 +131,8 @@ function MapContent({
   onRemoveFromCart,
   activityLocations = [],
   hotelLocation,
-  transitRoutes
+  transitRoutes,
+  highlightedActivityId
 }: { 
   providers: MapProvider[]; 
   selectedProviderIds?: string[];
@@ -140,6 +142,7 @@ function MapContent({
   activityLocations?: ActivityLocation[];
   hotelLocation?: HotelLocation;
   transitRoutes?: Map<string, TransitRoute | null>;
+  highlightedActivityId?: string | null;
 }) {
   const [selectedProvider, setSelectedProvider] = useState<MapProvider | null>(null);
   const [hoveredProvider, setHoveredProvider] = useState<string | null>(null);
@@ -312,13 +315,14 @@ function MapContent({
       {transitRoutes && activityLocations.map((activity) => {
         const route = transitRoutes.get(activity.id);
         if (!route?.polyline) return null;
+        const isHighlighted = highlightedActivityId === activity.id;
         return (
           <Polyline
             key={`route-${activity.id}`}
             encodedPath={route.polyline}
-            strokeColor="#3B82F6"
-            strokeWeight={4}
-            strokeOpacity={0.8}
+            strokeColor={isHighlighted ? "#FF385C" : "#3B82F6"}
+            strokeWeight={isHighlighted ? 6 : 4}
+            strokeOpacity={isHighlighted ? 1 : 0.5}
           />
         );
       })}
@@ -347,7 +351,8 @@ export function ExperienceMap({
   height = "100%",
   activityLocations = [],
   hotelLocation,
-  transitRoutes
+  transitRoutes,
+  highlightedActivityId
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -435,6 +440,7 @@ export function ExperienceMap({
             activityLocations={activityLocations}
             hotelLocation={hotelLocation}
             transitRoutes={transitRoutes}
+            highlightedActivityId={highlightedActivityId}
           />
         </APIProvider>
       </MapErrorBoundary>
