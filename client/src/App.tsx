@@ -183,6 +183,9 @@ function Router() {
       <Route path="/experiences/:slug">
         <ExperienceTemplatePage />
       </Route>
+      <Route path="/experiences/:slug/new">
+        <ExperienceTemplatePage />
+      </Route>
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
       </Route>
