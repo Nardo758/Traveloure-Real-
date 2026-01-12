@@ -334,9 +334,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Button>
                   </div>
                 ) : (
-                  <Link href="/api/login" onClick={() => setIsMobileMenuOpen(false)}>
+                  <a href="/api/login" onClick={() => setIsMobileMenuOpen(false)}>
                     <Button className="w-full" data-testid="button-mobile-sign-in">Sign In</Button>
-                  </Link>
+                  </a>
                 )}
               </div>
             </motion.div>

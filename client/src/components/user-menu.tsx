@@ -23,16 +23,16 @@ export function UserMenu() {
   if (!user) {
     return (
       <div className="flex items-center gap-3">
-        <Link href="/api/login">
+        <a href="/api/login">
           <Button variant="outline" className="rounded-full px-4" data-testid="button-login">
             Login
           </Button>
-        </Link>
-        <Link href="/api/login">
+        </a>
+        <a href="/api/login">
           <Button className="bg-primary hover:bg-primary/90 text-white rounded-full px-4" data-testid="button-sign-up">
             Sign Up
           </Button>
-        </Link>
+        </a>
       </div>
     );
   }
