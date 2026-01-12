@@ -28,7 +28,7 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - **Experience Planning System**: Template-based planning for 8 experience types (e.g., Travel, Wedding, Corporate) featuring:
     - Category-specific provider browsing with filtering (category, search, price, rating).
     - Interactive Map View with Google Maps integration.
-    - AI Optimization tab for itinerary analysis, efficiency scoring, and recommendations using OpenAI and Anthropic Claude.
+    - AI Optimization tab for itinerary analysis, efficiency scoring, and recommendations using Anthropic Claude.
     - Expert assistance touchpoints throughout the planning flow.
 - **Reviews & Notifications**: System for user reviews and timely updates.
 - **Role-Based Dashboards**: Comprehensive dashboards for Service Providers, Administrators, and Executive Assistants to manage services, bookings, users, and analytics.
@@ -47,8 +47,7 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 ### Third-Party Services
 - **Replit Auth**: OpenID Connect for user authentication.
 - **PostgreSQL**: Primary database.
-- **OpenAI**: For AI-powered chat and itinerary comparison (gpt-4o).
-- **Anthropic Claude**: For advanced itinerary optimization, transportation analysis, and travel recommendations (claude-sonnet-4-20250514).
+- **Anthropic Claude**: The sole AI provider for all AI-powered features including chat, itinerary optimization, transportation analysis, and travel recommendations (claude-sonnet-4-20250514).
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search.
 - **Viator Partner API**: Real-time tours and activities search.
@@ -61,8 +60,7 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - `express-session` / `connect-pg-simple`: Session management.
 - `framer-motion`: Animations.
 - `@vis.gl/react-google-maps`: Google Maps React components.
-- `openai`: OpenAI SDK.
-- `@anthropic-ai/sdk`: Anthropic SDK.
+- `@anthropic-ai/sdk`: Anthropic SDK (sole AI provider).
 - `amadeus`: Amadeus Node.js SDK.
 
 ### Environment Variables

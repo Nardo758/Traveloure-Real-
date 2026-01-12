@@ -18,16 +18,15 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
 import { claudeService } from "./services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export async function registerRoutes(
@@ -217,17 +216,16 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
   ]
 }`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        system: "You are a professional travel planning assistant. Always respond with valid JSON.",
         messages: [
-          { role: "system", content: "You are a professional travel planning assistant. Always respond with valid JSON." },
           { role: "user", content: prompt }
         ],
-        response_format: { type: "json_object" },
-        max_tokens: 4000,
       });
 
-      const blueprintContent = completion.choices[0]?.message?.content;
+      const blueprintContent = completion.content[0]?.type === "text" ? completion.content[0].text : null;
       const blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
 
       const [blueprint] = await db.insert(aiBlueprints).values({
@@ -255,16 +253,32 @@ You help users plan trips, answer questions about destinations, provide recommen
 ${tripContext ? `Current trip context: ${JSON.stringify(tripContext)}` : ''}
 Be friendly, helpful, and provide specific actionable advice. If recommending specific places, provide names and brief descriptions.`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages
-        ],
+      // Transform messages to ensure proper Anthropic format with alternation
+      const anthropicMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+      for (const m of messages || []) {
+        const role = m.role as "user" | "assistant";
+        const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+        const lastRole = anthropicMessages.length > 0 ? anthropicMessages[anthropicMessages.length - 1].role : null;
+        if (lastRole === role) {
+          anthropicMessages[anthropicMessages.length - 1].content += "\n" + content;
+        } else {
+          anthropicMessages.push({ role, content });
+        }
+      }
+      
+      // Ensure first message is from user
+      if (anthropicMessages.length === 0 || anthropicMessages[0].role !== "user") {
+        anthropicMessages.unshift({ role: "user", content: "Hello, I need help with travel planning." });
+      }
+
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
         max_tokens: 1500,
+        system: systemPrompt,
+        messages: anthropicMessages,
       });
 
-      const response = completion.choices[0]?.message?.content || "I'm sorry, I couldn't process your request.";
+      const response = completion.content[0]?.type === "text" ? completion.content[0].text : "I'm sorry, I couldn't process your request.";
       res.json({ response });
     } catch (error) {
       console.error("Error in AI chat:", error);
@@ -321,17 +335,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   "warnings": ["Any concerns or warnings about the plan"]
 }`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        system: systemPrompt,
         messages: [
-          { role: "system", content: systemPrompt },
           { role: "user", content: `Please analyze and optimize my ${experienceType} experience plan.` }
         ],
-        response_format: { type: "json_object" },
-        max_tokens: 2000,
       });
 
-      const responseText = completion.choices[0]?.message?.content || "{}";
+      const responseText = completion.content[0]?.type === "text" ? completion.content[0].text : "{}";
       const optimization = JSON.parse(responseText);
       
       res.json(optimization);
@@ -1217,7 +1230,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.post("/api/discover/recommendations", async (req, res) => {
     try {
       // Validate API key is configured
-      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY || !process.env.AI_INTEGRATIONS_OPENAI_BASE_URL) {
+      if (!process.env.ANTHROPIC_API_KEY) {
         return res.status(503).json({ message: "AI service not configured" });
       }
 
@@ -1288,17 +1301,16 @@ Please provide recommendations in this JSON format:
 
 Provide 2-4 category recommendations and up to 5 specific service recommendations if relevant services are available.`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1024,
+        system: "You are a helpful travel planning assistant. Always respond with valid JSON.",
         messages: [
-          { role: "system", content: "You are a helpful travel planning assistant. Always respond with valid JSON." },
           { role: "user", content: prompt }
         ],
-        response_format: { type: "json_object" },
-        max_completion_tokens: 1024,
       });
 
-      const responseText = completion.choices[0]?.message?.content || "{}";
+      const responseText = completion.content[0]?.type === "text" ? completion.content[0].text : "{}";
       const recommendations = JSON.parse(responseText);
       
       // Enrich recommendations with full service data

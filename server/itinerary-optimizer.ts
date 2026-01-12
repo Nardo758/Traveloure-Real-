@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import {
   itineraryComparisons,
@@ -15,9 +15,8 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 interface ItineraryItem {
@@ -192,20 +191,16 @@ Respond with valid JSON in this exact format:
   ]
 }`;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4096,
+      system: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON.",
       messages: [
-        {
-          role: "system",
-          content: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON.",
-        },
         { role: "user", content: prompt },
       ],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 4096,
     });
 
-    const content = response.choices[0]?.message?.content;
+    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
     if (!content) {
       throw new Error("No response from AI");
     }
