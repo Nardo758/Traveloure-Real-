@@ -1,10 +1,9 @@
 import type { Express, Request, Response } from "express";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { chatStorage } from "./storage";
 
-const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 export function registerChatRoutes(app: Express): void {
@@ -70,31 +69,48 @@ export function registerChatRoutes(app: Express): void {
 
       // Get conversation history for context
       const messages = await chatStorage.getMessagesByConversation(conversationId);
-      const chatMessages = messages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
+      
+      // Transform messages to Anthropic format with proper alternation
+      const chatMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+      for (const m of messages) {
+        // Ensure alternating pattern by checking last message role
+        const lastRole = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1].role : null;
+        if (lastRole === m.role) {
+          // Merge consecutive messages of same role
+          chatMessages[chatMessages.length - 1].content += "\n" + m.content;
+        } else {
+          chatMessages.push({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          });
+        }
+      }
+      
+      // Ensure first message is from user (Anthropic requirement)
+      if (chatMessages.length > 0 && chatMessages[0].role !== "user") {
+        chatMessages.unshift({ role: "user", content: "Hello" });
+      }
 
       // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Stream response from OpenAI
-      const stream = await openai.chat.completions.create({
-        model: "gpt-5.1",
+      // Stream response from Claude
+      let fullResponse = "";
+      
+      const stream = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
         messages: chatMessages,
         stream: true,
-        max_completion_tokens: 2048,
       });
 
-      let fullResponse = "";
-
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        if (content) {
-          fullResponse += content;
-          res.write(`data: ${JSON.stringify({ content })}\n\n`);
+      for await (const event of stream) {
+        if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+          const text = event.delta.text;
+          fullResponse += text;
+          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
         }
       }
 

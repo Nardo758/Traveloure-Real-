@@ -31,7 +31,7 @@ const systemStatus = [
 ];
 
 const apiUsage = {
-  openai: { used: 850000, limit: 1000000, cost: "$425" },
+  claude: { used: 850000, limit: 1000000, cost: "$425" },
   stripe: { transactions: 1247, volume: "$125,600" },
   email: { sent: 15420, bounceRate: "0.8%" },
 };
@@ -157,19 +157,19 @@ export default function AdminSystem() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="p-3 bg-gray-50 rounded-lg" data-testid="card-openai-usage">
+              <div className="p-3 bg-gray-50 rounded-lg" data-testid="card-claude-usage">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="font-medium">OpenAI API</p>
-                  <span className="text-sm text-gray-500">{apiUsage.openai.cost} this month</span>
+                  <p className="font-medium">Claude API</p>
+                  <span className="text-sm text-gray-500">{apiUsage.claude.cost} this month</span>
                 </div>
                 <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-purple-500 rounded-full"
-                    style={{ width: `${(apiUsage.openai.used / apiUsage.openai.limit) * 100}%` }}
+                    style={{ width: `${(apiUsage.claude.used / apiUsage.claude.limit) * 100}%` }}
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  {apiUsage.openai.used.toLocaleString()} / {apiUsage.openai.limit.toLocaleString()} tokens
+                  {apiUsage.claude.used.toLocaleString()} / {apiUsage.claude.limit.toLocaleString()} tokens
                 </p>
               </div>
 

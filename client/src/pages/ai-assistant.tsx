@@ -405,7 +405,7 @@ export default function AIAssistant() {
                   </Button>
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mt-2 text-center">
-                  AI assistant powered by OpenAI. Responses are for planning purposes only.
+                  AI assistant powered by Claude. Responses are for planning purposes only.
                 </p>
               </div>
             </CardContent>
