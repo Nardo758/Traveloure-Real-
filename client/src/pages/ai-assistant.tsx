@@ -129,7 +129,12 @@ export default function AIAssistant() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: userMessage }),
+        credentials: "include",
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
