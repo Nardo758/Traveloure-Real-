@@ -305,13 +305,13 @@ export default function ExpertsPage() {
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div className="flex flex-wrap gap-3">
-              <Select value={selectedExperienceType} onValueChange={setSelectedExperienceType}>
+              <Select value={selectedExperienceType || "all"} onValueChange={(val) => setSelectedExperienceType(val === "all" ? "" : val)}>
                 <SelectTrigger className="w-48 border-[#E5E7EB] bg-white" data-testid="select-experience-type">
                   <Calendar className="w-4 h-4 mr-2 text-gray-400" />
                   <SelectValue placeholder="Experience Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Experience Types</SelectItem>
+                  <SelectItem value="all">All Experience Types</SelectItem>
                   {experienceTypes.map((exp: any) => (
                     <SelectItem key={exp.id} value={exp.id}>
                       {exp.name}
