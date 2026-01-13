@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { expertServiceCategories, expertServiceOfferings, expertCustomServices, users } from "@shared/schema";
+import { expertServiceCategories, expertServiceOfferings, expertCustomServices, users, localExpertForms } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const expertServiceData = [
@@ -253,77 +253,137 @@ export async function seedCustomServices() {
   console.log("Mock custom services seeding complete.");
 }
 
-// Mock experts data for testing
+// Mock experts data for testing with rich profile information
 const mockExperts = [
   {
     firstName: "Maria",
     lastName: "Santos",
     email: "maria.santos@example.com",
     bio: "Local expert specializing in authentic Portuguese experiences. 10+ years guiding travelers through hidden gems of Lisbon and the Algarve coast.",
-    specialties: ["Cultural Tours", "Food & Wine", "Historical Sites", "Local Cuisine"]
+    specialties: ["Cultural Tours", "Food & Wine", "Historical Sites", "Local Cuisine"],
+    city: "Lisbon",
+    country: "Portugal",
+    languages: ["English", "Portuguese", "Spanish"],
+    responseTime: "< 1 hour",
+    destinations: ["Lisbon", "Porto", "Algarve"],
+    yearsOfExperience: "10+ years"
   },
   {
     firstName: "Kenji",
     lastName: "Tanaka",
     email: "kenji.tanaka@example.com",
     bio: "Tokyo-based travel specialist with expertise in traditional Japanese culture, tea ceremonies, and off-the-beaten-path destinations across Japan.",
-    specialties: ["Cultural Immersion", "Traditional Experiences", "Photography Tours", "Nature Exploration"]
+    specialties: ["Cultural Immersion", "Traditional Experiences", "Photography Tours", "Nature Exploration"],
+    city: "Tokyo",
+    country: "Japan",
+    languages: ["English", "Japanese"],
+    responseTime: "< 2 hours",
+    destinations: ["Tokyo", "Kyoto", "Osaka"],
+    yearsOfExperience: "8 years"
   },
   {
     firstName: "Isabella",
     lastName: "Rossi",
     email: "isabella.rossi@example.com",
     bio: "Italian travel curator crafting bespoke experiences in Tuscany, Rome, and the Amalfi Coast. Fluent in 4 languages with connections to local artisans.",
-    specialties: ["Luxury Travel", "Honeymoons", "Food & Wine", "Art & History"]
+    specialties: ["Luxury Travel", "Honeymoons", "Food & Wine", "Art & History"],
+    city: "Rome",
+    country: "Italy",
+    languages: ["English", "Italian", "French", "Spanish"],
+    responseTime: "< 1 hour",
+    destinations: ["Rome", "Tuscany", "Amalfi Coast"],
+    yearsOfExperience: "12 years"
   },
   {
     firstName: "Carlos",
     lastName: "Mendez",
     email: "carlos.mendez@example.com",
     bio: "Adventure travel expert based in Costa Rica. Certified guide for rainforest expeditions, wildlife photography, and sustainable eco-tourism.",
-    specialties: ["Adventure Travel", "Wildlife Tours", "Eco-Tourism", "Nature Photography"]
+    specialties: ["Adventure Travel", "Wildlife Tours", "Eco-Tourism", "Nature Photography"],
+    city: "San Jose",
+    country: "Costa Rica",
+    languages: ["English", "Spanish"],
+    responseTime: "< 3 hours",
+    destinations: ["Costa Rica", "Panama", "Nicaragua"],
+    yearsOfExperience: "7 years"
   },
   {
     firstName: "Sophie",
     lastName: "Laurent",
     email: "sophie.laurent@example.com",
     bio: "Paris-based luxury travel consultant specializing in romantic getaways, proposal planning, and exclusive cultural experiences across France.",
-    specialties: ["Romance & Proposals", "Luxury Experiences", "Art Tours", "Fine Dining"]
+    specialties: ["Romance & Proposals", "Luxury Experiences", "Art Tours", "Fine Dining"],
+    city: "Paris",
+    country: "France",
+    languages: ["English", "French", "German"],
+    responseTime: "< 1 hour",
+    destinations: ["Paris", "French Riviera", "Provence"],
+    yearsOfExperience: "15 years"
   },
   {
     firstName: "Ahmed",
     lastName: "Hassan",
     email: "ahmed.hassan@example.com",
     bio: "Expert guide for Morocco and Egypt with deep knowledge of ancient history, local markets, and desert adventures. Over 15 years of experience.",
-    specialties: ["Historical Tours", "Desert Adventures", "Local Markets", "Cultural Immersion"]
+    specialties: ["Historical Tours", "Desert Adventures", "Local Markets", "Cultural Immersion"],
+    city: "Marrakech",
+    country: "Morocco",
+    languages: ["English", "Arabic", "French"],
+    responseTime: "< 2 hours",
+    destinations: ["Marrakech", "Cairo", "Fez"],
+    yearsOfExperience: "15 years"
   },
   {
     firstName: "Emma",
     lastName: "Thompson",
     email: "emma.thompson@example.com",
     bio: "UK-based travel planner specializing in family vacations, group travel coordination, and accessible tourism across Europe.",
-    specialties: ["Family Travel", "Group Coordination", "Accessible Tourism", "Budget Planning"]
+    specialties: ["Family Travel", "Group Coordination", "Accessible Tourism", "Budget Planning"],
+    city: "London",
+    country: "United Kingdom",
+    languages: ["English"],
+    responseTime: "< 1 hour",
+    destinations: ["London", "Edinburgh", "Dublin"],
+    yearsOfExperience: "9 years"
   },
   {
     firstName: "Raj",
     lastName: "Patel",
     email: "raj.patel@example.com",
     bio: "India travel specialist with expertise in wellness retreats, spiritual journeys, and culinary adventures across the subcontinent.",
-    specialties: ["Wellness Retreats", "Spiritual Tours", "Culinary Experiences", "Festival Planning"]
+    specialties: ["Wellness Retreats", "Spiritual Tours", "Culinary Experiences", "Festival Planning"],
+    city: "Mumbai",
+    country: "India",
+    languages: ["English", "Hindi", "Marathi"],
+    responseTime: "< 2 hours",
+    destinations: ["Mumbai", "Goa", "Rajasthan"],
+    yearsOfExperience: "11 years"
   },
   {
     firstName: "Elena",
     lastName: "Volkov",
     email: "elena.volkov@example.com",
     bio: "Adventure photographer and travel guide covering Eastern Europe and the Balkans. Expert in solo travel safety and content creation.",
-    specialties: ["Solo Travel", "Photography", "Content Creation", "Off-Season Travel"]
+    specialties: ["Solo Travel", "Photography", "Content Creation", "Off-Season Travel"],
+    city: "Prague",
+    country: "Czech Republic",
+    languages: ["English", "Czech", "Russian"],
+    responseTime: "< 3 hours",
+    destinations: ["Prague", "Budapest", "Krakow"],
+    yearsOfExperience: "6 years"
   },
   {
     firstName: "Marcus",
     lastName: "Chen",
     email: "marcus.chen@example.com",
     bio: "Corporate travel specialist and event planner. Expert in organizing retreats, team-building trips, and executive travel across Asia-Pacific.",
-    specialties: ["Corporate Events", "Team Retreats", "Executive Travel", "Event Planning"]
+    specialties: ["Corporate Events", "Team Retreats", "Executive Travel", "Event Planning"],
+    city: "Singapore",
+    country: "Singapore",
+    languages: ["English", "Mandarin", "Cantonese"],
+    responseTime: "< 1 hour",
+    destinations: ["Singapore", "Hong Kong", "Bangkok"],
+    yearsOfExperience: "10 years"
   }
 ];
 
@@ -342,18 +402,58 @@ export async function seedMockExperts() {
       .limit(1);
 
     if (existingExpert.length > 0) {
+      // Check if expert form exists, create if not
+      const existingForm = await db
+        .select()
+        .from(localExpertForms)
+        .where(eq(localExpertForms.userId, existingExpert[0].id))
+        .limit(1);
+      
+      if (existingForm.length === 0) {
+        await db.insert(localExpertForms).values({
+          userId: existingExpert[0].id,
+          firstName: expert.firstName,
+          lastName: expert.lastName,
+          email: expert.email,
+          city: expert.city,
+          country: expert.country,
+          destinations: expert.destinations,
+          languages: expert.languages,
+          responseTime: expert.responseTime,
+          yearsOfExperience: expert.yearsOfExperience,
+          bio: expert.bio,
+          status: "approved",
+        });
+        console.log(`  → Created expert form for: ${expert.firstName} ${expert.lastName}`);
+      }
       existed++;
       continue;
     }
 
     // Create new expert user
-    await db.insert(users).values({
+    const [newUser] = await db.insert(users).values({
       email: expert.email,
       firstName: expert.firstName,
       lastName: expert.lastName,
       role: "expert",
       bio: expert.bio,
       specialties: expert.specialties,
+    }).returning();
+    
+    // Create local expert form with rich profile data
+    await db.insert(localExpertForms).values({
+      userId: newUser.id,
+      firstName: expert.firstName,
+      lastName: expert.lastName,
+      email: expert.email,
+      city: expert.city,
+      country: expert.country,
+      destinations: expert.destinations,
+      languages: expert.languages,
+      responseTime: expert.responseTime,
+      yearsOfExperience: expert.yearsOfExperience,
+      bio: expert.bio,
+      status: "approved",
     });
     
     console.log(`  → Created expert: ${expert.firstName} ${expert.lastName}`);
