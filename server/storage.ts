@@ -8,6 +8,7 @@ import {
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
   userExperiences, userExperienceItems, users, customVenues,
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
+  expertServiceCategories, expertServiceOfferings, expertSelectedServices, expertSpecializations,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -197,6 +198,21 @@ export interface IStorage {
   getExpertsByExperienceType(experienceTypeId: string): Promise<any[]>;
   addExpertExperienceType(data: InsertExpertExperienceType): Promise<ExpertExperienceType>;
   removeExpertExperienceType(id: string): Promise<void>;
+
+  // Expert Service Categories & Offerings
+  getExpertServiceCategories(): Promise<any[]>;
+  getExpertServiceOfferings(categoryId?: string): Promise<any[]>;
+  getExpertSelectedServices(expertId: string): Promise<any[]>;
+  addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any>;
+  removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void>;
+  
+  // Expert Specializations
+  getExpertSpecializations(expertId: string): Promise<any[]>;
+  addExpertSpecialization(expertId: string, specialization: string): Promise<any>;
+  removeExpertSpecialization(expertId: string, specialization: string): Promise<void>;
+  
+  // Get experts with full profile (experience types, services, specializations)
+  getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]>;
 
   // Custom Venues
   getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
@@ -1270,6 +1286,122 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCoordinationBooking(id: string): Promise<void> {
     await db.delete(coordinationBookings).where(eq(coordinationBookings.id, id));
+  }
+
+  // Expert Service Categories & Offerings
+  async getExpertServiceCategories(): Promise<any[]> {
+    return await db.select().from(expertServiceCategories).orderBy(expertServiceCategories.sortOrder);
+  }
+
+  async getExpertServiceOfferings(categoryId?: string): Promise<any[]> {
+    if (categoryId) {
+      return await db.select().from(expertServiceOfferings)
+        .where(eq(expertServiceOfferings.categoryId, categoryId))
+        .orderBy(expertServiceOfferings.sortOrder);
+    }
+    return await db.select().from(expertServiceOfferings).orderBy(expertServiceOfferings.sortOrder);
+  }
+
+  async getExpertSelectedServices(expertId: string): Promise<any[]> {
+    return await db.select({
+      id: expertSelectedServices.id,
+      expertId: expertSelectedServices.expertId,
+      serviceOfferingId: expertSelectedServices.serviceOfferingId,
+      customPrice: expertSelectedServices.customPrice,
+      isActive: expertSelectedServices.isActive,
+      offering: expertServiceOfferings,
+      category: expertServiceCategories
+    })
+    .from(expertSelectedServices)
+    .leftJoin(expertServiceOfferings, eq(expertSelectedServices.serviceOfferingId, expertServiceOfferings.id))
+    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
+    .where(eq(expertSelectedServices.expertId, expertId));
+  }
+
+  async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
+    const [created] = await db.insert(expertSelectedServices).values({
+      expertId,
+      serviceOfferingId,
+      customPrice: customPrice || null,
+      isActive: true
+    }).returning();
+    return created;
+  }
+
+  async removeExpertSelectedService(expertId: string, serviceOfferingId: string): Promise<void> {
+    await db.delete(expertSelectedServices)
+      .where(and(
+        eq(expertSelectedServices.expertId, expertId),
+        eq(expertSelectedServices.serviceOfferingId, serviceOfferingId)
+      ));
+  }
+
+  // Expert Specializations
+  async getExpertSpecializations(expertId: string): Promise<any[]> {
+    return await db.select().from(expertSpecializations)
+      .where(eq(expertSpecializations.expertId, expertId));
+  }
+
+  async addExpertSpecialization(expertId: string, specialization: string): Promise<any> {
+    const [created] = await db.insert(expertSpecializations).values({
+      expertId,
+      specialization
+    }).returning();
+    return created;
+  }
+
+  async removeExpertSpecialization(expertId: string, specialization: string): Promise<void> {
+    await db.delete(expertSpecializations)
+      .where(and(
+        eq(expertSpecializations.expertId, expertId),
+        eq(expertSpecializations.specialization, specialization)
+      ));
+  }
+
+  // Get experts with full profile (experience types, services, specializations)
+  async getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]> {
+    // Get all users with expert role
+    const experts = await db.select().from(users).where(eq(users.role, "expert"));
+    
+    const expertsWithProfiles = await Promise.all(experts.map(async (expert) => {
+      // Get expert's experience types
+      const expTypes = await db.select({
+        id: expertExperienceTypes.id,
+        experienceTypeId: expertExperienceTypes.experienceTypeId,
+        proficiencyLevel: expertExperienceTypes.proficiencyLevel,
+        yearsExperience: expertExperienceTypes.yearsExperience,
+        experienceType: experienceTypes
+      })
+      .from(expertExperienceTypes)
+      .leftJoin(experienceTypes, eq(expertExperienceTypes.experienceTypeId, experienceTypes.id))
+      .where(eq(expertExperienceTypes.expertId, expert.id));
+
+      // Get expert's services
+      const services = await this.getExpertSelectedServices(expert.id);
+
+      // Get expert's specializations
+      const specializations = await this.getExpertSpecializations(expert.id);
+
+      // Get expert's local expert form for additional info
+      const form = await this.getLocalExpertForm(expert.id);
+
+      return {
+        ...expert,
+        experienceTypes: expTypes,
+        selectedServices: services,
+        specializations: specializations.map(s => s.specialization),
+        expertForm: form
+      };
+    }));
+
+    // Filter by experience type if provided
+    if (experienceTypeId) {
+      return expertsWithProfiles.filter(expert => 
+        expert.experienceTypes.some((et: any) => et.experienceTypeId === experienceTypeId)
+      );
+    }
+
+    return expertsWithProfiles;
   }
 }
 

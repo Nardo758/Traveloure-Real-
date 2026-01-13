@@ -27,8 +27,11 @@ import {
   Calendar,
   Users,
   Verified,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { ExpertCard } from "@/components/expert-card";
 
 const destinations = [
   "All Destinations",
@@ -173,47 +176,63 @@ export default function ExpertsPage() {
   const [selectedDestination, setSelectedDestination] = useState("All Destinations");
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
   const [selectedLanguage, setSelectedLanguage] = useState("All Languages");
+  const [selectedExperienceType, setSelectedExperienceType] = useState("");
   const [sortBy, setSortBy] = useState("recommended");
-  const [favorites, setFavorites] = useState<number[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
 
-  const toggleFavorite = (id: number) => {
+  // Fetch experience types for filtering
+  const { data: experienceTypes = [] } = useQuery<any[]>({
+    queryKey: ["/api/experience-types"],
+  });
+
+  // Fetch experts from API with optional experience type filter
+  const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
+    queryKey: ["/api/experts", selectedExperienceType],
+    queryFn: async () => {
+      const url = selectedExperienceType 
+        ? `/api/experts?experienceTypeId=${selectedExperienceType}`
+        : "/api/experts";
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed to fetch experts");
+      return res.json();
+    },
+  });
+
+  const toggleFavorite = (id: string) => {
     setFavorites((prev) =>
       prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
     );
   };
 
-  const filteredExperts = mockExperts.filter((expert) => {
+  // Filter experts by search and other criteria
+  const filteredExperts = apiExperts.filter((expert: any) => {
+    const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
     const matchesSearch =
       searchQuery === "" ||
-      expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      expert.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      expert.specialty.toLowerCase().includes(searchQuery.toLowerCase());
+      fullName.includes(searchQuery.toLowerCase()) ||
+      expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesDestination =
       selectedDestination === "All Destinations" ||
-      expert.location === selectedDestination;
-
-    const matchesSpecialty =
-      selectedSpecialty === "All Specialties" ||
-      expert.specialty === selectedSpecialty;
+      expert.expertForm?.destinations?.includes(selectedDestination);
 
     const matchesLanguage =
       selectedLanguage === "All Languages" ||
-      expert.languages.includes(selectedLanguage);
+      expert.expertForm?.languages?.includes(selectedLanguage);
 
-    return matchesSearch && matchesDestination && matchesSpecialty && matchesLanguage;
+    return matchesSearch && matchesDestination && matchesLanguage;
   });
 
-  const sortedExperts = [...filteredExperts].sort((a, b) => {
+  const sortedExperts = [...filteredExperts].sort((a: any, b: any) => {
     switch (sortBy) {
-      case "rating":
-        return b.rating - a.rating;
-      case "reviews":
-        return b.reviews - a.reviews;
       case "price-low":
-        return a.startingPrice - b.startingPrice;
+        const aPrice = a.selectedServices?.[0]?.offering?.price || 0;
+        const bPrice = b.selectedServices?.[0]?.offering?.price || 0;
+        return parseFloat(aPrice) - parseFloat(bPrice);
       case "price-high":
-        return b.startingPrice - a.startingPrice;
+        const aPriceHigh = a.selectedServices?.[0]?.offering?.price || 0;
+        const bPriceHigh = b.selectedServices?.[0]?.offering?.price || 0;
+        return parseFloat(bPriceHigh) - parseFloat(aPriceHigh);
       default:
         return b.superExpert ? 1 : -1;
     }
@@ -286,14 +305,16 @@ export default function ExpertsPage() {
           {/* Filter Bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
             <div className="flex flex-wrap gap-3">
-              <Select value={selectedSpecialty} onValueChange={setSelectedSpecialty}>
-                <SelectTrigger className="w-44 border-[#E5E7EB] bg-white" data-testid="select-specialty">
-                  <SelectValue placeholder="Specialty" />
+              <Select value={selectedExperienceType} onValueChange={setSelectedExperienceType}>
+                <SelectTrigger className="w-48 border-[#E5E7EB] bg-white" data-testid="select-experience-type">
+                  <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                  <SelectValue placeholder="Experience Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {specialties.map((spec) => (
-                    <SelectItem key={spec} value={spec}>
-                      {spec}
+                  <SelectItem value="">All Experience Types</SelectItem>
+                  {experienceTypes.map((exp: any) => (
+                    <SelectItem key={exp.id} value={exp.id}>
+                      {exp.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -339,150 +360,29 @@ export default function ExpertsPage() {
           </div>
 
           {/* Expert Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sortedExperts.map((expert, idx) => (
-              <motion.div
-                key={expert.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-              >
-                <Card
-                  className="bg-white border-[#E5E7EB] hover:shadow-lg transition-shadow overflow-hidden"
-                  data-testid={`card-expert-${expert.id}`}
+          {isLoadingExperts ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+              <span className="ml-2 text-[#6B7280]">Loading experts...</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {sortedExperts.map((expert: any, idx: number) => (
+                <motion.div
+                  key={expert.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
                 >
-                  <CardContent className="p-0">
-                    {/* Header with badges */}
-                    <div className="relative p-4 pb-0">
-                      <button
-                        onClick={() => toggleFavorite(expert.id)}
-                        className="absolute top-4 right-4 z-10"
-                        data-testid={`button-favorite-${expert.id}`}
-                      >
-                        <Heart
-                          className={cn(
-                            "w-5 h-5 transition-colors",
-                            favorites.includes(expert.id)
-                              ? "fill-[#FF385C] text-[#FF385C]"
-                              : "text-gray-400 hover:text-[#FF385C]"
-                          )}
-                        />
-                      </button>
-
-                      <div className="flex items-start gap-4">
-                        <Avatar className="w-16 h-16 border-2 border-white shadow-md">
-                          <AvatarImage src={expert.avatar || undefined} />
-                          <AvatarFallback className="bg-[#FF385C] text-white text-lg font-semibold">
-                            {expert.name.split(" ").map((n) => n[0]).join("")}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-[#111827] truncate">
-                              {expert.name}
-                            </h3>
-                            {expert.verified && (
-                              <Verified className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
-                            <MapPin className="w-3.5 h-3.5" />
-                            <span>{expert.location}</span>
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {expert.superExpert && (
-                              <Badge className="bg-[#FFE3E8] text-[#FF385C] text-xs">
-                                <Award className="w-3 h-3 mr-1" />
-                                Super Expert
-                              </Badge>
-                            )}
-                            <Badge variant="secondary" className="text-xs">
-                              {expert.specialty}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bio */}
-                    <div className="px-4 py-3">
-                      <p className="text-sm text-[#6B7280] line-clamp-2">
-                        {expert.bio}
-                      </p>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="px-4 py-3 border-t border-[#E5E7EB] bg-[#F9FAFB]">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                          <span className="font-semibold text-[#111827]">
-                            {expert.rating}
-                          </span>
-                          <span className="text-[#6B7280]">
-                            ({expert.reviews} reviews)
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[#6B7280]">
-                          <Users className="w-4 h-4" />
-                          <span>{expert.trips} trips</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Languages & Response Time */}
-                    <div className="px-4 py-3 border-t border-[#E5E7EB]">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-1 text-[#6B7280]">
-                          <Globe className="w-4 h-4" />
-                          <span>{expert.languages.join(", ")}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-green-600">
-                          <Calendar className="w-4 h-4" />
-                          <span>{expert.responseTime}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="px-4 py-4 border-t border-[#E5E7EB] flex items-center justify-between">
-                      <div>
-                        <span className="text-xs text-[#6B7280]">Starting from</span>
-                        <div className="font-bold text-[#111827]">
-                          ${expert.startingPrice}
-                          <span className="text-sm font-normal text-[#6B7280]">
-                            /consultation
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Link href={`/expert/${expert.id}`}>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-[#E5E7EB]"
-                            data-testid={`button-view-profile-${expert.id}`}
-                          >
-                            View Profile
-                          </Button>
-                        </Link>
-                        <Link href={`/chat/expert/${expert.id}`}>
-                          <Button
-                            size="sm"
-                            className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-                            data-testid={`button-contact-${expert.id}`}
-                          >
-                            <MessageSquare className="w-4 h-4 mr-1" />
-                            Contact
-                          </Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+                  <ExpertCard 
+                    expert={expert} 
+                    showServices={true}
+                    experienceTypeFilter={selectedExperienceType || undefined}
+                  />
+                </motion.div>
+              ))}
+            </div>
+          )}
 
           {/* Empty State */}
           {sortedExperts.length === 0 && (
@@ -501,8 +401,8 @@ export default function ExpertsPage() {
                 onClick={() => {
                   setSearchQuery("");
                   setSelectedDestination("All Destinations");
-                  setSelectedSpecialty("All Specialties");
                   setSelectedLanguage("All Languages");
+                  setSelectedExperienceType("");
                 }}
                 data-testid="button-clear-filters"
               >

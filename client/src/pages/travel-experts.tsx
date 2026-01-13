@@ -28,16 +28,36 @@ import {
   Users,
   Star,
   Sparkles,
+  Calendar,
+  Briefcase,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 const steps = [
   { id: 1, title: "Basic Info" },
   { id: 2, title: "Expertise" },
-  { id: 3, title: "Experience" },
-  { id: 4, title: "Availability" },
-  { id: 5, title: "Review" },
+  { id: 3, title: "Services" },
+  { id: 4, title: "Experience" },
+  { id: 5, title: "Availability" },
+  { id: 6, title: "Review" },
+];
+
+const expertSpecializationOptions = [
+  { value: "budget_travel", label: "Budget Travel" },
+  { value: "luxury_experiences", label: "Luxury Experiences" },
+  { value: "adventure_outdoor", label: "Adventure & Outdoor" },
+  { value: "cultural_immersion", label: "Cultural Immersion" },
+  { value: "family_friendly", label: "Family Friendly" },
+  { value: "solo_travel", label: "Solo Travel" },
+  { value: "food_wine", label: "Food & Wine" },
+  { value: "photography_tours", label: "Photography Tours" },
+  { value: "honeymoon", label: "Honeymoon Planning" },
+  { value: "wellness_retreat", label: "Wellness & Retreat" },
+  { value: "group_travel", label: "Group Travel" },
+  { value: "backpacking", label: "Backpacking" },
 ];
 
 const destinations = [
@@ -105,6 +125,9 @@ export default function TravelExpertsPage() {
     destinations: [] as string[],
     specialties: [] as string[],
     languages: [] as string[],
+    experienceTypes: [] as string[],
+    specializations: [] as string[],
+    selectedServices: [] as string[],
     yearsExperience: "",
     bio: "",
     portfolio: "",
@@ -113,6 +136,15 @@ export default function TravelExpertsPage() {
     responseTime: "",
     hourlyRate: "",
     agreeToTerms: false,
+  });
+
+  // Fetch experience types and service categories from API
+  const { data: experienceTypes = [] } = useQuery<any[]>({
+    queryKey: ["/api/experience-types"],
+  });
+
+  const { data: serviceCategories = [] } = useQuery<any[]>({
+    queryKey: ["/api/expert-service-categories"],
   });
 
   const updateFormData = (key: string, value: any) => {
@@ -136,12 +168,14 @@ export default function TravelExpertsPage() {
       case 1:
         return formData.firstName && formData.lastName && formData.email && formData.phone;
       case 2:
-        return formData.destinations.length > 0 && formData.specialties.length > 0 && formData.languages.length > 0;
+        return formData.destinations.length > 0 && formData.specialties.length > 0 && formData.languages.length > 0 && formData.experienceTypes.length > 0;
       case 3:
-        return formData.yearsExperience && formData.bio.length > 20;
+        return formData.selectedServices.length > 0;
       case 4:
-        return formData.availability && formData.responseTime && formData.hourlyRate;
+        return formData.yearsExperience && formData.bio.length > 20;
       case 5:
+        return formData.availability && formData.responseTime && formData.hourlyRate;
+      case 6:
         return formData.agreeToTerms;
       default:
         return true;
@@ -168,17 +202,58 @@ export default function TravelExpertsPage() {
     }
   };
 
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const applicationData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        country: formData.country,
+        city: formData.city,
+        destinations: formData.destinations,
+        specialties: formData.specialties,
+        languages: formData.languages,
+        experienceTypes: formData.experienceTypes,
+        specializations: formData.specializations,
+        selectedServices: formData.selectedServices,
+        yearsOfExperience: formData.yearsExperience,
+        bio: formData.bio,
+        portfolio: formData.portfolio,
+        certifications: formData.certifications,
+        availability: formData.availability,
+        responseTime: formData.responseTime,
+        hourlyRate: formData.hourlyRate,
+      };
+      return apiRequest("/api/expert-application", {
+        method: "POST",
+        body: JSON.stringify(applicationData),
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Application submitted!",
+        description: "We'll review your application and get back to you within 48 hours.",
+      });
+      setLocation("/dashboard");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Submission failed",
+        description: error.message || "There was an error submitting your application. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setIsSubmitting(false);
-
-    toast({
-      title: "Application submitted!",
-      description: "We'll review your application and get back to you within 48 hours.",
-    });
-
-    setLocation("/dashboard");
+    try {
+      await submitMutation.mutateAsync();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -400,12 +475,100 @@ export default function TravelExpertsPage() {
                     ))}
                   </div>
                 </div>
+
+                <div>
+                  <Label className="text-[#374151] mb-3 block">
+                    <Calendar className="w-4 h-4 inline mr-2" />
+                    Experience Types You Can Plan (select all that apply)
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {experienceTypes.map((exp: any) => (
+                      <Badge
+                        key={exp.id}
+                        variant={formData.experienceTypes.includes(exp.id) ? "default" : "outline"}
+                        className={cn(
+                          "cursor-pointer px-3 py-2",
+                          formData.experienceTypes.includes(exp.id)
+                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                        )}
+                        onClick={() => toggleArrayItem("experienceTypes", exp.id)}
+                        data-testid={`badge-experience-${exp.slug}`}
+                      >
+                        {exp.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-[#374151] mb-3 block">
+                    <Star className="w-4 h-4 inline mr-2" />
+                    Your Specializations
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {expertSpecializationOptions.map((spec) => (
+                      <Badge
+                        key={spec.value}
+                        variant={formData.specializations.includes(spec.value) ? "default" : "outline"}
+                        className={cn(
+                          "cursor-pointer px-3 py-2",
+                          formData.specializations.includes(spec.value)
+                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                        )}
+                        onClick={() => toggleArrayItem("specializations", spec.value)}
+                        data-testid={`badge-specialization-${spec.value}`}
+                      >
+                        {spec.label}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {/* Step 3: Experience */}
+          {/* Step 3: Services */}
           {currentStep === 3 && (
+            <Card className="border-[#E5E7EB]">
+              <CardHeader>
+                <CardTitle className="text-2xl text-[#111827]">Services You Offer</CardTitle>
+                <p className="text-[#6B7280] text-sm mt-1">Select the services you want to offer to travelers. You can set custom pricing later.</p>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {serviceCategories.map((category: any) => (
+                  <div key={category.id}>
+                    <Label className="text-[#374151] mb-3 block font-semibold">
+                      <Briefcase className="w-4 h-4 inline mr-2" />
+                      {category.name}
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {category.offerings?.map((offering: any) => (
+                        <Badge
+                          key={offering.id}
+                          variant={formData.selectedServices.includes(offering.id) ? "default" : "outline"}
+                          className={cn(
+                            "cursor-pointer px-3 py-2",
+                            formData.selectedServices.includes(offering.id)
+                              ? "bg-[#FF385C] hover:bg-[#E23350]"
+                              : "border-[#E5E7EB] hover:border-[#FF385C]"
+                          )}
+                          onClick={() => toggleArrayItem("selectedServices", offering.id)}
+                          data-testid={`badge-service-${offering.id}`}
+                        >
+                          {offering.name} - ${offering.price}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 4: Experience */}
+          {currentStep === 4 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Your Experience</CardTitle>
@@ -467,8 +630,8 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
-          {/* Step 4: Availability */}
-          {currentStep === 4 && (
+          {/* Step 5: Availability */}
+          {currentStep === 5 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Availability & Rates</CardTitle>
@@ -531,8 +694,8 @@ export default function TravelExpertsPage() {
             </Card>
           )}
 
-          {/* Step 5: Review */}
-          {currentStep === 5 && (
+          {/* Step 6: Review */}
+          {currentStep === 6 && (
             <Card className="border-[#E5E7EB]">
               <CardHeader>
                 <CardTitle className="text-2xl text-[#111827]">Review Your Application</CardTitle>
