@@ -9,6 +9,7 @@ import {
   userExperiences, userExperienceItems, users, customVenues,
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   expertServiceCategories, expertServiceOfferings, expertSelectedServices, expertSpecializations,
+  expertCustomServices,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -35,7 +36,8 @@ import {
   type CustomVenue, type InsertCustomVenue,
   type VendorAvailabilitySlot, type InsertVendorAvailabilitySlot,
   type CoordinationState, type InsertCoordinationState,
-  type CoordinationBooking, type InsertCoordinationBooking
+  type CoordinationBooking, type InsertCoordinationBooking,
+  type ExpertCustomService, type InsertExpertCustomService
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -213,6 +215,18 @@ export interface IStorage {
   
   // Get experts with full profile (experience types, services, specializations)
   getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]>;
+
+  // Expert Custom Services
+  getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]>;
+  getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined>;
+  getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]>;
+  createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService>;
+  updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined>;
+  submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined>;
+  approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined>;
+  rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined>;
+  deleteExpertCustomService(id: string): Promise<void>;
+  getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]>;
 
   // Custom Venues
   getCustomVenues(userId?: string, tripId?: string, experienceType?: string): Promise<CustomVenue[]>;
@@ -1402,6 +1416,86 @@ export class DatabaseStorage implements IStorage {
     }
 
     return expertsWithProfiles;
+  }
+
+  // Expert Custom Services
+  async getExpertCustomServices(expertId: string): Promise<ExpertCustomService[]> {
+    return await db.select().from(expertCustomServices).where(eq(expertCustomServices.expertId, expertId));
+  }
+
+  async getExpertCustomServiceById(id: string): Promise<ExpertCustomService | undefined> {
+    const [service] = await db.select().from(expertCustomServices).where(eq(expertCustomServices.id, id));
+    return service;
+  }
+
+  async getExpertCustomServicesByStatus(status: string): Promise<ExpertCustomService[]> {
+    return await db.select().from(expertCustomServices).where(eq(expertCustomServices.status, status)).orderBy(desc(expertCustomServices.submittedAt));
+  }
+
+  async createExpertCustomService(expertId: string, service: InsertExpertCustomService): Promise<ExpertCustomService> {
+    const [newService] = await db.insert(expertCustomServices).values({
+      ...service,
+      expertId,
+      status: "draft",
+    }).returning();
+    return newService;
+  }
+
+  async updateExpertCustomService(id: string, updates: Partial<InsertExpertCustomService>): Promise<ExpertCustomService | undefined> {
+    const [updated] = await db.update(expertCustomServices)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(expertCustomServices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async submitExpertCustomService(id: string): Promise<ExpertCustomService | undefined> {
+    const [updated] = await db.update(expertCustomServices)
+      .set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+      .where(eq(expertCustomServices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async approveExpertCustomService(id: string, reviewedBy: string): Promise<ExpertCustomService | undefined> {
+    const [updated] = await db.update(expertCustomServices)
+      .set({ 
+        status: "approved", 
+        reviewedAt: new Date(), 
+        reviewedBy, 
+        rejectionReason: null,
+        updatedAt: new Date() 
+      })
+      .where(eq(expertCustomServices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async rejectExpertCustomService(id: string, reviewedBy: string, reason: string): Promise<ExpertCustomService | undefined> {
+    const [updated] = await db.update(expertCustomServices)
+      .set({ 
+        status: "rejected", 
+        reviewedAt: new Date(), 
+        reviewedBy, 
+        rejectionReason: reason,
+        updatedAt: new Date() 
+      })
+      .where(eq(expertCustomServices.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteExpertCustomService(id: string): Promise<void> {
+    await db.delete(expertCustomServices).where(eq(expertCustomServices.id, id));
+  }
+
+  async getApprovedCustomServicesForExperts(expertIds: string[]): Promise<ExpertCustomService[]> {
+    if (expertIds.length === 0) return [];
+    return await db.select().from(expertCustomServices)
+      .where(and(
+        eq(expertCustomServices.status, "approved"),
+        eq(expertCustomServices.isActive, true)
+      ));
   }
 }
 

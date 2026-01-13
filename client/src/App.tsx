@@ -31,6 +31,7 @@ import ExpertMessages from "@/pages/expert/messages";
 import ExpertBookings from "@/pages/expert/bookings";
 import ExpertServices from "@/pages/expert/services";
 import ExpertPerformance from "@/pages/expert/performance";
+import ExpertCustomServices from "@/pages/expert/custom-services";
 import EADashboard from "@/pages/ea/dashboard";
 import EAExecutives from "@/pages/ea/executives";
 import EACalendar from "@/pages/ea/calendar";
@@ -255,6 +256,9 @@ function Router() {
       </Route>
       <Route path="/expert/services/templates">
         {() => <ProtectedRoute component={ServiceTemplates} />}
+      </Route>
+      <Route path="/expert/custom-services">
+        {() => <ProtectedRoute component={ExpertCustomServices} />}
       </Route>
       <Route path="/expert/earnings">
         {() => <ProtectedRoute component={ExpertEarnings} />}

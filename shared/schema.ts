@@ -809,6 +809,42 @@ export const expertSpecializations = pgTable("expert_specializations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Expert Custom Services (user-submitted offerings) ===
+export const expertCustomServicesStatusEnum = ["draft", "submitted", "approved", "rejected"] as const;
+
+export const expertCustomServices = pgTable("expert_custom_services", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Service details
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  categoryName: varchar("category_name", { length: 100 }), // Custom category or existing
+  existingCategoryId: varchar("existing_category_id").references(() => expertServiceCategories.id, { onDelete: "set null" }),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  duration: varchar("duration", { length: 50 }), // e.g., "2 hours", "1 day", "3-5 days"
+  deliverables: jsonb("deliverables").default([]), // List of what's included
+  // Policies
+  cancellationPolicy: text("cancellation_policy"),
+  leadTime: varchar("lead_time", { length: 50 }), // e.g., "48 hours", "1 week"
+  // Media
+  imageUrl: text("image_url"),
+  galleryImages: jsonb("gallery_images").default([]),
+  // Experience types this service applies to
+  experienceTypes: jsonb("experience_types").default([]),
+  // Approval workflow
+  status: varchar("status", { length: 20 }).default("draft"), // draft, submitted, approved, rejected
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  rejectionReason: text("rejection_reason"),
+  // Metadata
+  isActive: boolean("is_active").default(true),
+  bookingsCount: integer("bookings_count").default(0),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -972,6 +1008,24 @@ export type ExpertSelectedService = typeof expertSelectedServices.$inferSelect;
 export type InsertExpertSelectedService = z.infer<typeof insertExpertSelectedServiceSchema>;
 export type ExpertSpecialization = typeof expertSpecializations.$inferSelect;
 export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializationSchema>;
+
+// Expert Custom Services schemas and types
+export const insertExpertCustomServiceSchema = createInsertSchema(expertCustomServices).omit({ 
+  id: true, 
+  expertId: true, 
+  status: true, 
+  submittedAt: true, 
+  reviewedAt: true, 
+  reviewedBy: true, 
+  rejectionReason: true,
+  bookingsCount: true,
+  averageRating: true,
+  createdAt: true, 
+  updatedAt: true 
+});
+
+export type ExpertCustomService = typeof expertCustomServices.$inferSelect;
+export type InsertExpertCustomService = z.infer<typeof insertExpertCustomServiceSchema>;
 
 export type UserExperience = typeof userExperiences.$inferSelect;
 export type InsertUserExperience = z.infer<typeof insertUserExperienceSchema>;
