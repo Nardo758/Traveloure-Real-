@@ -1269,6 +1269,203 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json({ success: true });
   });
 
+  // === Expert Custom Services (User-submitted offerings) ===
+  
+  // Get current expert's custom services (authenticated)
+  app.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const services = await storage.getExpertCustomServices(userId);
+    res.json(services);
+  });
+
+  // Get single custom service by ID (authenticated - owner only)
+  app.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const service = await storage.getExpertCustomServiceById(req.params.id);
+    if (!service) {
+      return res.status(404).json({ message: "Custom service not found" });
+    }
+    if (service.expertId !== userId) {
+      return res.status(403).json({ message: "Not authorized to view this service" });
+    }
+    res.json(service);
+  });
+
+  // Create new custom service (authenticated - experts only)
+  app.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
+
+      const { title, description, categoryName, existingCategoryId, price, duration, deliverables, cancellationPolicy, leadTime, imageUrl, galleryImages, experienceTypes, isActive } = req.body;
+      
+      if (!title || !price) {
+        return res.status(400).json({ message: "Title and price are required" });
+      }
+
+      const service = await storage.createExpertCustomService(userId, {
+        title,
+        description,
+        categoryName,
+        existingCategoryId,
+        price: price.toString(),
+        duration,
+        deliverables,
+        cancellationPolicy,
+        leadTime,
+        imageUrl,
+        galleryImages,
+        experienceTypes,
+        isActive: isActive !== false,
+      });
+      res.status(201).json(service);
+    } catch (err) {
+      console.error("Error creating custom service:", err);
+      res.status(500).json({ message: "Failed to create custom service" });
+    }
+  });
+
+  // Update custom service (authenticated - owner only, draft status only)
+  app.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const service = await storage.getExpertCustomServiceById(req.params.id);
+      
+      if (!service) {
+        return res.status(404).json({ message: "Custom service not found" });
+      }
+      if (service.expertId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this service" });
+      }
+      if (service.status !== "draft" && service.status !== "rejected") {
+        return res.status(400).json({ message: "Can only update draft or rejected services" });
+      }
+
+      const updated = await storage.updateExpertCustomService(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating custom service:", err);
+      res.status(500).json({ message: "Failed to update custom service" });
+    }
+  });
+
+  // Submit custom service for approval (authenticated - owner only)
+  app.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const service = await storage.getExpertCustomServiceById(req.params.id);
+      
+      if (!service) {
+        return res.status(404).json({ message: "Custom service not found" });
+      }
+      if (service.expertId !== userId) {
+        return res.status(403).json({ message: "Not authorized to submit this service" });
+      }
+      if (service.status !== "draft" && service.status !== "rejected") {
+        return res.status(400).json({ message: "Can only submit draft or rejected services" });
+      }
+
+      const submitted = await storage.submitExpertCustomService(req.params.id);
+      res.json(submitted);
+    } catch (err) {
+      console.error("Error submitting custom service:", err);
+      res.status(500).json({ message: "Failed to submit custom service" });
+    }
+  });
+
+  // Delete custom service (authenticated - owner only, draft/rejected status only)
+  app.delete("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const service = await storage.getExpertCustomServiceById(req.params.id);
+      
+      if (!service) {
+        return res.status(404).json({ message: "Custom service not found" });
+      }
+      if (service.expertId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this service" });
+      }
+      if (service.status === "approved") {
+        return res.status(400).json({ message: "Cannot delete approved services. Deactivate instead." });
+      }
+
+      await storage.deleteExpertCustomService(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting custom service:", err);
+      res.status(500).json({ message: "Failed to delete custom service" });
+    }
+  });
+
+  // Admin: Get all custom services pending approval
+  app.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const services = await storage.getExpertCustomServicesByStatus("submitted");
+    res.json(services);
+  });
+
+  // Admin: Approve custom service
+  app.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = (req.user as any).claims.sub;
+      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const service = await storage.getExpertCustomServiceById(req.params.id);
+      if (!service) {
+        return res.status(404).json({ message: "Custom service not found" });
+      }
+      if (service.status !== "submitted") {
+        return res.status(400).json({ message: "Can only approve submitted services" });
+      }
+
+      const approved = await storage.approveExpertCustomService(req.params.id, adminId);
+      res.json(approved);
+    } catch (err) {
+      console.error("Error approving custom service:", err);
+      res.status(500).json({ message: "Failed to approve custom service" });
+    }
+  });
+
+  // Admin: Reject custom service
+  app.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = (req.user as any).claims.sub;
+      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { reason } = req.body;
+      if (!reason) {
+        return res.status(400).json({ message: "Rejection reason is required" });
+      }
+
+      const service = await storage.getExpertCustomServiceById(req.params.id);
+      if (!service) {
+        return res.status(404).json({ message: "Custom service not found" });
+      }
+      if (service.status !== "submitted") {
+        return res.status(400).json({ message: "Can only reject submitted services" });
+      }
+
+      const rejected = await storage.rejectExpertCustomService(req.params.id, adminId, reason);
+      res.json(rejected);
+    } catch (err) {
+      console.error("Error rejecting custom service:", err);
+      res.status(500).json({ message: "Failed to reject custom service" });
+    }
+  });
+
   // Get single service by ID (public - for booking page)
   app.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);

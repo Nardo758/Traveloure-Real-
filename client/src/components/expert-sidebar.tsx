@@ -25,6 +25,7 @@ import {
   User,
   LogOut,
   Compass,
+  PlusSquare,
 } from "lucide-react";
 
 const menuItems = [
@@ -34,6 +35,7 @@ const menuItems = [
   { title: "Clients", href: "/expert/clients", icon: Users },
   { title: "Bookings", href: "/expert/bookings", icon: Calendar },
   { title: "Services", href: "/expert/services", icon: Briefcase },
+  { title: "Custom Services", href: "/expert/custom-services", icon: PlusSquare },
   { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
   { title: "Performance", href: "/expert/performance", icon: BarChart3 },
   { title: "Profile", href: "/expert/profile", icon: User },
