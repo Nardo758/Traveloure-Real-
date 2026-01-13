@@ -609,7 +609,10 @@ function AIOptimizationTab({
 }
 
 export default function ExperienceTemplatePage() {
-  const [, params] = useRoute("/experiences/:slug");
+  // Try matching both /experiences/:slug and /experiences/:slug/new
+  const [matchBase, paramsBase] = useRoute("/experiences/:slug");
+  const [matchNew, paramsNew] = useRoute("/experiences/:slug/new");
+  const params = matchNew ? paramsNew : paramsBase;
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
