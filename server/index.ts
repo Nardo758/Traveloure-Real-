@@ -4,7 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
-import { seedExpertServices } from "./seed-expert-services";
+import { seedExpertServices, seedCustomServices } from "./seed-expert-services";
 import { setupWebSocket } from "./websocket";
 
 const app = express();
@@ -93,6 +93,13 @@ app.use((req, res, next) => {
     await seedExpertServices();
   } catch (err) {
     console.error("Failed to seed expert services:", err);
+  }
+
+  // Seed custom services mock data for testing
+  try {
+    await seedCustomServices();
+  } catch (err) {
+    console.error("Failed to seed custom services:", err);
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
