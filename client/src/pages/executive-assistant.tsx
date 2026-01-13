@@ -378,11 +378,11 @@ export default function ExecutiveAssistant() {
               <Button
                 className="w-full justify-start"
                 variant="outline"
-                onClick={() => setLocation("/create-trip")}
+                onClick={() => setLocation("/experiences")}
                 data-testid="button-quick-new-trip"
               >
                 <Plane className="w-4 h-4 mr-2" />
-                Create New Trip
+                Plan Experience
               </Button>
               <Button
                 className="w-full justify-start"

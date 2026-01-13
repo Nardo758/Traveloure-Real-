@@ -104,7 +104,7 @@ export default function Dashboard() {
               Ready for your next adventure?
             </p>
           </div>
-          <Link href="/create-trip">
+          <Link href="/experiences">
             <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold" data-testid="button-new-plan">
               <Plus className="w-4 h-4 mr-2" />
               Create New Plan
@@ -219,7 +219,7 @@ export default function Dashboard() {
                 </div>
                 <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-2">No plans yet</h3>
                 <p className="text-[#6B7280] mb-4">Start planning your next adventure!</p>
-                <Link href="/create-trip">
+                <Link href="/experiences">
                   <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-first-plan">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Your First Plan
@@ -239,27 +239,27 @@ export default function Dashboard() {
                 <p className="text-white/80">Create a new plan and let our AI and experts help you.</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Link href="/create-trip?type=vacation">
+                <Link href="/experiences/travel/new">
                   <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-travel">
                     Travel
                   </Button>
                 </Link>
-                <Link href="/create-trip?type=wedding">
+                <Link href="/experiences/wedding/new">
                   <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-wedding">
                     Wedding
                   </Button>
                 </Link>
-                <Link href="/create-trip?type=proposal">
+                <Link href="/experiences/proposal/new">
                   <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-proposal">
                     Proposal
                   </Button>
                 </Link>
-                <Link href="/create-trip?type=birthday">
+                <Link href="/experiences/birthday/new">
                   <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-birthday">
                     Birthday
                   </Button>
                 </Link>
-                <Link href="/create-trip?type=corporate">
+                <Link href="/experiences/corporate-events/new">
                   <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-corporate">
                     Corporate
                   </Button>

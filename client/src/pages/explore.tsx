@@ -259,7 +259,7 @@ export default function Explore() {
               <p className="text-muted-foreground max-w-2xl mx-auto mb-6">
                 Let our AI help you discover the perfect destination based on your preferences, budget, and travel style.
               </p>
-              <Link href="/create-trip">
+              <Link href="/experiences">
                 <Button size="lg" data-testid="button-plan-trip">
                   Plan My Trip <ArrowRight className="w-5 h-5 ml-2" />
                 </Button>
