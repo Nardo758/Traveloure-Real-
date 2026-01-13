@@ -1466,6 +1466,221 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Destination Calendar (Public travel guide) ===
+  
+  // Get countries with calendar data (public)
+  app.get("/api/destination-calendar/countries", async (req, res) => {
+    try {
+      const countries = await storage.getCalendarCountries();
+      res.json(countries);
+    } catch (err) {
+      console.error("Error fetching calendar countries:", err);
+      res.status(500).json({ message: "Failed to fetch countries" });
+    }
+  });
+
+  // Get approved events for a destination (public)
+  app.get("/api/destination-calendar/events", async (req, res) => {
+    try {
+      const country = req.query.country as string;
+      const city = req.query.city as string | undefined;
+      
+      if (!country) {
+        return res.status(400).json({ message: "Country is required" });
+      }
+      
+      const events = await storage.getApprovedDestinationEvents(country, city);
+      res.json(events);
+    } catch (err) {
+      console.error("Error fetching destination events:", err);
+      res.status(500).json({ message: "Failed to fetch events" });
+    }
+  });
+
+  // Get seasons for a destination (public)
+  app.get("/api/destination-calendar/seasons", async (req, res) => {
+    try {
+      const country = req.query.country as string;
+      const city = req.query.city as string | undefined;
+      
+      if (!country) {
+        return res.status(400).json({ message: "Country is required" });
+      }
+      
+      const seasons = await storage.getDestinationSeasons(country, city);
+      res.json(seasons);
+    } catch (err) {
+      console.error("Error fetching destination seasons:", err);
+      res.status(500).json({ message: "Failed to fetch seasons" });
+    }
+  });
+
+  // Get contributor's own destination events (authenticated)
+  app.get("/api/destination-calendar/my-events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const events = await storage.getContributorDestinationEvents(userId);
+      res.json(events);
+    } catch (err) {
+      console.error("Error fetching contributor events:", err);
+      res.status(500).json({ message: "Failed to fetch events" });
+    }
+  });
+
+  // Create a new destination event (authenticated - contributor)
+  app.post("/api/destination-calendar/events", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const event = await storage.createDestinationEvent({
+        ...req.body,
+        contributorId: userId,
+        status: "draft",
+        sourceType: "manual"
+      });
+      res.json(event);
+    } catch (err) {
+      console.error("Error creating destination event:", err);
+      res.status(500).json({ message: "Failed to create event" });
+    }
+  });
+
+  // Update destination event (authenticated - contributor only)
+  app.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const event = await storage.getDestinationEventById(req.params.id);
+      
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      if (event.contributorId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this event" });
+      }
+      if (event.status !== "draft" && event.status !== "rejected") {
+        return res.status(400).json({ message: "Can only update draft or rejected events" });
+      }
+
+      const updated = await storage.updateDestinationEvent(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating destination event:", err);
+      res.status(500).json({ message: "Failed to update event" });
+    }
+  });
+
+  // Submit destination event for approval (authenticated - contributor only)
+  app.post("/api/destination-calendar/events/:id/submit", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const event = await storage.getDestinationEventById(req.params.id);
+      
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      if (event.contributorId !== userId) {
+        return res.status(403).json({ message: "Not authorized to submit this event" });
+      }
+      if (event.status !== "draft" && event.status !== "rejected") {
+        return res.status(400).json({ message: "Can only submit draft or rejected events" });
+      }
+
+      const submitted = await storage.submitDestinationEvent(req.params.id);
+      res.json(submitted);
+    } catch (err) {
+      console.error("Error submitting destination event:", err);
+      res.status(500).json({ message: "Failed to submit event" });
+    }
+  });
+
+  // Delete destination event (authenticated - contributor only)
+  app.delete("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const event = await storage.getDestinationEventById(req.params.id);
+      
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      if (event.contributorId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this event" });
+      }
+      if (event.status === "approved") {
+        return res.status(400).json({ message: "Cannot delete approved events" });
+      }
+
+      await storage.deleteDestinationEvent(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting destination event:", err);
+      res.status(500).json({ message: "Failed to delete event" });
+    }
+  });
+
+  // Admin: Get pending destination events
+  app.get("/api/admin/destination-events/pending", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const events = await storage.getPendingDestinationEvents();
+    res.json(events);
+  });
+
+  // Admin: Approve destination event
+  app.post("/api/admin/destination-events/:id/approve", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = (req.user as any).claims.sub;
+      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const event = await storage.getDestinationEventById(req.params.id);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      if (event.status !== "pending") {
+        return res.status(400).json({ message: "Can only approve pending events" });
+      }
+
+      const approved = await storage.approveDestinationEvent(req.params.id, adminId);
+      res.json(approved);
+    } catch (err) {
+      console.error("Error approving destination event:", err);
+      res.status(500).json({ message: "Failed to approve event" });
+    }
+  });
+
+  // Admin: Reject destination event
+  app.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = (req.user as any).claims.sub;
+      const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { reason } = req.body;
+      if (!reason) {
+        return res.status(400).json({ message: "Rejection reason is required" });
+      }
+
+      const event = await storage.getDestinationEventById(req.params.id);
+      if (!event) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      if (event.status !== "pending") {
+        return res.status(400).json({ message: "Can only reject pending events" });
+      }
+
+      const rejected = await storage.rejectDestinationEvent(req.params.id, adminId, reason);
+      res.json(rejected);
+    } catch (err) {
+      console.error("Error rejecting destination event:", err);
+      res.status(500).json({ message: "Failed to reject event" });
+    }
+  });
+
   // Get single service by ID (public - for booking page)
   app.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);

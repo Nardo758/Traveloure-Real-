@@ -35,6 +35,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DestinationCalendar } from "@/components/destination-calendar";
 
 interface Service {
   id: string;
@@ -761,6 +762,18 @@ export default function HelpMeDecidePage() {
 
             {/* Events Tab */}
             <TabsContent value="events">
+              {/* Destination Calendar - When to Visit */}
+              <div className="mb-8">
+                <DestinationCalendar />
+              </div>
+
+              {/* Upcoming Events */}
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-[#111827] flex items-center gap-2">
+                  <Ticket className="w-5 h-5 text-[#FF385C]" />
+                  Upcoming Events Around the World
+                </h3>
+              </div>
               <div className="space-y-4">
                 {upcomingEvents.map((event, idx) => (
                   <motion.div
