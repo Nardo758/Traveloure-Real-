@@ -2,9 +2,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star, MapPin, Languages, MessageCircle, Calendar } from "lucide-react";
+import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link } from "wouter";
+import { useState } from "react";
 
 interface ExpertCardProps {
   expert: {
@@ -13,6 +14,12 @@ interface ExpertCardProps {
     lastName?: string;
     profileImageUrl?: string;
     bio?: string;
+    specialties?: string[];
+    reviewsCount?: number;
+    tripsCount?: number;
+    responseTime?: string;
+    verified?: boolean;
+    superExpert?: boolean;
     experienceTypes?: Array<{
       experienceType?: {
         id: string;
@@ -35,28 +42,18 @@ interface ExpertCardProps {
       destinations?: string[];
       languages?: string[];
       yearsExperience?: string;
+      responseTime?: string;
+      city?: string;
+      country?: string;
     };
   };
   showServices?: boolean;
   experienceTypeFilter?: string;
 }
 
-const specializationLabels: Record<string, string> = {
-  budget_travel: "Budget Travel",
-  luxury_experiences: "Luxury",
-  adventure_outdoor: "Adventure",
-  cultural_immersion: "Cultural",
-  family_friendly: "Family",
-  solo_travel: "Solo",
-  food_wine: "Food & Wine",
-  photography_tours: "Photography",
-  honeymoon: "Honeymoon",
-  wellness_retreat: "Wellness",
-  group_travel: "Groups",
-  backpacking: "Backpacking",
-};
-
 export function ExpertCard({ expert, showServices = true, experienceTypeFilter }: ExpertCardProps) {
+  const [isFavorite, setIsFavorite] = useState(false);
+  
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Travel Expert";
   const initials = `${expert.firstName?.[0] || "T"}${expert.lastName?.[0] || "E"}`;
   
@@ -64,157 +61,160 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter }
     ? Math.min(...expert.selectedServices.map(s => parseFloat(s.offering?.price || "0")))
     : null;
   
-  const experienceNames = expert.experienceTypes
-    ?.filter(et => et.experienceType)
-    .map(et => et.experienceType!.name)
-    .slice(0, 3) || [];
+  const location = expert.expertForm?.city && expert.expertForm?.country
+    ? `${expert.expertForm.city}, ${expert.expertForm.country}`
+    : expert.expertForm?.destinations?.[0] || null;
   
-  const moreExperienceCount = (expert.experienceTypes?.length || 0) - 3;
+  const languages = expert.expertForm?.languages || [];
+  const responseTime = expert.responseTime || expert.expertForm?.responseTime || null;
+  const reviewsCount = expert.reviewsCount || null;
+  const tripsCount = expert.tripsCount || null;
+  const rating = 4.9; // Default rating when not available
+  const verified = expert.verified !== false;
+  const superExpert = expert.superExpert || false;
+  const hasMetrics = reviewsCount !== null || tripsCount !== null;
+  
+  const specialties = expert.specialties || expert.specializations?.slice(0, 2) || [];
 
   return (
-    <Card className="hover-elevate transition-all duration-200 overflow-visible" data-testid={`card-expert-${expert.id}`}>
+    <Card className="hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
       <CardContent className="p-5">
-        <div className="flex items-start gap-4">
-          <Avatar className="w-14 h-14 border-2 border-[#FF385C]/20">
-            <AvatarImage src={expert.profileImageUrl || undefined} alt={fullName} />
-            <AvatarFallback className="bg-[#FF385C] text-white font-semibold">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+        <div className="flex gap-4">
+          <div className="relative">
+            <Avatar className="w-20 h-20 border-2 border-white shadow-md">
+              <AvatarImage src={expert.profileImageUrl || undefined} alt={fullName} />
+              <AvatarFallback className="bg-gradient-to-br from-[#FF385C] to-[#E23350] text-white font-bold text-xl">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            {superExpert && (
+              <div className="absolute -bottom-1 -right-1 bg-amber-500 rounded-full p-1">
+                <Award className="w-3.5 h-3.5 text-white" />
+              </div>
+            )}
+          </div>
           
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-[#111827] dark:text-white text-lg" data-testid="text-expert-name">
-                {fullName}
-              </h3>
-              <div className="flex items-center text-amber-500">
-                <Star className="w-4 h-4 fill-amber-500" />
-                <span className="text-sm ml-1 font-medium">4.9</span>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-semibold text-[#111827] dark:text-white text-lg" data-testid="text-expert-name">
+                    {fullName}
+                  </h3>
+                  {verified && (
+                    <CheckCircle className="w-4 h-4 text-blue-500 fill-blue-500" />
+                  )}
+                  {superExpert && (
+                    <Badge className="bg-amber-500 text-white text-xs px-1.5 py-0 border-0">
+                      Super Expert
+                    </Badge>
+                  )}
+                </div>
+                
+                {location && (
+                  <div className="flex items-center gap-1.5 text-[#6B7280] text-sm mt-0.5">
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>{location}</span>
+                  </div>
+                )}
               </div>
+              
+              <button 
+                onClick={() => setIsFavorite(!isFavorite)}
+                className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                data-testid="button-favorite"
+              >
+                <Heart className={cn(
+                  "w-5 h-5 transition-colors",
+                  isFavorite ? "fill-[#FF385C] text-[#FF385C]" : "text-gray-400"
+                )} />
+              </button>
             </div>
             
-            {expert.expertForm?.destinations && expert.expertForm.destinations.length > 0 && (
-              <div className="flex items-center gap-1.5 text-[#6B7280] text-sm mt-1">
-                <MapPin className="w-3.5 h-3.5" />
-                <span>{expert.expertForm.destinations.slice(0, 2).join(", ")}</span>
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <div className="flex items-center text-amber-500">
+                <Star className="w-4 h-4 fill-amber-500" />
+                <span className="text-sm ml-1 font-semibold">{rating.toFixed(1)}</span>
+                {reviewsCount !== null ? (
+                  <span className="text-[#6B7280] text-sm ml-1">({reviewsCount} reviews)</span>
+                ) : (
+                  <span className="text-[#6B7280] text-sm ml-1">(New)</span>
+                )}
               </div>
-            )}
-            
-            {expert.bio && (
-              <p className="text-[#6B7280] text-sm mt-2 line-clamp-2">
-                {expert.bio}
-              </p>
-            )}
+              
+              {tripsCount !== null && (
+                <div className="flex items-center gap-1 text-[#6B7280] text-sm">
+                  <Briefcase className="w-3.5 h-3.5" />
+                  <span>{tripsCount} trips</span>
+                </div>
+              )}
+              
+              {responseTime && (
+                <div className="flex items-center gap-1 text-[#6B7280] text-sm">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>{responseTime}</span>
+                </div>
+              )}
+            </div>
           </div>
           
           {lowestPrice && (
             <div className="text-right shrink-0">
-              <p className="text-xs text-[#6B7280]">From</p>
-              <p className="text-xl font-bold text-[#FF385C]" data-testid="text-price">
+              <p className="text-xs text-[#6B7280]">Starting at</p>
+              <p className="text-2xl font-bold text-[#FF385C]" data-testid="text-price">
                 ${lowestPrice}
               </p>
             </div>
           )}
         </div>
         
-        {experienceNames.length > 0 && (
-          <div className="mt-4">
-            <div className="flex items-center gap-1.5 text-xs text-[#6B7280] mb-2">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Experience Types</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {experienceNames.map((name) => (
-                <Badge 
-                  key={name} 
-                  variant="secondary" 
-                  className="text-xs px-2 py-0.5 bg-[#FF385C]/10 text-[#FF385C] border-0"
-                  data-testid={`badge-experience-${name.toLowerCase().replace(/\s/g, "-")}`}
-                >
-                  {name}
-                </Badge>
-              ))}
-              {moreExperienceCount > 0 && (
-                <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                  +{moreExperienceCount} more
-                </Badge>
-              )}
-            </div>
+        {specialties.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {specialties.slice(0, 4).map((specialty, idx) => (
+              <Badge 
+                key={idx} 
+                variant="secondary" 
+                className="text-xs px-2 py-0.5 bg-[#F3F4F6] dark:bg-gray-800 text-[#374151] dark:text-gray-300 border-0"
+                data-testid={`badge-specialty-${idx}`}
+              >
+                {specialty}
+              </Badge>
+            ))}
           </div>
         )}
         
-        {expert.specializations && expert.specializations.length > 0 && (
-          <div className="mt-3">
-            <div className="flex flex-wrap gap-1.5">
-              {expert.specializations.slice(0, 4).map((spec) => (
-                <Badge 
-                  key={spec} 
-                  variant="outline" 
-                  className="text-xs px-2 py-0.5"
-                  data-testid={`badge-spec-${spec}`}
-                >
-                  {specializationLabels[spec] || spec}
-                </Badge>
-              ))}
-            </div>
-          </div>
+        {expert.bio && (
+          <p className="text-[#6B7280] text-sm mt-3 line-clamp-2">
+            {expert.bio}
+          </p>
         )}
         
-        {showServices && expert.selectedServices && expert.selectedServices.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-[#E5E7EB] dark:border-gray-700">
-            <p className="text-xs text-[#6B7280] mb-2">Services Offered</p>
-            <div className="space-y-1.5">
-              {expert.selectedServices.slice(0, 3).map((service, idx) => (
-                <div 
-                  key={idx} 
-                  className="flex items-center justify-between text-sm"
-                  data-testid={`service-${idx}`}
-                >
-                  <span className="text-[#374151] dark:text-gray-300 truncate max-w-[200px]">
-                    {service.offering?.name}
-                  </span>
-                  <span className="text-[#FF385C] font-medium shrink-0 ml-2">
-                    ${service.offering?.price}
-                  </span>
-                </div>
-              ))}
-              {expert.selectedServices.length > 3 && (
-                <p className="text-xs text-[#6B7280]">
-                  +{expert.selectedServices.length - 3} more services
-                </p>
-              )}
-            </div>
+        {languages.length > 0 && (
+          <div className="flex items-center gap-1.5 text-[#6B7280] text-sm mt-3">
+            <Languages className="w-4 h-4" />
+            <span>Speaks {languages.slice(0, 3).join(", ")}{languages.length > 3 ? ` +${languages.length - 3} more` : ""}</span>
           </div>
         )}
         
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[#E5E7EB] dark:border-gray-700">
-          {expert.expertForm?.languages && expert.expertForm.languages.length > 0 && (
-            <div className="flex items-center gap-1 text-xs text-[#6B7280] flex-1">
-              <Languages className="w-3.5 h-3.5" />
-              <span>{expert.expertForm.languages.slice(0, 2).join(", ")}</span>
-            </div>
-          )}
-          
-          <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="flex-1 gap-1.5"
+            data-testid="button-message"
+          >
+            <MessageCircle className="w-4 h-4" />
+            Message
+          </Button>
+          <Link href={`/experts/${expert.id}`} className="flex-1">
             <Button 
-              variant="outline" 
-              size="sm"
-              className="gap-1.5"
-              data-testid="button-message"
+              size="sm" 
+              className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+              data-testid="button-view-profile"
             >
-              <MessageCircle className="w-4 h-4" />
-              Message
+              View Profile
             </Button>
-            <Link href={`/experts/${expert.id}`}>
-              <Button 
-                size="sm" 
-                className="bg-[#FF385C] hover:bg-[#E23350]"
-                data-testid="button-view-profile"
-              >
-                View Profile
-              </Button>
-            </Link>
-          </div>
+          </Link>
         </div>
       </CardContent>
     </Card>
