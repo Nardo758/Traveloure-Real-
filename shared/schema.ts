@@ -1052,6 +1052,45 @@ export const insertCustomVenueSchema = createInsertSchema(customVenues).omit({ i
 export type CustomVenue = typeof customVenues.$inferSelect;
 export type InsertCustomVenue = z.infer<typeof insertCustomVenueSchema>;
 
+// === GLOBAL CALENDAR SYSTEM ===
+
+export const calendarEventSourceEnum = ["system", "manual", "booking", "itinerary"] as const;
+export const calendarEventCategoryEnum = ["activity", "event", "flight", "hotel", "tour", "meeting", "reminder", "personal", "other"] as const;
+
+export const calendarEvents = pgTable("calendar_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  allDay: boolean("all_day").default(false),
+  timezone: varchar("timezone", { length: 50 }).default("UTC"),
+  
+  location: varchar("location", { length: 255 }),
+  
+  sourceType: varchar("source_type", { length: 20 }).default("manual").notNull(),
+  sourceId: varchar("source_id", { length: 255 }),
+  
+  category: varchar("category", { length: 30 }).default("other"),
+  color: varchar("color", { length: 20 }),
+  
+  metadata: jsonb("metadata").default({}),
+  
+  isEditable: boolean("is_editable").default(true),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Calendar Events schemas and types
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true, updatedAt: true });
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
+
 // === COORDINATION HUB: Vendor Availability System ===
 
 export const vendorAvailabilityStatusEnum = ["available", "limited", "fully_booked", "blocked"] as const;
