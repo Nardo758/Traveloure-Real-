@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { expertServiceCategories, expertServiceOfferings } from "@shared/schema";
+import { expertServiceCategories, expertServiceOfferings, expertCustomServices, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 const expertServiceData = [
@@ -131,4 +131,124 @@ export async function seedExpertServices() {
   }
 
   console.log("Expert service categories and offerings seeding complete.");
+}
+
+// Mock custom services data for testing
+const mockCustomServices = [
+  {
+    title: "Private Food Tour in Barcelona",
+    description: "Experience the authentic flavors of Barcelona with a personalized culinary journey through the city's hidden gems. Includes tapas bars, local markets, and wine pairings.",
+    categoryName: "Customized Travel Experiences",
+    price: "150.00",
+    duration: "4 hours",
+    deliverables: ["4-5 food stops", "Wine pairing", "Local market visit", "Recipe booklet", "Food photography tips"],
+    cancellationPolicy: "Full refund if cancelled 48 hours before. 50% refund if cancelled 24 hours before.",
+    leadTime: "48 hours",
+    status: "draft"
+  },
+  {
+    title: "Sunrise Photography Workshop in Santorini",
+    description: "Capture the iconic Santorini sunrise with expert guidance. Learn composition techniques and post-processing tips while visiting the most photogenic spots.",
+    categoryName: "Photography & Content Creation Travel Planning",
+    price: "200.00",
+    duration: "3 hours",
+    deliverables: ["Professional photo editing tips", "Location scouting", "Lightroom presets", "Personal portfolio review"],
+    cancellationPolicy: "Full refund if cancelled 72 hours before due to weather-dependent nature.",
+    leadTime: "1 week",
+    status: "submitted"
+  },
+  {
+    title: "Authentic Japanese Tea Ceremony Experience",
+    description: "Immerse yourself in the traditional art of Japanese tea ceremony with a certified tea master. Learn the history, etiquette, and philosophy behind this ancient practice.",
+    categoryName: "Cultural Immersion",
+    price: "85.00",
+    duration: "2 hours",
+    deliverables: ["Traditional tea set usage", "Seasonal wagashi sweets", "Certificate of participation", "Tea ceremony guide booklet"],
+    cancellationPolicy: "Non-refundable within 24 hours of scheduled time.",
+    leadTime: "24 hours",
+    status: "approved"
+  },
+  {
+    title: "Mountain Biking Adventure in the Alps",
+    description: "Thrilling mountain biking experience through scenic Alpine trails. Suitable for intermediate to advanced riders with breathtaking views.",
+    categoryName: "Adventure & Outdoor Travel Planning",
+    price: "175.00",
+    duration: "6 hours",
+    deliverables: ["Professional guide", "Safety equipment", "Trail lunch", "Photo memories", "Emergency support"],
+    cancellationPolicy: "Weather-dependent. Full refund if cancelled due to unsafe conditions.",
+    leadTime: "3 days",
+    status: "approved"
+  },
+  {
+    title: "Romantic Proposal Planning Package",
+    description: "Create the perfect proposal moment with our comprehensive planning service. We handle venue, decorations, photography, and surprise elements.",
+    categoryName: "Specialized Travel Planning",
+    price: "500.00",
+    duration: "Full day",
+    deliverables: ["Venue arrangement", "Floral decorations", "Professional photographer", "Celebration dinner reservation", "Backup weather plan"],
+    cancellationPolicy: "50% refund if cancelled 1 week before. Non-refundable within 72 hours.",
+    leadTime: "2 weeks",
+    status: "rejected",
+    rejectionReason: "Price exceeds platform guidelines for this category. Please adjust pricing between $200-$400 or provide additional justification for premium pricing."
+  },
+  {
+    title: "Local Street Art Walking Tour",
+    description: "Discover hidden street art gems and learn about the stories behind the murals from a local artist guide.",
+    categoryName: "Cultural Immersion",
+    price: "45.00",
+    duration: "2.5 hours",
+    deliverables: ["Expert commentary", "Art history insights", "Photo spots", "Local cafe stop"],
+    cancellationPolicy: "Free cancellation up to 24 hours before.",
+    leadTime: "24 hours",
+    status: "draft"
+  }
+];
+
+export async function seedCustomServices() {
+  console.log("Seeding mock custom services for testing...");
+
+  // Find the first user to use as the expert (or create test data for the logged-in user)
+  const existingUsers = await db.select().from(users).limit(1);
+  
+  if (existingUsers.length === 0) {
+    console.log("No users found. Skipping custom services seed.");
+    return;
+  }
+
+  const expertId = existingUsers[0].id;
+  console.log(`Using user ${expertId} as expert for custom services`);
+
+  // Check if we already have custom services for this expert
+  const existingServices = await db
+    .select()
+    .from(expertCustomServices)
+    .where(eq(expertCustomServices.expertId, expertId))
+    .limit(1);
+
+  if (existingServices.length > 0) {
+    console.log("Custom services already exist for this user. Skipping seed.");
+    return;
+  }
+
+  // Insert mock custom services
+  for (const service of mockCustomServices) {
+    await db.insert(expertCustomServices).values({
+      expertId,
+      title: service.title,
+      description: service.description,
+      categoryName: service.categoryName,
+      price: service.price,
+      duration: service.duration,
+      deliverables: service.deliverables,
+      cancellationPolicy: service.cancellationPolicy,
+      leadTime: service.leadTime,
+      status: service.status,
+      submittedAt: service.status !== "draft" ? new Date() : null,
+      reviewedAt: (service.status === "approved" || service.status === "rejected") ? new Date() : null,
+      rejectionReason: (service as any).rejectionReason || null,
+    });
+    console.log(`  → Created custom service: ${service.title} (${service.status})`);
+  }
+
+  console.log("Mock custom services seeding complete.");
 }
