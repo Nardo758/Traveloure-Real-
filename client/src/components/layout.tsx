@@ -408,7 +408,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div>
               <h4 className="font-semibold mb-4 text-white">Product</h4>
               <ul className="space-y-3 text-sm text-gray-400">
-                <li><Link href="/create-trip" className="hover:text-white transition-colors" data-testid="link-footer-create-trip">Create a Trip</Link></li>
+                <li><Link href="/experiences" className="hover:text-white transition-colors" data-testid="link-footer-create-trip">Plan an Experience</Link></li>
                 <li><Link href="/explore" className="hover:text-white transition-colors" data-testid="link-footer-explore">Explore Destinations</Link></li>
                 <li><Link href="/chat" className="hover:text-white transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
                 <li><Link href="/how-it-works" className="hover:text-white transition-colors" data-testid="link-footer-how-it-works">How It Works</Link></li>
