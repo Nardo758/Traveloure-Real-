@@ -77,7 +77,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter }
   const specialties = expert.specialties || expert.specializations?.slice(0, 2) || [];
 
   return (
-    <Card className="hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
+    <Card className="hover-elevate transition-all duration-200 overflow-visible group max-w-sm" data-testid={`card-expert-${expert.id}`}>
       <CardContent className="p-3">
         <div className="flex gap-3">
           <div className="relative shrink-0">
