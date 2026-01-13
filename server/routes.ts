@@ -1191,7 +1191,84 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // === Enhanced Expert Services Routes ===
-  
+
+  // Get all expert service categories with offerings (public)
+  app.get("/api/expert-service-categories", async (_req, res) => {
+    const categories = await storage.getExpertServiceCategories();
+    const categoriesWithOfferings = await Promise.all(categories.map(async (cat) => {
+      const offerings = await storage.getExpertServiceOfferings(cat.id);
+      return { ...cat, offerings };
+    }));
+    res.json(categoriesWithOfferings);
+  });
+
+  // Get expert service offerings for a specific category
+  app.get("/api/expert-service-categories/:categoryId/offerings", async (req, res) => {
+    const offerings = await storage.getExpertServiceOfferings(req.params.categoryId);
+    res.json(offerings);
+  });
+
+  // Get all experts with their full profiles (public)
+  app.get("/api/experts", async (req, res) => {
+    const experienceTypeId = req.query.experienceTypeId as string | undefined;
+    const experts = await storage.getExpertsWithProfiles(experienceTypeId);
+    res.json(experts);
+  });
+
+  // Get a single expert with profile by ID (public)
+  app.get("/api/experts/:id", async (req, res) => {
+    const experts = await storage.getExpertsWithProfiles();
+    const expert = experts.find(e => e.id === req.params.id);
+    if (!expert) {
+      return res.status(404).json({ message: "Expert not found" });
+    }
+    res.json(expert);
+  });
+
+  // Get current expert's selected services (authenticated)
+  app.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const services = await storage.getExpertSelectedServices(userId);
+    res.json(services);
+  });
+
+  // Add service offering to expert's profile (authenticated)
+  app.post("/api/expert/selected-services", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { serviceOfferingId, customPrice } = req.body;
+    const service = await storage.addExpertSelectedService(userId, serviceOfferingId, customPrice);
+    res.json(service);
+  });
+
+  // Remove service offering from expert's profile (authenticated)
+  app.delete("/api/expert/selected-services/:serviceOfferingId", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    await storage.removeExpertSelectedService(userId, req.params.serviceOfferingId);
+    res.json({ success: true });
+  });
+
+  // Get current expert's specializations (authenticated)
+  app.get("/api/expert/specializations", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const specializations = await storage.getExpertSpecializations(userId);
+    res.json(specializations);
+  });
+
+  // Add specialization to expert's profile (authenticated)
+  app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const { specialization } = req.body;
+    const spec = await storage.addExpertSpecialization(userId, specialization);
+    res.json(spec);
+  });
+
+  // Remove specialization from expert's profile (authenticated)
+  app.delete("/api/expert/specializations/:specialization", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    await storage.removeExpertSpecialization(userId, req.params.specialization);
+    res.json({ success: true });
+  });
+
   // Get single service by ID (public - for booking page)
   app.get("/api/services/:id", async (req, res) => {
     const service = await storage.getProviderServiceById(req.params.id);

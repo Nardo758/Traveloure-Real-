@@ -242,22 +242,45 @@ export const affiliatePlatforms = pgTable("affiliate_platforms", {
 export const localExpertForms = pgTable("local_expert_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Basic Info
+  firstName: varchar("first_name", { length: 100 }),
+  lastName: varchar("last_name", { length: 100 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  country: varchar("country", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  // Expertise
+  destinations: jsonb("destinations").default([]),
+  specialties: jsonb("specialties").default([]),
   languages: jsonb("languages").default([]),
-  yearsInCity: integer("years_in_city").notNull(),
+  experienceTypes: jsonb("experience_types").default([]),
+  specializations: jsonb("specializations").default([]),
+  selectedServices: jsonb("selected_services").default([]),
+  // Experience
+  yearsOfExperience: varchar("years_of_experience", { length: 50 }),
+  bio: text("bio"),
+  portfolio: text("portfolio"),
+  certifications: text("certifications"),
+  // Availability
+  availability: varchar("availability", { length: 50 }),
+  responseTime: varchar("response_time", { length: 50 }),
+  hourlyRate: varchar("hourly_rate", { length: 50 }),
+  // Legacy fields (keeping for compatibility)
+  yearsInCity: integer("years_in_city").default(0),
   offerService: boolean("offer_service").default(false),
-  govId: text("gov_id"), // File URL
-  travelLicence: text("travel_licence"), // File URL
+  govId: text("gov_id"),
+  travelLicence: text("travel_licence"),
   instagramLink: text("instagram_link"),
   facebookLink: text("facebook_link"),
   linkedinLink: text("linkedin_link"),
   services: jsonb("services").default([]),
   serviceAvailability: integer("service_availability").default(15),
-  priceExpectation: integer("price_expectation").notNull(),
+  priceExpectation: integer("price_expectation").default(0),
   shortBio: text("short_bio"),
   confirmAge: boolean("confirm_age").default(false),
   termsAndConditions: boolean("terms_and_conditions").default(false),
   partnership: boolean("partnership").default(false),
-  status: varchar("status", { length: 20 }).default("pending"), // Enum: applicationStatusEnum
+  status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -741,6 +764,51 @@ export const expertExperienceTypes = pgTable("expert_experience_types", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === Expert Service Categories & Offerings (from backend seeder) ===
+
+export const expertServiceCategories = pgTable("expert_service_categories", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 100 }).notNull().unique(),
+  isDefault: boolean("is_default").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const expertServiceOfferings = pgTable("expert_service_offerings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  categoryId: varchar("category_id").notNull().references(() => expertServiceCategories.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  isDefault: boolean("is_default").default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Link experts to their selected service offerings
+export const expertSelectedServices = pgTable("expert_selected_services", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  serviceOfferingId: varchar("service_offering_id").notNull().references(() => expertServiceOfferings.id, { onDelete: "cascade" }),
+  customPrice: decimal("custom_price", { precision: 10, scale: 2 }), // Allow experts to set custom pricing
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Expert specializations (Budget, Luxury, Adventure, etc.)
+export const expertSpecializationEnum = [
+  "budget_travel", "luxury_experiences", "adventure_outdoor", "cultural_immersion",
+  "family_friendly", "solo_travel", "food_wine", "photography_tours",
+  "honeymoon", "wellness_retreat", "group_travel", "backpacking"
+] as const;
+
+export const expertSpecializations = pgTable("expert_specializations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  specialization: varchar("specialization", { length: 50 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -889,6 +957,22 @@ export type ExperienceTemplateStep = typeof experienceTemplateSteps.$inferSelect
 export type InsertExperienceTemplateStep = z.infer<typeof insertExperienceTemplateStepSchema>;
 export type ExpertExperienceType = typeof expertExperienceTypes.$inferSelect;
 export type InsertExpertExperienceType = z.infer<typeof insertExpertExperienceTypeSchema>;
+
+// Expert Service Categories & Offerings schemas and types
+export const insertExpertServiceCategorySchema = createInsertSchema(expertServiceCategories).omit({ id: true, createdAt: true });
+export const insertExpertServiceOfferingSchema = createInsertSchema(expertServiceOfferings).omit({ id: true, createdAt: true });
+export const insertExpertSelectedServiceSchema = createInsertSchema(expertSelectedServices).omit({ id: true, createdAt: true });
+export const insertExpertSpecializationSchema = createInsertSchema(expertSpecializations).omit({ id: true, createdAt: true });
+
+export type ExpertServiceCategory = typeof expertServiceCategories.$inferSelect;
+export type InsertExpertServiceCategory = z.infer<typeof insertExpertServiceCategorySchema>;
+export type ExpertServiceOffering = typeof expertServiceOfferings.$inferSelect;
+export type InsertExpertServiceOffering = z.infer<typeof insertExpertServiceOfferingSchema>;
+export type ExpertSelectedService = typeof expertSelectedServices.$inferSelect;
+export type InsertExpertSelectedService = z.infer<typeof insertExpertSelectedServiceSchema>;
+export type ExpertSpecialization = typeof expertSpecializations.$inferSelect;
+export type InsertExpertSpecialization = z.infer<typeof insertExpertSpecializationSchema>;
+
 export type UserExperience = typeof userExperiences.$inferSelect;
 export type InsertUserExperience = z.infer<typeof insertUserExperienceSchema>;
 export type UserExperienceItem = typeof userExperienceItems.$inferSelect;

@@ -4,6 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
+import { seedExpertServices } from "./seed-expert-services";
 import { setupWebSocket } from "./websocket";
 
 const app = express();
@@ -85,6 +86,13 @@ app.use((req, res, next) => {
     }
   } catch (err) {
     console.error("Failed to seed experience types:", err);
+  }
+
+  // Seed expert service categories on startup
+  try {
+    await seedExpertServices();
+  } catch (err) {
+    console.error("Failed to seed expert services:", err);
   }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
