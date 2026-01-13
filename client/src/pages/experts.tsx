@@ -366,7 +366,7 @@ export default function ExpertsPage() {
               <span className="ml-2 text-[#6B7280]">Loading experts...</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {sortedExperts.map((expert: any, idx: number) => (
                 <motion.div
                   key={expert.id}
