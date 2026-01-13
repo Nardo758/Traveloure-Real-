@@ -252,3 +252,113 @@ export async function seedCustomServices() {
 
   console.log("Mock custom services seeding complete.");
 }
+
+// Mock experts data for testing
+const mockExperts = [
+  {
+    firstName: "Maria",
+    lastName: "Santos",
+    email: "maria.santos@example.com",
+    bio: "Local expert specializing in authentic Portuguese experiences. 10+ years guiding travelers through hidden gems of Lisbon and the Algarve coast.",
+    specialties: ["Cultural Tours", "Food & Wine", "Historical Sites", "Local Cuisine"]
+  },
+  {
+    firstName: "Kenji",
+    lastName: "Tanaka",
+    email: "kenji.tanaka@example.com",
+    bio: "Tokyo-based travel specialist with expertise in traditional Japanese culture, tea ceremonies, and off-the-beaten-path destinations across Japan.",
+    specialties: ["Cultural Immersion", "Traditional Experiences", "Photography Tours", "Nature Exploration"]
+  },
+  {
+    firstName: "Isabella",
+    lastName: "Rossi",
+    email: "isabella.rossi@example.com",
+    bio: "Italian travel curator crafting bespoke experiences in Tuscany, Rome, and the Amalfi Coast. Fluent in 4 languages with connections to local artisans.",
+    specialties: ["Luxury Travel", "Honeymoons", "Food & Wine", "Art & History"]
+  },
+  {
+    firstName: "Carlos",
+    lastName: "Mendez",
+    email: "carlos.mendez@example.com",
+    bio: "Adventure travel expert based in Costa Rica. Certified guide for rainforest expeditions, wildlife photography, and sustainable eco-tourism.",
+    specialties: ["Adventure Travel", "Wildlife Tours", "Eco-Tourism", "Nature Photography"]
+  },
+  {
+    firstName: "Sophie",
+    lastName: "Laurent",
+    email: "sophie.laurent@example.com",
+    bio: "Paris-based luxury travel consultant specializing in romantic getaways, proposal planning, and exclusive cultural experiences across France.",
+    specialties: ["Romance & Proposals", "Luxury Experiences", "Art Tours", "Fine Dining"]
+  },
+  {
+    firstName: "Ahmed",
+    lastName: "Hassan",
+    email: "ahmed.hassan@example.com",
+    bio: "Expert guide for Morocco and Egypt with deep knowledge of ancient history, local markets, and desert adventures. Over 15 years of experience.",
+    specialties: ["Historical Tours", "Desert Adventures", "Local Markets", "Cultural Immersion"]
+  },
+  {
+    firstName: "Emma",
+    lastName: "Thompson",
+    email: "emma.thompson@example.com",
+    bio: "UK-based travel planner specializing in family vacations, group travel coordination, and accessible tourism across Europe.",
+    specialties: ["Family Travel", "Group Coordination", "Accessible Tourism", "Budget Planning"]
+  },
+  {
+    firstName: "Raj",
+    lastName: "Patel",
+    email: "raj.patel@example.com",
+    bio: "India travel specialist with expertise in wellness retreats, spiritual journeys, and culinary adventures across the subcontinent.",
+    specialties: ["Wellness Retreats", "Spiritual Tours", "Culinary Experiences", "Festival Planning"]
+  },
+  {
+    firstName: "Elena",
+    lastName: "Volkov",
+    email: "elena.volkov@example.com",
+    bio: "Adventure photographer and travel guide covering Eastern Europe and the Balkans. Expert in solo travel safety and content creation.",
+    specialties: ["Solo Travel", "Photography", "Content Creation", "Off-Season Travel"]
+  },
+  {
+    firstName: "Marcus",
+    lastName: "Chen",
+    email: "marcus.chen@example.com",
+    bio: "Corporate travel specialist and event planner. Expert in organizing retreats, team-building trips, and executive travel across Asia-Pacific.",
+    specialties: ["Corporate Events", "Team Retreats", "Executive Travel", "Event Planning"]
+  }
+];
+
+export async function seedMockExperts() {
+  console.log("Seeding mock experts for testing...");
+
+  let created = 0;
+  let existed = 0;
+
+  for (const expert of mockExperts) {
+    // Check if expert already exists by email
+    const existingExpert = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, expert.email))
+      .limit(1);
+
+    if (existingExpert.length > 0) {
+      existed++;
+      continue;
+    }
+
+    // Create new expert user
+    await db.insert(users).values({
+      email: expert.email,
+      firstName: expert.firstName,
+      lastName: expert.lastName,
+      role: "expert",
+      bio: expert.bio,
+      specialties: expert.specialties,
+    });
+    
+    console.log(`  → Created expert: ${expert.firstName} ${expert.lastName}`);
+    created++;
+  }
+
+  console.log(`Mock experts seeding complete: ${created} created, ${existed} already existed.`);
+}
