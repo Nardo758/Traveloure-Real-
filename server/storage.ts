@@ -9,7 +9,7 @@ import {
   userExperiences, userExperienceItems, users, customVenues,
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   expertServiceCategories, expertServiceOfferings, expertSelectedServices, expertSpecializations,
-  expertCustomServices,
+  expertCustomServices, destinationEvents, destinationSeasons,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -37,7 +37,9 @@ import {
   type VendorAvailabilitySlot, type InsertVendorAvailabilitySlot,
   type CoordinationState, type InsertCoordinationState,
   type CoordinationBooking, type InsertCoordinationBooking,
-  type ExpertCustomService, type InsertExpertCustomService
+  type ExpertCustomService, type InsertExpertCustomService,
+  type DestinationEvent, type InsertDestinationEvent,
+  type DestinationSeason, type InsertDestinationSeason
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -260,6 +262,28 @@ export interface IStorage {
   updateCoordinationBooking(id: string, updates: Partial<InsertCoordinationBooking>): Promise<CoordinationBooking | undefined>;
   confirmCoordinationBooking(id: string, bookingReference: string, confirmationDetails?: any): Promise<CoordinationBooking | undefined>;
   deleteCoordinationBooking(id: string): Promise<void>;
+
+  // Destination Calendar Events
+  getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]>;
+  getApprovedDestinationEvents(country: string, city?: string): Promise<DestinationEvent[]>;
+  getDestinationEventById(id: string): Promise<DestinationEvent | undefined>;
+  getContributorDestinationEvents(contributorId: string): Promise<DestinationEvent[]>;
+  getPendingDestinationEvents(): Promise<DestinationEvent[]>;
+  createDestinationEvent(event: InsertDestinationEvent): Promise<DestinationEvent>;
+  updateDestinationEvent(id: string, updates: Partial<InsertDestinationEvent>): Promise<DestinationEvent | undefined>;
+  submitDestinationEvent(id: string): Promise<DestinationEvent | undefined>;
+  approveDestinationEvent(id: string, reviewedBy: string): Promise<DestinationEvent | undefined>;
+  rejectDestinationEvent(id: string, reviewedBy: string, reason: string): Promise<DestinationEvent | undefined>;
+  deleteDestinationEvent(id: string): Promise<void>;
+  
+  // Destination Seasons
+  getDestinationSeasons(country: string, city?: string): Promise<DestinationSeason[]>;
+  createDestinationSeason(season: InsertDestinationSeason): Promise<DestinationSeason>;
+  updateDestinationSeason(id: string, updates: Partial<InsertDestinationSeason>): Promise<DestinationSeason | undefined>;
+  deleteDestinationSeason(id: string): Promise<void>;
+  
+  // Get unique countries with calendar data
+  getCalendarCountries(): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1496,6 +1520,125 @@ export class DatabaseStorage implements IStorage {
         eq(expertCustomServices.status, "approved"),
         eq(expertCustomServices.isActive, true)
       ));
+  }
+
+  // Destination Calendar Events
+  async getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]> {
+    const conditions = [eq(destinationEvents.country, country)];
+    if (city) conditions.push(eq(destinationEvents.city, city));
+    if (status) conditions.push(eq(destinationEvents.status, status));
+    return await db.select().from(destinationEvents).where(and(...conditions)).orderBy(destinationEvents.startMonth);
+  }
+
+  async getApprovedDestinationEvents(country: string, city?: string): Promise<DestinationEvent[]> {
+    const conditions = [
+      eq(destinationEvents.country, country),
+      eq(destinationEvents.status, "approved")
+    ];
+    if (city) conditions.push(eq(destinationEvents.city, city));
+    return await db.select().from(destinationEvents).where(and(...conditions)).orderBy(destinationEvents.startMonth);
+  }
+
+  async getDestinationEventById(id: string): Promise<DestinationEvent | undefined> {
+    const [event] = await db.select().from(destinationEvents).where(eq(destinationEvents.id, id));
+    return event;
+  }
+
+  async getContributorDestinationEvents(contributorId: string): Promise<DestinationEvent[]> {
+    return await db.select().from(destinationEvents)
+      .where(eq(destinationEvents.contributorId, contributorId))
+      .orderBy(desc(destinationEvents.createdAt));
+  }
+
+  async getPendingDestinationEvents(): Promise<DestinationEvent[]> {
+    return await db.select().from(destinationEvents)
+      .where(eq(destinationEvents.status, "pending"))
+      .orderBy(desc(destinationEvents.createdAt));
+  }
+
+  async createDestinationEvent(event: InsertDestinationEvent): Promise<DestinationEvent> {
+    const [newEvent] = await db.insert(destinationEvents).values(event).returning();
+    return newEvent;
+  }
+
+  async updateDestinationEvent(id: string, updates: Partial<InsertDestinationEvent>): Promise<DestinationEvent | undefined> {
+    const [updated] = await db.update(destinationEvents)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(destinationEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async submitDestinationEvent(id: string): Promise<DestinationEvent | undefined> {
+    const [updated] = await db.update(destinationEvents)
+      .set({ status: "pending", updatedAt: new Date() })
+      .where(eq(destinationEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async approveDestinationEvent(id: string, reviewedBy: string): Promise<DestinationEvent | undefined> {
+    const [updated] = await db.update(destinationEvents)
+      .set({ 
+        status: "approved", 
+        reviewedAt: new Date(), 
+        reviewedBy, 
+        rejectionReason: null,
+        updatedAt: new Date() 
+      })
+      .where(eq(destinationEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async rejectDestinationEvent(id: string, reviewedBy: string, reason: string): Promise<DestinationEvent | undefined> {
+    const [updated] = await db.update(destinationEvents)
+      .set({ 
+        status: "rejected", 
+        reviewedAt: new Date(), 
+        reviewedBy, 
+        rejectionReason: reason,
+        updatedAt: new Date() 
+      })
+      .where(eq(destinationEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDestinationEvent(id: string): Promise<void> {
+    await db.delete(destinationEvents).where(eq(destinationEvents.id, id));
+  }
+
+  // Destination Seasons
+  async getDestinationSeasons(country: string, city?: string): Promise<DestinationSeason[]> {
+    const conditions = [eq(destinationSeasons.country, country)];
+    if (city) conditions.push(eq(destinationSeasons.city, city));
+    return await db.select().from(destinationSeasons).where(and(...conditions)).orderBy(destinationSeasons.month);
+  }
+
+  async createDestinationSeason(season: InsertDestinationSeason): Promise<DestinationSeason> {
+    const [newSeason] = await db.insert(destinationSeasons).values(season).returning();
+    return newSeason;
+  }
+
+  async updateDestinationSeason(id: string, updates: Partial<InsertDestinationSeason>): Promise<DestinationSeason | undefined> {
+    const [updated] = await db.update(destinationSeasons)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(destinationSeasons.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteDestinationSeason(id: string): Promise<void> {
+    await db.delete(destinationSeasons).where(eq(destinationSeasons.id, id));
+  }
+
+  // Get unique countries with calendar data
+  async getCalendarCountries(): Promise<string[]> {
+    const events = await db.selectDistinct({ country: destinationEvents.country }).from(destinationEvents).where(eq(destinationEvents.status, "approved"));
+    const seasons = await db.selectDistinct({ country: destinationSeasons.country }).from(destinationSeasons);
+    const countries = new Set([...events.map(e => e.country), ...seasons.map(s => s.country)]);
+    return Array.from(countries).sort();
   }
 }
 

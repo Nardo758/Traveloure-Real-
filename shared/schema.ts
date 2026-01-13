@@ -1052,44 +1052,82 @@ export const insertCustomVenueSchema = createInsertSchema(customVenues).omit({ i
 export type CustomVenue = typeof customVenues.$inferSelect;
 export type InsertCustomVenue = z.infer<typeof insertCustomVenueSchema>;
 
-// === GLOBAL CALENDAR SYSTEM ===
+// === DESTINATION CALENDAR SYSTEM ===
 
-export const calendarEventSourceEnum = ["system", "manual", "booking", "itinerary"] as const;
-export const calendarEventCategoryEnum = ["activity", "event", "flight", "hotel", "tour", "meeting", "reminder", "personal", "other"] as const;
+export const destinationEventTypeEnum = ["festival", "holiday", "weather", "season", "cultural", "sporting", "religious", "other"] as const;
+export const destinationEventStatusEnum = ["draft", "pending", "approved", "rejected"] as const;
+export const seasonRatingEnum = ["best", "good", "average", "avoid"] as const;
 
-export const calendarEvents = pgTable("calendar_events", {
+export const destinationEvents = pgTable("destination_events", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  
+  country: varchar("country", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  region: varchar("region", { length: 100 }),
   
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date"),
-  allDay: boolean("all_day").default(false),
-  timezone: varchar("timezone", { length: 50 }).default("UTC"),
+  eventType: varchar("event_type", { length: 30 }).default("other"),
   
-  location: varchar("location", { length: 255 }),
+  startMonth: integer("start_month"),
+  endMonth: integer("end_month"),
+  specificDate: date("specific_date"),
+  isRecurring: boolean("is_recurring").default(true),
+  year: integer("year"),
   
-  sourceType: varchar("source_type", { length: 20 }).default("manual").notNull(),
+  seasonRating: varchar("season_rating", { length: 20 }),
+  
+  highlights: jsonb("highlights").default([]),
+  tips: text("tips"),
+  
+  sourceType: varchar("source_type", { length: 20 }).default("manual"),
   sourceId: varchar("source_id", { length: 255 }),
   
-  category: varchar("category", { length: 30 }).default("other"),
-  color: varchar("color", { length: 20 }),
+  contributorId: varchar("contributor_id").references(() => users.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 20 }).default("pending"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at"),
+  rejectionReason: text("rejection_reason"),
   
   metadata: jsonb("metadata").default({}),
-  
-  isEditable: boolean("is_editable").default(true),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Calendar Events schemas and types
-export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({ id: true, createdAt: true, updatedAt: true });
-export type CalendarEvent = typeof calendarEvents.$inferSelect;
-export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
+export const destinationSeasons = pgTable("destination_seasons", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  country: varchar("country", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  
+  month: integer("month").notNull(),
+  rating: varchar("rating", { length: 20 }).notNull(),
+  
+  weatherDescription: text("weather_description"),
+  averageTemp: varchar("average_temp", { length: 20 }),
+  rainfall: varchar("rainfall", { length: 50 }),
+  
+  crowdLevel: varchar("crowd_level", { length: 20 }),
+  priceLevel: varchar("price_level", { length: 20 }),
+  
+  highlights: jsonb("highlights").default([]),
+  
+  sourceType: varchar("source_type", { length: 20 }).default("system"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Destination Calendar schemas and types
+export const insertDestinationEventSchema = createInsertSchema(destinationEvents).omit({ id: true, createdAt: true, updatedAt: true, reviewedAt: true });
+export const insertDestinationSeasonSchema = createInsertSchema(destinationSeasons).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type DestinationEvent = typeof destinationEvents.$inferSelect;
+export type InsertDestinationEvent = z.infer<typeof insertDestinationEventSchema>;
+export type DestinationSeason = typeof destinationSeasons.$inferSelect;
+export type InsertDestinationSeason = z.infer<typeof insertDestinationSeasonSchema>;
 
 // === COORDINATION HUB: Vendor Availability System ===
 
