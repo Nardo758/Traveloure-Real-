@@ -1058,6 +1058,10 @@ export default function ExperienceTemplatePage() {
     return filtered;
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
+  // State for search result markers on map (must be declared before mapProviders)
+  const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
+  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
+
   const mapProviders = useMemo(() => {
     const serviceMarkers = filteredServices.map((s, index) => {
       const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
@@ -1128,10 +1132,6 @@ export default function ExperienceTemplatePage() {
 
   const [transitRoutes, setTransitRoutes] = useState<Map<string, any>>(new Map());
   const [highlightedActivityId, setHighlightedActivityId] = useState<string | null>(null);
-  
-  // State for search result markers on map
-  const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
-  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
 
   // Auto-fetch transit routes when hotel and activities are available
   useEffect(() => {
