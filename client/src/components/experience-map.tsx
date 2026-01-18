@@ -416,21 +416,8 @@ export function ExperienceMap({
     );
   }
 
-  if (providers.length === 0 && !destinationCenter) {
-    return (
-      <div className={cn("flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md", className)} style={{ height }}>
-        <div className="text-center p-6">
-          <MapPin className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h3 className="font-semibold mb-2">No Locations to Display</h3>
-          <p className="text-sm text-muted-foreground">
-            {destination 
-              ? `No providers found in ${destination}` 
-              : "Enter a destination to see providers on the map"}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Always show the map - it will default to NYC if no destination is set
+  // This ensures users see the map immediately instead of a placeholder
 
   const selectedCount = selectedProviderIds.length;
 
