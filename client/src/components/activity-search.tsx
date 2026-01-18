@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+interface ActivityMapMarker {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: string;
+  price: number;
+  rating: number;
+  description?: string;
+}
+
 interface ActivitySearchProps {
   destination?: string;
   startDate?: Date;
@@ -39,6 +50,7 @@ interface ActivitySearchProps {
   sortBy?: "TOP_SELLERS" | "PRICE_LOW_TO_HIGH" | "PRICE_HIGH_TO_LOW" | "TRAVELER_RATING";
   filterType?: "activities" | "transport" | "all";
   onSelectActivity?: (activity: ViatorActivity) => void;
+  onResultsLoaded?: (markers: ActivityMapMarker[]) => void;
 }
 
 const STRONG_TRANSPORT_KEYWORDS = [
@@ -276,6 +288,7 @@ export function ActivitySearch({
   sortBy = "TOP_SELLERS",
   filterType = "activities",
   onSelectActivity,
+  onResultsLoaded,
 }: ActivitySearchProps) {
   const [currentSortBy, setCurrentSortBy] = useState(sortBy);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
@@ -326,6 +339,41 @@ export function ActivitySearch({
     
     return filtered;
   }, [data?.products, currentSortBy, filterType]);
+
+  // Notify parent of activity results with coordinates for map display
+  const activityMarkers = useMemo(() => {
+    if (!activities || activities.length === 0) return [];
+    
+    return activities
+      .map(activity => {
+        const meetingInfo = getMeetingPointInfo(activity.logistics);
+        if (!meetingInfo?.coordinates) return null;
+        
+        return {
+          id: `activity-${activity.productCode}`,
+          name: activity.title,
+          lat: meetingInfo.coordinates.lat,
+          lng: meetingInfo.coordinates.lng,
+          category: filterType === "transport" ? "transportation" : "activities",
+          price: activity.pricing?.summary?.fromPrice || 0,
+          rating: activity.reviews?.combinedAverageRating || 4.5,
+          description: activity.description?.substring(0, 100),
+        } as ActivityMapMarker;
+      })
+      .filter((m): m is ActivityMapMarker => m !== null);
+  }, [activities, filterType]);
+  
+  // Use effect to notify parent of activity markers (proper React pattern)
+  const prevMarkersRef = useRef<string>("");
+  useEffect(() => {
+    if (!onResultsLoaded) return;
+    
+    const markersKey = activityMarkers.map(m => m.id).join(",");
+    if (markersKey !== prevMarkersRef.current) {
+      prevMarkersRef.current = markersKey;
+      onResultsLoaded(activityMarkers);
+    }
+  }, [activityMarkers, onResultsLoaded]);
 
   const handleSelectActivity = (activity: ViatorActivity) => {
     const newSelected = new Set(selectedActivities);
