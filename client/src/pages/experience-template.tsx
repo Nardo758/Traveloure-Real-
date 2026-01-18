@@ -733,6 +733,34 @@ export default function ExperienceTemplatePage() {
   const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
   const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
 
+  // Geocode destination to get coordinates for map centering and marker fallback
+  const { data: destinationLocationData } = useQuery<Array<{ geoCode?: { latitude: number; longitude: number } }>>({
+    queryKey: ["/api/amadeus/locations", "geocode-destination", destination],
+    enabled: !!destination && destination.length >= 2 && detailsSubmitted,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        keyword: destination,
+        subType: "CITY",
+      });
+      const res = await fetch(`/api/amadeus/locations?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 300000,
+  });
+
+  const destinationCenter = useMemo(() => {
+    if (destinationLocationData && destinationLocationData.length > 0 && destinationLocationData[0].geoCode) {
+      return {
+        lat: destinationLocationData[0].geoCode.latitude,
+        lng: destinationLocationData[0].geoCode.longitude,
+      };
+    }
+    return null;
+  }, [destinationLocationData]);
+
   const { data: customVenues = [] } = useQuery<CustomVenue[]>({
     queryKey: ["/api/custom-venues", slug],
     queryFn: async () => {
@@ -1855,6 +1883,7 @@ export default function ExperienceTemplatePage() {
                 sortBy={hotelSortBy}
                 activityLocations={activityLocations}
                 onResultsLoaded={setHotelSearchMarkers}
+                destinationCenter={destinationCenter}
                 onSelectHotel={(hotelData) => {
                   const hotel = hotelData.hotel;
                   const offer = hotelData.offers?.[0];
@@ -1957,6 +1986,7 @@ export default function ExperienceTemplatePage() {
                 travelers={travelers}
                 filterType="transport"
                 onResultsLoaded={setActivitySearchMarkers}
+                destinationCenter={destinationCenter}
                 onSelectActivity={(activity) => {
                   const durationMinutes = activity.duration?.fixedDurationInMinutes || 
                     activity.duration?.variableDurationFromMinutes || 0;
@@ -2060,6 +2090,7 @@ export default function ExperienceTemplatePage() {
                 endDate={endDate}
                 travelers={travelers}
                 onResultsLoaded={setActivitySearchMarkers}
+                destinationCenter={destinationCenter}
                 onSelectActivity={(activity) => {
                   const durationMinutes = activity.duration?.fixedDurationInMinutes || 
                     activity.duration?.variableDurationFromMinutes || 0;
@@ -2276,6 +2307,7 @@ export default function ExperienceTemplatePage() {
                   providers={mapProviders}
                   selectedProviderIds={selectedProviderIds}
                   destination={destination}
+                  destinationCenter={destinationCenter}
                   onAddToCart={(provider) => addToCart({
                     id: provider.id,
                     type: provider.category,
@@ -2508,6 +2540,7 @@ export default function ExperienceTemplatePage() {
                     providers={mapProviders}
                     selectedProviderIds={selectedProviderIds}
                     destination={destination}
+                    destinationCenter={destinationCenter}
                     onAddToCart={(provider) => addToCart({
                       id: provider.id,
                       type: provider.category,

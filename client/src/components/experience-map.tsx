@@ -72,6 +72,7 @@ interface ExperienceMapProps {
   providers: MapProvider[];
   selectedProviderIds?: string[];
   destination?: string;
+  destinationCenter?: { lat: number; lng: number } | null;
   onAddToCart?: (provider: MapProvider) => void;
   onRemoveFromCart?: (providerId: string) => void;
   className?: string;
@@ -356,6 +357,7 @@ export function ExperienceMap({
   providers,
   selectedProviderIds = [],
   destination,
+  destinationCenter: parentDestinationCenter,
   onAddToCart,
   onRemoveFromCart,
   className,
@@ -367,9 +369,11 @@ export function ExperienceMap({
 }: ExperienceMapProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+  // Use parent-provided destination center if available, otherwise do our own geocoding as fallback
   const { data: locationData } = useQuery<Array<{ geoCode?: { latitude: number; longitude: number } }>>({
     queryKey: ["/api/amadeus/locations", "geocode-map", destination],
-    enabled: !!destination && destination.length >= 2,
+    // Only query if we don't have a parent-provided center
+    enabled: !parentDestinationCenter && !!destination && destination.length >= 2,
     queryFn: async () => {
       const params = new URLSearchParams({
         keyword: destination!,
@@ -384,7 +388,11 @@ export function ExperienceMap({
     staleTime: 300000,
   });
 
+  // Prioritize parent-provided center, then fall back to our own geocoding
   const destinationCenter = useMemo(() => {
+    if (parentDestinationCenter) {
+      return parentDestinationCenter;
+    }
     if (locationData && locationData.length > 0 && locationData[0].geoCode) {
       return {
         lat: locationData[0].geoCode.latitude,
@@ -392,7 +400,7 @@ export function ExperienceMap({
       };
     }
     return null;
-  }, [locationData]);
+  }, [parentDestinationCenter, locationData]);
 
   if (!apiKey) {
     return (

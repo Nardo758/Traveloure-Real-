@@ -51,6 +51,7 @@ interface ActivitySearchProps {
   filterType?: "activities" | "transport" | "all";
   onSelectActivity?: (activity: ViatorActivity) => void;
   onResultsLoaded?: (markers: ActivityMapMarker[]) => void;
+  destinationCenter?: { lat: number; lng: number } | null;
 }
 
 const STRONG_TRANSPORT_KEYWORDS = [
@@ -289,6 +290,7 @@ export function ActivitySearch({
   filterType = "activities",
   onSelectActivity,
   onResultsLoaded,
+  destinationCenter,
 }: ActivitySearchProps) {
   const [currentSortBy, setCurrentSortBy] = useState(sortBy);
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
@@ -341,19 +343,35 @@ export function ActivitySearch({
   }, [data?.products, currentSortBy, filterType]);
 
   // Notify parent of activity results with coordinates for map display
+  // Use destinationCenter as fallback when individual activity coordinates aren't available
   const activityMarkers = useMemo(() => {
     if (!activities || activities.length === 0) return [];
     
     return activities
-      .map(activity => {
+      .map((activity, index) => {
         const meetingInfo = getMeetingPointInfo(activity.logistics);
-        if (!meetingInfo?.coordinates) return null;
+        const coordinates = meetingInfo?.coordinates;
+        
+        // Use activity coordinates if available, otherwise fall back to destination center with slight offset
+        let lat: number, lng: number;
+        if (coordinates) {
+          lat = coordinates.lat;
+          lng = coordinates.lng;
+        } else if (destinationCenter) {
+          // Add small random offset to prevent markers from stacking exactly on top of each other
+          const offset = 0.002 * (index % 10);
+          const angle = (index * 137.5) * (Math.PI / 180); // Golden angle for distribution
+          lat = destinationCenter.lat + offset * Math.cos(angle);
+          lng = destinationCenter.lng + offset * Math.sin(angle);
+        } else {
+          return null; // No coordinates available at all
+        }
         
         return {
           id: `activity-${activity.productCode}`,
           name: activity.title,
-          lat: meetingInfo.coordinates.lat,
-          lng: meetingInfo.coordinates.lng,
+          lat,
+          lng,
           category: filterType === "transport" ? "transportation" : "activities",
           price: activity.pricing?.summary?.fromPrice || 0,
           rating: activity.reviews?.combinedAverageRating || 4.5,
@@ -361,7 +379,7 @@ export function ActivitySearch({
         } as ActivityMapMarker;
       })
       .filter((m): m is ActivityMapMarker => m !== null);
-  }, [activities, filterType]);
+  }, [activities, filterType, destinationCenter]);
   
   // Use effect to notify parent of activity markers (proper React pattern)
   const prevMarkersRef = useRef<string>("");

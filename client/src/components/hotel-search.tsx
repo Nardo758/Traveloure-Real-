@@ -58,6 +58,7 @@ interface HotelSearchProps {
   onSelectHotel?: (hotel: any) => void;
   activityLocations?: ActivityLocationForProximity[];
   onResultsLoaded?: (markers: HotelMapMarker[]) => void;
+  destinationCenter?: { lat: number; lng: number } | null;
 }
 
 interface LocationSuggestion {
@@ -196,6 +197,7 @@ export function HotelSearch({
   onSelectHotel,
   activityLocations = [],
   onResultsLoaded,
+  destinationCenter,
 }: HotelSearchProps) {
   const [cityCode, setCityCode] = useState("");
   const [cityOpen, setCityOpen] = useState(false);
@@ -352,15 +354,29 @@ export function HotelSearch({
     if (!filteredAndSortedHotels || filteredAndSortedHotels.length === 0) return [];
     
     return filteredAndSortedHotels
-      .map(hotel => {
-        if (!hotel.hotel.latitude || !hotel.hotel.longitude) return null;
-        
+      .map((hotel, index) => {
         const offer = hotel.offers?.[0];
+        
+        // Use hotel coordinates if available, otherwise fall back to destination center with slight offset
+        let lat: number, lng: number;
+        if (hotel.hotel.latitude && hotel.hotel.longitude) {
+          lat = hotel.hotel.latitude;
+          lng = hotel.hotel.longitude;
+        } else if (destinationCenter) {
+          // Add small random offset to prevent markers from stacking exactly on top of each other
+          const offset = 0.003 * (index % 10);
+          const angle = (index * 137.5) * (Math.PI / 180); // Golden angle for distribution
+          lat = destinationCenter.lat + offset * Math.cos(angle);
+          lng = destinationCenter.lng + offset * Math.sin(angle);
+        } else {
+          return null; // No coordinates available at all
+        }
+        
         return {
           id: `hotel-${hotel.hotel.hotelId}`,
           name: hotel.hotel.name,
-          lat: hotel.hotel.latitude,
-          lng: hotel.hotel.longitude,
+          lat,
+          lng,
           category: "accommodations",
           price: offer ? parseFloat(offer.price.total) : 0,
           rating: hotel.hotel.rating ? parseInt(hotel.hotel.rating) : 4,
@@ -368,7 +384,7 @@ export function HotelSearch({
         } as HotelMapMarker;
       })
       .filter((m): m is HotelMapMarker => m !== null);
-  }, [filteredAndSortedHotels]);
+  }, [filteredAndSortedHotels, destinationCenter]);
   
   // Use effect to notify parent of hotel markers (proper React pattern)
   const prevHotelMarkersRef = useRef<string>("");
