@@ -361,7 +361,7 @@ export function HotelSearch({
           name: hotel.hotel.name,
           lat: hotel.hotel.latitude,
           lng: hotel.hotel.longitude,
-          category: "accommodation",
+          category: "accommodations",
           price: offer ? parseFloat(offer.price.total) : 0,
           rating: hotel.hotel.rating ? parseInt(hotel.hotel.rating) : 4,
           description: hotel.hotel.name,

@@ -94,6 +94,7 @@ const categoryColors: Record<string, string> = {
   dining: "#FF9800",
   restaurant: "#FF9800",
   accommodations: "#3F51B5",
+  accommodation: "#3F51B5",
   hotel: "#3F51B5",
   hotels: "#3F51B5",
   spa: "#009688",
@@ -179,8 +180,8 @@ function MapContent({
 
   return (
     <Map
-      center={center}
-      zoom={12}
+      defaultCenter={center}
+      defaultZoom={12}
       gestureHandling="greedy"
       disableDefaultUI={false}
       zoomControl={true}
