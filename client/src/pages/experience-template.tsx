@@ -1097,19 +1097,26 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
+    // Use destination center if available, otherwise fall back to NYC as default
+    const baseLat = destinationCenter?.lat ?? 40.7128;
+    const baseLng = destinationCenter?.lng ?? -74.0060;
+    
     const serviceMarkers = filteredServices.map((s, index) => {
       const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
-      const baseHash = numericId * 1000;
-      const latOffset = ((baseHash % 100) - 50) / 1000;
-      const lngOffset = (((baseHash + 37) % 100) - 50) / 1000;
+      // Use golden angle distribution for spreading markers around destination
+      const goldenAngle = 137.5 * (Math.PI / 180);
+      const angle = index * goldenAngle;
+      const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
+      const latOffset = Math.cos(angle) * radius;
+      const lngOffset = Math.sin(angle) * radius;
       return {
         id: s.id.toString(),
         name: s.serviceName,
         category: s.serviceType || currentTabCategory || "venue",
         price: Number(s.price) || 0,
         rating: Number(s.averageRating) || 4.5,
-        lat: 40.7128 + latOffset,
-        lng: -74.0060 + lngOffset,
+        lat: baseLat + latOffset,
+        lng: baseLng + lngOffset,
         description: s.shortDescription || s.description || undefined
       };
     });
@@ -1130,7 +1137,7 @@ export default function ExperienceTemplatePage() {
       : [];
     
     return [...customVenueMarkers, ...serviceMarkers, ...hotelSearchMarkers, ...activitySearchMarkers];
-  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers]);
+  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers, destinationCenter]);
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
