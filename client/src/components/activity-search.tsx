@@ -294,7 +294,7 @@ export function ActivitySearch({
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [selectedActivities, setSelectedActivities] = useState<Set<string>>(new Set());
 
-  const { data, isLoading, error, refetch } = useQuery<{ products: ViatorActivity[]; totalCount: number }>({
+  const { data, isLoading, error, refetch } = useQuery<{ products: ViatorActivity[]; totalCount: number; serviceNotice?: string }>({
     queryKey: ['/api/viator/activities', destination, currentSortBy],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -459,6 +459,27 @@ export function ActivitySearch({
   }
 
   if (!activities.length) {
+    // Show service notice if API is temporarily unavailable
+    if (data?.serviceNotice) {
+      return (
+        <Card className="border-amber-500 border-2">
+          <CardContent className="p-8 text-center">
+            <AlertCircle className="h-12 w-12 mx-auto mb-3 text-amber-500" />
+            <h3 className="font-semibold text-lg mb-2">
+              Service Temporarily Unavailable
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {data.serviceNotice}
+            </p>
+            <Button variant="outline" onClick={() => refetch()} data-testid="button-retry-activities">
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+    
     return (
       <Card className="border-2 border-dashed">
         <CardContent className="p-8 text-center">
