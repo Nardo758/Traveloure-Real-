@@ -1091,8 +1091,8 @@ export default function ExperienceTemplatePage() {
           }))
       : [];
     
-    return [...customVenueMarkers, ...serviceMarkers];
-  }, [filteredServices, currentTabCategory, customVenues, activeTab]);
+    return [...customVenueMarkers, ...serviceMarkers, ...hotelSearchMarkers, ...activitySearchMarkers];
+  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers]);
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
@@ -1128,6 +1128,10 @@ export default function ExperienceTemplatePage() {
 
   const [transitRoutes, setTransitRoutes] = useState<Map<string, any>>(new Map());
   const [highlightedActivityId, setHighlightedActivityId] = useState<string | null>(null);
+  
+  // State for search result markers on map
+  const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
+  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
 
   // Auto-fetch transit routes when hotel and activities are available
   useEffect(() => {
@@ -1850,6 +1854,7 @@ export default function ExperienceTemplatePage() {
                 starRating={hotelStarRating}
                 sortBy={hotelSortBy}
                 activityLocations={activityLocations}
+                onResultsLoaded={setHotelSearchMarkers}
                 onSelectHotel={(hotelData) => {
                   const hotel = hotelData.hotel;
                   const offer = hotelData.offers?.[0];
@@ -1951,6 +1956,7 @@ export default function ExperienceTemplatePage() {
                 endDate={endDate}
                 travelers={travelers}
                 filterType="transport"
+                onResultsLoaded={setActivitySearchMarkers}
                 onSelectActivity={(activity) => {
                   const durationMinutes = activity.duration?.fixedDurationInMinutes || 
                     activity.duration?.variableDurationFromMinutes || 0;
@@ -2053,6 +2059,7 @@ export default function ExperienceTemplatePage() {
                 startDate={startDate}
                 endDate={endDate}
                 travelers={travelers}
+                onResultsLoaded={setActivitySearchMarkers}
                 onSelectActivity={(activity) => {
                   const durationMinutes = activity.duration?.fixedDurationInMinutes || 
                     activity.duration?.variableDurationFromMinutes || 0;

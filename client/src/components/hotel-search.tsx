@@ -36,6 +36,17 @@ interface ActivityLocationForProximity {
   meetingPoint?: string;
 }
 
+interface HotelMapMarker {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  category: string;
+  price: number;
+  rating: number;
+  description?: string;
+}
+
 interface HotelSearchProps {
   destination?: string;
   checkIn?: Date;
@@ -46,6 +57,7 @@ interface HotelSearchProps {
   sortBy?: "price" | "rating";
   onSelectHotel?: (hotel: any) => void;
   activityLocations?: ActivityLocationForProximity[];
+  onResultsLoaded?: (markers: HotelMapMarker[]) => void;
 }
 
 interface LocationSuggestion {
@@ -183,6 +195,7 @@ export function HotelSearch({
   sortBy = "price" as "price" | "rating",
   onSelectHotel,
   activityLocations = [],
+  onResultsLoaded,
 }: HotelSearchProps) {
   const [cityCode, setCityCode] = useState("");
   const [cityOpen, setCityOpen] = useState(false);
@@ -333,6 +346,41 @@ export function HotelSearch({
 
     return result;
   }, [hotels, maxPrice, starRating, sortBy]);
+
+  // Generate hotel map markers and notify parent
+  const hotelMarkers = useMemo(() => {
+    if (!filteredAndSortedHotels || filteredAndSortedHotels.length === 0) return [];
+    
+    return filteredAndSortedHotels
+      .map(hotel => {
+        if (!hotel.hotel.latitude || !hotel.hotel.longitude) return null;
+        
+        const offer = hotel.offers?.[0];
+        return {
+          id: `hotel-${hotel.hotel.hotelId}`,
+          name: hotel.hotel.name,
+          lat: hotel.hotel.latitude,
+          lng: hotel.hotel.longitude,
+          category: "accommodation",
+          price: offer ? parseFloat(offer.price.total) : 0,
+          rating: hotel.hotel.rating ? parseInt(hotel.hotel.rating) : 4,
+          description: hotel.hotel.name,
+        } as HotelMapMarker;
+      })
+      .filter((m): m is HotelMapMarker => m !== null);
+  }, [filteredAndSortedHotels]);
+  
+  // Use effect to notify parent of hotel markers (proper React pattern)
+  const prevHotelMarkersRef = useRef<string>("");
+  useEffect(() => {
+    if (!onResultsLoaded) return;
+    
+    const markersKey = hotelMarkers.map(m => m.id).join(",");
+    if (markersKey !== prevHotelMarkersRef.current) {
+      prevHotelMarkersRef.current = markersKey;
+      onResultsLoaded(hotelMarkers);
+    }
+  }, [hotelMarkers, onResultsLoaded]);
 
   if (isDetecting) {
     return (
