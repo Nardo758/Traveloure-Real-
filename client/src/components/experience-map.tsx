@@ -184,9 +184,12 @@ function MapContent({
       gestureHandling="greedy"
       disableDefaultUI={false}
       zoomControl={true}
+      fullscreenControl={true}
       mapTypeControl={false}
       streetViewControl={false}
+      scrollwheel={true}
       className="w-full h-full rounded-md"
+      style={{ width: '100%', height: '100%' }}
     >
       {providers.map((provider) => {
         const selected = isSelected(provider.id);

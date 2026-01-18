@@ -1244,6 +1244,98 @@ export const coordinationBookings = pgTable("coordination_bookings", {
   confirmedAt: timestamp("confirmed_at"),
 });
 
+// ============ API CACHE TABLES ============
+// Cache tables for storing API data locally with location info for mapping
+
+export const hotelCache = pgTable("hotel_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  hotelId: varchar("hotel_id", { length: 100 }).notNull(),
+  cityCode: varchar("city_code", { length: 10 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  address: text("address"),
+  rating: varchar("rating", { length: 10 }),
+  amenities: jsonb("amenities").default([]),
+  media: jsonb("media").default([]),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const hotelOfferCache = pgTable("hotel_offer_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  hotelCacheId: varchar("hotel_cache_id").notNull().references(() => hotelCache.id, { onDelete: "cascade" }),
+  offerId: varchar("offer_id", { length: 100 }).notNull(),
+  checkInDate: date("check_in_date").notNull(),
+  checkOutDate: date("check_out_date").notNull(),
+  roomType: varchar("room_type", { length: 100 }),
+  roomDescription: text("room_description"),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const activityCache = pgTable("activity_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  productCode: varchar("product_code", { length: 100 }).notNull().unique(),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  description: text("description"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  meetingPoint: text("meeting_point"),
+  durationMinutes: integer("duration_minutes"),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  rating: decimal("rating", { precision: 3, scale: 2 }),
+  reviewCount: integer("review_count").default(0),
+  imageUrl: text("image_url"),
+  flags: jsonb("flags").default([]),
+  tags: jsonb("tags").default([]),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const flightCache = pgTable("flight_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  originCode: varchar("origin_code", { length: 10 }).notNull(),
+  destinationCode: varchar("destination_code", { length: 10 }).notNull(),
+  departureDate: date("departure_date").notNull(),
+  returnDate: date("return_date"),
+  adults: integer("adults").notNull(),
+  offerId: varchar("offer_id", { length: 100 }).notNull(),
+  carrierCode: varchar("carrier_code", { length: 10 }),
+  flightNumber: varchar("flight_number", { length: 20 }),
+  departureTime: varchar("departure_time", { length: 30 }),
+  arrivalTime: varchar("arrival_time", { length: 30 }),
+  duration: varchar("duration", { length: 30 }),
+  stops: integer("stops").default(0),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+// Cache schemas and types
+export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
+export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
+export const insertActivityCacheSchema = createInsertSchema(activityCache).omit({ id: true, lastUpdated: true });
+export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
+
+export type HotelCache = typeof hotelCache.$inferSelect;
+export type InsertHotelCache = z.infer<typeof insertHotelCacheSchema>;
+export type HotelOfferCache = typeof hotelOfferCache.$inferSelect;
+export type InsertHotelOfferCache = z.infer<typeof insertHotelOfferCacheSchema>;
+export type ActivityCache = typeof activityCache.$inferSelect;
+export type InsertActivityCache = z.infer<typeof insertActivityCacheSchema>;
+export type FlightCache = typeof flightCache.$inferSelect;
+export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
+
 // Coordination Hub schemas and types
 export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCoordinationStateSchema = createInsertSchema(coordinationStates).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });

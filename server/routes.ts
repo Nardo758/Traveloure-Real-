@@ -22,6 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
+import { cacheService } from "./services/cache.service";
 import { claudeService } from "./services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
 
@@ -3083,6 +3084,167 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Viator destinations error:', error);
       res.status(500).json({ message: error.message || "Failed to get destinations" });
+    }
+  });
+
+  // ============ CACHED DATA WITH LOCATIONS API ============
+
+  // Get cached hotels with location data for mapping
+  app.get("/api/cache/hotels", isAuthenticated, async (req, res) => {
+    try {
+      const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
+      
+      if (!cityCode || !checkInDate || !checkOutDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: cityCode, checkInDate, checkOutDate, adults" 
+        });
+      }
+      
+      const result = await cacheService.getHotelsWithCache({
+        cityCode: cityCode as string,
+        checkInDate: checkInDate as string,
+        checkOutDate: checkOutDate as string,
+        adults: parseInt(adults as string, 10),
+        roomQuantity: rooms ? parseInt(rooms as string, 10) : 1,
+        currency: (currency as string) || 'USD',
+      });
+      
+      res.json({
+        hotels: result.data,
+        fromCache: result.fromCache,
+        lastUpdated: result.lastUpdated,
+      });
+    } catch (error: any) {
+      console.error('Cached hotel search error:', error);
+      res.status(500).json({ message: error.message || "Hotel search failed" });
+    }
+  });
+
+  // Get cached activities with location data for mapping
+  app.get("/api/cache/activities", isAuthenticated, async (req, res) => {
+    try {
+      const { destination, currency, count } = req.query;
+      
+      if (!destination || typeof destination !== 'string') {
+        return res.status(400).json({ message: "destination is required" });
+      }
+      
+      const result = await cacheService.getActivitiesWithCache(
+        destination,
+        (currency as string) || 'USD',
+        count ? parseInt(count as string, 10) : 20
+      );
+      
+      res.json({
+        activities: result.data,
+        fromCache: result.fromCache,
+        lastUpdated: result.lastUpdated,
+      });
+    } catch (error: any) {
+      console.error('Cached activity search error:', error);
+      res.status(500).json({ message: error.message || "Activity search failed" });
+    }
+  });
+
+  // Get map markers for hotels in a destination
+  app.get("/api/cache/map/hotels", isAuthenticated, async (req, res) => {
+    try {
+      const { cityCode } = req.query;
+      const markers = await cacheService.getCachedHotelsWithLocations(cityCode as string);
+      res.json(markers);
+    } catch (error: any) {
+      console.error('Hotel map markers error:', error);
+      res.status(500).json({ message: error.message || "Failed to get hotel markers" });
+    }
+  });
+
+  // Get map markers for activities in a destination
+  app.get("/api/cache/map/activities", isAuthenticated, async (req, res) => {
+    try {
+      const { destination } = req.query;
+      const markers = await cacheService.getCachedActivitiesWithLocations(destination as string);
+      res.json(markers);
+    } catch (error: any) {
+      console.error('Activity map markers error:', error);
+      res.status(500).json({ message: error.message || "Failed to get activity markers" });
+    }
+  });
+
+  // Verify availability before purchase
+  const verifyItemSchema = z.object({
+    type: z.enum(['hotel', 'activity', 'flight']),
+    id: z.string(),
+    checkInDate: z.string().optional(),
+    checkOutDate: z.string().optional(),
+    travelDate: z.string().optional(),
+    adults: z.number().optional(),
+    rooms: z.number().optional(),
+    currency: z.string().optional(),
+  });
+
+  const verifyAvailabilitySchema = z.object({
+    items: z.array(verifyItemSchema).min(1).max(50),
+  });
+
+  app.post("/api/cache/verify-availability", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = verifyAvailabilitySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request", 
+          errors: parseResult.error.errors 
+        });
+      }
+
+      const { items } = parseResult.data;
+      
+      const results = await Promise.all(items.map(async (item) => {
+        if (item.type === 'hotel') {
+          const hotelId = item.id.replace('hotel-', '');
+          if (!item.checkInDate || !item.checkOutDate) {
+            return { ...item, available: false, error: 'checkInDate and checkOutDate required for hotels' };
+          }
+          const result = await cacheService.verifyHotelAvailability(
+            hotelId, 
+            item.checkInDate, 
+            item.checkOutDate,
+            { 
+              adults: item.adults, 
+              rooms: item.rooms, 
+              currency: item.currency 
+            }
+          );
+          return { ...item, ...result };
+        } else if (item.type === 'activity') {
+          const productCode = item.id.replace('activity-', '');
+          const result = await cacheService.verifyActivityAvailability(productCode, item.travelDate);
+          return { ...item, ...result };
+        }
+        return { ...item, available: true };
+      }));
+      
+      res.json({ 
+        items: results,
+        allAvailable: results.every(r => r.available),
+        priceChanges: results.filter(r => r.priceChanged),
+      });
+    } catch (error: any) {
+      console.error('Availability verification error:', error);
+      res.status(500).json({ message: error.message || "Verification failed" });
+    }
+  });
+
+  // Clean up expired cache entries
+  app.post("/api/cache/cleanup", isAuthenticated, async (req, res) => {
+    try {
+      const result = await cacheService.cleanupExpiredCache();
+      res.json({ 
+        message: "Cache cleanup complete",
+        deleted: result,
+      });
+    } catch (error: any) {
+      console.error('Cache cleanup error:', error);
+      res.status(500).json({ message: error.message || "Cleanup failed" });
     }
   });
 
