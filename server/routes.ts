@@ -3091,13 +3091,28 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(400).json({ message: "destination is required" });
       }
       
-      const result = await viatorService.searchByFreetext(
-        destination,
-        (currency as string) || 'USD',
-        count ? parseInt(count as string, 10) : 20
-      );
-      
-      res.json(result);
+      // Try to get from API first
+      try {
+        const result = await viatorService.searchByFreetext(
+          destination,
+          (currency as string) || 'USD',
+          count ? parseInt(count as string, 10) : 20
+        );
+        res.json(result);
+      } catch (apiError: any) {
+        // If API fails, check if it's a temporary server error
+        if (apiError.message?.includes('500')) {
+          console.error('Viator API temporarily unavailable:', apiError.message);
+          // Return empty results with a service notice instead of error
+          res.json({
+            products: [],
+            totalCount: 0,
+            serviceNotice: "The activities service is temporarily unavailable. Please try again in a few minutes."
+          });
+        } else {
+          throw apiError;
+        }
+      }
     } catch (error: any) {
       console.error('Viator activity search error:', error);
       res.status(500).json({ message: error.message || "Activity search failed" });
