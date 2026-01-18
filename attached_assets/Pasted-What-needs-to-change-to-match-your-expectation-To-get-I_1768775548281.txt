@@ -1,0 +1,52 @@
+What needs to change to match your expectation
+To get: “I type Paris, the map centers on Paris, and the results from that destination search show around Paris”, you should:
+
+Keep the destinationCenter flow as-is (it’s already correct and Paris will be the map center).
+Stop using NYC placeholder coordinates for general services, and instead:
+Use real latitude/longitude when they exist on the data you’re mapping, or
+Restrict the “Travel” tab’s map to sources that already have correct coordinates (hotels, activities, custom venues, etc.), and not show fake‑located services.
+Concretely, in experience-template.tsx’s mapProviders:
+
+ts
+const mapProviders = useMemo(() => {
+  const serviceMarkers = filteredServices.map((<span class="hljs-params">s, index) =></span> {
+    // CURRENT: fake NYC-based coordinates
+    // <span class="hljs-doctag">TODO: replace lat/lng with real coordinates once available on ProviderService or external data</span>
+  });
+
+  const customVenueMarkers = (activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels")
+    ? customVenues
+        .filter(<span class="hljs-params">v =></span> v.latitude && v.longitude)
+        .map(<span class="hljs-params">v =></span> ({
+          id: `custom-<span class="hljs-subst">${v.id}`</span>,
+          name: v.name,
+          category: "custom-venue",
+          price: Number(v.estimatedCost) || 0,
+          rating: 5,
+          lat: Number(v.latitude),        // already real
+          lng: Number(v.longitude),       // already real
+          description: v.address || v.notes || "Custom location"
+        }))
+    : [];
+
+  return [...customVenueMarkers, ...serviceMarkers, ...hotelSearchMarkers, ...activitySearchMarkers];
+}, [/* ... */]);
+
+Show more
+Next steps you can take (without changing server schema):
+
+Short-term, Travel‑only fix: For the Travel experience, you can choose to:
+
+Rely primarily on hotelSearchMarkers, activitySearchMarkers, and customVenues for the map; and
+Either hide or visually de‑emphasize the legacy serviceMarkers that use fake coordinates, so the visible points are those that truly belong in/near Paris.
+Longer-term, full fix:
+
+Extend providerServices to store latitude and longitude (similar to userExperienceItems or customVenues).
+Populate those from whatever upstream search/creation flow you use for providers (e.g., when a provider sets a location, or when you import from Amadeus/Viator).
+Then update serviceMarkers to use those columns instead of the NYC baseline.
+Once that’s done, for Travel:
+
+Typing “Paris” + Submit:
+Map centers on Paris (already true).
+Markers for hotels/activities/custom venues show in/around Paris (already true where coordinates exist).
+Platform provider services with real coordinates will also cluster naturally in/around Paris instead of NYC.
