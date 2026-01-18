@@ -1321,11 +1321,33 @@ export const flightCache = pgTable("flight_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+export const locationCache = pgTable("location_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  iataCode: varchar("iata_code", { length: 10 }).notNull(),
+  locationType: varchar("location_type", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  detailedName: text("detailed_name"),
+  cityName: varchar("city_name", { length: 255 }),
+  cityCode: varchar("city_code", { length: 10 }),
+  countryName: varchar("country_name", { length: 100 }),
+  countryCode: varchar("country_code", { length: 10 }),
+  regionCode: varchar("region_code", { length: 20 }),
+  stateCode: varchar("state_code", { length: 20 }),
+  latitude: text("latitude"),
+  longitude: text("longitude"),
+  timeZoneOffset: varchar("timezone_offset", { length: 10 }),
+  travelerScore: integer("traveler_score"),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // Cache schemas and types
 export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
 export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
 export const insertActivityCacheSchema = createInsertSchema(activityCache).omit({ id: true, lastUpdated: true });
 export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
+export const insertLocationCacheSchema = createInsertSchema(locationCache).omit({ id: true, lastUpdated: true });
 
 export type HotelCache = typeof hotelCache.$inferSelect;
 export type InsertHotelCache = z.infer<typeof insertHotelCacheSchema>;
@@ -1335,6 +1357,8 @@ export type ActivityCache = typeof activityCache.$inferSelect;
 export type InsertActivityCache = z.infer<typeof insertActivityCacheSchema>;
 export type FlightCache = typeof flightCache.$inferSelect;
 export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
+export type LocationCache = typeof locationCache.$inferSelect;
+export type InsertLocationCache = z.infer<typeof insertLocationCacheSchema>;
 
 // Coordination Hub schemas and types
 export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });

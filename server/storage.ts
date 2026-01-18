@@ -9,7 +9,7 @@ import {
   userExperiences, userExperienceItems, users, customVenues,
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   expertServiceCategories, expertServiceOfferings, expertSelectedServices, expertSpecializations,
-  expertCustomServices, destinationEvents, destinationSeasons,
+  expertCustomServices, destinationEvents, destinationSeasons, locationCache,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -39,9 +39,10 @@ import {
   type CoordinationBooking, type InsertCoordinationBooking,
   type ExpertCustomService, type InsertExpertCustomService,
   type DestinationEvent, type InsertDestinationEvent,
-  type DestinationSeason, type InsertDestinationSeason
+  type DestinationSeason, type InsertDestinationSeason,
+  type LocationCache, type InsertLocationCache
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -284,6 +285,11 @@ export interface IStorage {
   
   // Get unique countries with calendar data
   getCalendarCountries(): Promise<string[]>;
+
+  // Location Cache
+  searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]>;
+  upsertLocationCache(location: InsertLocationCache): Promise<LocationCache>;
+  getLocationByIataCode(iataCode: string, locationType?: string): Promise<LocationCache | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1639,6 +1645,81 @@ export class DatabaseStorage implements IStorage {
     const seasons = await db.selectDistinct({ country: destinationSeasons.country }).from(destinationSeasons);
     const countries = new Set([...events.map(e => e.country), ...seasons.map(s => s.country)]);
     return Array.from(countries).sort();
+  }
+
+  // Location Cache
+  async searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]> {
+    const now = new Date();
+    const searchPattern = `%${keyword.toLowerCase()}%`;
+    
+    // Build conditions including expiration check at SQL level
+    const conditions = [
+      or(
+        ilike(locationCache.name, searchPattern),
+        ilike(locationCache.cityName, searchPattern),
+        ilike(locationCache.iataCode, searchPattern),
+        ilike(locationCache.detailedName, searchPattern)
+      ),
+      gt(locationCache.expiresAt, now) // SQL-level expiration filtering
+    ];
+    
+    if (locationType) {
+      conditions.push(eq(locationCache.locationType, locationType));
+    }
+    
+    return await db.select()
+      .from(locationCache)
+      .where(and(...conditions))
+      .limit(20);
+  }
+
+  async upsertLocationCache(location: InsertLocationCache): Promise<LocationCache> {
+    // Check if exists with same iataCode and locationType
+    const existing = await db.select()
+      .from(locationCache)
+      .where(and(
+        eq(locationCache.iataCode, location.iataCode),
+        eq(locationCache.locationType, location.locationType)
+      ))
+      .limit(1);
+    
+    // Ensure expiresAt is set - default to 30 days if not provided
+    const expiresAt = location.expiresAt || (() => {
+      const date = new Date();
+      date.setDate(date.getDate() + 30);
+      return date;
+    })();
+    
+    if (existing.length > 0) {
+      // Update existing with refreshed expiration
+      const [updated] = await db.update(locationCache)
+        .set({ ...location, expiresAt, lastUpdated: new Date() })
+        .where(eq(locationCache.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    
+    // Insert new
+    const [newLocation] = await db.insert(locationCache).values({ ...location, expiresAt }).returning();
+    return newLocation;
+  }
+
+  async getLocationByIataCode(iataCode: string, locationType?: string): Promise<LocationCache | undefined> {
+    const now = new Date();
+    const conditions = [
+      eq(locationCache.iataCode, iataCode),
+      gt(locationCache.expiresAt, now) // Only return non-expired entries
+    ];
+    if (locationType) {
+      conditions.push(eq(locationCache.locationType, locationType));
+    }
+    
+    const [result] = await db.select()
+      .from(locationCache)
+      .where(and(...conditions))
+      .limit(1);
+    
+    return result;
   }
 }
 
