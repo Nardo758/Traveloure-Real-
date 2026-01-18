@@ -728,6 +728,10 @@ export default function ExperienceTemplatePage() {
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [addVenueModalOpen, setAddVenueModalOpen] = useState(false);
+  
+  // State for search result markers on map
+  const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
+  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
 
   const { data: customVenues = [] } = useQuery<CustomVenue[]>({
     queryKey: ["/api/custom-venues", slug],
@@ -1057,10 +1061,6 @@ export default function ExperienceTemplatePage() {
 
     return filtered;
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
-
-  // State for search result markers on map (must be declared before mapProviders)
-  const [hotelSearchMarkers, setHotelSearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
-  const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
 
   const mapProviders = useMemo(() => {
     const serviceMarkers = filteredServices.map((s, index) => {
