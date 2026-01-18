@@ -2935,7 +2935,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Amadeus Travel API Routes
   
-  // Search airports/cities for autocomplete
+  // Search airports/cities for autocomplete - uses database cache first
   app.get("/api/amadeus/locations", isAuthenticated, async (req, res) => {
     try {
       const { keyword, subType } = req.query;
@@ -2943,9 +2943,74 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(400).json({ message: "Keyword is required" });
       }
       
+      const locationType = subType === 'CITY' ? 'CITY' : 'AIRPORT';
+      
+      // First, search the database cache
+      const cachedLocations = await storage.searchLocationCache(keyword, locationType);
+      
+      if (cachedLocations.length > 0) {
+        // Return cached locations using rawData for exact Amadeus API format matching
+        const formattedLocations = cachedLocations.map(loc => {
+          // If rawData exists, use it directly for exact API format
+          if (loc.rawData && typeof loc.rawData === 'object' && Object.keys(loc.rawData).length > 0) {
+            return loc.rawData;
+          }
+          // Fallback: construct from individual fields
+          return {
+            type: "location",
+            subType: loc.locationType,
+            name: loc.name,
+            detailedName: loc.detailedName,
+            id: loc.iataCode,
+            iataCode: loc.iataCode,
+            geoCode: loc.latitude && loc.longitude ? {
+              latitude: Number(loc.latitude),
+              longitude: Number(loc.longitude)
+            } : undefined,
+            address: {
+              cityName: loc.cityName,
+              cityCode: loc.cityCode,
+              countryName: loc.countryName,
+              countryCode: loc.countryCode,
+              regionCode: loc.regionCode,
+              stateCode: loc.stateCode,
+            },
+            timeZoneOffset: loc.timeZoneOffset,
+            analytics: loc.travelerScore ? { travelers: { score: loc.travelerScore } } : undefined,
+          };
+        });
+        return res.json(formattedLocations);
+      }
+      
+      // If not in cache, fetch from API and cache the results
       const locations = subType === 'CITY' 
         ? await amadeusService.searchCitiesByKeyword(keyword)
         : await amadeusService.searchAirportsByKeyword(keyword);
+      
+      // Store in cache for future use (expires in 30 days)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      
+      for (const loc of locations) {
+        await storage.upsertLocationCache({
+          iataCode: loc.iataCode,
+          locationType: loc.subType || locationType,
+          name: loc.name,
+          detailedName: loc.detailedName,
+          cityName: loc.address?.cityName,
+          cityCode: loc.address?.cityCode,
+          countryName: loc.address?.countryName,
+          countryCode: loc.address?.countryCode,
+          regionCode: loc.address?.regionCode,
+          stateCode: loc.address?.stateCode,
+          latitude: loc.geoCode?.latitude?.toString(),
+          longitude: loc.geoCode?.longitude?.toString(),
+          timeZoneOffset: loc.timeZoneOffset,
+          travelerScore: loc.analytics?.travelers?.score,
+          rawData: loc,
+          expiresAt,
+        });
+      }
       
       res.json(locations);
     } catch (error: any) {
