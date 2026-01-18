@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRoute, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -725,6 +725,71 @@ export default function ExperienceTemplatePage() {
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
+  
+  // Draggable Expert Chat button state
+  const [chatButtonPos, setChatButtonPos] = useState({ x: 24, y: 24 }); // Distance from bottom-right
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasDragged, setHasDragged] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number; buttonX: number; buttonY: number } | null>(null);
+  
+  const handleDragStart = useCallback((clientX: number, clientY: number) => {
+    setIsDragging(true);
+    setHasDragged(false);
+    dragStartRef.current = {
+      x: clientX,
+      y: clientY,
+      buttonX: chatButtonPos.x,
+      buttonY: chatButtonPos.y,
+    };
+  }, [chatButtonPos]);
+  
+  const handleDragMove = useCallback((clientX: number, clientY: number) => {
+    if (!isDragging || !dragStartRef.current) return;
+    
+    const deltaX = dragStartRef.current.x - clientX;
+    const deltaY = dragStartRef.current.y - clientY;
+    
+    // Check if moved more than 5px to count as a drag
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      setHasDragged(true);
+    }
+    
+    const newX = Math.max(24, Math.min(window.innerWidth - 80, dragStartRef.current.buttonX + deltaX));
+    const newY = Math.max(24, Math.min(window.innerHeight - 80, dragStartRef.current.buttonY + deltaY));
+    
+    setChatButtonPos({ x: newX, y: newY });
+  }, [isDragging]);
+  
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+  }, []);
+  
+  // Add global mouse/touch listeners for drag
+  useEffect(() => {
+    if (!isDragging) return;
+    
+    const handleMouseMove = (e: MouseEvent) => handleDragMove(e.clientX, e.clientY);
+    const handleMouseUp = () => handleDragEnd();
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        handleDragMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+    const handleTouchEnd = () => handleDragEnd();
+    
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    window.addEventListener("touchmove", handleTouchMove);
+    window.addEventListener("touchend", handleTouchEnd);
+    
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [isDragging, handleDragMove, handleDragEnd]);
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
   const [creatingComparison, setCreatingComparison] = useState(false);
   const [addVenueModalOpen, setAddVenueModalOpen] = useState(false);
@@ -2607,8 +2672,28 @@ export default function ExperienceTemplatePage() {
         
         {!chatOpen && (
           <Button
-            onClick={() => setChatOpen(true)}
-            className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-[#FF385C] hover:bg-[#E23350] shadow-lg z-[9999]"
+            onClick={() => {
+              if (!hasDragged) {
+                setChatOpen(true);
+              }
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleDragStart(e.clientX, e.clientY);
+            }}
+            onTouchStart={(e) => {
+              if (e.touches.length === 1) {
+                handleDragStart(e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }}
+            className={cn(
+              "fixed h-14 w-14 rounded-full bg-[#FF385C] hover:bg-[#E23350] shadow-lg z-[9999] cursor-grab",
+              isDragging && "cursor-grabbing"
+            )}
+            style={{
+              bottom: `${chatButtonPos.y}px`,
+              right: `${chatButtonPos.x}px`,
+            }}
             size="icon"
             data-testid="button-open-chat"
           >
