@@ -183,6 +183,7 @@ function MapContent({
       zoom={12}
       gestureHandling="greedy"
       disableDefaultUI={false}
+      zoomControl={true}
       mapTypeControl={false}
       streetViewControl={false}
       className="w-full h-full rounded-md"
