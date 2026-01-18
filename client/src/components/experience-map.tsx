@@ -178,8 +178,14 @@ function MapContent({
     return { lat: 40.7128, lng: -74.0060 };
   }, [providers, selectedProviderIds, destinationCenter]);
 
+  // Create a stable key that changes when destination changes, forcing map to recenter
+  const mapKey = destinationCenter 
+    ? `map-${destinationCenter.lat.toFixed(4)}-${destinationCenter.lng.toFixed(4)}`
+    : 'map-default';
+
   return (
     <Map
+      key={mapKey}
       defaultCenter={center}
       defaultZoom={12}
       gestureHandling="greedy"
