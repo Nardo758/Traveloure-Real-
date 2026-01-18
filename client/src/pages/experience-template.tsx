@@ -734,7 +734,11 @@ export default function ExperienceTemplatePage() {
   const [activitySearchMarkers, setActivitySearchMarkers] = useState<Array<{ id: string; name: string; lat: number; lng: number; category: string; price: number; rating: number; description?: string }>>([]);
 
   // Geocode destination to get coordinates for map centering and marker fallback
-  const { data: destinationLocationData } = useQuery<Array<{ geoCode?: { latitude: number; longitude: number } }>>({
+  const { data: destinationLocationData } = useQuery<Array<{ 
+    geoCode?: { latitude: number; longitude: number };
+    analytics?: { travelers?: { score?: number } };
+    name?: string;
+  }>>({
     queryKey: ["/api/amadeus/locations", "geocode-destination", destination],
     enabled: !!destination && destination.length >= 2 && detailsSubmitted,
     queryFn: async () => {
@@ -752,11 +756,22 @@ export default function ExperienceTemplatePage() {
   });
 
   const destinationCenter = useMemo(() => {
-    if (destinationLocationData && destinationLocationData.length > 0 && destinationLocationData[0].geoCode) {
-      return {
-        lat: destinationLocationData[0].geoCode.latitude,
-        lng: destinationLocationData[0].geoCode.longitude,
-      };
+    if (destinationLocationData && destinationLocationData.length > 0) {
+      // Sort by travelers score (descending) to get the most popular/relevant city
+      // This ensures Paris (score 68) is chosen over Le Touquet Paris Plage (score 2)
+      const sortedLocations = [...destinationLocationData].sort((a, b) => {
+        const scoreA = a.analytics?.travelers?.score ?? 0;
+        const scoreB = b.analytics?.travelers?.score ?? 0;
+        return scoreB - scoreA;
+      });
+      
+      const bestMatch = sortedLocations.find(loc => loc.geoCode);
+      if (bestMatch?.geoCode) {
+        return {
+          lat: bestMatch.geoCode.latitude,
+          lng: bestMatch.geoCode.longitude,
+        };
+      }
     }
     return null;
   }, [destinationLocationData]);
