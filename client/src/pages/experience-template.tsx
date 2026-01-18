@@ -1097,29 +1097,32 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    // Use destination center if available, otherwise fall back to NYC as default
-    const baseLat = destinationCenter?.lat ?? 40.7128;
-    const baseLng = destinationCenter?.lng ?? -74.0060;
-    
-    const serviceMarkers = filteredServices.map((s, index) => {
-      const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
-      // Use golden angle distribution for spreading markers around destination
-      const goldenAngle = 137.5 * (Math.PI / 180);
-      const angle = index * goldenAngle;
-      const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
-      const latOffset = Math.cos(angle) * radius;
-      const lngOffset = Math.sin(angle) * radius;
-      return {
-        id: s.id.toString(),
-        name: s.serviceName,
-        category: s.serviceType || currentTabCategory || "venue",
-        price: Number(s.price) || 0,
-        rating: Number(s.averageRating) || 4.5,
-        lat: baseLat + latOffset,
-        lng: baseLng + lngOffset,
-        description: s.shortDescription || s.description || undefined
-      };
-    });
+    // Only show service markers after user submits travel details
+    // This prevents confusing NYC marker cluster on initial page load
+    const serviceMarkers = detailsSubmitted
+      ? filteredServices.map((s, index) => {
+          const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
+          // Use golden angle distribution for spreading markers around destination
+          const goldenAngle = 137.5 * (Math.PI / 180);
+          const angle = index * goldenAngle;
+          const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
+          const latOffset = Math.cos(angle) * radius;
+          const lngOffset = Math.sin(angle) * radius;
+          // Use destination center when available, otherwise fall back to NYC
+          const baseLat = destinationCenter?.lat ?? 40.7128;
+          const baseLng = destinationCenter?.lng ?? -74.0060;
+          return {
+            id: s.id.toString(),
+            name: s.serviceName,
+            category: s.serviceType || currentTabCategory || "venue",
+            price: Number(s.price) || 0,
+            rating: Number(s.averageRating) || 4.5,
+            lat: baseLat + latOffset,
+            lng: baseLng + lngOffset,
+            description: s.shortDescription || s.description || undefined
+          };
+        })
+      : [];
     
     const customVenueMarkers = (activeTab === "venue" || activeTab === "accommodations" || activeTab === "hotels")
       ? customVenues
@@ -1137,7 +1140,7 @@ export default function ExperienceTemplatePage() {
       : [];
     
     return [...customVenueMarkers, ...serviceMarkers, ...hotelSearchMarkers, ...activitySearchMarkers];
-  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers, destinationCenter]);
+  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers, destinationCenter, detailsSubmitted]);
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
