@@ -2608,7 +2608,7 @@ export default function ExperienceTemplatePage() {
         {!chatOpen && (
           <Button
             onClick={() => setChatOpen(true)}
-            className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-[#FF385C] hover:bg-[#E23350] shadow-lg z-50"
+            className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-[#FF385C] hover:bg-[#E23350] shadow-lg z-[9999]"
             size="icon"
             data-testid="button-open-chat"
           >
