@@ -2943,10 +2943,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(400).json({ message: "Keyword is required" });
       }
       
+      console.log(`[Amadeus Locations] Searching for: "${keyword}", subType: ${subType}`);
+      
       const locationType = subType === 'CITY' ? 'CITY' : 'AIRPORT';
       
       // First, search the database cache
       const cachedLocations = await storage.searchLocationCache(keyword, locationType);
+      console.log(`[Amadeus Locations] Found ${cachedLocations.length} cached locations for "${keyword}"`);
       
       if (cachedLocations.length > 0) {
         // Return cached locations using rawData for exact Amadeus API format matching
@@ -2985,6 +2988,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           const scoreB = b.analytics?.travelers?.score ?? 0;
           return scoreB - scoreA;
         });
+        console.log(`[Amadeus Locations] Sorted results - first: ${formattedLocations[0]?.name} (score: ${formattedLocations[0]?.analytics?.travelers?.score ?? 0})`);
         return res.json(formattedLocations);
       }
       
