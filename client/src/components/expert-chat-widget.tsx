@@ -110,7 +110,7 @@ export function ExpertChatWidget({
   return (
     <Card
       className={cn(
-        "fixed z-50 shadow-2xl border-0 transition-all duration-300",
+        "fixed z-[9999] shadow-2xl border-0 transition-all duration-300",
         isMinimized
           ? "bottom-6 right-6 w-72"
           : "bottom-6 right-6 w-96 h-[500px]"
