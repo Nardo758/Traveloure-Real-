@@ -2979,6 +2979,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
             analytics: loc.travelerScore ? { travelers: { score: loc.travelerScore } } : undefined,
           };
         });
+        // Sort by traveler score descending - higher score = more popular destination
+        formattedLocations.sort((a: any, b: any) => {
+          const scoreA = a.analytics?.travelers?.score ?? 0;
+          const scoreB = b.analytics?.travelers?.score ?? 0;
+          return scoreB - scoreA;
+        });
         return res.json(formattedLocations);
       }
       
@@ -3011,6 +3017,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           expiresAt,
         });
       }
+      
+      // Sort by traveler score descending - higher score = more popular destination
+      locations.sort((a: any, b: any) => {
+        const scoreA = a.analytics?.travelers?.score ?? 0;
+        const scoreB = b.analytics?.travelers?.score ?? 0;
+        return scoreB - scoreA;
+      });
       
       res.json(locations);
     } catch (error: any) {
