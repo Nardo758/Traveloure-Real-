@@ -3572,6 +3572,49 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Google Maps Geocoding API - Convert place name to coordinates
+  const geocodeSchema = z.object({
+    address: z.string().min(1),
+  });
+
+  // Geocoding endpoint - public access since it's just a geographic lookup
+  app.post("/api/geocode", async (req, res) => {
+    try {
+      const parsed = geocodeSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+      
+      const { address } = parsed.data;
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      
+      if (!apiKey) {
+        console.error("GOOGLE_MAPS_API_KEY not configured for geocoding");
+        return res.status(500).json({ message: "Geocoding service not configured" });
+      }
+      
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+      );
+      const data = await response.json();
+      
+      if (data.status === "OK" && data.results && data.results.length > 0) {
+        const location = data.results[0].geometry.location;
+        const formattedAddress = data.results[0].formatted_address;
+        res.json({ 
+          lat: location.lat, 
+          lng: location.lng,
+          formattedAddress 
+        });
+      } else {
+        res.status(404).json({ message: "Location not found", status: data.status });
+      }
+    } catch (error: any) {
+      console.error('Geocoding API error:', error);
+      res.status(500).json({ message: error.message || "Geocoding failed" });
+    }
+  });
+
   return httpServer;
 }
 
