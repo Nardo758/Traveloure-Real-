@@ -263,7 +263,8 @@ export function HotelSearch({
       if (!res.ok) return [];
       return res.json();
     },
-    staleTime: 60000,
+    staleTime: 30000,
+    refetchOnMount: true,
   });
 
   useEffect(() => {
@@ -309,6 +310,7 @@ export function HotelSearch({
       }
       return res.json();
     },
+    refetchOnMount: true,
   });
 
   const hotels = hotelResponse?.hotels;
