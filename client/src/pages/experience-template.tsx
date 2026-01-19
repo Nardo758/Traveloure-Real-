@@ -75,6 +75,7 @@ import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { TransportationAnalysis } from "@/components/transportation-analysis";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
+import { RealTimeIntelWidget } from "@/components/real-time-intel-widget";
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
@@ -1553,7 +1554,7 @@ export default function ExperienceTemplatePage() {
           </Card>
 
         {detailsSubmitted && (
-          <div className="mb-6">
+          <div className="mb-6 space-y-4">
             <AIMatchedExpertsSection
               destination={destination}
               startDate={startDate}
@@ -1564,6 +1565,16 @@ export default function ExperienceTemplatePage() {
               userId={user?.id}
               isVisible={detailsSubmitted}
             />
+            {destination && (
+              <RealTimeIntelWidget
+                destination={destination}
+                dates={startDate && endDate ? {
+                  start: format(startDate, "yyyy-MM-dd"),
+                  end: format(endDate, "yyyy-MM-dd")
+                } : undefined}
+                compact
+              />
+            )}
           </div>
         )}
 
