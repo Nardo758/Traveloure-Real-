@@ -277,13 +277,13 @@ export function HotelSearch({
   const canAutoSearch = !!cityCode && !!checkInDate && !!checkOutDate && !!adults;
 
   const {
-    data: hotels,
+    data: hotelResponse,
     isLoading,
     error,
     refetch,
-  } = useQuery<HotelOffer[]>({
+  } = useQuery<{ hotels: HotelOffer[]; fromCache: boolean; lastUpdated?: string }>({
     queryKey: [
-      "/api/amadeus/hotels",
+      "/api/cache/hotels",
       cityCode,
       checkInDate,
       checkOutDate,
@@ -300,7 +300,7 @@ export function HotelSearch({
         rooms: rooms.toString(),
       });
 
-      const res = await fetch(`/api/amadeus/hotels?${params}`, {
+      const res = await fetch(`/api/cache/hotels?${params}`, {
         credentials: "include",
       });
       if (!res.ok) {
@@ -310,6 +310,8 @@ export function HotelSearch({
       return res.json();
     },
   });
+
+  const hotels = hotelResponse?.hotels;
 
   const isDetecting = autoDetectLoading && !cityCode && !!destination;
   const detectionFailed = !autoDetectLoading && autoDetectedLocations && autoDetectedLocations.length === 0 && !cityCode && !!destination;

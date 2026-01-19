@@ -325,15 +325,14 @@ export function ActivitySearch({
   const [expandedActivity, setExpandedActivity] = useState<string | null>(null);
   const [selectedActivities, setSelectedActivities] = useState<Set<string>>(new Set());
 
-  const { data, isLoading, error, refetch } = useQuery<{ products: ViatorActivity[]; totalCount: number; serviceNotice?: string }>({
-    queryKey: ['/api/viator/activities', destination, currentSortBy],
+  const { data, isLoading, error, refetch } = useQuery<{ activities: ViatorActivity[]; fromCache: boolean; lastUpdated?: string }>({
+    queryKey: ['/api/cache/activities', destination, currentSortBy],
     queryFn: async () => {
       const params = new URLSearchParams({
         destination: destination || '',
-        sortBy: currentSortBy,
-        count: '20',
+        count: '30',
       });
-      const response = await fetch(`/api/viator/activities?${params}`, {
+      const response = await fetch(`/api/cache/activities?${params}`, {
         credentials: 'include',
       });
       if (!response.ok) {
@@ -346,9 +345,9 @@ export function ActivitySearch({
   });
 
   const activities = useMemo(() => {
-    if (!data?.products) return [];
+    if (!data?.activities) return [];
     
-    let filtered = [...data.products];
+    let filtered = [...data.activities];
     
     // Filter by type (activities vs transport)
     if (filterType === "activities") {
@@ -376,7 +375,7 @@ export function ActivitySearch({
     }
     
     return filtered;
-  }, [data?.products, currentSortBy, filterType, interests]);
+  }, [data?.activities, currentSortBy, filterType, interests]);
 
   // Notify parent of activity results with coordinates for map display
   // Use destinationCenter as fallback when individual activity coordinates aren't available
@@ -513,27 +512,6 @@ export function ActivitySearch({
   }
 
   if (!activities.length) {
-    // Show service notice if API is temporarily unavailable
-    if (data?.serviceNotice) {
-      return (
-        <Card className="border-amber-500 border-2">
-          <CardContent className="p-8 text-center">
-            <AlertCircle className="h-12 w-12 mx-auto mb-3 text-amber-500" />
-            <h3 className="font-semibold text-lg mb-2">
-              Service Temporarily Unavailable
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              {data.serviceNotice}
-            </p>
-            <Button variant="outline" onClick={() => refetch()} data-testid="button-retry-activities">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
-      );
-    }
-    
     return (
       <Card className="border-2 border-dashed">
         <CardContent className="p-8 text-center">
