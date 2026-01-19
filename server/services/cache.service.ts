@@ -180,7 +180,7 @@ export class CacheService {
               total: o.price,
               currency: o.currency,
             },
-            ...o.rawData,
+            ...(typeof o.rawData === 'object' && o.rawData !== null ? o.rawData as Record<string, unknown> : {}),
           })),
           _cached: true,
           _lastUpdated: h.lastUpdated,
@@ -446,7 +446,7 @@ export class CacheService {
             [{ ageBand: 'ADULT', numberOfTravelers: 1 }]
           );
           
-          const isAvailable = availability?.bookableItems?.some(item => item.available) ?? false;
+          const isAvailable = availability?.bookableItems?.some((item: { available?: boolean }) => item.available) ?? false;
           
           return {
             available: isAvailable,
@@ -475,6 +475,142 @@ export class CacheService {
       console.error("Activity availability check error:", error);
       return { available: false };
     }
+  }
+
+  // ============ FLIGHT CACHING ============
+
+  async getCachedFlights(originCode: string, destinationCode: string, departureDate: string, returnDate?: string): Promise<any[]> {
+    const conditions = [
+      eq(flightCache.originCode, originCode),
+      eq(flightCache.destinationCode, destinationCode),
+      eq(flightCache.departureDate, departureDate),
+      gte(flightCache.expiresAt, new Date())
+    ];
+    
+    if (returnDate) {
+      conditions.push(eq(flightCache.returnDate, returnDate));
+    }
+    
+    const cached = await db.select()
+      .from(flightCache)
+      .where(and(...conditions));
+    
+    return cached;
+  }
+
+  async cacheFlights(flights: any[], originCode: string, destinationCode: string, departureDate: string, returnDate?: string): Promise<void> {
+    const expiresAt = getExpirationDate();
+
+    for (const flight of flights) {
+      const firstSegment = flight.itineraries?.[0]?.segments?.[0];
+      const lastSegment = flight.itineraries?.[0]?.segments?.[flight.itineraries?.[0]?.segments?.length - 1];
+      
+      const existing = await db.select()
+        .from(flightCache)
+        .where(eq(flightCache.offerId, flight.id))
+        .limit(1);
+
+      const flightData = {
+        originCode,
+        destinationCode,
+        departureDate,
+        returnDate: returnDate || null,
+        adults: flight.travelerPricings?.length || 1,
+        offerId: flight.id,
+        carrierCode: firstSegment?.carrierCode || null,
+        flightNumber: firstSegment?.number || null,
+        departureTime: firstSegment?.departure?.at || null,
+        arrivalTime: lastSegment?.arrival?.at || null,
+        duration: flight.itineraries?.[0]?.duration || null,
+        stops: (flight.itineraries?.[0]?.segments?.length || 1) - 1,
+        price: flight.price?.total,
+        currency: flight.price?.currency || "USD",
+        rawData: flight,
+        expiresAt,
+      };
+
+      if (existing.length > 0) {
+        await db.update(flightCache)
+          .set({ ...flightData, lastUpdated: new Date() })
+          .where(eq(flightCache.offerId, flight.id));
+      } else {
+        await db.insert(flightCache).values(flightData);
+      }
+    }
+  }
+
+  async getFlightsWithCache(params: {
+    originLocationCode: string;
+    destinationLocationCode: string;
+    departureDate: string;
+    returnDate?: string;
+    adults: number;
+    travelClass?: 'ECONOMY' | 'PREMIUM_ECONOMY' | 'BUSINESS' | 'FIRST';
+    nonStop?: boolean;
+    currencyCode?: string;
+    max?: number;
+  }): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
+    const cached = await this.getCachedFlights(
+      params.originLocationCode,
+      params.destinationLocationCode,
+      params.departureDate,
+      params.returnDate
+    );
+    
+    if (cached.length > 0) {
+      // Reconstruct flight data from cache
+      const flightsFromCache = cached.map(f => ({
+        id: f.offerId,
+        source: 'CACHED',
+        price: {
+          total: f.price?.toString(),
+          currency: f.currency,
+          grandTotal: f.price?.toString(),
+        },
+        itineraries: [{
+          duration: f.duration,
+          segments: [{
+            departure: { iataCode: f.originCode, at: f.departureTime },
+            arrival: { iataCode: f.destinationCode, at: f.arrivalTime },
+            carrierCode: f.carrierCode,
+            number: f.flightNumber,
+            duration: f.duration,
+            numberOfStops: f.stops,
+          }],
+        }],
+        travelerPricings: [{
+          travelerId: "1",
+          fareOption: "STANDARD",
+          travelerType: "ADULT",
+          price: { currency: f.currency, total: f.price?.toString() },
+        }],
+        ...f.rawData,
+        _cached: true,
+        _lastUpdated: f.lastUpdated,
+      }));
+      
+      return { 
+        data: flightsFromCache, 
+        fromCache: true, 
+        lastUpdated: cached[0]?.lastUpdated || undefined 
+      };
+    }
+
+    // Fetch from API
+    const flights = await this.amadeusService.searchFlights(params);
+    
+    // Cache the results
+    if (flights.length > 0) {
+      await this.cacheFlights(
+        flights,
+        params.originLocationCode,
+        params.destinationLocationCode,
+        params.departureDate,
+        params.returnDate
+      );
+    }
+    
+    return { data: flights, fromCache: false };
   }
 
   // ============ CACHE CLEANUP ============

@@ -3246,6 +3246,39 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Get cached flights
+  app.get("/api/cache/flights", isAuthenticated, async (req, res) => {
+    try {
+      const { origin, destination, departureDate, returnDate, adults, travelClass, nonStop } = req.query;
+      
+      if (!origin || !destination || !departureDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: origin, destination, departureDate, adults" 
+        });
+      }
+      
+      const result = await cacheService.getFlightsWithCache({
+        originLocationCode: origin as string,
+        destinationLocationCode: destination as string,
+        departureDate: departureDate as string,
+        returnDate: returnDate as string | undefined,
+        adults: parseInt(adults as string, 10),
+        travelClass: (travelClass as 'ECONOMY' | 'PREMIUM_ECONOMY' | 'BUSINESS' | 'FIRST') || 'ECONOMY',
+        nonStop: nonStop === 'true',
+        max: 20,
+      });
+      
+      res.json({
+        flights: result.data,
+        fromCache: result.fromCache,
+        lastUpdated: result.lastUpdated,
+      });
+    } catch (error: any) {
+      console.error('Cached flight search error:', error);
+      res.status(500).json({ message: error.message || "Flight search failed" });
+    }
+  });
+
   // Get map markers for hotels in a destination
   app.get("/api/cache/map/hotels", isAuthenticated, async (req, res) => {
     try {

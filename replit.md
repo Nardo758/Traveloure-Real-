@@ -56,8 +56,14 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
   - **Anthropic Claude**: Empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice (claude-sonnet-4-20250514 model).
   - **AI Orchestrator** (`server/services/ai-orchestrator.ts`): Routes requests to appropriate provider based on task type, with central logging to database.
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
-- **Amadeus Self-Service API**: Real-time flight and hotel search.
-- **Viator Partner API**: Real-time tours and activities search.
+- **Amadeus Self-Service API**: Real-time flight and hotel search (with caching layer).
+- **Viator Partner API**: Real-time tours and activities search (with caching layer).
+- **External API Caching System** (`server/services/cache.service.ts`):
+  - Hotels: `/api/cache/hotels` - 24-hour cache with `hotelCache` and `hotelOfferCache` tables.
+  - Flights: `/api/cache/flights` - 24-hour cache with `flightCache` table.
+  - Activities: `/api/cache/activities` - 24-hour cache with `activityCache` table.
+  - All endpoints return `{ data, fromCache, lastUpdated }` for transparency.
+  - Fresh verification available before checkout for pricing/availability updates.
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management.

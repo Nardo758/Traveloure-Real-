@@ -326,13 +326,13 @@ export function FlightSearch({
   const canSearch = !!originCode && !!destinationCode && !!departureDate && !!adults;
 
   const {
-    data: flights,
+    data: flightResponse,
     isLoading,
     error,
     refetch,
-  } = useQuery<FlightOffer[]>({
+  } = useQuery<{ flights: FlightOffer[]; fromCache: boolean; lastUpdated?: string }>({
     queryKey: [
-      "/api/amadeus/flights",
+      "/api/cache/flights",
       originCode,
       destinationCode,
       departureDate,
@@ -346,11 +346,10 @@ export function FlightSearch({
         destination: destinationCode,
         departureDate,
         adults: adults.toString(),
-        max: "10",
       });
       if (returnDate) params.append("returnDate", returnDate);
 
-      const res = await fetch(`/api/amadeus/flights?${params}`, {
+      const res = await fetch(`/api/cache/flights?${params}`, {
         credentials: "include",
       });
       if (!res.ok) {
@@ -360,6 +359,8 @@ export function FlightSearch({
       return res.json();
     },
   });
+
+  const flights = flightResponse?.flights;
 
   const isDetecting = (autoDetectDestLoading && !destinationCode && !!destination) || 
                       (autoDetectOriginLoading && !originCode && !!originProp);
