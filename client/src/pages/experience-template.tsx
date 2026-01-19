@@ -713,6 +713,7 @@ export default function ExperienceTemplatePage() {
   const [minRating, setMinRating] = useState(0);
   const [sortBy, setSortBy] = useState("popular");
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([]); // Separate state for interest-based activity filtering
   
   // Flight-specific filters
   const [flightMaxPrice, setFlightMaxPrice] = useState(2000);
@@ -988,6 +989,12 @@ export default function ExperienceTemplatePage() {
   const toggleFilter = (filter: string) => {
     setSelectedFilters((prev) =>
       prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter]
+    );
+  };
+
+  const toggleInterest = (interest: string) => {
+    setSelectedInterests((prev) =>
+      prev.includes(interest) ? prev.filter((i) => i !== interest) : [...prev, interest]
     );
   };
 
@@ -1888,6 +1895,44 @@ export default function ExperienceTemplatePage() {
                               {filter}
                             </Badge>
                           ))}
+                          {/* Interest-based filters - shown for Activities tab */}
+                          {activeTab === "activities" && [
+                            { id: "culture", label: "Culture & History" },
+                            { id: "food", label: "Food & Dining" },
+                            { id: "adventure", label: "Adventure" },
+                            { id: "nature", label: "Nature & Outdoors" },
+                            { id: "nightlife", label: "Nightlife" },
+                            { id: "shopping", label: "Shopping" },
+                            { id: "wellness", label: "Wellness & Spa" },
+                            { id: "art", label: "Art & Museums" },
+                          ].map((interest) => (
+                            <Badge
+                              key={interest.id}
+                              variant={selectedInterests.includes(interest.id) ? "default" : "outline"}
+                              className={cn(
+                                "cursor-pointer",
+                                selectedInterests.includes(interest.id) && "bg-[#FF385C]"
+                              )}
+                              onClick={() => toggleInterest(interest.id)}
+                              data-testid={`interest-filter-${interest.id}`}
+                            >
+                              {interest.label}
+                            </Badge>
+                          ))}
+                          {(selectedFilters.length > 0 || selectedInterests.length > 0) && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs h-6"
+                              onClick={() => {
+                                setSelectedFilters([]);
+                                setSelectedInterests([]);
+                              }}
+                              data-testid="button-clear-filters"
+                            >
+                              Clear all
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </>
@@ -2187,56 +2232,12 @@ export default function ExperienceTemplatePage() {
 
           {activeTab === "activities" && detailsSubmitted && (
             <div className="mb-6 space-y-4">
-              {/* Interest Filter Chips */}
-              <Card className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="h-4 w-4 text-[#FF385C]" />
-                  <h3 className="font-medium text-sm">What are you interested in?</h3>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    { id: "culture", label: "Culture & History" },
-                    { id: "food", label: "Food & Dining" },
-                    { id: "adventure", label: "Adventure" },
-                    { id: "nature", label: "Nature & Outdoors" },
-                    { id: "nightlife", label: "Nightlife" },
-                    { id: "shopping", label: "Shopping" },
-                    { id: "wellness", label: "Wellness & Spa" },
-                    { id: "art", label: "Art & Museums" },
-                  ].map((interest) => (
-                    <Badge
-                      key={interest.id}
-                      variant={selectedFilters.includes(interest.id) ? "default" : "outline"}
-                      className={cn(
-                        "cursor-pointer",
-                        selectedFilters.includes(interest.id) && "bg-[#FF385C]"
-                      )}
-                      onClick={() => toggleFilter(interest.id)}
-                      data-testid={`interest-filter-${interest.id}`}
-                    >
-                      {interest.label}
-                    </Badge>
-                  ))}
-                  {selectedFilters.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs h-6"
-                      onClick={() => setSelectedFilters([])}
-                      data-testid="button-clear-interests"
-                    >
-                      Clear all
-                    </Button>
-                  )}
-                </div>
-              </Card>
-              
               <ActivitySearch
                 destination={destination}
                 startDate={startDate}
                 endDate={endDate}
                 travelers={travelers}
-                interests={selectedFilters}
+                interests={selectedInterests}
                 onResultsLoaded={setActivitySearchMarkers}
                 destinationCenter={destinationCenter}
                 onSelectActivity={(activity) => {
@@ -2814,7 +2815,7 @@ export default function ExperienceTemplatePage() {
                     endDate={endDate}
                     experienceType={experienceType?.name}
                     travelers={travelers}
-                    preferences={selectedFilters}
+                    preferences={selectedInterests}
                     userId={user?.id}
                     isVisible={true}
                   />
