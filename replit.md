@@ -64,6 +64,12 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
   - Activities: `/api/cache/activities` - 24-hour cache with `activityCache` table.
   - All endpoints return `{ data, fromCache, lastUpdated }` for transparency.
   - Fresh verification available before checkout for pricing/availability updates.
+  - **Background Cache Scheduler** (`server/services/cache-scheduler.service.ts`):
+    - Runs every 24 hours via in-process setInterval
+    - Refreshes stale hotel and activity cache data (>20 hours old)
+    - Batch processing (5 items per batch, 2s delay) to avoid overwhelming APIs
+    - Started automatically on server init
+  - **Cache Status Indicators**: All search components display "Updated X ago" badges showing data freshness.
   - **Enhanced Location Fields**: All cache tables store comprehensive location data (city, state, county, countryCode, countryName, postalCode, coordinates).
   - **Preference Tags System**: Auto-inferred preference tags (18+ categories) from amenities, pricing, descriptions:
     - `budget`, `luxury`, `family`, `adventure`, `beach`, `city`, `nature`, `culture_history`, `food_dining`, `nature_outdoors`, `nightlife`, `shopping`, `wellness_spa`, `art_museums`, `romantic`, `solo`, `group`, `business`
