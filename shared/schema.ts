@@ -1470,8 +1470,33 @@ export const aiGeneratedItineraries = pgTable("ai_generated_itineraries", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Expert AI Tasks - for task delegation to AI
+export const expertAiTaskStatusEnum = ["pending", "in_progress", "completed", "rejected", "regenerating"] as const;
+export const expertAiTaskTypeEnum = ["client_message", "vendor_research", "itinerary_update", "content_draft", "response_draft"] as const;
+
+export const expertAiTasks = pgTable("expert_ai_tasks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskType: varchar("task_type", { length: 50 }).notNull(),
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  clientName: varchar("client_name", { length: 255 }),
+  taskDescription: text("task_description").notNull(),
+  context: jsonb("context").default({}),
+  aiResult: jsonb("ai_result").default({}),
+  confidence: integer("confidence"),
+  qualityScore: decimal("quality_score", { precision: 3, scale: 1 }),
+  editedContent: text("edited_content"),
+  wasEdited: boolean("was_edited").default(false),
+  tokensUsed: integer("tokens_used").default(0),
+  costEstimate: decimal("cost_estimate", { precision: 10, scale: 6 }).default("0"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // AI Integration schemas and types
 export const insertAIInteractionSchema = createInsertSchema(aiInteractions).omit({ id: true, createdAt: true });
+export const insertExpertAiTaskSchema = createInsertSchema(expertAiTasks).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
 export const insertExpertMatchScoreSchema = createInsertSchema(expertMatchScores).omit({ id: true, createdAt: true });
 export const insertDestinationIntelligenceSchema = createInsertSchema(destinationIntelligence).omit({ id: true, lastUpdated: true });
 export const insertTrendingExperienceSchema = createInsertSchema(trendingExperiences).omit({ id: true, createdAt: true });
@@ -1487,3 +1512,5 @@ export type TrendingExperience = typeof trendingExperiences.$inferSelect;
 export type InsertTrendingExperience = z.infer<typeof insertTrendingExperienceSchema>;
 export type AIGeneratedItinerary = typeof aiGeneratedItineraries.$inferSelect;
 export type InsertAIGeneratedItinerary = z.infer<typeof insertAIGeneratedItinerarySchema>;
+export type ExpertAiTask = typeof expertAiTasks.$inferSelect;
+export type InsertExpertAiTask = z.infer<typeof insertExpertAiTaskSchema>;
