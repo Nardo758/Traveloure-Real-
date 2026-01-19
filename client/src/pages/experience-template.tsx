@@ -74,8 +74,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { TransportationAnalysis } from "@/components/transportation-analysis";
-import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { RealTimeIntelWidget } from "@/components/real-time-intel-widget";
+import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
@@ -134,7 +135,6 @@ const experienceConfigs: Record<string, {
   travel: {
     heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
     tabs: [
-      { id: "ai-plan", label: "AI Plan", icon: Sparkles, category: null },
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
       { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
       { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
@@ -591,7 +591,7 @@ function AIOptimizationTab({
       )}
 
       <Button 
-        className="bg-[#FF385C] hover:bg-[#E23350]" 
+        className="bg-[#FF385C] " 
         onClick={runOptimization}
         disabled={optimizing}
         data-testid="button-optimize"
@@ -729,6 +729,9 @@ export default function ExperienceTemplatePage() {
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
   const [aiOptimizeOpen, setAiOptimizeOpen] = useState(false);
+  const [expertHelpDialogOpen, setExpertHelpDialogOpen] = useState(false);
+  const [aiItineraryDialogOpen, setAiItineraryDialogOpen] = useState(false);
+  const [expertHelpTab, setExpertHelpTab] = useState<"ai-match" | "chat">("ai-match");
   
   // Draggable Expert Chat button state
   const [chatButtonPos, setChatButtonPos] = useState({ x: 24, y: 24 }); // Distance from bottom-right
@@ -973,7 +976,13 @@ export default function ExperienceTemplatePage() {
   };
 
   const openExpertChat = () => {
-    setChatOpen(true);
+    // Open the Expert Help dialog with AI matching + chat tabs
+    setExpertHelpDialogOpen(true);
+  };
+  
+  const openAiItineraryBuilder = () => {
+    // Open the AI Itinerary Builder dialog (powered by Grok)
+    setAiItineraryDialogOpen(true);
   };
 
   const toggleFilter = (filter: string) => {
@@ -1397,19 +1406,15 @@ export default function ExperienceTemplatePage() {
                 <span className="text-muted-foreground">|</span>
                 <span data-testid="text-cart-total">${cartTotal.toLocaleString()}</span>
               </Button>
-              {/* Separate Generate Itinerary Button */}
+              {/* AI Generate Itinerary Button - Opens Grok-powered AI Itinerary Builder */}
               <Button
                 size="sm"
-                onClick={generateItinerary}
-                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                className="gap-1.5 bg-[#FF385C] hover:bg-[#E23350]"
+                onClick={openAiItineraryBuilder}
+                disabled={!canGenerateItinerary}
+                className="gap-1.5 bg-[#FF385C]"
                 data-testid="button-generate-ribbon"
               >
-                {generatingItinerary ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4" />
-                )}
+                <Wand2 className="w-4 h-4" />
                 Generate Itinerary
               </Button>
             </div>
@@ -1538,7 +1543,7 @@ export default function ExperienceTemplatePage() {
                 </div>
 
                 <Button 
-                  className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
+                  className="w-full bg-[#FF385C]  text-white"
                   disabled={!!dateError || !destination.trim()}
                   onClick={() => {
                     setDetailsSubmitted(true);
@@ -1555,28 +1560,16 @@ export default function ExperienceTemplatePage() {
             </CardContent>
           </Card>
 
-        {detailsSubmitted && (
-          <div className="mb-6 space-y-4">
-            <AIMatchedExpertsSection
+        {detailsSubmitted && destination && (
+          <div className="mb-6">
+            <RealTimeIntelWidget
               destination={destination}
-              startDate={startDate}
-              endDate={endDate}
-              experienceType={experienceType?.name}
-              travelers={travelers}
-              preferences={selectedFilters}
-              userId={user?.id}
-              isVisible={detailsSubmitted}
+              dates={startDate && endDate ? {
+                start: format(startDate, "yyyy-MM-dd"),
+                end: format(endDate, "yyyy-MM-dd")
+              } : undefined}
+              compact
             />
-            {destination && (
-              <RealTimeIntelWidget
-                destination={destination}
-                dates={startDate && endDate ? {
-                  start: format(startDate, "yyyy-MM-dd"),
-                  end: format(endDate, "yyyy-MM-dd")
-                } : undefined}
-                compact
-              />
-            )}
           </div>
         )}
 
@@ -1670,7 +1663,7 @@ export default function ExperienceTemplatePage() {
                       </div>
                       <div className="space-y-2">
                         <Button 
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-[#FF385C] "
                           onClick={createComparison}
                           disabled={creatingComparison}
                           data-testid="button-compare-ai"
@@ -1903,39 +1896,6 @@ export default function ExperienceTemplatePage() {
               </Card>
             </CollapsibleContent>
           </Collapsible>
-
-          {activeTab === "ai-plan" && (
-            <Card className="mb-6">
-              <CardContent className="pt-6">
-                {!detailsSubmitted ? (
-                  <div className="text-center py-8">
-                    <Sparkles className="h-12 w-12 mx-auto mb-4 text-[#FF385C]" />
-                    <h3 className="text-lg font-semibold mb-2 text-foreground">AI-Powered Trip Planning</h3>
-                    <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                      Let our AI create a personalized day-by-day itinerary based on your preferences. 
-                      First, fill in your travel details above and click "Submit".
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => document.querySelector('[data-testid="button-submit-details"]')?.scrollIntoView({ behavior: 'smooth' })}
-                      data-testid="button-scroll-to-details"
-                    >
-                      <ArrowLeft className="h-4 w-4 mr-2" />
-                      Fill Travel Details
-                    </Button>
-                  </div>
-                ) : (
-                  <AIItineraryBuilder
-                    destination={destination}
-                    startDate={startDate}
-                    endDate={endDate}
-                    travelers={travelers}
-                    experienceType={experienceType?.name}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {activeTab === "flights" && !detailsSubmitted && (
             <Card className="border-2 border-dashed mb-6">
@@ -2226,12 +2186,57 @@ export default function ExperienceTemplatePage() {
           )}
 
           {activeTab === "activities" && detailsSubmitted && (
-            <div className="mb-6">
+            <div className="mb-6 space-y-4">
+              {/* Interest Filter Chips */}
+              <Card className="p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="h-4 w-4 text-[#FF385C]" />
+                  <h3 className="font-medium text-sm">What are you interested in?</h3>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { id: "culture", label: "Culture & History" },
+                    { id: "food", label: "Food & Dining" },
+                    { id: "adventure", label: "Adventure" },
+                    { id: "nature", label: "Nature & Outdoors" },
+                    { id: "nightlife", label: "Nightlife" },
+                    { id: "shopping", label: "Shopping" },
+                    { id: "wellness", label: "Wellness & Spa" },
+                    { id: "art", label: "Art & Museums" },
+                  ].map((interest) => (
+                    <Badge
+                      key={interest.id}
+                      variant={selectedFilters.includes(interest.id) ? "default" : "outline"}
+                      className={cn(
+                        "cursor-pointer",
+                        selectedFilters.includes(interest.id) && "bg-[#FF385C]"
+                      )}
+                      onClick={() => toggleFilter(interest.id)}
+                      data-testid={`interest-filter-${interest.id}`}
+                    >
+                      {interest.label}
+                    </Badge>
+                  ))}
+                  {selectedFilters.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-6"
+                      onClick={() => setSelectedFilters([])}
+                      data-testid="button-clear-interests"
+                    >
+                      Clear all
+                    </Button>
+                  )}
+                </div>
+              </Card>
+              
               <ActivitySearch
                 destination={destination}
                 startDate={startDate}
                 endDate={endDate}
                 travelers={travelers}
+                interests={selectedFilters}
                 onResultsLoaded={setActivitySearchMarkers}
                 destinationCenter={destinationCenter}
                 onSelectActivity={(activity) => {
@@ -2285,7 +2290,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "ai-plan" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -2308,7 +2313,7 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "ai-plan" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -2348,7 +2353,7 @@ export default function ExperienceTemplatePage() {
                             ) : (
                               <Button
                                 size="sm"
-                                className="bg-[#FF385C] hover:bg-[#E23350]"
+                                className="bg-[#FF385C] "
                                 onClick={() => addToCart({
                                   id: venueId,
                                   type: "venue",
@@ -2400,7 +2405,7 @@ export default function ExperienceTemplatePage() {
                             <span className="font-bold text-lg">${service.price || 0}</span>
                             <Button
                               size="sm"
-                              className="bg-[#FF385C] hover:bg-[#E23350]"
+                              className="bg-[#FF385C] "
                               onClick={() => addToCart({
                                 id: service.id.toString(),
                                 type: activeTab,
@@ -2521,16 +2526,12 @@ export default function ExperienceTemplatePage() {
               {/* Mobile Generate Itinerary Button */}
               <Button
                 size="sm"
-                onClick={generateItinerary}
-                disabled={!canGenerateItinerary || generatingItinerary || cart.length === 0}
-                className="gap-1 px-2 bg-[#FF385C] hover:bg-[#E23350]"
+                onClick={openAiItineraryBuilder}
+                disabled={!canGenerateItinerary}
+                className="gap-1 px-2 bg-[#FF385C]"
                 data-testid="button-generate-ribbon-mobile"
               >
-                {generatingItinerary ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Wand2 className="w-3 h-3" />
-                )}
+                <Wand2 className="w-3 h-3" />
                 Generate
               </Button>
             </div>
@@ -2583,7 +2584,7 @@ export default function ExperienceTemplatePage() {
                     </Popover>
                   </div>
                 </div>
-                <Button className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white" disabled={!!dateError}>
+                <Button className="w-full bg-[#FF385C]  text-white" disabled={!!dateError}>
                   Submit Details
                 </Button>
               </div>
@@ -2626,7 +2627,7 @@ export default function ExperienceTemplatePage() {
                           <span className="font-bold">${service.price || 0}</span>
                           <Button
                             size="sm"
-                            className="bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs"
+                            className="bg-[#FF385C]  h-7 text-xs"
                             onClick={() => addToCart({
                               id: service.id.toString(),
                               type: activeTab,
@@ -2749,7 +2750,7 @@ export default function ExperienceTemplatePage() {
               }
             }}
             className={cn(
-              "fixed h-14 w-14 rounded-full bg-[#FF385C] hover:bg-[#E23350] shadow-lg z-[9999] cursor-grab",
+              "fixed h-14 w-14 rounded-full bg-[#FF385C]  shadow-lg z-[9999] cursor-grab",
               isDragging && "cursor-grabbing"
             )}
             style={{
@@ -2781,6 +2782,114 @@ export default function ExperienceTemplatePage() {
             toast({ title: "Custom venue added", description: `${venue.name} is now in your plan` });
           }}
         />
+        
+        {/* Expert Help Dialog - AI Matching + Chat */}
+        <Dialog open={expertHelpDialogOpen} onOpenChange={setExpertHelpDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-[#FF385C]" />
+                Get Expert Help
+              </DialogTitle>
+              <DialogDescription>
+                Find AI-matched experts or chat with an advisor for personalized travel guidance
+              </DialogDescription>
+            </DialogHeader>
+            <Tabs value={expertHelpTab} onValueChange={(v) => setExpertHelpTab(v as "ai-match" | "chat")} className="mt-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="ai-match" className="gap-2" data-testid="tab-ai-match">
+                  <Sparkles className="w-4 h-4" />
+                  AI-Matched Experts
+                </TabsTrigger>
+                <TabsTrigger value="chat" className="gap-2" data-testid="tab-chat">
+                  <MessageCircle className="w-4 h-4" />
+                  Live Chat
+                </TabsTrigger>
+              </TabsList>
+              <div className="mt-4">
+                {expertHelpTab === "ai-match" && (
+                  <AIMatchedExpertsSection
+                    destination={destination}
+                    startDate={startDate}
+                    endDate={endDate}
+                    experienceType={experienceType?.name}
+                    travelers={travelers}
+                    preferences={selectedFilters}
+                    userId={user?.id}
+                    isVisible={true}
+                  />
+                )}
+                {expertHelpTab === "chat" && (
+                  <div className="min-h-[400px]">
+                    <p className="text-center text-muted-foreground mb-4">
+                      Click the chat button in the bottom right corner to start a conversation with a travel advisor.
+                    </p>
+                    <div className="flex justify-center">
+                      <Button
+                        onClick={() => {
+                          setExpertHelpDialogOpen(false);
+                          setChatOpen(true);
+                        }}
+                        className="bg-[#FF385C]"
+                        data-testid="button-start-chat"
+                      >
+                        <MessageCircle className="w-4 h-4 mr-2" />
+                        Start Chat with Expert
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Tabs>
+          </DialogContent>
+        </Dialog>
+        
+        {/* AI Itinerary Builder Dialog - Powered by Grok */}
+        <Dialog open={aiItineraryDialogOpen} onOpenChange={setAiItineraryDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Wand2 className="w-5 h-5 text-[#FF385C]" />
+                AI Itinerary Builder
+                <Badge variant="secondary" className="text-[10px] ml-2">Powered by Grok</Badge>
+              </DialogTitle>
+              <DialogDescription>
+                Let AI create a personalized day-by-day itinerary for your {experienceType?.name || "travel"} to {destination || "your destination"}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4">
+              {!destination.trim() || !startDate || !endDate ? (
+                <div className="text-center py-8">
+                  <Sparkles className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold mb-2">Complete Your Travel Details</h3>
+                  <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                    Please fill in your destination and travel dates before generating an AI itinerary.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAiItineraryDialogOpen(false);
+                      document.querySelector('[data-testid="input-location"]')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    data-testid="button-close-itinerary-dialog"
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    Fill Travel Details
+                  </Button>
+                </div>
+              ) : (
+                <AIItineraryBuilder
+                  destination={destination}
+                  startDate={startDate}
+                  endDate={endDate}
+                  travelers={travelers}
+                  experienceType={experienceType?.name}
+                  onClose={() => setAiItineraryDialogOpen(false)}
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

@@ -49,10 +49,23 @@ interface ActivitySearchProps {
   travelers?: number;
   sortBy?: "TOP_SELLERS" | "PRICE_LOW_TO_HIGH" | "PRICE_HIGH_TO_LOW" | "TRAVELER_RATING";
   filterType?: "activities" | "transport" | "all";
+  interests?: string[]; // Interest filters for activity categories
   onSelectActivity?: (activity: ViatorActivity) => void;
   onResultsLoaded?: (markers: ActivityMapMarker[]) => void;
   destinationCenter?: { lat: number; lng: number } | null;
 }
+
+// Interest category keyword mappings for client-side filtering
+const INTEREST_KEYWORDS: Record<string, string[]> = {
+  "culture": ["museum", "history", "cultural", "heritage", "historical", "temple", "church", "cathedral", "palace", "castle", "monument", "ancient", "traditional"],
+  "food": ["food", "cuisine", "culinary", "cooking", "tasting", "wine", "beer", "restaurant", "market", "gastronomy", "dinner", "lunch", "brunch"],
+  "adventure": ["adventure", "extreme", "adrenaline", "zip", "bungee", "paragliding", "skydiving", "rafting", "climbing", "canyoning"],
+  "nature": ["nature", "hiking", "trekking", "wildlife", "safari", "national park", "forest", "mountain", "waterfall", "scenic", "eco", "outdoor"],
+  "nightlife": ["nightlife", "bar", "club", "pub", "party", "evening", "night tour", "cocktail", "entertainment"],
+  "shopping": ["shopping", "market", "bazaar", "outlet", "souvenir", "boutique", "artisan", "craft"],
+  "wellness": ["spa", "wellness", "yoga", "meditation", "massage", "thermal", "hot spring", "relaxation", "retreat", "health"],
+  "art": ["art", "gallery", "exhibition", "museum", "contemporary", "sculpture", "painting", "creative", "design"],
+};
 
 const STRONG_TRANSPORT_KEYWORDS = [
   'transfer', 'shuttle', 'taxi service', 'private car service',
@@ -281,6 +294,21 @@ function getImageUrl(images?: ViatorActivity['images'], preferredWidth: number =
   return sorted[0]?.url || coverImage.variants[0]?.url || "https://images.unsplash.com/photo-1469474968028-56623f02e42e?w=480&h=320&fit=crop";
 }
 
+// Helper function to check if activity matches any interest
+function activityMatchesInterests(activity: ViatorActivity, interests: string[]): boolean {
+  if (!interests || interests.length === 0) return true;
+  
+  const title = activity.title?.toLowerCase() || '';
+  const description = activity.description?.toLowerCase() || '';
+  const searchText = `${title} ${description}`;
+  
+  return interests.some(interest => {
+    const keywords = INTEREST_KEYWORDS[interest.toLowerCase()];
+    if (!keywords) return false;
+    return keywords.some(keyword => searchText.includes(keyword));
+  });
+}
+
 export function ActivitySearch({
   destination,
   startDate,
@@ -288,6 +316,7 @@ export function ActivitySearch({
   travelers = 1,
   sortBy = "TOP_SELLERS",
   filterType = "activities",
+  interests = [],
   onSelectActivity,
   onResultsLoaded,
   destinationCenter,
@@ -321,12 +350,19 @@ export function ActivitySearch({
     
     let filtered = [...data.products];
     
+    // Filter by type (activities vs transport)
     if (filterType === "activities") {
       filtered = filtered.filter(p => !isTransportProduct(p));
     } else if (filterType === "transport") {
       filtered = filtered.filter(p => isTransportProduct(p));
     }
     
+    // Filter by interests (if any selected)
+    if (interests && interests.length > 0) {
+      filtered = filtered.filter(p => activityMatchesInterests(p, interests));
+    }
+    
+    // Sort activities
     switch (currentSortBy) {
       case "PRICE_LOW_TO_HIGH":
         filtered.sort((a, b) => (a.pricing?.summary?.fromPrice || 0) - (b.pricing?.summary?.fromPrice || 0));
@@ -340,7 +376,7 @@ export function ActivitySearch({
     }
     
     return filtered;
-  }, [data?.products, currentSortBy, filterType]);
+  }, [data?.products, currentSortBy, filterType, interests]);
 
   // Notify parent of activity results with coordinates for map display
   // Use destinationCenter as fallback when individual activity coordinates aren't available
