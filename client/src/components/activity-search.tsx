@@ -27,9 +27,11 @@ import {
   Camera,
   Ticket,
   RefreshCw,
-  Car
+  Car,
+  Database
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatDistanceToNow } from "date-fns";
 
 interface ActivityMapMarker {
   id: string;
@@ -546,17 +548,31 @@ export function ActivitySearch({
           )}
         </div>
         
-        <Select value={currentSortBy} onValueChange={(v) => setCurrentSortBy(v as typeof currentSortBy)}>
-          <SelectTrigger className="w-[180px]" data-testid="select-activity-sort">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="TOP_SELLERS">Top Sellers</SelectItem>
-            <SelectItem value="PRICE_LOW_TO_HIGH">Price: Low to High</SelectItem>
-            <SelectItem value="PRICE_HIGH_TO_LOW">Price: High to Low</SelectItem>
-            <SelectItem value="TRAVELER_RATING">Best Rated</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          {data?.fromCache && (
+            <Badge variant="outline" className="gap-1 text-xs text-muted-foreground" data-testid="badge-cache-status">
+              <Database className="h-3 w-3" />
+              <span data-testid="text-cache-updated">
+                {data.lastUpdated ? (
+                  <>Updated {formatDistanceToNow(new Date(data.lastUpdated), { addSuffix: true })}</>
+                ) : (
+                  <>From cache</>
+                )}
+              </span>
+            </Badge>
+          )}
+          <Select value={currentSortBy} onValueChange={(v) => setCurrentSortBy(v as typeof currentSortBy)}>
+            <SelectTrigger className="w-[180px]" data-testid="select-activity-sort">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TOP_SELLERS">Top Sellers</SelectItem>
+              <SelectItem value="PRICE_LOW_TO_HIGH">Price: Low to High</SelectItem>
+              <SelectItem value="PRICE_HIGH_TO_LOW">Price: High to Low</SelectItem>
+              <SelectItem value="TRAVELER_RATING">Best Rated</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-3">
