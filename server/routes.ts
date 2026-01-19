@@ -23,6 +23,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant 
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
 import { cacheService } from "./services/cache.service";
+import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { claudeService } from "./services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -3501,6 +3502,80 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Get categories error:', error);
       res.status(500).json({ message: error.message || "Failed to get categories" });
+    }
+  });
+
+  // ============ CACHE SCHEDULER ROUTES ============
+
+  // Get cache freshness status
+  app.get("/api/cache/status", isAuthenticated, async (req, res) => {
+    try {
+      const status = await cacheSchedulerService.getCacheFreshnessStatus();
+      res.json(status);
+    } catch (error: any) {
+      console.error('Get cache status error:', error);
+      res.status(500).json({ message: error.message || "Failed to get cache status" });
+    }
+  });
+
+  // Trigger manual cache refresh (admin only)
+  app.post("/api/cache/refresh", isAuthenticated, async (req, res) => {
+    try {
+      // Check if user is admin (optional - can be enforced later)
+      if (cacheSchedulerService.isCurrentlyRefreshing()) {
+        return res.status(409).json({ message: "Cache refresh already in progress" });
+      }
+      
+      const stats = await cacheSchedulerService.triggerManualRefresh();
+      res.json({
+        message: "Cache refresh completed",
+        stats,
+      });
+    } catch (error: any) {
+      console.error('Manual cache refresh error:', error);
+      res.status(500).json({ message: error.message || "Cache refresh failed" });
+    }
+  });
+
+  // Pre-checkout verification endpoint
+  const checkoutVerifySchema = z.object({
+    items: z.array(z.object({
+      type: z.enum(['hotel', 'activity', 'flight']),
+      id: z.string().max(100),
+      params: z.object({
+        checkInDate: z.string().optional(),
+        checkOutDate: z.string().optional(),
+        travelDate: z.string().optional(),
+        adults: z.number().optional(),
+        rooms: z.number().optional(),
+        currency: z.string().optional(),
+      }).optional(),
+    })).max(20),
+  });
+
+  app.post("/api/cache/checkout-verify", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = checkoutVerifySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+      }
+
+      const results = await cacheSchedulerService.verifyAndRefreshForCheckout(parsed.data.items);
+      
+      const allVerified = results.every(r => r.verified);
+      const priceChanges = results.filter(r => r.priceChanged);
+      
+      res.json({
+        verified: allVerified,
+        items: results,
+        priceChanges: priceChanges.length > 0 ? priceChanges : null,
+        message: allVerified 
+          ? "All items verified successfully" 
+          : "Some items could not be verified",
+      });
+    } catch (error: any) {
+      console.error('Checkout verification error:', error);
+      res.status(500).json({ message: error.message || "Verification failed" });
     }
   });
 
