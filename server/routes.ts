@@ -25,6 +25,8 @@ import { viatorService } from "./services/viator.service";
 import { cacheService } from "./services/cache.service";
 import { claudeService } from "./services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
+import { aiOrchestrator } from "./services/ai-orchestrator";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms } from "@shared/schema";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -3629,6 +3631,281 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Geocoding API error:', error);
       res.status(500).json({ message: error.message || "Geocoding failed" });
+    }
+  });
+
+  // === GROK AI INTEGRATION ROUTES ===
+
+  // Expert Matching - Match experts to traveler needs
+  const expertMatchSchema = z.object({
+    travelerProfile: z.object({
+      destination: z.string(),
+      tripDates: z.object({
+        start: z.string(),
+        end: z.string(),
+      }),
+      eventType: z.string().optional(),
+      budget: z.number().optional(),
+      travelers: z.number(),
+      interests: z.array(z.string()).optional(),
+      preferences: z.record(z.any()).optional(),
+    }),
+    expertIds: z.array(z.string()).optional(),
+    limit: z.number().optional().default(5),
+  });
+
+  app.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = expertMatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const { travelerProfile, expertIds, limit } = parsed.data;
+
+      // Get expert profiles from database
+      const expertsQuery = await db.select()
+        .from(users)
+        .where(eq(users.role, "local_expert"));
+
+      // Filter to specific expert IDs if provided
+      let expertsList = expertIds 
+        ? expertsQuery.filter(e => expertIds.includes(e.id))
+        : expertsQuery.slice(0, limit || 5);
+
+      if (expertsList.length === 0) {
+        return res.json({ matches: [], message: "No experts found" });
+      }
+
+      // Get local expert forms for more profile info
+      const expertForms = await db.select()
+        .from(localExpertForms)
+        .where(eq(localExpertForms.status, "approved"));
+
+      const expertProfiles = expertsList.map(expert => {
+        const form = expertForms.find((f: any) => f.userId === expert.id);
+        return {
+          id: expert.id,
+          name: `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Expert",
+          destinations: (form?.destinations as string[]) || [],
+          specialties: (form?.specialties as string[]) || [],
+          experienceTypes: (form?.experienceTypes as string[]) || [],
+          languages: (form?.languages as string[]) || [],
+          yearsOfExperience: form?.yearsOfExperience || "1-3 years",
+          bio: form?.bio || "",
+          averageRating: 4.5,
+          reviewCount: 0,
+        };
+      });
+
+      const matches = await aiOrchestrator.matchExperts(
+        travelerProfile,
+        expertProfiles,
+        { userId, limit }
+      );
+
+      // Store match scores in database
+      for (const match of matches) {
+        await db.insert(expertMatchScores).values({
+          expertId: match.expertId,
+          travelerId: userId,
+          overallScore: match.overallScore,
+          destinationMatch: match.breakdown.destinationMatch,
+          specialtyMatch: match.breakdown.specialtyMatch,
+          experienceTypeMatch: match.breakdown.experienceTypeMatch,
+          budgetAlignment: match.breakdown.budgetAlignment,
+          availabilityScore: match.breakdown.availabilityScore,
+          strengths: match.strengths,
+          reasoning: match.reasoning,
+          requestContext: travelerProfile,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        }).catch(err => console.error("Failed to store match score:", err));
+      }
+
+      res.json({ matches });
+    } catch (error: any) {
+      console.error("Grok expert matching error:", error);
+      res.status(500).json({ message: error.message || "Expert matching failed" });
+    }
+  });
+
+  // Content Generation - Generate bio, descriptions, responses
+  const contentGenerationSchema = z.object({
+    type: z.enum(["bio", "service_description", "inquiry_response", "welcome_message"]),
+    context: z.record(z.any()),
+    tone: z.enum(["professional", "friendly", "casual"]).optional(),
+    length: z.enum(["short", "medium", "long"]).optional(),
+  });
+
+  app.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = contentGenerationSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const result = await aiOrchestrator.generateContent(parsed.data, { userId });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Grok content generation error:", error);
+      res.status(500).json({ message: error.message || "Content generation failed" });
+    }
+  });
+
+  // Real-Time Intelligence - Get current events, weather, trends for destination
+  const intelligenceSchema = z.object({
+    destination: z.string(),
+    dates: z.object({
+      start: z.string(),
+      end: z.string(),
+    }).optional(),
+    topics: z.array(z.enum(["events", "weather", "safety", "trending", "deals"])).optional(),
+  });
+
+  app.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = intelligenceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const { destination, dates, topics } = parsed.data;
+
+      // Check cache first
+      const cached = await db.select()
+        .from(destinationIntelligence)
+        .where(eq(destinationIntelligence.destination, destination.toLowerCase()))
+        .limit(1);
+
+      if (cached.length > 0 && new Date(cached[0].expiresAt) > new Date()) {
+        return res.json(cached[0].intelligenceData);
+      }
+
+      const result = await aiOrchestrator.getRealTimeIntelligence(
+        { destination, dates, topics },
+        { userId }
+      );
+
+      // Cache result
+      await db.insert(destinationIntelligence).values({
+        destination: destination.toLowerCase(),
+        intelligenceData: result,
+        events: result.events || [],
+        weatherForecast: result.weatherForecast || {},
+        safetyAlerts: result.safetyAlerts || [],
+        trendingExperiences: result.trendingExperiences || [],
+        deals: result.deals || [],
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000), // 30 minutes
+      }).catch(err => console.error("Failed to cache intelligence:", err));
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Grok real-time intelligence error:", error);
+      res.status(500).json({ message: error.message || "Intelligence gathering failed" });
+    }
+  });
+
+  // Autonomous Itinerary Generation - Full AI trip planning
+  const autonomousItinerarySchema = z.object({
+    destination: z.string(),
+    dates: z.object({
+      start: z.string(),
+      end: z.string(),
+    }),
+    travelers: z.number(),
+    budget: z.number().optional(),
+    eventType: z.string().optional(),
+    interests: z.array(z.string()),
+    pacePreference: z.enum(["relaxed", "moderate", "packed"]).optional(),
+    mustSeeAttractions: z.array(z.string()).optional(),
+    dietaryRestrictions: z.array(z.string()).optional(),
+    mobilityConsiderations: z.array(z.string()).optional(),
+    tripId: z.string().optional(),
+  });
+
+  app.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = autonomousItinerarySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const { tripId, ...itineraryRequest } = parsed.data;
+
+      const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
+        userId,
+        tripId,
+      });
+
+      // Store generated itinerary
+      const [saved] = await db.insert(aiGeneratedItineraries).values({
+        userId,
+        tripId,
+        destination: itineraryRequest.destination,
+        startDate: itineraryRequest.dates.start,
+        endDate: itineraryRequest.dates.end,
+        title: result.title,
+        summary: result.summary,
+        totalEstimatedCost: result.totalEstimatedCost?.toString(),
+        itineraryData: result.dailyItinerary,
+        accommodationSuggestions: result.accommodationSuggestions || [],
+        packingList: result.packingList || [],
+        travelTips: result.travelTips || [],
+        provider: "grok",
+        status: "generated",
+      }).returning();
+
+      res.json({ ...result, id: saved.id });
+    } catch (error: any) {
+      console.error("Grok autonomous itinerary error:", error);
+      res.status(500).json({ message: error.message || "Itinerary generation failed" });
+    }
+  });
+
+  // AI Chat endpoint - General purpose chat
+  const chatSchema = z.object({
+    messages: z.array(z.object({
+      role: z.enum(["user", "assistant", "system"]),
+      content: z.string(),
+    })),
+    systemContext: z.string().optional(),
+    preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
+  });
+
+  app.post("/api/grok/chat", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = chatSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const { messages, systemContext, preferProvider } = parsed.data;
+
+      const { response, provider } = await aiOrchestrator.chat(messages, {
+        userId,
+        systemContext,
+        preferProvider: preferProvider as any,
+      });
+
+      res.json({ response, provider });
+    } catch (error: any) {
+      console.error("Grok chat error:", error);
+      res.status(500).json({ message: error.message || "Chat failed" });
+    }
+  });
+
+  // AI Health check
+  app.get("/api/grok/health", async (req, res) => {
+    try {
+      const health = await aiOrchestrator.healthCheck();
+      res.json({ status: "ok", providers: health });
+    } catch (error: any) {
+      res.status(500).json({ status: "error", message: error.message });
     }
   });
 

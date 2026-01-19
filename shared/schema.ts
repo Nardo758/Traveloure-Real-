@@ -1371,3 +1371,119 @@ export type CoordinationState = typeof coordinationStates.$inferSelect;
 export type InsertCoordinationState = z.infer<typeof insertCoordinationStateSchema>;
 export type CoordinationBooking = typeof coordinationBookings.$inferSelect;
 export type InsertCoordinationBooking = z.infer<typeof insertCoordinationBookingSchema>;
+
+// === AI Integration Tables ===
+
+export const aiTaskTypeEnum = [
+  "expert_matching",
+  "content_generation",
+  "real_time_intelligence",
+  "autonomous_itinerary",
+  "itinerary_optimization",
+  "transportation_analysis",
+  "travel_recommendations",
+  "chat",
+  "image_analysis"
+] as const;
+
+export const aiProviderEnum = ["grok", "claude", "openai"] as const;
+
+export const aiInteractions = pgTable("ai_interactions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  taskType: varchar("task_type", { length: 50 }).notNull(),
+  provider: varchar("provider", { length: 20 }).notNull(),
+  promptTokens: integer("prompt_tokens").default(0),
+  completionTokens: integer("completion_tokens").default(0),
+  totalTokens: integer("total_tokens").default(0),
+  estimatedCost: decimal("estimated_cost", { precision: 10, scale: 6 }).default("0"),
+  durationMs: integer("duration_ms").default(0),
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const expertMatchScores = pgTable("expert_match_scores", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "set null" }),
+  overallScore: integer("overall_score").notNull(),
+  destinationMatch: integer("destination_match").default(0),
+  specialtyMatch: integer("specialty_match").default(0),
+  experienceTypeMatch: integer("experience_type_match").default(0),
+  budgetAlignment: integer("budget_alignment").default(0),
+  availabilityScore: integer("availability_score").default(0),
+  strengths: jsonb("strengths").default([]),
+  reasoning: text("reasoning"),
+  requestContext: jsonb("request_context").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const destinationIntelligence = pgTable("destination_intelligence", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  intelligenceData: jsonb("intelligence_data").default({}),
+  events: jsonb("events").default([]),
+  weatherForecast: jsonb("weather_forecast").default({}),
+  safetyAlerts: jsonb("safety_alerts").default([]),
+  trendingExperiences: jsonb("trending_experiences").default([]),
+  deals: jsonb("deals").default([]),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export const trendingExperiences = pgTable("trending_experiences", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }),
+  experienceName: varchar("experience_name", { length: 255 }).notNull(),
+  experienceType: varchar("experience_type", { length: 50 }),
+  reason: text("reason"),
+  popularityScore: integer("popularity_score").default(0),
+  source: varchar("source", { length: 50 }).default("grok"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const aiGeneratedItineraries = pgTable("ai_generated_itineraries", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  title: varchar("title", { length: 255 }),
+  summary: text("summary"),
+  totalEstimatedCost: decimal("total_estimated_cost", { precision: 10, scale: 2 }),
+  itineraryData: jsonb("itinerary_data").default({}),
+  accommodationSuggestions: jsonb("accommodation_suggestions").default([]),
+  packingList: jsonb("packing_list").default([]),
+  travelTips: jsonb("travel_tips").default([]),
+  provider: varchar("provider", { length: 20 }).default("grok"),
+  status: varchar("status", { length: 20 }).default("generated"),
+  feedback: jsonb("feedback").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// AI Integration schemas and types
+export const insertAIInteractionSchema = createInsertSchema(aiInteractions).omit({ id: true, createdAt: true });
+export const insertExpertMatchScoreSchema = createInsertSchema(expertMatchScores).omit({ id: true, createdAt: true });
+export const insertDestinationIntelligenceSchema = createInsertSchema(destinationIntelligence).omit({ id: true, lastUpdated: true });
+export const insertTrendingExperienceSchema = createInsertSchema(trendingExperiences).omit({ id: true, createdAt: true });
+export const insertAIGeneratedItinerarySchema = createInsertSchema(aiGeneratedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type AIInteraction = typeof aiInteractions.$inferSelect;
+export type InsertAIInteraction = z.infer<typeof insertAIInteractionSchema>;
+export type ExpertMatchScore = typeof expertMatchScores.$inferSelect;
+export type InsertExpertMatchScore = z.infer<typeof insertExpertMatchScoreSchema>;
+export type DestinationIntelligence = typeof destinationIntelligence.$inferSelect;
+export type InsertDestinationIntelligence = z.infer<typeof insertDestinationIntelligenceSchema>;
+export type TrendingExperience = typeof trendingExperiences.$inferSelect;
+export type InsertTrendingExperience = z.infer<typeof insertTrendingExperienceSchema>;
+export type AIGeneratedItinerary = typeof aiGeneratedItineraries.$inferSelect;
+export type InsertAIGeneratedItinerary = z.infer<typeof insertAIGeneratedItinerarySchema>;
