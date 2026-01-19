@@ -3381,6 +3381,129 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // ============ FILTERING AND SORTING API ============
+
+  // Zod schemas for filter validation
+  const hotelFilterSchema = z.object({
+    cityCode: z.string().max(10).optional(),
+    searchQuery: z.string().max(200).optional(),
+    priceMin: z.coerce.number().min(0).max(100000).optional(),
+    priceMax: z.coerce.number().min(0).max(100000).optional(),
+    minRating: z.coerce.number().min(0).max(5).optional(),
+    preferenceTags: z.string().max(500).optional(),
+    county: z.string().max(100).optional(),
+    state: z.string().max(100).optional(),
+    countryCode: z.string().max(5).optional(),
+    sortBy: z.enum(['price_low', 'price_high', 'rating', 'popularity', 'newest']).optional(),
+    limit: z.coerce.number().min(1).max(100).default(20),
+    offset: z.coerce.number().min(0).default(0),
+  });
+
+  const activityFilterSchema = z.object({
+    destination: z.string().max(200).optional(),
+    searchQuery: z.string().max(200).optional(),
+    priceMin: z.coerce.number().min(0).max(100000).optional(),
+    priceMax: z.coerce.number().min(0).max(100000).optional(),
+    minRating: z.coerce.number().min(0).max(5).optional(),
+    preferenceTags: z.string().max(500).optional(),
+    category: z.string().max(100).optional(),
+    county: z.string().max(100).optional(),
+    state: z.string().max(100).optional(),
+    countryCode: z.string().max(5).optional(),
+    sortBy: z.enum(['price_low', 'price_high', 'rating', 'popularity', 'newest']).optional(),
+    limit: z.coerce.number().min(1).max(100).default(20),
+    offset: z.coerce.number().min(0).default(0),
+  });
+
+  // Get filtered hotels with pagination
+  app.get("/api/cache/filter/hotels", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = hotelFilterSchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid filter parameters", errors: parsed.error.errors });
+      }
+      const filters = parsed.data;
+
+      const result = await cacheService.getFilteredHotels({
+        cityCode: filters.cityCode,
+        searchQuery: filters.searchQuery,
+        priceMin: filters.priceMin,
+        priceMax: filters.priceMax,
+        minRating: filters.minRating,
+        preferenceTags: filters.preferenceTags ? filters.preferenceTags.split(',').filter(t => t.trim()) : undefined,
+        county: filters.county,
+        state: filters.state,
+        countryCode: filters.countryCode,
+        sortBy: filters.sortBy,
+        limit: filters.limit,
+        offset: filters.offset,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Filter hotels error:', error);
+      res.status(500).json({ message: error.message || "Filter failed" });
+    }
+  });
+
+  // Get filtered activities with pagination
+  app.get("/api/cache/filter/activities", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = activityFilterSchema.safeParse(req.query);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid filter parameters", errors: parsed.error.errors });
+      }
+      const filters = parsed.data;
+
+      const result = await cacheService.getFilteredActivities({
+        destination: filters.destination,
+        searchQuery: filters.searchQuery,
+        priceMin: filters.priceMin,
+        priceMax: filters.priceMax,
+        minRating: filters.minRating,
+        preferenceTags: filters.preferenceTags ? filters.preferenceTags.split(',').filter(t => t.trim()) : undefined,
+        category: filters.category,
+        county: filters.county,
+        state: filters.state,
+        countryCode: filters.countryCode,
+        sortBy: filters.sortBy,
+        limit: filters.limit,
+        offset: filters.offset,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Filter activities error:', error);
+      res.status(500).json({ message: error.message || "Filter failed" });
+    }
+  });
+
+  // Get available preference tags with counts
+  app.get("/api/cache/preference-tags/:itemType", isAuthenticated, async (req, res) => {
+    try {
+      const { itemType } = req.params;
+      if (itemType !== 'hotel' && itemType !== 'activity') {
+        return res.status(400).json({ message: "itemType must be 'hotel' or 'activity'" });
+      }
+      const tags = await cacheService.getAvailablePreferenceTags(itemType);
+      res.json(tags);
+    } catch (error: any) {
+      console.error('Get preference tags error:', error);
+      res.status(500).json({ message: error.message || "Failed to get preference tags" });
+    }
+  });
+
+  // Get available categories with counts (for activities)
+  app.get("/api/cache/categories", isAuthenticated, async (req, res) => {
+    try {
+      const categories = await cacheService.getAvailableCategories();
+      res.json(categories);
+    } catch (error: any) {
+      console.error('Get categories error:', error);
+      res.status(500).json({ message: error.message || "Failed to get categories" });
+    }
+  });
+
   // ============ CLAUDE AI ROUTES ============
 
   // Zod schemas for Claude API validation
