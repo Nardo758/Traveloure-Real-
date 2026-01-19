@@ -7,6 +7,7 @@ import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { setupWebSocket } from "./websocket";
+import { cacheSchedulerService } from "./services/cache-scheduler.service";
 
 const app = express();
 const httpServer = createServer(app);
@@ -148,6 +149,10 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      
+      // Start the background cache scheduler
+      cacheSchedulerService.start();
+      log("Cache scheduler started");
     },
   );
 })();
