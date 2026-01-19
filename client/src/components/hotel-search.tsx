@@ -24,7 +24,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users, ShieldCheck, ShieldX, Coffee, BedDouble, AlertCircle, Filter, RotateCcw } from "lucide-react";
+import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users, ShieldCheck, ShieldX, Coffee, BedDouble, AlertCircle, Filter, RotateCcw, Database } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { Slider } from "@/components/ui/slider";
 import {
   Select,
@@ -796,14 +797,28 @@ export function HotelSearch({
 
       {filteredAndSortedHotels && filteredAndSortedHotels.length > 0 && (
         <div className="space-y-4">
-          <h3 className="font-semibold text-lg">
-            {filteredAndSortedHotels.length} hotel{filteredAndSortedHotels.length !== 1 ? "s" : ""} available
-            {hotels && hotels.length !== filteredAndSortedHotels.length && (
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                (filtered from {hotels.length})
-              </span>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-semibold text-lg">
+              {filteredAndSortedHotels.length} hotel{filteredAndSortedHotels.length !== 1 ? "s" : ""} available
+              {hotels && hotels.length !== filteredAndSortedHotels.length && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  (filtered from {hotels.length})
+                </span>
+              )}
+            </h3>
+            {hotelResponse?.fromCache && (
+              <Badge variant="outline" className="gap-1 text-xs text-muted-foreground" data-testid="badge-cache-status">
+                <Database className="h-3 w-3" />
+                <span data-testid="text-cache-updated">
+                  {hotelResponse.lastUpdated ? (
+                    <>Updated {formatDistanceToNow(new Date(hotelResponse.lastUpdated), { addSuffix: true })}</>
+                  ) : (
+                    <>From cache</>
+                  )}
+                </span>
+              </Badge>
             )}
-          </h3>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredAndSortedHotels.map((hotelData) => {
               const hotel = hotelData.hotel;

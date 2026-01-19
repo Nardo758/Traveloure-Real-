@@ -24,8 +24,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Plane, Clock, ArrowRight, ChevronDown, Check, Loader2, Settings2, Calendar, Users, MapPin, Luggage, Briefcase, AlertCircle } from "lucide-react";
-import { format } from "date-fns";
+import { Plane, Clock, ArrowRight, ChevronDown, Check, Loader2, Settings2, Calendar, Users, MapPin, Luggage, Briefcase, AlertCircle, Database } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 
 interface FlightSearchProps {
@@ -788,14 +788,28 @@ export function FlightSearch({
 
       {filteredAndSortedFlights && filteredAndSortedFlights.length > 0 && (
         <div className="space-y-4">
-          <h3 className="font-semibold text-lg">
-            {filteredAndSortedFlights.length} flight{filteredAndSortedFlights.length !== 1 ? "s" : ""} available
-            {flights && flights.length !== filteredAndSortedFlights.length && (
-              <span className="text-sm font-normal text-muted-foreground ml-2">
-                (filtered from {flights.length})
-              </span>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-semibold text-lg">
+              {filteredAndSortedFlights.length} flight{filteredAndSortedFlights.length !== 1 ? "s" : ""} available
+              {flights && flights.length !== filteredAndSortedFlights.length && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  (filtered from {flights.length})
+                </span>
+              )}
+            </h3>
+            {flightResponse?.fromCache && (
+              <Badge variant="outline" className="gap-1 text-xs text-muted-foreground" data-testid="badge-cache-status">
+                <Database className="h-3 w-3" />
+                <span data-testid="text-cache-updated">
+                  {flightResponse.lastUpdated ? (
+                    <>Updated {formatDistanceToNow(new Date(flightResponse.lastUpdated), { addSuffix: true })}</>
+                  ) : (
+                    <>From cache</>
+                  )}
+                </span>
+              </Badge>
             )}
-          </h3>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredAndSortedFlights.map((flight) => {
               const outbound = flight.itineraries[0];
