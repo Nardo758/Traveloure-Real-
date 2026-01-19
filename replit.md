@@ -23,6 +23,10 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 
 ### Feature Specifications
 - **AI-Powered Trip Planning**: Users can create and manage trips with AI-generated itineraries based on preferences.
+  - **AI Itinerary Builder** (`/experience/travel` → AI Plan tab): Multi-step wizard for autonomous itinerary generation via Grok.
+  - **Real-Time Intelligence Widget**: Displays destination events, weather, safety alerts, trending experiences, and deals with 1-hour caching.
+  - **Expert-Traveler Matching**: AI-powered matching scores (0-100) with breakdown and reasoning.
+  - **Content Assistant**: AI-generated bios, service descriptions, and inquiry responses for experts.
 - **Expert Advisor Chat**: Facilitates direct communication with local travel experts.
 - **Tourist Place Discovery**: Functionality for searching and exploring destinations.
 - **Experience Planning System**: Template-based planning for 8 experience types (e.g., Travel, Wedding, Corporate) featuring:
