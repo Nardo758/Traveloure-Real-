@@ -1,10 +1,111 @@
 import { db } from "../db";
-import { hotelCache, hotelOfferCache, activityCache, flightCache } from "@shared/schema";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { hotelCache, hotelOfferCache, activityCache, flightCache, locationCache } from "@shared/schema";
+import { eq, and, gte, lte, ilike, or, sql, inArray } from "drizzle-orm";
 import { HotelOffer, AmadeusService } from "./amadeus.service";
 import { ViatorProduct, viatorService } from "./viator.service";
 
 const CACHE_DURATION_HOURS = 24;
+
+// ============ PREFERENCE TAG INFERENCE ============
+// Infers preference tags based on hotel data (amenities, name, price, etc.)
+function inferHotelPreferenceTags(hotel: any, offers: any[]): string[] {
+  const tags: string[] = [];
+  const name = (hotel.name || "").toLowerCase();
+  const amenities = (hotel.amenities || []).map((a: string) => a.toLowerCase());
+  
+  // Price-based tags
+  const avgPrice = offers.length > 0 
+    ? offers.reduce((sum: number, o: any) => sum + parseFloat(o.price?.total || "0"), 0) / offers.length
+    : 0;
+  if (avgPrice > 0 && avgPrice <= 150) tags.push("budget");
+  if (avgPrice > 300) tags.push("luxury");
+  
+  // Amenity-based tags
+  if (amenities.some((a: string) => a.includes("pool") || a.includes("beach"))) tags.push("beach");
+  if (amenities.some((a: string) => a.includes("spa") || a.includes("wellness"))) tags.push("wellness_spa");
+  if (amenities.some((a: string) => a.includes("business") || a.includes("meeting"))) tags.push("business");
+  if (amenities.some((a: string) => a.includes("family") || a.includes("kids") || a.includes("playground"))) tags.push("family");
+  
+  // Name-based tags
+  if (name.includes("resort") || name.includes("luxury") || name.includes("palace")) tags.push("luxury");
+  if (name.includes("boutique")) tags.push("romantic");
+  if (name.includes("downtown") || name.includes("city center")) tags.push("city");
+  
+  // Rating-based tags
+  const rating = parseInt(hotel.rating) || 0;
+  if (rating >= 4) tags.push("luxury");
+  if (rating <= 2) tags.push("budget");
+  
+  return Array.from(new Set(tags)); // Remove duplicates
+}
+
+// Infers preference tags based on activity data (flags, tags, title, description)
+function inferActivityPreferenceTags(activity: ViatorProduct): string[] {
+  const tags: string[] = [];
+  const title = (activity.title || "").toLowerCase();
+  const description = (activity.description || "").toLowerCase();
+  const activityTags = (activity.tags || []).map((t: any) => (typeof t === 'string' ? t : t.tag || "").toLowerCase());
+  const flags = (activity.flags || []).map((f: string) => f.toLowerCase());
+  
+  // Price-based tags
+  const price = activity.pricing?.summary?.fromPrice || 0;
+  if (price > 0 && price <= 50) tags.push("budget");
+  if (price > 200) tags.push("luxury");
+  
+  // Category-based inference
+  if (activityTags.some((t: string) => t.includes("museum") || t.includes("art"))) {
+    tags.push("art_museums");
+    tags.push("culture_history");
+  }
+  if (activityTags.some((t: string) => t.includes("food") || t.includes("dining") || t.includes("culinary"))) tags.push("food_dining");
+  if (activityTags.some((t: string) => t.includes("nature") || t.includes("outdoor") || t.includes("park") || t.includes("hiking"))) {
+    tags.push("nature_outdoors");
+    tags.push("nature");
+  }
+  if (activityTags.some((t: string) => t.includes("adventure") || t.includes("extreme") || t.includes("sport"))) tags.push("adventure");
+  if (activityTags.some((t: string) => t.includes("nightlife") || t.includes("club") || t.includes("bar"))) tags.push("nightlife");
+  if (activityTags.some((t: string) => t.includes("shopping") || t.includes("market"))) tags.push("shopping");
+  if (activityTags.some((t: string) => t.includes("spa") || t.includes("wellness") || t.includes("relax"))) tags.push("wellness_spa");
+  if (activityTags.some((t: string) => t.includes("beach") || t.includes("coastal") || t.includes("sea"))) tags.push("beach");
+  if (activityTags.some((t: string) => t.includes("family") || t.includes("kid"))) tags.push("family");
+  if (activityTags.some((t: string) => t.includes("romantic") || t.includes("couple"))) tags.push("romantic");
+  if (activityTags.some((t: string) => t.includes("city") || t.includes("urban") || t.includes("walking tour"))) tags.push("city");
+  if (activityTags.some((t: string) => t.includes("history") || t.includes("heritage") || t.includes("historical"))) tags.push("culture_history");
+  
+  // Title/description-based inference
+  if (title.includes("museum") || description.includes("museum")) tags.push("art_museums");
+  if (title.includes("tour") && (title.includes("food") || title.includes("culinary"))) tags.push("food_dining");
+  if (title.includes("adventure") || description.includes("adventure")) tags.push("adventure");
+  if (title.includes("sunset") || title.includes("romantic")) tags.push("romantic");
+  
+  // Flags-based inference
+  if (flags.includes("bestseller") || flags.includes("likely_to_sell_out")) tags.push("group");
+  if (flags.includes("private_tour")) tags.push("solo");
+  
+  return Array.from(new Set(tags)); // Remove duplicates
+}
+
+// Infers category from activity data
+function inferActivityCategory(activity: ViatorProduct): { category: string; subcategory: string | null } {
+  const activityTags = (activity.tags || []).map((t: any) => (typeof t === 'string' ? t : t.tag || "").toLowerCase());
+  const title = (activity.title || "").toLowerCase();
+  
+  // Map common activity types to categories
+  if (activityTags.some((t: string) => t.includes("tour"))) {
+    if (title.includes("food") || title.includes("culinary")) return { category: "Food & Dining", subcategory: "Food Tours" };
+    if (title.includes("walking")) return { category: "Tours", subcategory: "Walking Tours" };
+    if (title.includes("bus") || title.includes("hop")) return { category: "Tours", subcategory: "Bus Tours" };
+    return { category: "Tours", subcategory: null };
+  }
+  if (activityTags.some((t: string) => t.includes("museum") || t.includes("art"))) return { category: "Culture & History", subcategory: "Museums" };
+  if (activityTags.some((t: string) => t.includes("outdoor") || t.includes("nature"))) return { category: "Nature & Outdoors", subcategory: null };
+  if (activityTags.some((t: string) => t.includes("adventure"))) return { category: "Adventure", subcategory: null };
+  if (activityTags.some((t: string) => t.includes("wellness") || t.includes("spa"))) return { category: "Wellness & Spa", subcategory: null };
+  if (activityTags.some((t: string) => t.includes("nightlife"))) return { category: "Nightlife", subcategory: null };
+  if (activityTags.some((t: string) => t.includes("shopping"))) return { category: "Shopping", subcategory: null };
+  
+  return { category: "Experiences", subcategory: null };
+}
 
 function getExpirationDate(): Date {
   const date = new Date();
@@ -37,30 +138,57 @@ export class CacheService {
     return cached;
   }
 
-  async cacheHotels(hotels: HotelOffer[], cityCode: string): Promise<void> {
+  async cacheHotels(hotels: HotelOffer[], cityCode: string, locationInfo?: { city?: string; state?: string; county?: string; countryCode?: string; countryName?: string }): Promise<void> {
     const expiresAt = getExpirationDate();
 
     for (const hotelData of hotels) {
       const hotel = hotelData.hotel;
+      
+      // Infer preference tags based on hotel data
+      const preferenceTags = inferHotelPreferenceTags(hotel, hotelData.offers || []);
+      
+      // Parse star rating from rating field
+      const starRating = hotel.rating ? parseInt(hotel.rating) : null;
+      
+      // Calculate popularity score based on reviews and rating
+      const popularityScore = starRating ? starRating * 20 : 0;
       
       const existingHotel = await db.select()
         .from(hotelCache)
         .where(eq(hotelCache.hotelId, hotel.hotelId))
         .limit(1);
 
+      const hotelValues = {
+        name: hotel.name,
+        latitude: hotel.latitude?.toString(),
+        longitude: hotel.longitude?.toString(),
+        address: hotel.address?.lines?.join(", "),
+        // Enhanced location fields
+        city: locationInfo?.city || hotel.address?.cityName,
+        state: locationInfo?.state || (hotel.address as any)?.stateCode,
+        county: locationInfo?.county,
+        countryCode: locationInfo?.countryCode || hotel.address?.countryCode,
+        countryName: locationInfo?.countryName,
+        postalCode: (hotel.address as any)?.postalCode,
+        // Provider and rating
+        provider: "amadeus",
+        rating: hotel.rating,
+        starRating,
+        reviewCount: 0,
+        popularityScore,
+        // Preference tags
+        preferenceTags,
+        amenities: hotel.amenities || [],
+        media: hotel.media || [],
+        rawData: hotelData,
+        expiresAt,
+      };
+
       if (existingHotel.length > 0) {
         await db.update(hotelCache)
           .set({
-            name: hotel.name,
-            latitude: hotel.latitude?.toString(),
-            longitude: hotel.longitude?.toString(),
-            address: hotel.address?.lines?.join(", "),
-            rating: hotel.rating,
-            amenities: hotel.amenities || [],
-            media: hotel.media || [],
-            rawData: hotelData,
+            ...hotelValues,
             lastUpdated: new Date(),
-            expiresAt,
           })
           .where(eq(hotelCache.hotelId, hotel.hotelId));
 
@@ -74,15 +202,7 @@ export class CacheService {
           .values({
             hotelId: hotel.hotelId,
             cityCode: cityCode,
-            name: hotel.name,
-            latitude: hotel.latitude?.toString(),
-            longitude: hotel.longitude?.toString(),
-            address: hotel.address?.lines?.join(", "),
-            rating: hotel.rating,
-            amenities: hotel.amenities || [],
-            media: hotel.media || [],
-            rawData: hotelData,
-            expiresAt,
+            ...hotelValues,
           })
           .returning();
 
@@ -221,7 +341,7 @@ export class CacheService {
     return cached;
   }
 
-  async cacheActivities(activities: ViatorProduct[], destination: string): Promise<void> {
+  async cacheActivities(activities: ViatorProduct[], destination: string, locationInfo?: { city?: string; state?: string; county?: string; countryCode?: string; countryName?: string }): Promise<void> {
     const expiresAt = getExpirationDate();
 
     for (const activity of activities) {
@@ -229,12 +349,15 @@ export class CacheService {
       let latitude: number | null = null;
       let longitude: number | null = null;
       let meetingPoint: string | null = null;
+      let address: string | null = null;
 
       if (activity.logistics?.start?.[0]?.location?.coordinates) {
         latitude = activity.logistics.start[0].location.coordinates.latitude;
         longitude = activity.logistics.start[0].location.coordinates.longitude;
         meetingPoint = activity.logistics.start[0].location.name || 
                        activity.logistics.start[0].description || null;
+        const locationAddress = activity.logistics.start[0].location.address;
+        address = locationAddress ? `${locationAddress.street || ""}, ${locationAddress.city || ""}, ${locationAddress.state || ""}, ${locationAddress.country || ""}`.replace(/^[, ]+|[, ]+$/g, "").replace(/, ,/g, ",") : null;
       }
 
       // Get image URL
@@ -249,53 +372,65 @@ export class CacheService {
         durationMinutes = activity.duration.variableDurationFromMinutes;
       }
 
+      // Infer preference tags and category
+      const preferenceTags = inferActivityPreferenceTags(activity);
+      const { category, subcategory } = inferActivityCategory(activity);
+      
+      // Calculate popularity score based on reviews
+      const reviewCount = activity.reviews?.totalReviews || 0;
+      const rating = activity.reviews?.combinedAverageRating || 0;
+      const popularityScore = Math.round(reviewCount * 0.1 + rating * 20);
+
       const existing = await db.select()
         .from(activityCache)
         .where(eq(activityCache.productCode, activity.productCode))
         .limit(1);
 
+      const activityValues = {
+        destination: destination.toLowerCase(),
+        title: activity.title,
+        description: activity.description,
+        latitude: latitude?.toString(),
+        longitude: longitude?.toString(),
+        meetingPoint,
+        // Enhanced location fields
+        address,
+        city: locationInfo?.city,
+        state: locationInfo?.state,
+        county: locationInfo?.county,
+        countryCode: locationInfo?.countryCode,
+        countryName: locationInfo?.countryName,
+        // Provider and categorization
+        provider: "viator",
+        category,
+        subcategory,
+        preferenceTags,
+        popularityScore,
+        // Existing fields
+        durationMinutes,
+        price: activity.pricing?.summary?.fromPrice?.toString(),
+        currency: activity.pricing?.currency || "USD",
+        rating: activity.reviews?.combinedAverageRating?.toString(),
+        reviewCount: activity.reviews?.totalReviews || 0,
+        imageUrl,
+        flags: activity.flags || [],
+        tags: activity.tags || [],
+        rawData: activity,
+        expiresAt,
+      };
+
       if (existing.length > 0) {
         await db.update(activityCache)
           .set({
-            destination: destination.toLowerCase(),
-            title: activity.title,
-            description: activity.description,
-            latitude: latitude?.toString(),
-            longitude: longitude?.toString(),
-            meetingPoint,
-            durationMinutes,
-            price: activity.pricing?.summary?.fromPrice?.toString(),
-            currency: activity.pricing?.currency || "USD",
-            rating: activity.reviews?.combinedAverageRating?.toString(),
-            reviewCount: activity.reviews?.totalReviews || 0,
-            imageUrl,
-            flags: activity.flags || [],
-            tags: activity.tags || [],
-            rawData: activity,
+            ...activityValues,
             lastUpdated: new Date(),
-            expiresAt,
           })
           .where(eq(activityCache.productCode, activity.productCode));
       } else {
         await db.insert(activityCache)
           .values({
             productCode: activity.productCode,
-            destination: destination.toLowerCase(),
-            title: activity.title,
-            description: activity.description,
-            latitude: latitude?.toString(),
-            longitude: longitude?.toString(),
-            meetingPoint,
-            durationMinutes,
-            price: activity.pricing?.summary?.fromPrice?.toString(),
-            currency: activity.pricing?.currency || "USD",
-            rating: activity.reviews?.combinedAverageRating?.toString(),
-            reviewCount: activity.reviews?.totalReviews || 0,
-            imageUrl,
-            flags: activity.flags || [],
-            tags: activity.tags || [],
-            rawData: activity,
-            expiresAt,
+            ...activityValues,
           });
       }
     }
@@ -695,6 +830,271 @@ export class CacheService {
         rating: a.rating ? parseFloat(a.rating) : 4.5,
         description: a.description || undefined,
       }));
+  }
+
+  // ============ FILTERING AND SORTING ============
+
+  async getFilteredHotels(filters: {
+    cityCode?: string;
+    searchQuery?: string;
+    priceMin?: number;
+    priceMax?: number;
+    minRating?: number;
+    preferenceTags?: string[];
+    county?: string;
+    state?: string;
+    countryCode?: string;
+    sortBy?: 'price_low' | 'price_high' | 'rating' | 'popularity' | 'newest';
+    limit?: number;
+    offset?: number;
+  }): Promise<{ data: any[]; total: number; fromCache: boolean }> {
+    // Get all cached hotels for the cityCode
+    let hotels = filters.cityCode 
+      ? await this.getCachedHotels(filters.cityCode)
+      : await db.select().from(hotelCache).where(gte(hotelCache.expiresAt, new Date()));
+
+    // Get hotel offers to attach prices (filter by hotel IDs for efficiency)
+    const hotelIds = hotels.map(h => h.id);
+    let hotelOffers: any[] = [];
+    if (hotelIds.length > 0) {
+      hotelOffers = await db.select()
+        .from(hotelOfferCache)
+        .where(and(
+          gte(hotelOfferCache.expiresAt, new Date()),
+          inArray(hotelOfferCache.hotelCacheId, hotelIds)
+        ));
+    }
+
+    // Create price map from hotel offers (use minimum price per hotel)
+    const hotelPriceMap = new Map<string, number>();
+    for (const offer of hotelOffers) {
+      // Use the correct 'price' column from hotelOfferCache schema
+      const price = offer.price ? parseFloat(offer.price) : 0;
+      const existing = hotelPriceMap.get(offer.hotelCacheId);
+      if (existing === undefined || price < existing) {
+        hotelPriceMap.set(offer.hotelCacheId, price);
+      }
+    }
+
+    // Attach price to each hotel
+    let hotelsWithPrices = hotels.map(h => ({
+      ...h,
+      lowestPrice: hotelPriceMap.get(h.id) || 0,
+    }));
+
+    // Apply text search filter
+    if (filters.searchQuery) {
+      const query = filters.searchQuery.toLowerCase();
+      hotelsWithPrices = hotelsWithPrices.filter(h => 
+        h.name.toLowerCase().includes(query) ||
+        (h.address && h.address.toLowerCase().includes(query)) ||
+        (h.city && h.city.toLowerCase().includes(query))
+      );
+    }
+
+    // Apply price range filter
+    if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+      hotelsWithPrices = hotelsWithPrices.filter(h => {
+        const price = h.lowestPrice;
+        if (filters.priceMin !== undefined && price < filters.priceMin) return false;
+        if (filters.priceMax !== undefined && price > filters.priceMax) return false;
+        return true;
+      });
+    }
+
+    // Apply rating filter (handle both star rating and decimal rating)
+    if (filters.minRating && filters.minRating > 0) {
+      hotelsWithPrices = hotelsWithPrices.filter(h => {
+        // Use starRating (integer 1-5) or parse rating string as decimal
+        const rating = h.starRating || (h.rating ? parseFloat(h.rating) : 0);
+        return rating >= filters.minRating!;
+      });
+    }
+
+    // Apply preference tags filter
+    if (filters.preferenceTags && filters.preferenceTags.length > 0) {
+      hotelsWithPrices = hotelsWithPrices.filter(h => {
+        const hotelTags = Array.isArray(h.preferenceTags) ? h.preferenceTags as string[] : [];
+        return filters.preferenceTags!.some(tag => hotelTags.includes(tag));
+      });
+    }
+
+    // Apply location filters
+    if (filters.county) hotelsWithPrices = hotelsWithPrices.filter(h => h.county?.toLowerCase() === filters.county!.toLowerCase());
+    if (filters.state) hotelsWithPrices = hotelsWithPrices.filter(h => h.state?.toLowerCase() === filters.state!.toLowerCase());
+    if (filters.countryCode) hotelsWithPrices = hotelsWithPrices.filter(h => h.countryCode === filters.countryCode);
+
+    const total = hotelsWithPrices.length;
+
+    // Apply sorting
+    switch (filters.sortBy) {
+      case 'price_low':
+        hotelsWithPrices.sort((a, b) => a.lowestPrice - b.lowestPrice);
+        break;
+      case 'price_high':
+        hotelsWithPrices.sort((a, b) => b.lowestPrice - a.lowestPrice);
+        break;
+      case 'rating':
+        hotelsWithPrices.sort((a, b) => {
+          const ratingA = a.starRating || (a.rating ? parseFloat(a.rating) : 0);
+          const ratingB = b.starRating || (b.rating ? parseFloat(b.rating) : 0);
+          return ratingB - ratingA;
+        });
+        break;
+      case 'popularity':
+        hotelsWithPrices.sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0));
+        break;
+      case 'newest':
+        hotelsWithPrices.sort((a, b) => new Date(b.lastUpdated || 0).getTime() - new Date(a.lastUpdated || 0).getTime());
+        break;
+      default:
+        hotelsWithPrices.sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0));
+    }
+
+    // Apply pagination
+    if (filters.offset) hotelsWithPrices = hotelsWithPrices.slice(filters.offset);
+    if (filters.limit) hotelsWithPrices = hotelsWithPrices.slice(0, filters.limit);
+
+    return { data: hotelsWithPrices, total, fromCache: true };
+  }
+
+  async getFilteredActivities(filters: {
+    destination?: string;
+    searchQuery?: string;
+    priceMin?: number;
+    priceMax?: number;
+    minRating?: number;
+    preferenceTags?: string[];
+    category?: string;
+    county?: string;
+    state?: string;
+    countryCode?: string;
+    sortBy?: 'price_low' | 'price_high' | 'rating' | 'popularity' | 'newest';
+    limit?: number;
+    offset?: number;
+  }): Promise<{ data: any[]; total: number; fromCache: boolean }> {
+    // Get cached activities
+    let activities = filters.destination 
+      ? await this.getCachedActivities(filters.destination)
+      : await db.select().from(activityCache).where(gte(activityCache.expiresAt, new Date()));
+
+    // Apply text search filter
+    if (filters.searchQuery) {
+      const query = filters.searchQuery.toLowerCase();
+      activities = activities.filter(a => 
+        a.title.toLowerCase().includes(query) ||
+        (a.description && a.description.toLowerCase().includes(query)) ||
+        (a.meetingPoint && a.meetingPoint.toLowerCase().includes(query))
+      );
+    }
+
+    // Apply price range filter
+    if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
+      activities = activities.filter(a => {
+        const price = a.price ? parseFloat(a.price) : 0;
+        if (filters.priceMin !== undefined && price < filters.priceMin) return false;
+        if (filters.priceMax !== undefined && price > filters.priceMax) return false;
+        return true;
+      });
+    }
+
+    // Apply rating filter
+    if (filters.minRating && filters.minRating > 0) {
+      activities = activities.filter(a => {
+        const rating = a.rating ? parseFloat(a.rating) : 0;
+        return rating >= filters.minRating!;
+      });
+    }
+
+    // Apply preference tags filter
+    if (filters.preferenceTags && filters.preferenceTags.length > 0) {
+      activities = activities.filter(a => {
+        const activityTags = Array.isArray(a.preferenceTags) ? a.preferenceTags as string[] : [];
+        return filters.preferenceTags!.some(tag => activityTags.includes(tag));
+      });
+    }
+
+    // Apply category filter
+    if (filters.category) {
+      activities = activities.filter(a => a.category?.toLowerCase() === filters.category!.toLowerCase());
+    }
+
+    // Apply location filters
+    if (filters.county) activities = activities.filter(a => a.county?.toLowerCase() === filters.county!.toLowerCase());
+    if (filters.state) activities = activities.filter(a => a.state?.toLowerCase() === filters.state!.toLowerCase());
+    if (filters.countryCode) activities = activities.filter(a => a.countryCode === filters.countryCode);
+
+    const total = activities.length;
+
+    // Apply sorting
+    switch (filters.sortBy) {
+      case 'price_low':
+        activities.sort((a, b) => (parseFloat(a.price || "0")) - (parseFloat(b.price || "0")));
+        break;
+      case 'price_high':
+        activities.sort((a, b) => (parseFloat(b.price || "0")) - (parseFloat(a.price || "0")));
+        break;
+      case 'rating':
+        activities.sort((a, b) => (parseFloat(b.rating || "0")) - (parseFloat(a.rating || "0")));
+        break;
+      case 'popularity':
+        activities.sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0));
+        break;
+      case 'newest':
+        activities.sort((a, b) => new Date(b.lastUpdated || 0).getTime() - new Date(a.lastUpdated || 0).getTime());
+        break;
+      default:
+        activities.sort((a, b) => (b.popularityScore || 0) - (a.popularityScore || 0));
+    }
+
+    // Apply pagination
+    if (filters.offset) activities = activities.slice(filters.offset);
+    if (filters.limit) activities = activities.slice(0, filters.limit);
+
+    return { data: activities, total, fromCache: true };
+  }
+
+  // Get available preference tags with counts
+  async getAvailablePreferenceTags(itemType: 'hotel' | 'activity'): Promise<Array<{ tag: string; count: number }>> {
+    const tagCounts: Record<string, number> = {};
+    
+    if (itemType === 'hotel') {
+      const hotels = await db.select().from(hotelCache).where(gte(hotelCache.expiresAt, new Date()));
+      hotels.forEach(h => {
+        const tags = Array.isArray(h.preferenceTags) ? h.preferenceTags as string[] : [];
+        tags.forEach(tag => {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+      });
+    } else {
+      const activities = await db.select().from(activityCache).where(gte(activityCache.expiresAt, new Date()));
+      activities.forEach(a => {
+        const tags = Array.isArray(a.preferenceTags) ? a.preferenceTags as string[] : [];
+        tags.forEach(tag => {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+      });
+    }
+    
+    return Object.entries(tagCounts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  // Get available categories with counts
+  async getAvailableCategories(): Promise<Array<{ category: string; count: number }>> {
+    const activities = await db.select().from(activityCache).where(gte(activityCache.expiresAt, new Date()));
+    const categoryCounts: Record<string, number> = {};
+    
+    activities.forEach(a => {
+      if (a.category) {
+        categoryCounts[a.category] = (categoryCounts[a.category] || 0) + 1;
+      }
+    });
+    
+    return Object.entries(categoryCounts)
+      .map(([category, count]) => ({ category, count }))
+      .sort((a, b) => b.count - a.count);
   }
 }
 

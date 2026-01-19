@@ -64,6 +64,18 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
   - Activities: `/api/cache/activities` - 24-hour cache with `activityCache` table.
   - All endpoints return `{ data, fromCache, lastUpdated }` for transparency.
   - Fresh verification available before checkout for pricing/availability updates.
+  - **Enhanced Location Fields**: All cache tables store comprehensive location data (city, state, county, countryCode, countryName, postalCode, coordinates).
+  - **Preference Tags System**: Auto-inferred preference tags (18+ categories) from amenities, pricing, descriptions:
+    - `budget`, `luxury`, `family`, `adventure`, `beach`, `city`, `nature`, `culture_history`, `food_dining`, `nature_outdoors`, `nightlife`, `shopping`, `wellness_spa`, `art_museums`, `romantic`, `solo`, `group`, `business`
+  - **Filtering API** (`/api/cache/filter/hotels`, `/api/cache/filter/activities`):
+    - Text search (name, address, description)
+    - Price range ($0-$500+)
+    - Minimum rating (3+, 3.5+, 4+, 4.5+)
+    - Preference tags (multiple)
+    - Location (county, state, country)
+    - Pagination (limit, offset)
+  - **Sorting Options**: `price_low`, `price_high`, `rating`, `popularity`, `newest`
+  - **Metadata Endpoints**: `/api/cache/preference-tags/:itemType`, `/api/cache/categories`
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management.

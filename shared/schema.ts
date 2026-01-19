@@ -1247,6 +1247,13 @@ export const coordinationBookings = pgTable("coordination_bookings", {
 // ============ API CACHE TABLES ============
 // Cache tables for storing API data locally with location info for mapping
 
+// Preference tags enum for filtering
+export const preferenceTagsEnum = [
+  "budget", "luxury", "family", "adventure", "business", "beach", "city", "nature",
+  "culture_history", "food_dining", "nature_outdoors", "nightlife", "shopping",
+  "wellness_spa", "art_museums", "romantic", "solo", "group"
+] as const;
+
 export const hotelCache = pgTable("hotel_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   hotelId: varchar("hotel_id", { length: 100 }).notNull(),
@@ -1255,7 +1262,22 @@ export const hotelCache = pgTable("hotel_cache", {
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
   address: text("address"),
+  // Enhanced location fields
+  city: varchar("city", { length: 255 }),
+  state: varchar("state", { length: 100 }),
+  county: varchar("county", { length: 100 }),
+  countryCode: varchar("country_code", { length: 10 }),
+  countryName: varchar("country_name", { length: 100 }),
+  postalCode: varchar("postal_code", { length: 20 }),
+  // Provider and rating
+  provider: varchar("provider", { length: 100 }).default("amadeus"),
   rating: varchar("rating", { length: 10 }),
+  starRating: integer("star_rating"),
+  reviewCount: integer("review_count").default(0),
+  popularityScore: integer("popularity_score").default(0),
+  // Preference tags for filtering
+  preferenceTags: jsonb("preference_tags").default([]),
+  // Existing fields
   amenities: jsonb("amenities").default([]),
   media: jsonb("media").default([]),
   rawData: jsonb("raw_data").default({}),
@@ -1287,6 +1309,22 @@ export const activityCache = pgTable("activity_cache", {
   latitude: decimal("latitude", { precision: 10, scale: 7 }),
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
   meetingPoint: text("meeting_point"),
+  // Enhanced location fields
+  address: text("address"),
+  city: varchar("city", { length: 255 }),
+  state: varchar("state", { length: 100 }),
+  county: varchar("county", { length: 100 }),
+  countryCode: varchar("country_code", { length: 10 }),
+  countryName: varchar("country_name", { length: 100 }),
+  postalCode: varchar("postal_code", { length: 20 }),
+  // Provider and categorization
+  provider: varchar("provider", { length: 100 }).default("viator"),
+  category: varchar("category", { length: 100 }),
+  subcategory: varchar("subcategory", { length: 100 }),
+  // Preference tags for filtering (budget, luxury, family, adventure, etc.)
+  preferenceTags: jsonb("preference_tags").default([]),
+  popularityScore: integer("popularity_score").default(0),
+  // Existing fields
   durationMinutes: integer("duration_minutes"),
   price: decimal("price", { precision: 10, scale: 2 }),
   currency: varchar("currency", { length: 10 }).default("USD"),
@@ -1309,13 +1347,31 @@ export const flightCache = pgTable("flight_cache", {
   adults: integer("adults").notNull(),
   offerId: varchar("offer_id", { length: 100 }).notNull(),
   carrierCode: varchar("carrier_code", { length: 10 }),
+  carrierName: varchar("carrier_name", { length: 100 }),
   flightNumber: varchar("flight_number", { length: 20 }),
   departureTime: varchar("departure_time", { length: 30 }),
   arrivalTime: varchar("arrival_time", { length: 30 }),
   duration: varchar("duration", { length: 30 }),
   stops: integer("stops").default(0),
+  // Origin location details
+  originLatitude: decimal("origin_latitude", { precision: 10, scale: 7 }),
+  originLongitude: decimal("origin_longitude", { precision: 10, scale: 7 }),
+  originCity: varchar("origin_city", { length: 255 }),
+  originCountryCode: varchar("origin_country_code", { length: 10 }),
+  originAirportName: varchar("origin_airport_name", { length: 255 }),
+  // Destination location details
+  destinationLatitude: decimal("destination_latitude", { precision: 10, scale: 7 }),
+  destinationLongitude: decimal("destination_longitude", { precision: 10, scale: 7 }),
+  destinationCity: varchar("destination_city", { length: 255 }),
+  destinationCountryCode: varchar("destination_country_code", { length: 10 }),
+  destinationAirportName: varchar("destination_airport_name", { length: 255 }),
+  // Provider and pricing
+  provider: varchar("provider", { length: 100 }).default("amadeus"),
   price: decimal("price", { precision: 10, scale: 2 }),
   currency: varchar("currency", { length: 10 }).default("USD"),
+  cabin: varchar("cabin", { length: 50 }),
+  // For sorting
+  popularityScore: integer("popularity_score").default(0),
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
@@ -1342,12 +1398,43 @@ export const locationCache = pgTable("location_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+// ============ USER FILTER PREFERENCES TABLE ============
+// Stores user's persistent filter and sorting preferences per item type
+
+export const sortByOptionsEnum = ["price_low", "price_high", "rating", "popularity", "distance", "newest"] as const;
+export const itemTypeEnum = ["hotel", "activity", "flight", "service", "all"] as const;
+
+export const userFilterPreferences = pgTable("user_filter_preferences", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemType: varchar("item_type", { length: 30 }).notNull(), // hotel, activity, flight, service, all
+  // Price range filter
+  priceMin: decimal("price_min", { precision: 10, scale: 2 }).default("0"),
+  priceMax: decimal("price_max", { precision: 10, scale: 2 }).default("10000"),
+  // Rating filter
+  minRating: decimal("min_rating", { precision: 3, scale: 2 }).default("0"),
+  // Sorting preference
+  sortBy: varchar("sort_by", { length: 30 }).default("popularity"),
+  // Selected preference tags (array of tags like budget, luxury, family, etc.)
+  selectedTags: jsonb("selected_tags").default([]),
+  // Text search query (optional persistent search term)
+  searchQuery: text("search_query"),
+  // Location filters
+  county: varchar("county", { length: 100 }),
+  state: varchar("state", { length: 100 }),
+  countryCode: varchar("country_code", { length: 10 }),
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Cache schemas and types
 export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
 export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
 export const insertActivityCacheSchema = createInsertSchema(activityCache).omit({ id: true, lastUpdated: true });
 export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
 export const insertLocationCacheSchema = createInsertSchema(locationCache).omit({ id: true, lastUpdated: true });
+export const insertUserFilterPreferencesSchema = createInsertSchema(userFilterPreferences).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HotelCache = typeof hotelCache.$inferSelect;
 export type InsertHotelCache = z.infer<typeof insertHotelCacheSchema>;
@@ -1359,6 +1446,8 @@ export type FlightCache = typeof flightCache.$inferSelect;
 export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
 export type LocationCache = typeof locationCache.$inferSelect;
 export type InsertLocationCache = z.infer<typeof insertLocationCacheSchema>;
+export type UserFilterPreferences = typeof userFilterPreferences.$inferSelect;
+export type InsertUserFilterPreferences = z.infer<typeof insertUserFilterPreferencesSchema>;
 
 // Coordination Hub schemas and types
 export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });
