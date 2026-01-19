@@ -1,0 +1,126 @@
+Analysis of Hotel Search Results Display
+I’ve scanned the HotelSearch component, where the hotel search results are fetched, filtered, and rendered.
+
+Likely Root Causes
+Results silently filtered out (common “not displayed properly” cause)
+The component never renders anything unless filteredAndSortedHotels.length > 0. However, filteredAndSortedHotels is derived with hard filters:
+
+ts
+let result = hotels.filter((<span class="hljs-params">hotel) =></span> {
+  const offer = hotel.offers?.[0];
+  if (offer) {
+    const price = parseFloat(offer.price.total);
+    if (price > maxPrice) return false;  // drops hotels above maxPrice
+  }
+  
+  if (starRating > 0 && hotel.hotel.rating) {
+    const hotelStars = parseInt(hotel.hotel.rating);
+    if (hotelStars < starRating) return false; // drops hotels below starRating
+  }
+  
+  return true;
+});
+
+Show more
+If maxPrice or starRating props are set too aggressively by the parent, all hotels may be filtered out even though the backend returned data, leading to no cards rendering.
+There is no visible UI for maxPrice / starRating in this component, so the user can’t see or adjust these constraints from the hotel results screen.
+No explicit “no filtered results” state
+
+If the API returns hotels but every one is filtered out, the user sees nothing under “loading” and “error” blocks; the hotels && hotels.length === 0 branch only covers the case where the API returned an empty array, not the case where hotels.length > 0 but filteredAndSortedHotels.length === 0.
+This strongly matches a user perception of “results aren’t being displayed properly.”
+Potential mis‑wiring of props from parent
+
+HotelSearch expects destination, checkIn, checkOut, etc. from a parent page, which you didn’t include here. If the parent:
+passes maxPrice={0} or some unintended default, or
+passes starRating={5} always, then you will almost always filter everything out.
+Also, canAutoSearch requires all of cityCode, checkInDate, checkOutDate, and adults to be truthy. If any is missing, the query is disabled and no results are fetched.
+Minor bug in the card rendering for proximity
+In the render loop you use hotel.latitude and hotel.longitude:
+
+ts
+const proximityScore = hotel.latitude && hotel.longitude && activityLocations.length > 0
+  ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+  : null;
+but the HotelOffer type defines latitude/longitude on hotel.hotel, not on hotel itself. This will always evaluate falsey and skip proximity info, though it doesn’t stop cards from rendering.
+
+What I Recommend Fixing
+To fix the “not displayed properly” behavior:
+
+Add a clear empty‑filtered state so users see a message when filters hide all hotels.
+Loosen or expose maxPrice and starRating (or ensure parent passes realistic defaults).
+Fix the proximity score bug (hotel.hotel.latitude / hotel.hotel.longitude).
+Here is a minimal patch inside HotelSearch:
+
+tsx
+// After the main results grid, add this block:
+
+{hotels && hotels.length > 0 && filteredAndSortedHotels.length === 0 && !isLoading && !error && (
+  <span class="hljs-tag"><<span class="hljs-name">Card></span>
+    <<span class="hljs-name">CardContent className="p-8 text-center"></span>
+      <<span class="hljs-name">Hotel className="h-12 w-12 text-muted-foreground mx-auto mb-4" /></span>
+      <<span class="hljs-name">h3 className="font-medium mb-2"></span>No hotels match your filters</<span class="hljs-name">h3></span>
+      <<span class="hljs-name">p className="text-muted-foreground text-sm mb-4"></span>
+        Try lowering the minimum star rating or increasing the maximum price.
+      </<span class="hljs-name">p></span>
+      <<span class="hljs-name">Button variant="outline" onClick={() =></span> {
+        // optional: reset local filter state if you later add it here
+        // or call a callback that resets filters in the parent
+        setShowModify(true);
+      }}>
+        Adjust Filters
+      </<span class="hljs-name">Button></span>
+    </<span class="hljs-name">CardContent></span>
+  </<span class="hljs-name">Card></span></span>
+)}
+
+Show more
+And fix proximity calculation:
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+should instead be:
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+becomes:
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+Actually correct version (using hotelData.hotel):
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+should be:
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+More precisely:
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+should be changed to:
+
+tsx
+const proximityScore =
+  hotel.latitude && hotel.longitude && activityLocations.length > 0
+    ? getProximityScore(hotel.latitude, hotel.longitude, activityLocations)
+    : null;
+(Use hotel.latitude/hotel.longitude from the hotel constant which is const hotel = hotelData.hotel; – i.e., ensure those properties actually exist on the runtime data.)
