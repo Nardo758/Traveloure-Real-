@@ -83,6 +83,7 @@ import { FlightSearch } from "@/components/flight-search";
 import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
+import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 
 interface CartItem {
   id: string;
@@ -133,6 +134,7 @@ const experienceConfigs: Record<string, {
   travel: {
     heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
     tabs: [
+      { id: "ai-plan", label: "AI Plan", icon: Sparkles, category: null },
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
       { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
       { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
@@ -1902,6 +1904,39 @@ export default function ExperienceTemplatePage() {
             </CollapsibleContent>
           </Collapsible>
 
+          {activeTab === "ai-plan" && (
+            <Card className="mb-6">
+              <CardContent className="pt-6">
+                {!detailsSubmitted ? (
+                  <div className="text-center py-8">
+                    <Sparkles className="h-12 w-12 mx-auto mb-4 text-[#FF385C]" />
+                    <h3 className="text-lg font-semibold mb-2 text-foreground">AI-Powered Trip Planning</h3>
+                    <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                      Let our AI create a personalized day-by-day itinerary based on your preferences. 
+                      First, fill in your travel details above and click "Submit".
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => document.querySelector('[data-testid="button-submit-details"]')?.scrollIntoView({ behavior: 'smooth' })}
+                      data-testid="button-scroll-to-details"
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-2" />
+                      Fill Travel Details
+                    </Button>
+                  </div>
+                ) : (
+                  <AIItineraryBuilder
+                    destination={destination}
+                    startDate={startDate}
+                    endDate={endDate}
+                    travelers={travelers}
+                    experienceType={experienceType?.name}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {activeTab === "flights" && !detailsSubmitted && (
             <Card className="border-2 border-dashed mb-6">
               <CardContent className="p-8 text-center">
@@ -2250,7 +2285,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "ai-plan" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -2273,7 +2308,7 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "ai-plan" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

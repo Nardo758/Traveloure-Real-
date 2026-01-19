@@ -4305,6 +4305,140 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Phase 5: Autonomous AI Itinerary Generation
+  app.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { 
+        destination, 
+        dates, 
+        travelers, 
+        budget, 
+        eventType, 
+        interests, 
+        pacePreference,
+        mustSeeAttractions,
+        dietaryRestrictions,
+        mobilityConsiderations,
+        tripId
+      } = req.body;
+
+      // Validate required fields
+      if (!destination || typeof destination !== "string") {
+        return res.status(400).json({ message: "Destination is required" });
+      }
+      if (!dates?.start || !dates?.end) {
+        return res.status(400).json({ message: "Start and end dates are required" });
+      }
+      if (!travelers || typeof travelers !== "number" || travelers < 1) {
+        return res.status(400).json({ message: "Number of travelers must be at least 1" });
+      }
+      if (!interests || !Array.isArray(interests) || interests.length === 0) {
+        return res.status(400).json({ message: "At least one interest is required" });
+      }
+
+      // Generate itinerary using Grok
+      const { grokService } = await import("./services/grok.service");
+      const { result, usage } = await grokService.generateAutonomousItinerary({
+        destination,
+        dates,
+        travelers,
+        budget: budget || undefined,
+        eventType: eventType || undefined,
+        interests,
+        pacePreference: pacePreference || "moderate",
+        mustSeeAttractions: mustSeeAttractions || [],
+        dietaryRestrictions: dietaryRestrictions || [],
+        mobilityConsiderations: mobilityConsiderations || []
+      });
+
+      // Save generated itinerary to database
+      const [savedItinerary] = await db.insert(aiGeneratedItineraries).values({
+        userId,
+        tripId: tripId || null,
+        destination,
+        startDate: dates.start,
+        endDate: dates.end,
+        title: result.title,
+        summary: result.summary,
+        totalEstimatedCost: result.totalEstimatedCost.toString(),
+        itineraryData: result.dailyItinerary as any,
+        accommodationSuggestions: result.accommodationSuggestions as any,
+        packingList: result.packingList as any,
+        travelTips: result.travelTips as any,
+        provider: "grok",
+        status: "generated"
+      }).returning();
+
+      // Log AI interaction
+      await db.insert(aiInteractions).values({
+        userId,
+        aiProvider: "grok",
+        taskType: "autonomous_itinerary",
+        inputTokens: usage.promptTokens,
+        outputTokens: usage.completionTokens,
+        costEstimate: usage.estimatedCost.toFixed(6),
+        requestData: { destination, dates, travelers, interests } as any,
+        responseData: { itineraryId: savedItinerary.id, success: true } as any,
+      });
+
+      res.json({
+        id: savedItinerary.id,
+        ...result,
+        createdAt: savedItinerary.createdAt,
+        status: savedItinerary.status
+      });
+    } catch (error: any) {
+      console.error("Error generating AI itinerary:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to generate itinerary. Please try again."
+      });
+    }
+  });
+
+  // Get user's AI-generated itineraries
+  app.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      const itineraries = await db.select()
+        .from(aiGeneratedItineraries)
+        .where(eq(aiGeneratedItineraries.userId, userId))
+        .orderBy(sql`${aiGeneratedItineraries.createdAt} DESC`)
+        .limit(20);
+
+      res.json(itineraries);
+    } catch (error: any) {
+      console.error("Error fetching user itineraries:", error);
+      res.status(500).json({ message: "Failed to fetch itineraries" });
+    }
+  });
+
+  // Get single AI-generated itinerary
+  app.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { id } = req.params;
+      
+      const [itinerary] = await db.select()
+        .from(aiGeneratedItineraries)
+        .where(and(
+          eq(aiGeneratedItineraries.id, id),
+          eq(aiGeneratedItineraries.userId, userId)
+        ))
+        .limit(1);
+
+      if (!itinerary) {
+        return res.status(404).json({ message: "Itinerary not found" });
+      }
+
+      res.json(itinerary);
+    } catch (error: any) {
+      console.error("Error fetching itinerary:", error);
+      res.status(500).json({ message: "Failed to fetch itinerary" });
+    }
+  });
+
   return httpServer;
 }
 
