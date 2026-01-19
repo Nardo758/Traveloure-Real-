@@ -24,7 +24,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users, ShieldCheck, ShieldX, Coffee, BedDouble, AlertCircle } from "lucide-react";
+import { Hotel, Star, MapPin, ChevronDown, Check, Loader2, Settings2, Calendar, Users, ShieldCheck, ShieldX, Coffee, BedDouble, AlertCircle, Filter, RotateCcw } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
@@ -191,15 +199,18 @@ export function HotelSearch({
   checkIn,
   checkOut,
   guests = 2,
-  maxPrice = 1000,
-  starRating = 0,
-  sortBy = "price" as "price" | "rating",
+  maxPrice: initialMaxPrice = 10000,
+  starRating: initialStarRating = 0,
+  sortBy: initialSortBy = "price" as "price" | "rating",
   onSelectHotel,
   activityLocations = [],
   onResultsLoaded,
   destinationCenter,
 }: HotelSearchProps) {
   const [cityCode, setCityCode] = useState("");
+  const [localMaxPrice, setLocalMaxPrice] = useState(initialMaxPrice);
+  const [localStarRating, setLocalStarRating] = useState(initialStarRating);
+  const [localSortBy, setLocalSortBy] = useState(initialSortBy);
   const [cityOpen, setCityOpen] = useState(false);
   const [citySearch, setCitySearch] = useState("");
   const [checkInDate, setCheckInDate] = useState(
@@ -327,19 +338,19 @@ export function HotelSearch({
       const offer = hotel.offers?.[0];
       if (offer) {
         const price = parseFloat(offer.price.total);
-        if (price > maxPrice) return false;
+        if (price > localMaxPrice) return false;
       }
       
-      if (starRating > 0 && hotel.hotel.rating) {
+      if (localStarRating > 0 && hotel.hotel.rating) {
         const hotelStars = parseInt(hotel.hotel.rating);
-        if (hotelStars < starRating) return false;
+        if (hotelStars < localStarRating) return false;
       }
       
       return true;
     });
 
     result.sort((a, b) => {
-      if (sortBy === "price") {
+      if (localSortBy === "price") {
         const priceA = parseFloat(a.offers?.[0]?.price.total || "0");
         const priceB = parseFloat(b.offers?.[0]?.price.total || "0");
         return priceA - priceB;
@@ -351,7 +362,26 @@ export function HotelSearch({
     });
 
     return result;
-  }, [hotels, maxPrice, starRating, sortBy]);
+  }, [hotels, localMaxPrice, localStarRating, localSortBy]);
+  
+  const resetFilters = () => {
+    setLocalMaxPrice(initialMaxPrice);
+    setLocalStarRating(initialStarRating);
+    setLocalSortBy(initialSortBy);
+  };
+
+  // Sync local filter state when initial props change
+  useEffect(() => {
+    setLocalMaxPrice(initialMaxPrice);
+  }, [initialMaxPrice]);
+
+  useEffect(() => {
+    setLocalStarRating(initialStarRating);
+  }, [initialStarRating]);
+
+  useEffect(() => {
+    setLocalSortBy(initialSortBy);
+  }, [initialSortBy]);
 
   // Generate hotel map markers and notify parent
   const hotelMarkers = useMemo(() => {
@@ -664,13 +694,76 @@ export function HotelSearch({
                       />
                     </div>
                   </div>
-                  <Button
-                    onClick={() => { refetch(); setShowModify(false); }}
-                    className="mt-4 bg-[#FF385C] hover:bg-[#E23350]"
-                    data-testid="button-search-hotels"
-                  >
-                    Update Search
-                  </Button>
+                  
+                  <div className="border-t pt-4 mt-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Filter className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium text-sm">Filters</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label>Max Price per Stay: ${localMaxPrice}</Label>
+                        <Slider
+                          value={[localMaxPrice]}
+                          onValueChange={(val) => setLocalMaxPrice(val[0])}
+                          min={100}
+                          max={10000}
+                          step={100}
+                          data-testid="slider-max-price"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Minimum Star Rating</Label>
+                        <Select
+                          value={localStarRating.toString()}
+                          onValueChange={(val) => setLocalStarRating(parseInt(val))}
+                        >
+                          <SelectTrigger data-testid="select-star-rating">
+                            <SelectValue placeholder="Any rating" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Any rating</SelectItem>
+                            <SelectItem value="3">3+ stars</SelectItem>
+                            <SelectItem value="4">4+ stars</SelectItem>
+                            <SelectItem value="5">5 stars only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Sort By</Label>
+                        <Select
+                          value={localSortBy}
+                          onValueChange={(val) => setLocalSortBy(val as "price" | "rating")}
+                        >
+                          <SelectTrigger data-testid="select-sort-by">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="price">Price (Low to High)</SelectItem>
+                            <SelectItem value="rating">Rating (High to Low)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      onClick={() => { refetch(); setShowModify(false); }}
+                      className="bg-[#FF385C] hover:bg-[#E23350]"
+                      data-testid="button-search-hotels"
+                    >
+                      Update Search
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={resetFilters}
+                      data-testid="button-reset-filters"
+                    >
+                      <RotateCcw className="h-4 w-4 mr-1" />
+                      Reset Filters
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </CollapsibleContent>
@@ -858,6 +951,29 @@ export function HotelSearch({
             })}
           </div>
         </div>
+      )}
+
+      {hotels && hotels.length > 0 && filteredAndSortedHotels.length === 0 && !isLoading && !error && (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <Filter className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="font-medium mb-2">No hotels match your filters</h3>
+            <p className="text-muted-foreground text-sm mb-4">
+              {hotels.length} hotel{hotels.length !== 1 ? 's' : ''} found, but none match your current filter settings.
+              Try lowering the minimum star rating or increasing the maximum price.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => setShowModify(true)} data-testid="button-adjust-filters">
+                <Settings2 className="h-4 w-4 mr-1" />
+                Adjust Filters
+              </Button>
+              <Button onClick={resetFilters} data-testid="button-reset-filters-empty">
+                <RotateCcw className="h-4 w-4 mr-1" />
+                Reset Filters
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {hotels && hotels.length === 0 && !isLoading && (
