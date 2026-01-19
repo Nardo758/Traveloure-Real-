@@ -1426,6 +1426,8 @@ export const expertMatchScores = pgTable("expert_match_scores", {
 export const destinationIntelligence = pgTable("destination_intelligence", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   destination: varchar("destination", { length: 255 }).notNull(),
+  startDate: varchar("start_date", { length: 10 }), // YYYY-MM-DD format, optional for date-specific cache
+  endDate: varchar("end_date", { length: 10 }),
   intelligenceData: jsonb("intelligence_data").default({}),
   events: jsonb("events").default([]),
   weatherForecast: jsonb("weather_forecast").default({}),

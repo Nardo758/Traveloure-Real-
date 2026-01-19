@@ -4215,6 +4215,96 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // =================================================================
+  // PHASE 4: Real-Time Destination Intelligence API
+  // =================================================================
+  
+  // Get real-time intelligence for a destination (requires authentication)
+  app.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
+    try {
+      const { destination, startDate, endDate } = req.query;
+      const userId = (req.user as any).claims.sub;
+      
+      if (!destination || typeof destination !== "string") {
+        return res.status(400).json({ message: "Destination is required" });
+      }
+
+      const dates = startDate && endDate ? {
+        start: startDate as string,
+        end: endDate as string
+      } : undefined;
+
+      // Check for cached intelligence (not expired)
+      const now = new Date();
+      
+      // Build cache query conditions
+      const cacheConditions = dates
+        ? and(
+            eq(destinationIntelligence.destination, destination),
+            eq(destinationIntelligence.startDate, dates.start),
+            eq(destinationIntelligence.endDate, dates.end),
+            sql`${destinationIntelligence.expiresAt} > ${now.toISOString()}`
+          )
+        : and(
+            eq(destinationIntelligence.destination, destination),
+            sql`${destinationIntelligence.startDate} IS NULL`,
+            sql`${destinationIntelligence.expiresAt} > ${now.toISOString()}`
+          );
+      
+      const cached = await db.select()
+        .from(destinationIntelligence)
+        .where(cacheConditions)
+        .orderBy(sql`${destinationIntelligence.lastUpdated} DESC`)
+        .limit(1);
+
+      if (cached.length > 0 && cached[0].intelligenceData) {
+        return res.json(cached[0].intelligenceData);
+      }
+
+      // Fetch fresh intelligence using Grok
+      const { getRealTimeIntelligence } = await import("./services/grok.service");
+      const { result, usage } = await getRealTimeIntelligence({
+        destination,
+        dates,
+        topics: ["events", "weather", "safety", "trending", "deals"]
+      });
+
+      // Cache the result with proper destination and date fields
+      await db.insert(destinationIntelligence).values({
+        destination,
+        startDate: dates?.start || null,
+        endDate: dates?.end || null,
+        intelligenceData: result as any,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      });
+
+      // Log AI interaction for usage tracking
+      await db.insert(aiInteractions).values({
+        userId,
+        aiProvider: "grok",
+        taskType: "real_time_intelligence",
+        inputTokens: usage.promptTokens,
+        outputTokens: usage.completionTokens,
+        costEstimate: usage.estimatedCost.toFixed(6),
+        requestData: { destination, dates } as any,
+        responseData: { success: true } as any,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error fetching destination intelligence:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to fetch destination intelligence",
+        destination: req.query.destination,
+        timestamp: new Date().toISOString(),
+        events: [],
+        safetyAlerts: [],
+        trendingExperiences: [],
+        deals: []
+      });
+    }
+  });
+
   return httpServer;
 }
 
