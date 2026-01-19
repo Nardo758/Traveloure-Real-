@@ -662,6 +662,7 @@ export default function ExperienceTemplatePage() {
   });
 
   const [localExternalCart, setLocalExternalCart] = useState<CartItem[]>(() => {
+    if (typeof window === 'undefined') return [];
     try {
       const stored = sessionStorage.getItem(`externalCart_${slug}`);
       return stored ? JSON.parse(stored) : [];
@@ -671,6 +672,7 @@ export default function ExperienceTemplatePage() {
   });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     try {
       const stored = sessionStorage.getItem(`externalCart_${slug}`);
       setLocalExternalCart(stored ? JSON.parse(stored) : []);
@@ -680,6 +682,7 @@ export default function ExperienceTemplatePage() {
   }, [slug]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (localExternalCart.length > 0) {
       sessionStorage.setItem(`externalCart_${slug}`, JSON.stringify(localExternalCart));
     } else {
@@ -702,30 +705,134 @@ export default function ExperienceTemplatePage() {
 
   const config = experienceConfigs[slug] || experienceConfigs.wedding;
   
-  const [destination, setDestination] = useState("");
-  const [originCity, setOriginCity] = useState("");
-  const [originCode, setOriginCode] = useState("");
-  const [startDate, setStartDate] = useState<Date>();
-  const [endDate, setEndDate] = useState<Date>();
-  const [activeTab, setActiveTab] = useState(config.tabs[0]?.id || "venue");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [priceRange, setPriceRange] = useState([0, 500]);
-  const [minRating, setMinRating] = useState(0);
-  const [sortBy, setSortBy] = useState("popular");
-  const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([]); // Separate state for interest-based activity filtering
+  // Read persisted settings ONCE on initial render (SSR-safe, memoized)
+  const initialSettings = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = sessionStorage.getItem(`searchSettings_${slug}`);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }, []); // Empty deps - only read once on mount
+  
+  // Helper to get persisted settings (used for slug changes and rehydration)
+  const getPersistedSearchSettings = (currentSlug: string) => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const stored = sessionStorage.getItem(`searchSettings_${currentSlug}`);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  };
+  
+  // Initialize state from the single memoized read
+  const [destination, setDestination] = useState(initialSettings?.destination ?? "");
+  const [originCity, setOriginCity] = useState(initialSettings?.originCity ?? "");
+  const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
+  const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
+  const [endDate, setEndDate] = useState<Date | undefined>(initialSettings?.endDate ? new Date(initialSettings.endDate) : undefined);
+  const [activeTab, setActiveTab] = useState(initialSettings?.activeTab ?? config.tabs[0]?.id ?? "venue");
+  const [searchQuery, setSearchQuery] = useState(initialSettings?.searchQuery ?? "");
+  const [priceRange, setPriceRange] = useState(initialSettings?.priceRange ?? [0, 500]);
+  const [minRating, setMinRating] = useState(initialSettings?.minRating ?? 0);
+  const [sortBy, setSortBy] = useState(initialSettings?.sortBy ?? "popular");
+  const [selectedFilters, setSelectedFilters] = useState<string[]>(initialSettings?.selectedFilters ?? []);
+  const [selectedInterests, setSelectedInterests] = useState<string[]>(initialSettings?.selectedInterests ?? []);
   
   // Flight-specific filters
-  const [flightMaxPrice, setFlightMaxPrice] = useState(2000);
-  const [flightStops, setFlightStops] = useState<"any" | "nonstop" | "1stop">("any");
-  const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">("price");
+  const [flightMaxPrice, setFlightMaxPrice] = useState(initialSettings?.flightMaxPrice ?? 2000);
+  const [flightStops, setFlightStops] = useState<"any" | "nonstop" | "1stop">(initialSettings?.flightStops ?? "any");
+  const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">(initialSettings?.flightSortBy ?? "price");
   
   // Hotel-specific filters
-  const [hotelMaxPrice, setHotelMaxPrice] = useState(5000);
-  const [hotelStarRating, setHotelStarRating] = useState<number>(0);
-  const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">("price");
-  const [travelers, setTravelers] = useState(2);
-  const [detailsSubmitted, setDetailsSubmitted] = useState(false);
+  const [hotelMaxPrice, setHotelMaxPrice] = useState(initialSettings?.hotelMaxPrice ?? 5000);
+  const [hotelStarRating, setHotelStarRating] = useState<number>(initialSettings?.hotelStarRating ?? 0);
+  const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
+  const [travelers, setTravelers] = useState(initialSettings?.travelers ?? 2);
+  const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
+  
+  // Track whether we've done initial hydration
+  const hasHydratedRef = useRef(false);
+  const prevSlugRef = useRef(slug);
+  
+  // Rehydrate state on mount (for when returning from cart) and when slug changes
+  useEffect(() => {
+    // Only run on client
+    if (typeof window === 'undefined') return;
+    
+    // Run if: first hydration OR slug changed
+    const isSlugChange = prevSlugRef.current !== slug;
+    const needsHydration = !hasHydratedRef.current || isSlugChange;
+    
+    if (needsHydration) {
+      hasHydratedRef.current = true;
+      prevSlugRef.current = slug;
+      
+      const settings = getPersistedSearchSettings(slug);
+      
+      // Get defaults for this experience type
+      const currentConfig = experienceConfigs[slug] || experienceConfigs.wedding;
+      const defaultActiveTab = currentConfig.tabs[0]?.id || "venue";
+      
+      // Merge stored settings with defaults (defaults used for missing fields)
+      setDestination(settings?.destination ?? "");
+      setOriginCity(settings?.originCity ?? "");
+      setOriginCode(settings?.originCode ?? "");
+      setStartDate(settings?.startDate ? new Date(settings.startDate) : undefined);
+      setEndDate(settings?.endDate ? new Date(settings.endDate) : undefined);
+      setActiveTab(settings?.activeTab ?? defaultActiveTab);
+      setSearchQuery(settings?.searchQuery ?? "");
+      setPriceRange(settings?.priceRange ?? [0, 500]);
+      setMinRating(settings?.minRating ?? 0);
+      setSortBy(settings?.sortBy ?? "popular");
+      setSelectedFilters(settings?.selectedFilters ?? []);
+      setSelectedInterests(settings?.selectedInterests ?? []);
+      setFlightMaxPrice(settings?.flightMaxPrice ?? 2000);
+      setFlightStops(settings?.flightStops ?? "any");
+      setFlightSortBy(settings?.flightSortBy ?? "price");
+      setHotelMaxPrice(settings?.hotelMaxPrice ?? 5000);
+      setHotelStarRating(settings?.hotelStarRating ?? 0);
+      setHotelSortBy(settings?.hotelSortBy ?? "price");
+      setTravelers(settings?.travelers ?? 2);
+      setDetailsSubmitted(settings?.detailsSubmitted ?? false);
+    }
+  }, [slug]);
+  
+  // Persist search settings to sessionStorage whenever they change
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const settingsToSave = {
+      destination,
+      originCity,
+      originCode,
+      startDate: startDate?.toISOString(),
+      endDate: endDate?.toISOString(),
+      activeTab,
+      searchQuery,
+      priceRange,
+      minRating,
+      sortBy,
+      selectedFilters,
+      selectedInterests,
+      flightMaxPrice,
+      flightStops,
+      flightSortBy,
+      hotelMaxPrice,
+      hotelStarRating,
+      hotelSortBy,
+      travelers,
+      detailsSubmitted,
+    };
+    sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
+  }, [
+    slug, destination, originCity, originCode, startDate, endDate, activeTab,
+    searchQuery, priceRange, minRating, sortBy, selectedFilters, selectedInterests,
+    flightMaxPrice, flightStops, flightSortBy, hotelMaxPrice, hotelStarRating,
+    hotelSortBy, travelers, detailsSubmitted
+  ]);
+  
   const [cartOpen, setCartOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
