@@ -74,6 +74,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { TransportationAnalysis } from "@/components/transportation-analysis";
+import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
 import { matchesCategory } from "@shared/constants/providerCategories";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
@@ -1550,6 +1551,21 @@ export default function ExperienceTemplatePage() {
               </div>
             </CardContent>
           </Card>
+
+        {detailsSubmitted && (
+          <div className="mb-6">
+            <AIMatchedExpertsSection
+              destination={destination}
+              startDate={startDate}
+              endDate={endDate}
+              experienceType={experienceType?.name}
+              travelers={travelers}
+              preferences={selectedFilters}
+              userId={user?.id}
+              isVisible={detailsSubmitted}
+            />
+          </div>
+        )}
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">

@@ -47,7 +47,10 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 ### Third-Party Services
 - **Replit Auth**: OpenID Connect for user authentication.
 - **PostgreSQL**: Primary database.
-- **Anthropic Claude**: The sole AI provider for all AI-powered features including chat, itinerary optimization, transportation analysis, and travel recommendations (claude-sonnet-4-20250514).
+- **Dual AI System**:
+  - **Grok (xAI)**: Expert matching, real-time intelligence, content generation, and autonomous itinerary building via AI Orchestrator routing (grok-3-mini-beta model).
+  - **Anthropic Claude**: Empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice (claude-sonnet-4-20250514 model).
+  - **AI Orchestrator** (`server/services/ai-orchestrator.ts`): Routes requests to appropriate provider based on task type, with central logging to database.
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search.
 - **Viator Partner API**: Real-time tours and activities search.
@@ -60,7 +63,8 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - `express-session` / `connect-pg-simple`: Session management.
 - `framer-motion`: Animations.
 - `@vis.gl/react-google-maps`: Google Maps React components.
-- `@anthropic-ai/sdk`: Anthropic SDK (sole AI provider).
+- `@anthropic-ai/sdk`: Anthropic SDK.
+- `openai`: OpenAI SDK (used for xAI Grok API compatibility layer).
 - `amadeus`: Amadeus Node.js SDK.
 
 ### Environment Variables
@@ -72,3 +76,4 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - `AMADEUS_API_KEY`, `AMADEUS_API_SECRET`: Amadeus API credentials.
 - `VIATOR_API_KEY`: Viator API key.
 - `ANTHROPIC_API_KEY`: Anthropic Claude API key.
+- `XAI_API_KEY`: xAI Grok API key.
