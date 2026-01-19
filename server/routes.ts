@@ -4280,14 +4280,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
       // Log AI interaction for usage tracking
       await db.insert(aiInteractions).values({
-        userId,
-        aiProvider: "grok",
         taskType: "real_time_intelligence",
-        inputTokens: usage.promptTokens,
-        outputTokens: usage.completionTokens,
-        costEstimate: usage.estimatedCost.toFixed(6),
-        requestData: { destination, dates } as any,
-        responseData: { success: true } as any,
+        provider: "grok",
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.promptTokens + usage.completionTokens,
+        estimatedCost: usage.estimatedCost.toFixed(6),
+        durationMs: 0,
+        success: true,
+        userId,
+        metadata: { destination, dates },
       });
 
       res.json(result);
@@ -4372,14 +4374,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
       // Log AI interaction
       await db.insert(aiInteractions).values({
-        userId,
-        aiProvider: "grok",
         taskType: "autonomous_itinerary",
-        inputTokens: usage.promptTokens,
-        outputTokens: usage.completionTokens,
-        costEstimate: usage.estimatedCost.toFixed(6),
-        requestData: { destination, dates, travelers, interests } as any,
-        responseData: { itineraryId: savedItinerary.id, success: true } as any,
+        provider: "grok",
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.promptTokens + usage.completionTokens,
+        estimatedCost: usage.estimatedCost.toFixed(6),
+        durationMs: 0,
+        success: true,
+        userId,
+        metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
       });
 
       res.json({
@@ -4392,6 +4396,95 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       console.error("Error generating AI itinerary:", error);
       res.status(500).json({ 
         message: error.message || "Failed to generate itinerary. Please try again."
+      });
+    }
+  });
+
+  // Trip Optimization Framework: Generate 3 itinerary variations with real-time intelligence
+  app.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { 
+        destination, 
+        dates, 
+        travelers, 
+        budget, 
+        eventType, 
+        interests, 
+        pacePreference,
+        cartItems,
+        mustSeeAttractions,
+        dietaryRestrictions,
+        mobilityConsiderations,
+        tripId
+      } = req.body;
+
+      if (!destination || typeof destination !== "string") {
+        return res.status(400).json({ message: "Destination is required" });
+      }
+      if (!dates?.start || !dates?.end) {
+        return res.status(400).json({ message: "Start and end dates are required" });
+      }
+      if (!travelers || typeof travelers !== "number" || travelers < 1) {
+        return res.status(400).json({ message: "Number of travelers must be at least 1" });
+      }
+      if (!interests || !Array.isArray(interests) || interests.length === 0) {
+        return res.status(400).json({ message: "At least one interest is required" });
+      }
+
+      const { tripOptimizationService } = await import("./services/trip-optimization.service");
+      
+      const result = await tripOptimizationService.generateOptimizedItineraries({
+        destination,
+        dates,
+        travelers,
+        budget: budget || undefined,
+        eventType: eventType || undefined,
+        interests,
+        pacePreference: pacePreference || "moderate",
+        cartItems: cartItems || [],
+        mustSeeAttractions: mustSeeAttractions || [],
+        dietaryRestrictions: dietaryRestrictions || [],
+        mobilityConsiderations: mobilityConsiderations || []
+      });
+
+      for (const variation of result.variations) {
+        await db.insert(aiGeneratedItineraries).values({
+          userId,
+          tripId: tripId || null,
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          title: `${variation.variationLabel}: ${variation.title}`,
+          summary: variation.summary,
+          totalEstimatedCost: variation.totalEstimatedCost.toString(),
+          itineraryData: variation.dailyItinerary as any,
+          accommodationSuggestions: variation.accommodationSuggestions as any,
+          packingList: variation.packingList as any,
+          travelTips: variation.travelTips as any,
+          provider: "grok",
+          status: "generated"
+        });
+      }
+
+      await db.insert(aiInteractions).values({
+        taskType: "trip_optimization",
+        provider: "grok",
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        estimatedCost: "0.00",
+        durationMs: 0,
+        success: true,
+        userId,
+        metadata: { destination, dates, travelers, interests, variationsGenerated: result.variations.length },
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error generating optimized itineraries:", error);
+      res.status(500).json({ 
+        message: error.message || "Failed to generate optimized itineraries. Please try again."
       });
     }
   });

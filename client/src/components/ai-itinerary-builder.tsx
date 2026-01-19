@@ -106,10 +106,40 @@ interface GeneratedItinerary {
   totalEstimatedCost: number;
   dailyItinerary: DayItinerary[];
   accommodationSuggestions: Accommodation[];
-  packingList: string[]; // Simple array of packing items from Grok
+  packingList: string[];
   travelTips: string[];
   createdAt: string;
   status: string;
+}
+
+interface OptimizedItinerary extends GeneratedItinerary {
+  variationType: "user_plan" | "weather_optimized" | "best_value";
+  variationLabel: string;
+  variationDescription: string;
+  optimizationInsights: string[];
+  realTimeFactors: {
+    weatherUsed: boolean;
+    eventsIncluded: number;
+    dealsApplied: number;
+    safetyAlertsConsidered: number;
+  };
+}
+
+interface RealTimeIntelligence {
+  destination: string;
+  timestamp: string;
+  events?: Array<{ name: string; date: string; type: string; relevance: string }>;
+  weatherForecast?: { summary: string; conditions: string; temperature: { high: number; low: number } };
+  safetyAlerts?: Array<{ level: string; message: string }>;
+  deals?: Array<{ title: string; discount: string; validUntil: string }>;
+}
+
+interface OptimizationResult {
+  destination: string;
+  dateRange: { start: string; end: string };
+  realTimeIntelligence: RealTimeIntelligence | null;
+  variations: OptimizedItinerary[];
+  generatedAt: string;
 }
 
 const INTEREST_OPTIONS = [
@@ -144,7 +174,8 @@ export function AIItineraryBuilder({
   const [mustSeeAttractions, setMustSeeAttractions] = useState<string>("");
   const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
   const [mobilityConsiderations, setMobilityConsiderations] = useState<string[]>([]);
-  const [generatedItinerary, setGeneratedItinerary] = useState<GeneratedItinerary | null>(null);
+  const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
+  const [selectedVariation, setSelectedVariation] = useState(0);
   const [selectedDay, setSelectedDay] = useState(0);
 
   const steps = [
@@ -160,7 +191,7 @@ export function AIItineraryBuilder({
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/ai/generate-itinerary", {
+      const response = await apiRequest("POST", "/api/ai/generate-optimized-itineraries", {
         destination,
         dates: {
           start: startDate ? format(startDate, "yyyy-MM-dd") : "",
@@ -177,8 +208,10 @@ export function AIItineraryBuilder({
       });
       return response.json();
     },
-    onSuccess: (data) => {
-      setGeneratedItinerary(data);
+    onSuccess: (data: OptimizationResult) => {
+      setOptimizationResult(data);
+      setSelectedVariation(0);
+      setSelectedDay(0);
       setCurrentStep(3);
     },
   });
@@ -503,37 +536,111 @@ export function AIItineraryBuilder({
         );
 
       case 3:
-        if (!generatedItinerary) return null;
+        if (!optimizationResult || !optimizationResult.variations?.length) return null;
+        const currentItinerary = optimizationResult.variations[selectedVariation];
+        if (!currentItinerary) return null;
+        
         return (
           <div className="space-y-6">
             <div className="text-center mb-4">
               <div className="flex items-center justify-center gap-2 text-emerald-600 dark:text-emerald-400 mb-2">
                 <CheckCircle2 className="h-5 w-5" />
-                <span className="font-medium">Itinerary Generated</span>
+                <span className="font-medium">{optimizationResult.variations.length} Itinerary Options Generated</span>
               </div>
-              <h3 className="text-xl font-semibold text-foreground">{generatedItinerary.title}</h3>
-              <p className="text-sm text-muted-foreground mt-1">{generatedItinerary.summary}</p>
+              <p className="text-sm text-muted-foreground">
+                Compare your options and choose the best fit
+              </p>
             </div>
 
-            <div className="flex items-center justify-between bg-muted/50 rounded-lg p-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Estimated Total</p>
-                <p className="text-2xl font-bold text-foreground">
-                  ${generatedItinerary.totalEstimatedCost?.toLocaleString() || 0}
-                </p>
+            {/* Real-time Intelligence Summary */}
+            {optimizationResult.realTimeIntelligence && (
+              <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Real-Time Factors Applied</p>
+                <div className="flex flex-wrap gap-2">
+                  {optimizationResult.realTimeIntelligence.weatherForecast && (
+                    <Badge variant="outline" className="text-xs">
+                      Weather: {optimizationResult.realTimeIntelligence.weatherForecast.conditions}
+                    </Badge>
+                  )}
+                  {optimizationResult.realTimeIntelligence.events && optimizationResult.realTimeIntelligence.events.length > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      {optimizationResult.realTimeIntelligence.events.length} Local Events
+                    </Badge>
+                  )}
+                  {optimizationResult.realTimeIntelligence.deals && optimizationResult.realTimeIntelligence.deals.length > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      {optimizationResult.realTimeIntelligence.deals.length} Current Deals
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="icon" data-testid="button-download">
-                  <Download className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" data-testid="button-share">
-                  <Share2 className="h-4 w-4" />
-                </Button>
-              </div>
+            )}
+
+            {/* Variation Tabs */}
+            <div className="grid grid-cols-3 gap-2">
+              {optimizationResult.variations.map((variation, index) => (
+                <button
+                  key={variation.variationType}
+                  onClick={() => {
+                    setSelectedVariation(index);
+                    setSelectedDay(0);
+                  }}
+                  className={cn(
+                    "p-3 rounded-lg border-2 text-left transition-all",
+                    selectedVariation === index
+                      ? "border-[#FF385C] bg-[#FF385C]/5"
+                      : "border-border hover-elevate"
+                  )}
+                  data-testid={`variation-${variation.variationType}`}
+                >
+                  <p className={cn(
+                    "text-sm font-medium",
+                    selectedVariation === index ? "text-[#FF385C]" : "text-foreground"
+                  )}>
+                    {variation.variationLabel}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                    {variation.variationDescription}
+                  </p>
+                  <p className="text-sm font-bold mt-2">
+                    ${variation.totalEstimatedCost?.toLocaleString() || 0}
+                  </p>
+                </button>
+              ))}
             </div>
 
+            {/* Optimization Insights */}
+            {currentItinerary.optimizationInsights && currentItinerary.optimizationInsights.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {currentItinerary.optimizationInsights.map((insight, idx) => (
+                  <Badge key={idx} variant="secondary" className="text-xs">
+                    {insight}
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {/* Selected Itinerary Details */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{currentItinerary.title}</CardTitle>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="icon" data-testid="button-download">
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="icon" data-testid="button-share">
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground">{currentItinerary.summary}</p>
+              </CardHeader>
+            </Card>
+
+            {/* Day Selection */}
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {generatedItinerary.dailyItinerary.map((day, index) => (
+              {currentItinerary.dailyItinerary?.map((day, index) => (
                 <button
                   key={day.day}
                   onClick={() => setSelectedDay(index)}
@@ -550,20 +657,21 @@ export function AIItineraryBuilder({
               ))}
             </div>
 
-            {generatedItinerary.dailyItinerary[selectedDay] && (
+            {/* Day Activities */}
+            {currentItinerary.dailyItinerary?.[selectedDay] && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">
-                    {generatedItinerary.dailyItinerary[selectedDay].theme}
+                    {currentItinerary.dailyItinerary[selectedDay].theme}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    {generatedItinerary.dailyItinerary[selectedDay].date}
+                    {currentItinerary.dailyItinerary[selectedDay].date}
                   </p>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-[300px] pr-4">
                     <div className="space-y-4">
-                      {generatedItinerary.dailyItinerary[selectedDay].activities.map((activity, idx) => (
+                      {currentItinerary.dailyItinerary[selectedDay].activities?.map((activity, idx) => (
                         <div key={idx} className="flex gap-3 pb-4 border-b last:border-0">
                           <div className="flex-shrink-0 w-16 text-sm text-muted-foreground">
                             {activity.time}
@@ -605,7 +713,8 @@ export function AIItineraryBuilder({
               </Card>
             )}
 
-            {generatedItinerary.travelTips && generatedItinerary.travelTips.length > 0 && (
+            {/* Travel Tips */}
+            {currentItinerary.travelTips && currentItinerary.travelTips.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-base flex items-center gap-2">
@@ -615,7 +724,7 @@ export function AIItineraryBuilder({
                 </CardHeader>
                 <CardContent>
                   <ul className="space-y-2">
-                    {generatedItinerary.travelTips.slice(0, 4).map((tip, idx) => (
+                    {currentItinerary.travelTips.slice(0, 4).map((tip, idx) => (
                       <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
                         <span className="text-[#FF385C]">•</span>
                         {tip}
@@ -683,7 +792,7 @@ export function AIItineraryBuilder({
           <Button
             onClick={handleNext}
             disabled={!canProceed()}
-            className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+            className="bg-[#FF385C]"
             data-testid="button-next"
           >
             {currentStep === 2 ? (
@@ -701,13 +810,14 @@ export function AIItineraryBuilder({
         </div>
       )}
 
-      {currentStep === 3 && generatedItinerary && (
+      {currentStep === 3 && optimizationResult && (
         <div className="flex flex-col sm:flex-row gap-3 pt-4">
           <Button
             variant="outline"
             onClick={() => {
               setCurrentStep(0);
-              setGeneratedItinerary(null);
+              setOptimizationResult(null);
+              setSelectedVariation(0);
             }}
             className="flex-1"
             data-testid="button-start-over"
@@ -716,7 +826,7 @@ export function AIItineraryBuilder({
             Start Over
           </Button>
           <Button
-            className="flex-1 bg-[#FF385C] hover:bg-[#FF385C]/90"
+            className="flex-1 bg-[#FF385C]"
             data-testid="button-use-itinerary"
           >
             <CheckCircle2 className="h-4 w-4 mr-2" />
