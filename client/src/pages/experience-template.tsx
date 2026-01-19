@@ -74,7 +74,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { TransportationAnalysis } from "@/components/transportation-analysis";
-import { RealTimeIntelWidget } from "@/components/real-time-intel-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
@@ -1674,18 +1673,6 @@ export default function ExperienceTemplatePage() {
             </CardContent>
           </Card>
 
-        {detailsSubmitted && destination && (
-          <div className="mb-6">
-            <RealTimeIntelWidget
-              destination={destination}
-              dates={startDate && endDate ? {
-                start: format(startDate, "yyyy-MM-dd"),
-                end: format(endDate, "yyyy-MM-dd")
-              } : undefined}
-              compact
-            />
-          </div>
-        )}
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
