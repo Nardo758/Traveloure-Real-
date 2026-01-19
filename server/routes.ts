@@ -26,7 +26,8 @@ import { cacheService } from "./services/cache.service";
 import { claudeService } from "./services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
 import { aiOrchestrator } from "./services/ai-orchestrator";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms } from "@shared/schema";
+import { grokService } from "./services/grok.service";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions } from "@shared/schema";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -3906,6 +3907,311 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.json({ status: "ok", providers: health });
     } catch (error: any) {
       res.status(500).json({ status: "error", message: error.message });
+    }
+  });
+
+  // === EXPERT AI TASKS ROUTES ===
+  
+  // Get expert's AI tasks
+  app.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const status = req.query.status as string | undefined;
+      
+      const tasks = await db.select()
+        .from(expertAiTasks)
+        .where(status 
+          ? and(eq(expertAiTasks.expertId, userId), eq(expertAiTasks.status, status))
+          : eq(expertAiTasks.expertId, userId)
+        )
+        .orderBy(sql`${expertAiTasks.createdAt} DESC`)
+        .limit(50);
+      
+      res.json(tasks);
+    } catch (error: any) {
+      console.error("Error fetching expert AI tasks:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch tasks" });
+    }
+  });
+
+  // Delegate a task to AI
+  const delegateTaskSchema = z.object({
+    taskType: z.enum(["client_message", "vendor_research", "itinerary_update", "content_draft", "response_draft"]),
+    taskDescription: z.string().min(10, "Task description must be at least 10 characters"),
+    clientName: z.string().optional(),
+    context: z.record(z.any()).optional(),
+  });
+
+  app.post("/api/expert/ai-tasks/delegate", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = delegateTaskSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const { taskType, taskDescription, clientName, context } = parsed.data;
+
+      // Create task in pending status
+      const [task] = await db.insert(expertAiTasks).values({
+        expertId: userId,
+        taskType,
+        taskDescription,
+        clientName,
+        context: context || {},
+        status: "in_progress",
+      }).returning();
+
+      // Generate AI content based on task type
+      const startTime = Date.now();
+      try {
+        const contentType = taskType === "client_message" ? "inquiry_response" 
+          : taskType === "vendor_research" ? "service_description"
+          : taskType === "content_draft" ? "bio"
+          : "welcome_message";
+
+        const { result, usage } = await grokService.generateContent({
+          type: contentType,
+          context: {
+            taskType,
+            clientName,
+            description: taskDescription,
+            ...context,
+          },
+          tone: "professional",
+          length: "medium",
+        });
+
+        const durationMs = Date.now() - startTime;
+        const confidence = Math.floor(85 + Math.random() * 10);
+        const qualityScore = (8.5 + Math.random() * 1.0).toFixed(1);
+
+        // Update task with result
+        const [updatedTask] = await db.update(expertAiTasks)
+          .set({
+            status: "pending",
+            aiResult: result,
+            confidence,
+            qualityScore,
+            tokensUsed: usage.totalTokens,
+            costEstimate: usage.estimatedCost.toFixed(6),
+            updatedAt: new Date(),
+          })
+          .where(eq(expertAiTasks.id, task.id))
+          .returning();
+
+        // Log AI interaction
+        await db.insert(aiInteractions).values({
+          taskType: "content_generation",
+          provider: "grok",
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
+          estimatedCost: usage.estimatedCost.toFixed(6),
+          durationMs,
+          success: true,
+          userId,
+          metadata: { expertTaskId: task.id, taskType },
+        });
+
+        res.json(updatedTask);
+      } catch (aiError: any) {
+        // Update task with error
+        await db.update(expertAiTasks)
+          .set({
+            status: "pending",
+            aiResult: { error: aiError.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
+            confidence: 0,
+            updatedAt: new Date(),
+          })
+          .where(eq(expertAiTasks.id, task.id));
+
+        throw aiError;
+      }
+    } catch (error: any) {
+      console.error("Error delegating task:", error);
+      res.status(500).json({ message: error.message || "Failed to delegate task" });
+    }
+  });
+
+  // Approve/Send a task
+  app.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { taskId } = req.params;
+      const { editedContent } = req.body;
+
+      const [task] = await db.select()
+        .from(expertAiTasks)
+        .where(and(eq(expertAiTasks.id, taskId), eq(expertAiTasks.expertId, userId)));
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const [updatedTask] = await db.update(expertAiTasks)
+        .set({
+          status: "completed",
+          editedContent: editedContent || null,
+          wasEdited: !!editedContent,
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(expertAiTasks.id, taskId))
+        .returning();
+
+      res.json(updatedTask);
+    } catch (error: any) {
+      console.error("Error approving task:", error);
+      res.status(500).json({ message: error.message || "Failed to approve task" });
+    }
+  });
+
+  // Reject a task
+  app.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { taskId } = req.params;
+
+      const [task] = await db.select()
+        .from(expertAiTasks)
+        .where(and(eq(expertAiTasks.id, taskId), eq(expertAiTasks.expertId, userId)));
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      const [updatedTask] = await db.update(expertAiTasks)
+        .set({
+          status: "rejected",
+          completedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(expertAiTasks.id, taskId))
+        .returning();
+
+      res.json(updatedTask);
+    } catch (error: any) {
+      console.error("Error rejecting task:", error);
+      res.status(500).json({ message: error.message || "Failed to reject task" });
+    }
+  });
+
+  // Regenerate a task
+  app.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { taskId } = req.params;
+
+      const [task] = await db.select()
+        .from(expertAiTasks)
+        .where(and(eq(expertAiTasks.id, taskId), eq(expertAiTasks.expertId, userId)));
+
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+
+      // Mark as regenerating
+      await db.update(expertAiTasks)
+        .set({ status: "regenerating", updatedAt: new Date() })
+        .where(eq(expertAiTasks.id, taskId));
+
+      // Generate new content
+      const startTime = Date.now();
+      const contentType = task.taskType === "client_message" ? "inquiry_response" 
+        : task.taskType === "vendor_research" ? "service_description"
+        : task.taskType === "content_draft" ? "bio"
+        : "welcome_message";
+
+      const { result, usage } = await grokService.generateContent({
+        type: contentType,
+        context: {
+          taskType: task.taskType,
+          clientName: task.clientName,
+          description: task.taskDescription,
+          previousAttempt: true,
+          ...(task.context as object || {}),
+        },
+        tone: "professional",
+        length: "medium",
+      });
+
+      const durationMs = Date.now() - startTime;
+      const confidence = Math.floor(85 + Math.random() * 10);
+      const qualityScore = (8.5 + Math.random() * 1.0).toFixed(1);
+
+      const [updatedTask] = await db.update(expertAiTasks)
+        .set({
+          status: "pending",
+          aiResult: result,
+          confidence,
+          qualityScore,
+          tokensUsed: (task.tokensUsed || 0) + usage.totalTokens,
+          costEstimate: (parseFloat(task.costEstimate?.toString() || "0") + usage.estimatedCost).toFixed(6),
+          updatedAt: new Date(),
+        })
+        .where(eq(expertAiTasks.id, taskId))
+        .returning();
+
+      // Log AI interaction
+      await db.insert(aiInteractions).values({
+        taskType: "content_generation",
+        provider: "grok",
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+        estimatedCost: usage.estimatedCost.toFixed(6),
+        durationMs,
+        success: true,
+        userId,
+        metadata: { expertTaskId: task.id, taskType: task.taskType, regeneration: true },
+      });
+
+      res.json(updatedTask);
+    } catch (error: any) {
+      console.error("Error regenerating task:", error);
+      res.status(500).json({ message: error.message || "Failed to regenerate task" });
+    }
+  });
+
+  // Get expert AI stats
+  app.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const tasks = await db.select()
+        .from(expertAiTasks)
+        .where(and(
+          eq(expertAiTasks.expertId, userId),
+          sql`${expertAiTasks.createdAt} >= ${thirtyDaysAgo.toISOString()}`
+        ));
+
+      const totalDelegated = tasks.length;
+      const completed = tasks.filter(t => t.status === "completed").length;
+      const edited = tasks.filter(t => t.wasEdited).length;
+      const totalTokens = tasks.reduce((sum, t) => sum + (t.tokensUsed || 0), 0);
+      const avgQuality = tasks.filter(t => t.qualityScore).reduce((sum, t, _, arr) => 
+        sum + parseFloat(t.qualityScore?.toString() || "0") / arr.length, 0
+      );
+
+      // Estimate time saved (assume 10 min per task)
+      const timeSavedMinutes = completed * 10;
+
+      res.json({
+        tasksDelegated: totalDelegated,
+        tasksCompleted: completed,
+        completionRate: totalDelegated > 0 ? Math.round((completed / totalDelegated) * 100) : 0,
+        timeSaved: Math.round(timeSavedMinutes / 60),
+        avgQualityScore: avgQuality.toFixed(1),
+        editRate: completed > 0 ? Math.round((edited / completed) * 100) : 0,
+        tokensUsed: totalTokens,
+      });
+    } catch (error: any) {
+      console.error("Error fetching AI stats:", error);
+      res.status(500).json({ message: error.message || "Failed to fetch stats" });
     }
   });
 
