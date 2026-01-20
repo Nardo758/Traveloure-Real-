@@ -4,7 +4,7 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
-import { seedExpertServices, seedCustomServices, seedMockExperts } from "./seed-expert-services";
+import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -109,6 +109,13 @@ app.use((req, res, next) => {
     await seedMockExperts();
   } catch (err) {
     console.error("Failed to seed mock experts:", err);
+  }
+
+  // Seed provider services for Services tab
+  try {
+    await seedProviderServices();
+  } catch (err) {
+    console.error("Failed to seed provider services:", err);
   }
 
   // Seed destination calendar data

@@ -9,6 +9,11 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -25,6 +30,7 @@ import {
   Clock,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Loader2,
   CheckCircle2,
   Coffee,
@@ -32,6 +38,9 @@ import {
   Camera,
   Hotel,
   Car,
+  Bus,
+  Plane,
+  Train,
   AlertCircle,
   RefreshCw,
   Download,
@@ -177,6 +186,38 @@ export function AIItineraryBuilder({
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [selectedVariation, setSelectedVariation] = useState(0);
   const [selectedDay, setSelectedDay] = useState(0);
+  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
+
+  // Clear expanded activities when day changes for better UX
+  useEffect(() => {
+    setExpandedActivities(new Set());
+  }, [selectedDay]);
+
+  const toggleActivityExpanded = (key: string) => {
+    setExpandedActivities(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
+  const getTransportIcon = (mode: string) => {
+    const lowerMode = mode.toLowerCase();
+    if (lowerMode.includes("plane") || lowerMode.includes("flight")) return <Plane className="h-4 w-4" />;
+    if (lowerMode.includes("train")) return <Train className="h-4 w-4" />;
+    if (lowerMode.includes("bus")) return <Bus className="h-4 w-4" />;
+    return <Car className="h-4 w-4" />;
+  };
+
+  const getMealIcon = (type: string) => {
+    if (type === "breakfast") return <Coffee className="h-4 w-4 text-amber-500" />;
+    if (type === "lunch") return <Utensils className="h-4 w-4 text-orange-500" />;
+    return <Utensils className="h-4 w-4 text-[#FF385C]" />;
+  };
 
   const steps = [
     { label: "Interests", description: "What do you love?" },
@@ -669,44 +710,141 @@ export function AIItineraryBuilder({
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-[300px] pr-4">
-                    <div className="space-y-4">
-                      {currentItinerary.dailyItinerary[selectedDay].activities?.map((activity, idx) => (
-                        <div key={idx} className="flex gap-3 pb-4 border-b last:border-0">
-                          <div className="flex-shrink-0 w-16 text-sm text-muted-foreground">
-                            {activity.time}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-start gap-2">
-                              {getActivityIcon(activity.type)}
-                              <div>
-                                <p className="font-medium text-foreground">{activity.name}</p>
-                                <p className="text-sm text-muted-foreground">{activity.location}</p>
-                                <p className="text-sm text-muted-foreground mt-1">{activity.description}</p>
-                                <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    {activity.duration}
-                                  </span>
-                                  <span className="flex items-center gap-1">
-                                    <DollarSign className="h-3 w-3" />
-                                    ${activity.estimatedCost}
-                                  </span>
-                                  {activity.bookingRequired && (
-                                    <Badge variant="secondary" className="text-xs">Booking Required</Badge>
-                                  )}
-                                </div>
-                                {activity.tips && (
-                                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-start gap-1">
-                                    <LightbulbIcon className="h-3 w-3 flex-shrink-0 mt-0.5" />
-                                    {activity.tips}
-                                  </p>
-                                )}
+                  <ScrollArea className="h-[400px] pr-4">
+                    <div className="space-y-3">
+                      {/* Activities Section */}
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                          <Camera className="h-4 w-4" />
+                          Activities
+                        </h4>
+                        {currentItinerary.dailyItinerary[selectedDay].activities?.map((activity, idx) => {
+                          const activityKey = `${selectedDay}-${idx}`;
+                          const isExpanded = expandedActivities.has(activityKey);
+                          return (
+                            <Collapsible 
+                              key={idx}
+                              open={isExpanded}
+                              onOpenChange={() => toggleActivityExpanded(activityKey)}
+                            >
+                              <div className="border rounded-lg p-3 hover-elevate">
+                                <CollapsibleTrigger className="w-full text-left" data-testid={`button-activity-expand-${idx}`}>
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-shrink-0 w-16 text-sm text-muted-foreground">
+                                      {activity.time}
+                                    </div>
+                                    <div className="flex-1">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                          {getActivityIcon(activity.type)}
+                                          <span className="font-medium">{activity.name}</span>
+                                        </div>
+                                        <ChevronDown className={cn(
+                                          "h-4 w-4 text-muted-foreground transition-transform",
+                                          isExpanded && "rotate-180"
+                                        )} />
+                                      </div>
+                                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                        <span className="flex items-center gap-1">
+                                          <MapPin className="h-3 w-3" />
+                                          {activity.location}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                          <Clock className="h-3 w-3" />
+                                          {activity.duration}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                          <DollarSign className="h-3 w-3" />
+                                          ${activity.estimatedCost}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                  <div className="mt-3 pt-3 border-t ml-16 space-y-2">
+                                    <p className="text-sm text-muted-foreground">{activity.description}</p>
+                                    {activity.bookingRequired && (
+                                      <Badge variant="secondary" className="text-xs">Booking Required</Badge>
+                                    )}
+                                    {activity.tips && (
+                                      <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
+                                        <LightbulbIcon className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                                        {activity.tips}
+                                      </p>
+                                    )}
+                                  </div>
+                                </CollapsibleContent>
                               </div>
-                            </div>
+                            </Collapsible>
+                          );
+                        })}
+                      </div>
+
+                      {/* Meals Section */}
+                      {currentItinerary.dailyItinerary[selectedDay].meals && 
+                       currentItinerary.dailyItinerary[selectedDay].meals.length > 0 && (
+                        <div className="space-y-3 pt-4 border-t">
+                          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                            <Utensils className="h-4 w-4" />
+                            Meals
+                          </h4>
+                          <div className="grid gap-2">
+                            {currentItinerary.dailyItinerary[selectedDay].meals.map((meal, idx) => (
+                              <div key={idx} className="flex items-center gap-3 p-2 border rounded-lg" data-testid={`meal-${meal.type}-${idx}`}>
+                                {getMealIcon(meal.type)}
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium capitalize text-sm">{meal.type}</span>
+                                    <span className="text-xs text-muted-foreground">{meal.time}</span>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{meal.suggestion}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge variant="outline" className="text-xs">{meal.cuisine}</Badge>
+                                    <span className="text-xs text-muted-foreground">{meal.priceRange}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
+                      )}
+
+                      {/* Transportation Section */}
+                      {currentItinerary.dailyItinerary[selectedDay].transportation && 
+                       currentItinerary.dailyItinerary[selectedDay].transportation.length > 0 && (
+                        <div className="space-y-3 pt-4 border-t">
+                          <h4 className="font-medium text-sm text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                            <Car className="h-4 w-4" />
+                            Transportation
+                          </h4>
+                          <div className="grid gap-2">
+                            {currentItinerary.dailyItinerary[selectedDay].transportation.map((transport, idx) => (
+                              <div key={idx} className="flex items-center gap-3 p-2 border rounded-lg" data-testid={`transport-${idx}`}>
+                                {getTransportIcon(transport.mode)}
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <span className="font-medium">{transport.from}</span>
+                                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                                    <span className="font-medium">{transport.to}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                    <span>{transport.mode}</span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="h-3 w-3" />
+                                      {transport.duration}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <DollarSign className="h-3 w-3" />
+                                      ${transport.cost}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </ScrollArea>
                 </CardContent>
