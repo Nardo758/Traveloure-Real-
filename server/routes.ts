@@ -4971,6 +4971,101 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // ============================================
+  // TRAVELPULSE AI INTELLIGENCE ROUTES
+  // ============================================
+
+  const { travelPulseScheduler } = await import("./services/travelpulse-scheduler.service");
+
+  // Get AI scheduler status
+  app.get("/api/travelpulse/ai/status", async (req, res) => {
+    try {
+      const status = travelPulseScheduler.getStatus();
+      const citiesNeedingRefresh = await travelPulseService.getCitiesNeedingRefresh();
+      res.json({
+        scheduler: status,
+        citiesNeedingRefresh: citiesNeedingRefresh.length,
+        cities: citiesNeedingRefresh.map(c => ({ name: c.cityName, country: c.country, lastAiUpdate: c.aiGeneratedAt })),
+      });
+    } catch (error: any) {
+      console.error("Error getting AI status:", error);
+      res.status(500).json({ message: "Failed to get AI status", error: error.message });
+    }
+  });
+
+  // Manually trigger AI refresh for a specific city
+  app.post("/api/travelpulse/ai/refresh/:cityName/:country", async (req, res) => {
+    try {
+      const { cityName, country } = req.params;
+      
+      // Rate limiting check - prevent refresh if city was updated in last hour
+      const city = await travelPulseService.getCityByName(cityName);
+      if (city?.aiGeneratedAt) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+        if (city.aiGeneratedAt > oneHourAgo) {
+          return res.status(429).json({
+            message: "City was recently updated. Please wait before refreshing again.",
+            lastUpdate: city.aiGeneratedAt,
+            nextAllowedRefresh: new Date(city.aiGeneratedAt.getTime() + 60 * 60 * 1000),
+          });
+        }
+      }
+      
+      const result = await travelPulseScheduler.triggerManualRefresh(cityName, country);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error triggering AI refresh:", error);
+      res.status(500).json({ message: "Failed to trigger AI refresh", error: error.message });
+    }
+  });
+
+  // Manually trigger AI refresh for all stale cities
+  app.post("/api/travelpulse/ai/refresh-all", async (req, res) => {
+    try {
+      const result = await travelPulseScheduler.triggerManualRefresh();
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error triggering batch AI refresh:", error);
+      res.status(500).json({ message: "Failed to trigger batch AI refresh", error: error.message });
+    }
+  });
+
+  // Get city with full AI intelligence data
+  app.get("/api/travelpulse/ai/city/:cityName", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const city = await travelPulseService.getCityByName(cityName);
+      
+      if (!city) {
+        return res.status(404).json({ message: "City not found" });
+      }
+
+      res.json({
+        city,
+        aiData: {
+          generatedAt: city.aiGeneratedAt,
+          sourceModel: city.aiSourceModel,
+          bestTimeToVisit: city.aiBestTimeToVisit,
+          seasonalHighlights: city.aiSeasonalHighlights,
+          upcomingEvents: city.aiUpcomingEvents,
+          travelTips: city.aiTravelTips,
+          localInsights: city.aiLocalInsights,
+          safetyNotes: city.aiSafetyNotes,
+          optimalDuration: city.aiOptimalDuration,
+          budgetEstimate: city.aiBudgetEstimate,
+          mustSeeAttractions: city.aiMustSeeAttractions,
+          avoidDates: city.aiAvoidDates,
+        },
+      });
+    } catch (error: any) {
+      console.error("Error getting city AI data:", error);
+      res.status(500).json({ message: "Failed to get city AI data", error: error.message });
+    }
+  });
+
+  // Start the scheduler when routes are registered
+  travelPulseScheduler.start();
+
   return httpServer;
 }
 
