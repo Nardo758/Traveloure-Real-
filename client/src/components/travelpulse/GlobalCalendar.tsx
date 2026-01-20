@@ -466,39 +466,9 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         </div>
       </div>
 
-      <div className="hidden lg:block float-right ml-6 mb-4">
-        <CompactYearCalendar
-          year={currentYear}
-          monthSummaries={yearData?.summaries || []}
-          selectedMonth={selectedMonth}
-          selectedWeek={selectedWeek}
-          selectedDay={selectedDay}
-          filterMode={filterMode}
-          onFilterModeChange={(mode) => {
-            setFilterMode(mode);
-            if (mode === "month") {
-              setSelectedWeek(undefined);
-              setSelectedDay(undefined);
-            }
-          }}
-          onMonthSelect={(month) => {
-            setSelectedMonth(month);
-            setSelectedWeek(undefined);
-            setSelectedDay(undefined);
-          }}
-          onWeekSelect={(month, week) => {
-            setSelectedMonth(month);
-            setSelectedWeek(week);
-            setSelectedDay(undefined);
-          }}
-          onDaySelect={(month, day) => {
-            setSelectedMonth(month);
-            setSelectedDay(day);
-          }}
-        />
-      </div>
-
-      <ScrollArea className="w-full">
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1 min-w-0 space-y-4">
+          <ScrollArea className="w-full">
           <div className="flex gap-2 pb-2">
             {months.map((month, idx) => (
               <Button
@@ -537,88 +507,122 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             ))}
           </div>
           <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+          </ScrollArea>
 
-      {grouped.best.length > 0 && (
-        <CitySection
-          title="Best Time to Visit"
-          subtitle="Perfect conditions for travel"
-          cities={grouped.best}
-          rating="best"
-          onCityClick={handleCityClick}
-        />
-      )}
+          {grouped.best.length > 0 && (
+            <CitySection
+              title="Best Time to Visit"
+              subtitle="Perfect conditions for travel"
+              cities={grouped.best}
+              rating="best"
+              onCityClick={handleCityClick}
+            />
+          )}
 
-      {grouped.good.length > 0 && (
-        <CitySection
-          title="Good Time to Visit"
-          subtitle="Favorable conditions overall"
-          cities={grouped.good}
-          rating="good"
-          onCityClick={handleCityClick}
-        />
-      )}
+          {grouped.good.length > 0 && (
+            <CitySection
+              title="Good Time to Visit"
+              subtitle="Favorable conditions overall"
+              cities={grouped.good}
+              rating="good"
+              onCityClick={handleCityClick}
+            />
+          )}
 
-      {grouped.average.length > 0 && (
-        <CitySection
-          title="Average Conditions"
-          subtitle="Mixed conditions, check details"
-          cities={grouped.average}
-          rating="average"
-          onCityClick={handleCityClick}
-        />
-      )}
+          {grouped.average.length > 0 && (
+            <CitySection
+              title="Average Conditions"
+              subtitle="Mixed conditions, check details"
+              cities={grouped.average}
+              rating="average"
+              onCityClick={handleCityClick}
+            />
+          )}
 
-      {filteredEvents.length > 0 && (
-        <div className="mt-8">
-          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Ticket className="h-5 w-5 text-muted-foreground" />
-            Events & Festivals{filterMode === "day" && selectedDay ? ` on ${months[selectedMonth - 1]} ${selectedDay}` : filterMode === "week" && selectedWeek ? ` in Week ${selectedWeek}` : ` in ${monthName}`}
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredEvents.slice(0, 6).map((event) => (
-              <Card key={event.id} className="hover-elevate" data-testid={`event-card-${event.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                      <Ticket className="h-5 w-5 text-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <Badge variant="secondary" className="mb-1 text-xs capitalize">
-                        {event.eventType || "event"}
-                      </Badge>
-                      <h4 className="font-medium text-sm line-clamp-1">{event.title}</h4>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                        <MapPin className="h-3 w-3" />
-                        {event.city ? `${event.city}, ` : ""}{event.country}
+          {filteredEvents.length > 0 && (
+            <div className="mt-8">
+              <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                <Ticket className="h-5 w-5 text-muted-foreground" />
+                Events & Festivals{filterMode === "day" && selectedDay ? ` on ${months[selectedMonth - 1]} ${selectedDay}` : filterMode === "week" && selectedWeek ? ` in Week ${selectedWeek}` : ` in ${monthName}`}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {filteredEvents.slice(0, 6).map((event) => (
+                  <Card key={event.id} className="hover-elevate" data-testid={`event-card-${event.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                          <Ticket className="h-5 w-5 text-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <Badge variant="secondary" className="mb-1 text-xs capitalize">
+                            {event.eventType || "event"}
+                          </Badge>
+                          <h4 className="font-medium text-sm line-clamp-1">{event.title}</h4>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                            <MapPin className="h-3 w-3" />
+                            {event.city ? `${event.city}, ` : ""}{event.country}
+                          </div>
+                          <Link href={`/experiences/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="mt-2"
+                              data-testid={`button-plan-event-${event.id}`}
+                            >
+                              <Plane className="h-3 w-3 mr-1" />
+                              Plan This Trip
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
-                      <Link href={`/experiences/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="mt-2"
-                          data-testid={`button-plan-event-${event.id}`}
-                        >
-                          <Plane className="h-3 w-3 mr-1" />
-                          Plan This Trip
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
 
-        {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && (
-          <Card className="p-8 text-center">
-            <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">No destination data available for {monthName}</p>
-            <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
-          </Card>
-        )}
+          {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && (
+            <Card className="p-8 text-center">
+              <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No destination data available for {monthName}</p>
+              <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
+            </Card>
+          )}
+        </div>
+
+        <div className="hidden lg:block flex-shrink-0">
+          <CompactYearCalendar
+            year={currentYear}
+            monthSummaries={yearData?.summaries || []}
+            selectedMonth={selectedMonth}
+            selectedWeek={selectedWeek}
+            selectedDay={selectedDay}
+            filterMode={filterMode}
+            onFilterModeChange={(mode) => {
+              setFilterMode(mode);
+              if (mode === "month") {
+                setSelectedWeek(undefined);
+                setSelectedDay(undefined);
+              }
+            }}
+            onMonthSelect={(month) => {
+              setSelectedMonth(month);
+              setSelectedWeek(undefined);
+              setSelectedDay(undefined);
+            }}
+            onWeekSelect={(month, week) => {
+              setSelectedMonth(month);
+              setSelectedWeek(week);
+              setSelectedDay(undefined);
+            }}
+            onDaySelect={(month, day) => {
+              setSelectedMonth(month);
+              setSelectedDay(day);
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
