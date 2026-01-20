@@ -241,6 +241,43 @@ export function getCategoryMapping(tabCategory: string): CategoryMapping | null 
   return tabCategoryMapping[tabCategory] || null;
 }
 
+// Exclusive service types that should ONLY match their specific tab
+// These types should not leak into other tabs via keyword matching
+const exclusiveServiceTypes = [
+  "activities", "nightlife", "dining", "hotels", "accommodations",
+  "flights", "transportation", "spa", "wellness", "sports",
+  "shopping", "entertainment", "photography", "florist", "catering",
+  "venue", "adventures", "team-building", "shows", "rentals",
+  "decorations", "av-equipment", "jewelry"
+];
+
+// Map of exclusive types to the tabs they should appear in
+const exclusiveTypeToTab: Record<string, string[]> = {
+  "activities": ["activities"],
+  "nightlife": ["nightlife"],
+  "dining": ["dining"],
+  "hotels": ["hotels", "accommodations"],
+  "accommodations": ["hotels", "accommodations"],
+  "flights": ["flights"],
+  "transportation": ["transportation"],
+  "spa": ["spa", "wellness"],
+  "wellness": ["wellness", "spa"],
+  "sports": ["sports"],
+  "shopping": ["shopping"],
+  "entertainment": ["entertainment"],
+  "photography": ["photography"],
+  "florist": ["florist"],
+  "catering": ["catering", "dining"],
+  "venue": ["venue"],
+  "adventures": ["activities", "adventures"],
+  "team-building": ["team-building", "activities"],
+  "shows": ["shows", "entertainment"],
+  "rentals": ["rentals"],
+  "decorations": ["decorations"],
+  "av-equipment": ["av-equipment"],
+  "jewelry": ["jewelry", "shopping"],
+};
+
 export function matchesCategory(
   serviceType: string,
   serviceName: string,
@@ -249,10 +286,16 @@ export function matchesCategory(
 ): boolean {
   const lowerType = serviceType.toLowerCase();
   const lowerName = serviceName.toLowerCase();
-  const lowerDesc = description.toLowerCase();
   const lowerTab = tabCategory.toLowerCase();
   
-  // Always check for literal tab category match first (direct match)
+  // PRIORITY 1: If serviceType is an exclusive type, use strict matching only
+  // This prevents "Food Walking Tour" (type=activities) from showing in dining tab
+  if (exclusiveServiceTypes.includes(lowerType)) {
+    const allowedTabs = exclusiveTypeToTab[lowerType] || [lowerType];
+    return allowedTabs.includes(lowerTab);
+  }
+  
+  // PRIORITY 2: Check for literal tab category match in type or name
   if (lowerType.includes(lowerTab) || lowerName.includes(lowerTab)) {
     return true;
   }
@@ -264,18 +307,19 @@ export function matchesCategory(
     return false;
   }
   
-  // Check primary slugs (canonical category slugs)
+  // PRIORITY 3: Check primary slugs (canonical category slugs)
   const matchesPrimarySlug = mapping.primarySlugs.some(slug => 
     lowerType.includes(slug) || lowerType === slug
   );
   
   if (matchesPrimarySlug) return true;
   
-  // Check keywords in type, name, and description
+  // PRIORITY 4: For services without explicit types, use keyword matching
+  // Only check serviceType and serviceName - NOT description
+  // This prevents leaky keyword matches from descriptions
   const matchesKeyword = mapping.keywords.some(keyword =>
     lowerType.includes(keyword) || 
-    lowerName.includes(keyword) || 
-    lowerDesc.includes(keyword)
+    lowerName.includes(keyword)
   );
   
   return matchesKeyword;
