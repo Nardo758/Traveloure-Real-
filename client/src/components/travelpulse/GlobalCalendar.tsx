@@ -684,8 +684,16 @@ function CitySection({
   rating: string;
   onCityClick?: (cityName: string, country: string) => void;
 }) {
-  const firstRowCities = cities.slice(0, 3);
-  const secondRowCities = cities.slice(3, 7);
+  // Deduplicate cities by name, keeping first occurrence
+  const seenNames = new Set<string>();
+  const uniqueCities = cities.filter(city => {
+    if (seenNames.has(city.cityName)) return false;
+    seenNames.add(city.cityName);
+    return true;
+  });
+  
+  const firstRowCities = uniqueCities.slice(0, 3);
+  const secondRowCities = uniqueCities.slice(3, 7);
   
   return (
     <div>
