@@ -16,7 +16,7 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 
 // Use Grok for faster optimization (xAI API with OpenAI-compatible interface)
-const GROK_MODEL = "grok-2-1212";
+const GROK_MODEL = "grok-3";
 
 function getGrokClient(): OpenAI {
   const apiKey = process.env.XAI_API_KEY;
