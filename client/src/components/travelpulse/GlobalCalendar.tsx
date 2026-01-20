@@ -443,58 +443,56 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const filteredEvents = filterEvents(allEvents);
 
   return (
-    <div className="space-y-6" data-testid="global-calendar">
-      <div className="flex flex-col lg:flex-row items-start justify-between gap-6">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBackToYear}
-            data-testid="button-back-to-year"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              Where to Go in {getFilterDescription()}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              AI-powered recommendations based on weather, events, and crowd levels
-            </p>
-          </div>
-        </div>
-
-        <div className="hidden lg:block flex-shrink-0">
-          <CompactYearCalendar
-            year={currentYear}
-            monthSummaries={yearData?.summaries || []}
-            selectedMonth={selectedMonth}
-            selectedWeek={selectedWeek}
-            selectedDay={selectedDay}
-            filterMode={filterMode}
-            onFilterModeChange={(mode) => {
-              setFilterMode(mode);
-              if (mode === "month") {
-                setSelectedWeek(undefined);
-                setSelectedDay(undefined);
-              }
-            }}
-            onMonthSelect={(month) => {
-              setSelectedMonth(month);
+    <div data-testid="global-calendar" className="after:block after:clear-both after:content-['']">
+      <div className="hidden lg:block float-right ml-6 mb-4">
+        <CompactYearCalendar
+          year={currentYear}
+          monthSummaries={yearData?.summaries || []}
+          selectedMonth={selectedMonth}
+          selectedWeek={selectedWeek}
+          selectedDay={selectedDay}
+          filterMode={filterMode}
+          onFilterModeChange={(mode) => {
+            setFilterMode(mode);
+            if (mode === "month") {
               setSelectedWeek(undefined);
               setSelectedDay(undefined);
-            }}
-            onWeekSelect={(month, week) => {
-              setSelectedMonth(month);
-              setSelectedWeek(week);
-              setSelectedDay(undefined);
-            }}
-            onDaySelect={(month, day) => {
-              setSelectedMonth(month);
-              setSelectedDay(day);
-            }}
-          />
+            }
+          }}
+          onMonthSelect={(month) => {
+            setSelectedMonth(month);
+            setSelectedWeek(undefined);
+            setSelectedDay(undefined);
+          }}
+          onWeekSelect={(month, week) => {
+            setSelectedMonth(month);
+            setSelectedWeek(week);
+            setSelectedDay(undefined);
+          }}
+          onDaySelect={(month, day) => {
+            setSelectedMonth(month);
+            setSelectedDay(day);
+          }}
+        />
+      </div>
+
+      <div className="flex items-center gap-3 mb-6">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleBackToYear}
+          data-testid="button-back-to-year"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-muted-foreground" />
+            Where to Go in {getFilterDescription()}
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            AI-powered recommendations based on weather, events, and crowd levels
+          </p>
         </div>
       </div>
 
