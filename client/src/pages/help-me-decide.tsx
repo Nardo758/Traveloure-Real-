@@ -35,9 +35,9 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DestinationCalendar } from "@/components/destination-calendar";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
+import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
 
 interface Service {
   id: string;
@@ -184,29 +184,6 @@ const articles = [
   },
 ];
 
-const upcomingEvents = [
-  {
-    id: 1,
-    title: "Cherry Blossom Festival",
-    location: "Tokyo, Japan",
-    date: "March 25 - April 10, 2026",
-    category: "Festival",
-  },
-  {
-    id: 2,
-    title: "Rio Carnival",
-    location: "Rio de Janeiro, Brazil",
-    date: "February 13 - 18, 2026",
-    category: "Festival",
-  },
-  {
-    id: 3,
-    title: "Oktoberfest",
-    location: "Munich, Germany",
-    date: "September 19 - October 4, 2026",
-    category: "Festival",
-  },
-];
 
 export default function HelpMeDecidePage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -778,71 +755,13 @@ export default function HelpMeDecidePage() {
               </div>
             </TabsContent>
 
-            {/* Events Tab */}
+            {/* Events Tab - Global Calendar */}
             <TabsContent value="events">
-              {/* Destination Calendar - When to Visit */}
-              <div className="mb-8">
-                <DestinationCalendar />
-              </div>
-
-              {/* Upcoming Events */}
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-[#111827] flex items-center gap-2">
-                  <Ticket className="w-5 h-5 text-[#FF385C]" />
-                  Upcoming Events Around the World
-                </h3>
-              </div>
-              <div className="space-y-4">
-                {upcomingEvents.map((event, idx) => (
-                  <motion.div
-                    key={event.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                  >
-                    <Link href={`/help-me-decide/events/${event.id}`}>
-                      <Card
-                        className="bg-white border-[#E5E7EB] hover:shadow-md hover:border-[#FF385C] transition-all cursor-pointer"
-                        data-testid={`card-event-${event.id}`}
-                      >
-                        <CardContent className="p-4 flex items-center gap-4">
-                          <div className="w-16 h-16 rounded-lg bg-[#FFE3E8] flex items-center justify-center flex-shrink-0">
-                            <Ticket className="w-8 h-8 text-[#FF385C]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <Badge variant="secondary" className="mb-1 text-xs">
-                              {event.category}
-                            </Badge>
-                            <h3 className="font-semibold text-[#111827] mb-1">
-                              {event.title}
-                            </h3>
-                            <div className="flex flex-wrap items-center gap-3 text-sm text-[#6B7280]">
-                              <span className="flex items-center gap-1">
-                                <MapPin className="w-4 h-4" />
-                                {event.location}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-4 h-4" />
-                                {event.date}
-                              </span>
-                            </div>
-                          </div>
-                          <ChevronRight className="w-5 h-5 text-[#9CA3AF]" />
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
-
-              <div className="text-center mt-8">
-                <Link href="/help-me-decide/events">
-                  <Button variant="outline" className="border-[#E5E7EB]" data-testid="button-view-all-events">
-                    View All Events
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </div>
+              <GlobalCalendar 
+                onCityClick={(cityName, country) => {
+                  setLocation(`/help-me-decide?tab=travelpulse&city=${encodeURIComponent(cityName)}`);
+                }}
+              />
             </TabsContent>
 
             {/* TravelPulse Tab - Real-time travel intelligence */}
