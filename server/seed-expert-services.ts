@@ -462,3 +462,153 @@ export async function seedMockExperts() {
 
   console.log(`Mock experts seeding complete: ${created} created, ${existed} already existed.`);
 }
+
+// Mock provider services for Services tab in experience templates
+const mockProviderServicesData = [
+  {
+    serviceName: "Airport Pickup & Drop-off Service",
+    shortDescription: "Comfortable door-to-door airport transfers with professional drivers",
+    description: "Professional airport transfer service with meet-and-greet, luggage assistance, and comfortable vehicles. Available 24/7 with flight tracking.",
+    serviceType: "transportation",
+    price: "65.00",
+    location: "Paris, France",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "On arrival",
+    whatIncluded: ["Meet & greet at arrivals", "Flight tracking", "Luggage assistance", "Bottled water", "WiFi in vehicle"],
+    averageRating: "4.8",
+  },
+  {
+    serviceName: "Private Photographer - 2 Hour Session",
+    shortDescription: "Professional photography to capture your travel memories",
+    description: "Capture your travel moments with a professional local photographer. Includes location scouting, 2-hour shoot, and 50+ edited digital photos.",
+    serviceType: "photography",
+    price: "195.00",
+    location: "Rome, Italy",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "48-72 hours for edited photos",
+    whatIncluded: ["2-hour photo session", "50+ edited photos", "Location recommendations", "Digital delivery", "Travel to 2 locations"],
+    averageRating: "4.9",
+  },
+  {
+    serviceName: "Personal Concierge - Full Day",
+    shortDescription: "Your dedicated assistant for seamless travel experiences",
+    description: "A personal concierge to handle all your travel needs - from restaurant reservations to ticket bookings, translations, and local recommendations.",
+    serviceType: "concierge",
+    price: "350.00",
+    location: "Tokyo, Japan",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "Full day (8 hours)",
+    whatIncluded: ["8 hours of personal assistance", "Restaurant bookings", "Translation services", "Local navigation", "24/7 WhatsApp support"],
+    averageRating: "5.0",
+  },
+  {
+    serviceName: "Private Chef Dinner Experience",
+    shortDescription: "Gourmet dining in your accommodation with a local chef",
+    description: "Enjoy a memorable private dining experience with a professional chef who comes to your accommodation, prepares a multi-course meal, and handles cleanup.",
+    serviceType: "experience",
+    price: "275.00",
+    location: "Barcelona, Spain",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "3-4 hours",
+    whatIncluded: ["4-course meal", "Wine pairing", "All ingredients", "Table setup", "Full cleanup"],
+    averageRating: "4.7",
+  },
+  {
+    serviceName: "Luggage Storage & Delivery",
+    shortDescription: "Convenient luggage handling between accommodations",
+    description: "Don't carry your bags! We pick up, store securely, and deliver your luggage to your next accommodation or airport.",
+    serviceType: "specialty",
+    price: "45.00",
+    location: "London, UK",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "Same day",
+    whatIncluded: ["Pickup from any location", "Secure storage", "Delivery to destination", "Insurance included", "Real-time tracking"],
+    averageRating: "4.6",
+  },
+  {
+    serviceName: "Private City Tour with Local Guide",
+    shortDescription: "Personalized exploration of the city with a knowledgeable local",
+    description: "Discover hidden gems and iconic landmarks with a passionate local guide who customizes the tour based on your interests.",
+    serviceType: "experience",
+    price: "125.00",
+    location: "New York, USA",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "4 hours",
+    whatIncluded: ["4-hour private tour", "Customized itinerary", "Skip-the-line tips", "Local food recommendations", "Photo opportunities"],
+    averageRating: "4.8",
+  },
+  {
+    serviceName: "Spa & Wellness Package",
+    shortDescription: "Relaxing in-room or spa massage and wellness treatments",
+    description: "Rejuvenate with professional spa services. Choose from massage, facials, or full wellness packages delivered to your accommodation or at a premium spa.",
+    serviceType: "specialty",
+    price: "180.00",
+    location: "Bali, Indonesia",
+    deliveryMethod: "in_person",
+    deliveryTimeframe: "2 hours",
+    whatIncluded: ["90-minute massage", "Aromatherapy", "Hot stone option", "Natural products", "Relaxation tea"],
+    averageRating: "4.9",
+  },
+  {
+    serviceName: "Travel Planning Consultation",
+    shortDescription: "Expert advice to plan your perfect trip",
+    description: "One-on-one video consultation with a travel expert to help plan your itinerary, accommodations, and activities based on your preferences and budget.",
+    serviceType: "consultation",
+    price: "75.00",
+    location: "Remote",
+    deliveryMethod: "video",
+    deliveryTimeframe: "1 hour",
+    whatIncluded: ["60-minute video call", "Written recommendations", "Custom itinerary draft", "Budget breakdown", "Follow-up email support"],
+    averageRating: "4.7",
+  },
+];
+
+import { providerServices } from "@shared/schema";
+
+export async function seedProviderServices() {
+  console.log("Seeding mock provider services for Services tab...");
+
+  // Find the first user to use as the provider
+  const existingUsers = await db.select().from(users).limit(1);
+  
+  if (existingUsers.length === 0) {
+    console.log("No users found. Skipping provider services seed.");
+    return;
+  }
+
+  const providerId = existingUsers[0].id;
+
+  // Check if we already have provider services
+  const existingServices = await db
+    .select()
+    .from(providerServices)
+    .limit(1);
+
+  if (existingServices.length > 0) {
+    console.log(`Provider services already exist (${existingServices.length} found). Skipping seed.`);
+    return;
+  }
+
+  let created = 0;
+  for (const service of mockProviderServicesData) {
+    await db.insert(providerServices).values({
+      userId: providerId,
+      serviceName: service.serviceName,
+      shortDescription: service.shortDescription,
+      description: service.description,
+      serviceType: service.serviceType,
+      price: service.price,
+      location: service.location,
+      deliveryMethod: service.deliveryMethod,
+      deliveryTimeframe: service.deliveryTimeframe,
+      whatIncluded: service.whatIncluded,
+      averageRating: service.averageRating,
+      status: "active",
+      isFeatured: created < 3, // Feature first 3 services
+    });
+    console.log(`  → Created provider service: ${service.serviceName}`);
+    created++;
+  }
+
+  console.log(`Provider services seeding complete: ${created} created.`);
+}

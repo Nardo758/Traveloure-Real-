@@ -32,6 +32,8 @@ import {
   Users,
   CheckCircle2,
   CircleDot,
+  Gauge,
+  Timer,
 } from "lucide-react";
 import { format, addDays } from "date-fns";
 
@@ -290,6 +292,48 @@ export default function ItineraryPage() {
   const totalActivities = itinerary.days.flatMap(d => d.activities).length;
   const totalCost = itinerary.days.flatMap(d => d.activities).reduce((sum, a) => sum + a.price, 0);
 
+  // Calculate total travel time from activity durations
+  const parseDuration = (duration: string): number => {
+    const match = duration.match(/(\d+(?:\.\d+)?)\s*(h|hour|min|m)/i);
+    if (!match) return 0;
+    const value = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === 'h' || unit === 'hour') return value * 60;
+    return value;
+  };
+  
+  const totalTravelMinutes = itinerary.days
+    .flatMap(d => d.activities)
+    .filter(a => a.type === 'transport')
+    .reduce((sum, a) => sum + parseDuration(a.duration), 0);
+  
+  const totalActivityMinutes = itinerary.days
+    .flatMap(d => d.activities)
+    .reduce((sum, a) => sum + parseDuration(a.duration), 0);
+  
+  const formatTravelTime = (minutes: number): string => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (hours === 0) return `${mins}m`;
+    if (mins === 0) return `${hours}h`;
+    return `${hours}h ${mins}m`;
+  };
+
+  // Calculate efficiency score (0-100)
+  // Based on: booking rate, activities per day, cost efficiency, transport optimization
+  const bookingRate = totalActivities > 0 ? totalBooked / totalActivities : 0;
+  const activitiesPerDay = itinerary.days.length > 0 ? totalActivities / itinerary.days.length : 0;
+  const transportRatio = totalActivityMinutes > 0 ? totalTravelMinutes / totalActivityMinutes : 0;
+  const costPerActivity = totalActivities > 0 ? totalCost / totalActivities : 0;
+  
+  // Efficiency factors (weighted average)
+  const efficiencyScore = totalActivities > 0 ? Math.round(
+    (bookingRate * 40) + // 40% weight on booking completion
+    (Math.min(activitiesPerDay / 5, 1) * 30) + // 30% on activities density (optimal ~5/day)
+    ((1 - Math.min(transportRatio, 0.3) / 0.3) * 20) + // 20% on minimizing transport time
+    (Math.min(200 / Math.max(costPerActivity, 1), 1) * 10) // 10% on value for money
+  ) : 0;
+
   return (
     <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900">
       <div
@@ -351,21 +395,35 @@ export default function ItineraryPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 md:px-6 -mt-8 relative z-10">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
           {[
             { label: "Total Days", value: itinerary.days.length, icon: Calendar },
             { label: "Activities", value: totalActivities, icon: Star },
             { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: CheckCircle2 },
             { label: "Total Cost", value: `$${totalCost.toLocaleString()}`, icon: DollarSign },
+            { label: "Travel Time", value: formatTravelTime(totalTravelMinutes), icon: Timer },
+            { label: "Efficiency", value: `${efficiencyScore}%`, icon: Gauge, highlight: efficiencyScore >= 70 },
           ].map((stat, index) => (
             <Card key={index} className="bg-white dark:bg-gray-800">
               <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-[#FFE3E8] dark:bg-[#FF385C]/20">
-                  <stat.icon className="w-5 h-5 text-[#FF385C]" />
+                <div className={`p-2 rounded-lg ${
+                  stat.highlight 
+                    ? "bg-green-100 dark:bg-green-900/30" 
+                    : "bg-[#FFE3E8] dark:bg-[#FF385C]/20"
+                }`}>
+                  <stat.icon className={`w-5 h-5 ${
+                    stat.highlight 
+                      ? "text-green-600 dark:text-green-400" 
+                      : "text-[#FF385C]"
+                  }`} />
                 </div>
                 <div>
                   <p className="text-xs text-[#6B7280]">{stat.label}</p>
-                  <p className="text-lg font-bold text-[#111827] dark:text-white" data-testid={`text-stat-${stat.label.toLowerCase().replace(' ', '-')}`}>
+                  <p className={`text-lg font-bold ${
+                    stat.highlight 
+                      ? "text-green-600 dark:text-green-400" 
+                      : "text-[#111827] dark:text-white"
+                  }`} data-testid={`text-stat-${stat.label.toLowerCase().replace(' ', '-')}`}>
                     {stat.value}
                   </p>
                 </div>

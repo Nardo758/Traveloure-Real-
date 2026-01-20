@@ -197,6 +197,7 @@ export function FlightSearch({
   const [returnDate, setReturnDate] = useState(
     endDate ? format(endDate, "yyyy-MM-dd") : defaultReturn
   );
+  const [tripType, setTripType] = useState<"roundtrip" | "oneway">("roundtrip");
   const [adults, setAdults] = useState(travelers);
   const [detectedDestination, setDetectedDestination] = useState<LocationSuggestion | null>(null);
   const [detectedOrigin, setDetectedOrigin] = useState<LocationSuggestion | null>(null);
@@ -336,8 +337,9 @@ export function FlightSearch({
       originCode,
       destinationCode,
       departureDate,
-      returnDate,
+      tripType === "roundtrip" ? returnDate : null,
       adults,
+      tripType,
     ],
     enabled: canSearch,
     queryFn: async () => {
@@ -347,7 +349,7 @@ export function FlightSearch({
         departureDate,
         adults: adults.toString(),
       });
-      if (returnDate) params.append("returnDate", returnDate);
+      if (tripType === "roundtrip" && returnDate) params.append("returnDate", returnDate);
 
       const res = await fetch(`/api/cache/flights?${params}`, {
         credentials: "include",
@@ -577,6 +579,32 @@ export function FlightSearch({
                 </Popover>
               </div>
 
+              <div className="space-y-2 col-span-2 md:col-span-1">
+                <Label>Trip Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={tripType === "roundtrip" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTripType("roundtrip")}
+                    className={cn("toggle-elevate", tripType === "roundtrip" && "toggle-elevated")}
+                    data-testid="button-trip-roundtrip"
+                  >
+                    Round Trip
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={tripType === "oneway" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setTripType("oneway")}
+                    className={cn("toggle-elevate", tripType === "oneway" && "toggle-elevated")}
+                    data-testid="button-trip-oneway"
+                  >
+                    One Way
+                  </Button>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label>Departure Date</Label>
                 <Input
@@ -588,15 +616,17 @@ export function FlightSearch({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Return Date (Optional)</Label>
-                <Input
-                  type="date"
-                  value={returnDate}
-                  onChange={(e) => setReturnDate(e.target.value)}
-                  data-testid="input-flight-return-initial"
-                />
-              </div>
+              {tripType === "roundtrip" && (
+                <div className="space-y-2">
+                  <Label>Return Date</Label>
+                  <Input
+                    type="date"
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    data-testid="input-flight-return-initial"
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -720,6 +750,31 @@ export function FlightSearch({
                     </Popover>
                   </div>
                   <div className="space-y-2">
+                    <Label>Trip Type</Label>
+                    <div className="flex gap-1">
+                      <Button
+                        type="button"
+                        variant={tripType === "roundtrip" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setTripType("roundtrip")}
+                        className={cn("text-xs toggle-elevate", tripType === "roundtrip" && "toggle-elevated")}
+                        data-testid="button-modify-trip-roundtrip"
+                      >
+                        Round
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={tripType === "oneway" ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setTripType("oneway")}
+                        className={cn("text-xs toggle-elevate", tripType === "oneway" && "toggle-elevated")}
+                        data-testid="button-modify-trip-oneway"
+                      >
+                        One Way
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                     <Label>Departure</Label>
                     <Input
                       type="date"
@@ -728,15 +783,17 @@ export function FlightSearch({
                       data-testid="input-flight-departure"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Return</Label>
-                    <Input
-                      type="date"
-                      value={returnDate}
-                      onChange={(e) => setReturnDate(e.target.value)}
-                      data-testid="input-flight-return"
-                    />
-                  </div>
+                  {tripType === "roundtrip" && (
+                    <div className="space-y-2">
+                      <Label>Return</Label>
+                      <Input
+                        type="date"
+                        value={returnDate}
+                        onChange={(e) => setReturnDate(e.target.value)}
+                        data-testid="input-flight-return"
+                      />
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label>Travelers</Label>
                     <Input

@@ -1463,6 +1463,7 @@ export default function ExperienceTemplatePage() {
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
           <Panel defaultSize={60} minSize={40} maxSize={80} className="flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto">
           {/* Hero Section with ribbon bar */}
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
@@ -2537,6 +2538,62 @@ export default function ExperienceTemplatePage() {
           )}
         </div>
         
+          </div>
+          
+          {/* Persistent Cart Summary - stays visible while scrolling */}
+          {cart.length > 0 && (
+            <div className="flex-shrink-0 border-t bg-white dark:bg-gray-800 px-4 py-3 shadow-lg" data-testid="cart-summary-persistent">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <Badge variant="secondary" className="flex-shrink-0" data-testid="badge-cart-count">
+                    {cart.length} item{cart.length !== 1 ? 's' : ''}
+                  </Badge>
+                  <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+                    {cart.slice(0, 3).map((item) => (
+                      <Badge 
+                        key={item.id} 
+                        variant="outline" 
+                        className="flex-shrink-0 max-w-[120px] truncate text-xs"
+                        data-testid={`badge-cart-item-${item.id}`}
+                      >
+                        {item.name}
+                      </Badge>
+                    ))}
+                    {cart.length > 3 && (
+                      <Badge variant="outline" className="flex-shrink-0 text-xs">
+                        +{cart.length - 3} more
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <span className="font-bold text-lg" data-testid="text-cart-total-persistent">
+                    ${cartTotal.toLocaleString()}
+                  </span>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      sessionStorage.setItem("experienceContext", JSON.stringify({
+                        title: `${experienceType?.name} Experience`,
+                        experienceType: experienceType?.name,
+                        experienceSlug: slug,
+                        destination,
+                        startDate: startDate?.toISOString().split('T')[0],
+                        endDate: endDate?.toISOString().split('T')[0],
+                        travelers: 2
+                      }));
+                      setLocation("/cart");
+                    }}
+                    className="bg-[#FF385C]"
+                    data-testid="button-view-cart-persistent"
+                  >
+                    <ShoppingCart className="w-4 h-4 mr-1" />
+                    View Cart
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
           </Panel>
 
           <PanelResizeHandle className="w-2 bg-gray-200 dark:bg-gray-700 hover:bg-[#FF385C] transition-colors cursor-col-resize flex items-center justify-center">
