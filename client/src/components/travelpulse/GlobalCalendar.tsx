@@ -443,62 +443,62 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const filteredEvents = filterEvents(allEvents);
 
   return (
-    <div className="flex gap-6" data-testid="global-calendar">
-      <div className="flex-1 space-y-6 min-w-0">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleBackToYear}
-              data-testid="button-back-to-year"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-muted-foreground" />
-                Where to Go in {getFilterDescription()}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                AI-powered recommendations based on weather, events, and crowd levels
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setView("month-grid")}
-              data-testid="button-calendar-view"
-            >
-              <CalendarDays className="h-4 w-4 mr-1" />
-              Calendar
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handlePrevMonth}
-              data-testid="button-prev-month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-[120px] text-center font-medium">
-              {monthName}
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleNextMonth}
-              data-testid="button-next-month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+    <div className="space-y-6" data-testid="global-calendar">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleBackToYear}
+            data-testid="button-back-to-year"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              Where to Go in {getFilterDescription()}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              AI-powered recommendations based on weather, events, and crowd levels
+            </p>
           </div>
         </div>
+      </div>
 
-        <ScrollArea className="w-full">
+      <div className="hidden lg:block float-right ml-6 mb-4">
+        <CompactYearCalendar
+          year={currentYear}
+          monthSummaries={yearData?.summaries || []}
+          selectedMonth={selectedMonth}
+          selectedWeek={selectedWeek}
+          selectedDay={selectedDay}
+          filterMode={filterMode}
+          onFilterModeChange={(mode) => {
+            setFilterMode(mode);
+            if (mode === "month") {
+              setSelectedWeek(undefined);
+              setSelectedDay(undefined);
+            }
+          }}
+          onMonthSelect={(month) => {
+            setSelectedMonth(month);
+            setSelectedWeek(undefined);
+            setSelectedDay(undefined);
+          }}
+          onWeekSelect={(month, week) => {
+            setSelectedMonth(month);
+            setSelectedWeek(week);
+            setSelectedDay(undefined);
+          }}
+          onDaySelect={(month, day) => {
+            setSelectedMonth(month);
+            setSelectedDay(day);
+          }}
+        />
+      </div>
+
+      <ScrollArea className="w-full">
           <div className="flex gap-2 pb-2">
             {months.map((month, idx) => (
               <Button
@@ -619,39 +619,6 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
           </Card>
         )}
-      </div>
-
-      <div className="hidden lg:block w-72 flex-shrink-0 sticky top-4 self-start">
-        <CompactYearCalendar
-          year={currentYear}
-          monthSummaries={yearData?.summaries || []}
-          selectedMonth={selectedMonth}
-          selectedWeek={selectedWeek}
-          selectedDay={selectedDay}
-          filterMode={filterMode}
-          onFilterModeChange={(mode) => {
-            setFilterMode(mode);
-            if (mode === "month") {
-              setSelectedWeek(undefined);
-              setSelectedDay(undefined);
-            }
-          }}
-          onMonthSelect={(month) => {
-            setSelectedMonth(month);
-            setSelectedWeek(undefined);
-            setSelectedDay(undefined);
-          }}
-          onWeekSelect={(month, week) => {
-            setSelectedMonth(month);
-            setSelectedWeek(week);
-            setSelectedDay(undefined);
-          }}
-          onDaySelect={(month, day) => {
-            setSelectedMonth(month);
-            setSelectedDay(day);
-          }}
-        />
-      </div>
     </div>
   );
 }
