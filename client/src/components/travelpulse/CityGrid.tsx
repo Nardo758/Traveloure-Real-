@@ -122,6 +122,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                 "bg-gradient-to-r text-white border-0 font-bold",
                 getPulseGradient(city.pulseScore)
               )}
+              data-testid={`pulse-score-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
             >
               <Zap className="h-3 w-3 mr-1" />
               {city.pulseScore}
@@ -135,7 +136,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
           </div>
 
           <div className="absolute bottom-3 left-3 right-3">
-            <h3 className="text-xl font-bold text-white mb-1">{city.cityName}</h3>
+            <h3 className="text-xl font-bold text-white mb-1" data-testid={`city-name-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}>{city.cityName}</h3>
             <div className="flex items-center gap-2 text-white/80 text-sm">
               <MapPin className="h-3 w-3" />
               <span>{city.country}</span>
