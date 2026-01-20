@@ -157,6 +157,9 @@ class ContentEnrichmentService {
           reason: 'Must-see attraction recommended by AI',
           source: 'grok'
         }));
+      } else {
+        // Fallback: Include AI recommendation even without SERP data
+        enriched.push(this.createAIOnlyRecommendation(name, 'attraction', 'Must-see attraction recommended by AI', city));
       }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
@@ -181,11 +184,76 @@ class ContentEnrichmentService {
           priceRange: gem.priceRange,
           source: 'grok'
         }));
+      } else {
+        // Fallback: Include AI recommendation even without SERP data
+        enriched.push(this.createAIOnlyRecommendation(gem.name, gem.type, gem.whySpecial, city, gem.priceRange));
       }
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     return enriched;
+  }
+
+  private createAIOnlyRecommendation(
+    name: string,
+    type: string,
+    reason: string,
+    city: string,
+    priceRange?: string
+  ): EnrichedRecommendation {
+    // Map to valid type enum
+    const validType = this.mapToValidType(type);
+    
+    return {
+      id: `ai-${name.toLowerCase().replace(/\s+/g, '-')}`,
+      name,
+      type: validType,
+      rating: undefined,
+      reviewCount: undefined,
+      priceLevel: priceRange || undefined,
+      address: city,
+      phone: undefined,
+      website: undefined,
+      hours: undefined,
+      thumbnail: undefined,
+      coordinates: undefined,
+      source: 'serp', // Using 'serp' as fallback since 'grok' is not a valid source type
+      aiReason: reason,
+      aiPriceRange: priceRange,
+      matchConfidence: 'high',
+      actionType: this.inferActionType(type),
+      bookingOptions: this.createFallbackBookingOptions(name, type),
+    };
+  }
+
+  private mapToValidType(type: string): 'restaurant' | 'attraction' | 'nightlife' | 'hotel' | 'activity' {
+    const normalizedType = type.toLowerCase();
+    if (['restaurant', 'cafe', 'food', 'dining'].includes(normalizedType)) return 'restaurant';
+    if (['bar', 'club', 'nightlife'].includes(normalizedType)) return 'nightlife';
+    if (['hotel', 'accommodation'].includes(normalizedType)) return 'hotel';
+    if (['activity', 'tour', 'experience'].includes(normalizedType)) return 'activity';
+    return 'attraction'; // Default for neighborhood, landmark, etc.
+  }
+
+  private createFallbackBookingOptions(name: string, type: string): EnrichedRecommendation['bookingOptions'] {
+    const options: EnrichedRecommendation['bookingOptions'] = [];
+    
+    // Google Maps search as universal fallback
+    options.push({
+      platform: 'Google Maps',
+      url: `https://www.google.com/maps/search/${encodeURIComponent(name)}`,
+      type: 'website',
+    });
+
+    if (type === 'attraction' || type === 'neighborhood') {
+      options.push({
+        platform: 'Viator',
+        url: `https://www.viator.com/searchResults/all?text=${encodeURIComponent(name)}`,
+        type: 'tour',
+      });
+    }
+
+    return options;
   }
 
   private toEnrichedRecommendation(
