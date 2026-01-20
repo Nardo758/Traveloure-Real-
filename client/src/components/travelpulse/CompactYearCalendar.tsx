@@ -346,7 +346,7 @@ export function CompactYearCalendar({
   
   if (filterMode === "day" && selectedDay) {
     return (
-      <Card className="p-3 w-[432px]" data-testid="compact-calendar-day-view">
+      <Card className="p-3 w-[648px]" data-testid="compact-calendar-day-view">
         <DayZoomView
           year={year}
           month={activeMonth}
@@ -376,7 +376,7 @@ export function CompactYearCalendar({
   
   if (filterMode === "week" && selectedWeek) {
     return (
-      <Card className="p-3 w-[432px]" data-testid="compact-calendar-week-view">
+      <Card className="p-3 w-[648px]" data-testid="compact-calendar-week-view">
         <WeekZoomView
           year={year}
           month={activeMonth}
@@ -398,7 +398,7 @@ export function CompactYearCalendar({
   }
 
   return (
-    <Card className="p-3 w-[432px]" data-testid="compact-year-calendar">
+    <Card className="p-3 w-[648px]" data-testid="compact-year-calendar">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
           <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
@@ -436,7 +436,7 @@ export function CompactYearCalendar({
         </div>
       </div>
       
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-4 gap-1.5">
         {monthAbbr.map((name, idx) => {
           const month = idx + 1;
           const summary = monthSummaries.find(s => s.month === month);

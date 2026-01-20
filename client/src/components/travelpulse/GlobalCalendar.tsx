@@ -27,6 +27,8 @@ import {
   Plane,
   Grid3X3,
   CalendarDays,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Link } from "wouter";
 import { CityDetailView } from "./CityDetailView";
@@ -181,6 +183,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [filterMode, setFilterMode] = useState<FilterMode>("month");
   const [selectedWeek, setSelectedWeek] = useState<number | undefined>(undefined);
   const [selectedDay, setSelectedDay] = useState<number | undefined>(undefined);
+  const [calendarVisible, setCalendarVisible] = useState(true);
 
   const { data, isLoading, error, refetch } = useQuery<GlobalCalendarResponse>({
     queryKey: [`/api/travelpulse/global-calendar?month=${selectedMonth}&vibe=${selectedVibe}&limit=30`],
@@ -444,52 +447,83 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 
   return (
     <div data-testid="global-calendar" className="after:block after:clear-both after:content-['']">
-      <div className="hidden lg:block float-right ml-6 mb-4">
-        <CompactYearCalendar
-          year={currentYear}
-          monthSummaries={yearData?.summaries || []}
-          selectedMonth={selectedMonth}
-          selectedWeek={selectedWeek}
-          selectedDay={selectedDay}
-          filterMode={filterMode}
-          onFilterModeChange={(mode) => {
-            setFilterMode(mode);
-            if (mode === "month") {
+      {/* Calendar container - only float when calendar is visible */}
+      {calendarVisible && (
+        <div className="hidden lg:block float-right ml-6 mb-4">
+          <div className="flex justify-end mb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCalendarVisible(false)}
+              data-testid="button-toggle-calendar"
+            >
+              <EyeOff className="h-4 w-4 mr-1" />
+              Hide Calendar
+            </Button>
+          </div>
+          <CompactYearCalendar
+            year={currentYear}
+            monthSummaries={yearData?.summaries || []}
+            selectedMonth={selectedMonth}
+            selectedWeek={selectedWeek}
+            selectedDay={selectedDay}
+            filterMode={filterMode}
+            onFilterModeChange={(mode) => {
+              setFilterMode(mode);
+              if (mode === "month") {
+                setSelectedWeek(undefined);
+                setSelectedDay(undefined);
+              } else if (mode === "week") {
+                setSelectedWeek(1);
+                setSelectedDay(undefined);
+              } else if (mode === "day") {
+                setSelectedDay(1);
+                setSelectedWeek(undefined);
+              }
+            }}
+            onMonthSelect={(month) => {
+              setSelectedMonth(month);
               setSelectedWeek(undefined);
               setSelectedDay(undefined);
-            } else if (mode === "week") {
-              setSelectedWeek(1);
+            }}
+            onWeekSelect={(month, week) => {
+              setSelectedMonth(month);
+              setSelectedWeek(week);
               setSelectedDay(undefined);
-            } else if (mode === "day") {
-              setSelectedDay(1);
-              setSelectedWeek(undefined);
-            }
-          }}
-          onMonthSelect={(month) => {
-            setSelectedMonth(month);
-            setSelectedWeek(undefined);
-            setSelectedDay(undefined);
-          }}
-          onWeekSelect={(month, week) => {
-            setSelectedMonth(month);
-            setSelectedWeek(week);
-            setSelectedDay(undefined);
-          }}
-          onDaySelect={(month, day) => {
-            setSelectedMonth(month);
-            setSelectedDay(day);
-          }}
-        />
-      </div>
+            }}
+            onDaySelect={(month, day) => {
+              setSelectedMonth(month);
+              setSelectedDay(day);
+            }}
+          />
+        </div>
+      )}
 
       <div className="mb-6">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-muted-foreground" />
-          Where to Go
-        </h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          AI-powered recommendations based on weather, events, and crowd levels
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              Where to Go
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              AI-powered recommendations based on weather, events, and crowd levels
+            </p>
+          </div>
+          {/* Show calendar toggle button inline when calendar is hidden */}
+          {!calendarVisible && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCalendarVisible(true)}
+              className="hidden lg:flex"
+              data-testid="button-toggle-calendar"
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              Show Calendar
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -531,6 +565,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               cities={grouped.best}
               rating="best"
               onCityClick={handleCityClick}
+              calendarVisible={calendarVisible}
             />
           )}
 
@@ -541,6 +576,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               cities={grouped.good}
               rating="good"
               onCityClick={handleCityClick}
+              calendarVisible={calendarVisible}
             />
           )}
 
@@ -551,6 +587,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               cities={grouped.average}
               rating="average"
               onCityClick={handleCityClick}
+              calendarVisible={calendarVisible}
             />
           )}
 
@@ -673,12 +710,14 @@ function CitySection({
   cities,
   rating,
   onCityClick,
+  calendarVisible = true,
 }: {
   title: string;
   subtitle: string;
   cities: GlobalCity[];
   rating: string;
   onCityClick?: (cityName: string, country: string) => void;
+  calendarVisible?: boolean;
 }) {
   // Deduplicate cities by name, keeping first occurrence
   const seenNames = new Set<string>();
@@ -688,9 +727,12 @@ function CitySection({
     return true;
   });
   
-  const firstRowCities = uniqueCities.slice(0, 3);
-  const secondRowCities = uniqueCities.slice(3, 7);
-  const thirdRowCities = uniqueCities.slice(7, 11);
+  // When calendar is visible: 2 cards in first row (beside wider 648px calendar)
+  // When calendar is hidden: 4 cards in first row (full width)
+  const firstRowCount = calendarVisible ? 2 : 4;
+  const firstRowCities = uniqueCities.slice(0, firstRowCount);
+  const secondRowCities = uniqueCities.slice(firstRowCount, firstRowCount + 4);
+  const thirdRowCities = uniqueCities.slice(firstRowCount + 4, firstRowCount + 8);
   
   return (
     <div>
@@ -703,8 +745,8 @@ function CitySection({
         </h3>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      {/* First row: 3 cards to wrap beside calendar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+      {/* First row: 2 cards when calendar visible (beside 648px calendar), 4 cards when hidden */}
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${calendarVisible ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-4 mb-4`}>
         {firstRowCities.map((city) => {
           const experienceSuggestions = getExperienceSuggestionsForCity(city);
           const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
