@@ -404,36 +404,33 @@ export function CompactYearCalendar({
           <span className="text-xs font-semibold">{year}</span>
         </div>
         
-        <div className="flex gap-0.5">
+        <div className="flex gap-1">
           <Button
-            variant={filterMode === "month" ? "default" : "ghost"}
-            size="icon"
-            className="h-6 w-6"
+            variant={filterMode === "month" ? "default" : "outline"}
+            size="sm"
             onClick={() => onFilterModeChange("month")}
-            title="Filter by Month"
             data-testid="button-filter-month"
           >
-            <Layers className="h-3 w-3" />
+            <Layers className="h-3 w-3 mr-1" />
+            Month
           </Button>
           <Button
-            variant={filterMode === "week" ? "default" : "ghost"}
-            size="icon"
-            className="h-6 w-6"
+            variant={filterMode === "week" ? "default" : "outline"}
+            size="sm"
             onClick={() => onFilterModeChange("week")}
-            title="Filter by Week"
             data-testid="button-filter-week"
           >
-            <CalendarRange className="h-3 w-3" />
+            <CalendarRange className="h-3 w-3 mr-1" />
+            Week
           </Button>
           <Button
-            variant={filterMode === "day" ? "default" : "ghost"}
-            size="icon"
-            className="h-6 w-6"
+            variant={filterMode === "day" ? "default" : "outline"}
+            size="sm"
             onClick={() => onFilterModeChange("day")}
-            title="Filter by Day"
             data-testid="button-filter-day"
           >
-            <CalendarDays className="h-3 w-3" />
+            <CalendarDays className="h-3 w-3 mr-1" />
+            Day
           </Button>
         </div>
       </div>
@@ -494,8 +491,22 @@ export function CompactYearCalendar({
                 />
               )}
               
+              {summary && summary.eventCount > 0 && (
+                <div className="mt-1">
+                  <span 
+                    className="text-[7px] text-muted-foreground"
+                    data-testid={`text-event-count-${month}`}
+                  >
+                    {summary.eventCount} {summary.eventCount === 1 ? 'event' : 'events'}
+                  </span>
+                </div>
+              )}
               {summary && summary.highlights && summary.highlights.length > 0 && (
-                <div className="mt-1 text-[7px] text-muted-foreground truncate">
+                <div 
+                  className="mt-0.5 text-[7px] text-foreground font-medium truncate" 
+                  title={summary.highlights[0]?.name}
+                  data-testid={`text-highlight-${month}`}
+                >
                   {summary.highlights[0]?.name}
                 </div>
               )}
