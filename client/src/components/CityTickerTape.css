@@ -1,0 +1,30 @@
+.ticker-wrapper {
+  overflow: hidden;
+  width: 100%;
+}
+
+.ticker-content {
+  display: flex;
+  gap: 1rem;
+  animation: ticker-scroll 30s linear infinite;
+  width: fit-content;
+}
+
+@keyframes ticker-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.ticker-content:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-content {
+    animation: none;
+  }
+}
