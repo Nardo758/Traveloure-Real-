@@ -444,7 +444,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 
   return (
     <div className="space-y-6" data-testid="global-calendar">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row items-start justify-between gap-6">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -464,32 +464,41 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             </p>
           </div>
         </div>
+
+        <div className="hidden lg:block flex-shrink-0">
+          <CompactYearCalendar
+            year={currentYear}
+            monthSummaries={yearData?.summaries || []}
+            selectedMonth={selectedMonth}
+            selectedWeek={selectedWeek}
+            selectedDay={selectedDay}
+            filterMode={filterMode}
+            onFilterModeChange={(mode) => {
+              setFilterMode(mode);
+              if (mode === "month") {
+                setSelectedWeek(undefined);
+                setSelectedDay(undefined);
+              }
+            }}
+            onMonthSelect={(month) => {
+              setSelectedMonth(month);
+              setSelectedWeek(undefined);
+              setSelectedDay(undefined);
+            }}
+            onWeekSelect={(month, week) => {
+              setSelectedMonth(month);
+              setSelectedWeek(week);
+              setSelectedDay(undefined);
+            }}
+            onDaySelect={(month, day) => {
+              setSelectedMonth(month);
+              setSelectedDay(day);
+            }}
+          />
+        </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1 min-w-0 space-y-4">
-          <ScrollArea className="w-full">
-          <div className="flex gap-2 pb-2">
-            {months.map((month, idx) => (
-              <Button
-                key={month}
-                variant={selectedMonth === idx + 1 ? "default" : "outline"}
-                size="sm"
-                onClick={() => {
-                  setSelectedMonth(idx + 1);
-                  setSelectedWeek(undefined);
-                  setSelectedDay(undefined);
-                }}
-                className="flex-shrink-0"
-                data-testid={`button-month-${idx + 1}`}
-              >
-                {month.slice(0, 3)}
-              </Button>
-            ))}
-          </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
-
+      <div className="space-y-4">
         <ScrollArea className="w-full">
           <div className="flex gap-2 pb-2">
             {vibeFilters.map((vibe) => (
@@ -589,39 +598,6 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
             </Card>
           )}
-        </div>
-
-        <div className="hidden lg:block flex-shrink-0">
-          <CompactYearCalendar
-            year={currentYear}
-            monthSummaries={yearData?.summaries || []}
-            selectedMonth={selectedMonth}
-            selectedWeek={selectedWeek}
-            selectedDay={selectedDay}
-            filterMode={filterMode}
-            onFilterModeChange={(mode) => {
-              setFilterMode(mode);
-              if (mode === "month") {
-                setSelectedWeek(undefined);
-                setSelectedDay(undefined);
-              }
-            }}
-            onMonthSelect={(month) => {
-              setSelectedMonth(month);
-              setSelectedWeek(undefined);
-              setSelectedDay(undefined);
-            }}
-            onWeekSelect={(month, week) => {
-              setSelectedMonth(month);
-              setSelectedWeek(week);
-              setSelectedDay(undefined);
-            }}
-            onDaySelect={(month, day) => {
-              setSelectedMonth(month);
-              setSelectedDay(day);
-            }}
-          />
-        </div>
       </div>
     </div>
   );

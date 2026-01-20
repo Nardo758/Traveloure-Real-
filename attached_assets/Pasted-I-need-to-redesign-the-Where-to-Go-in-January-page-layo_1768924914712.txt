@@ -1,0 +1,40 @@
+I need to redesign the "Where to Go in January" page layout to make the calendar the primary filtering interface. Here are the specific changes:
+Current State
+Monthly filter buttons (Jan, Feb, Mar, Apr, etc.) at the top
+Destination cards in a grid layout on the left
+Calendar widget isolated on the right side
+Desired State
+1. Remove Monthly Button Filters
+Eliminate the horizontal month selector buttons (Jan-Dec)
+The calendar itself will become the primary date/month selection mechanism
+2. Integrated Calendar-Centric Layout
+Create a new layout where:
+Calendar Position: Move the calendar from the right sidebar to be prominently integrated into the main content area
+Layout Options (choose the most elegant):
+
+
+
+
+
+
+Option A: Calendar at top center, destination cards flow below in responsive grid
+Option B: Calendar left side (40% width), destination cards right side (60% width) in scrollable column
+Option C: Calendar floating/sticky at top, cards wrap around it as user scrolls
+
+4. Preserve Existing Functionality
+Keep all category filters (All Destinations, Romantic, Adventure, Cultural, Beach, Foodie, Nightlife)
+Maintain the destination card structure with trending indicators, tags, and "Plan an experience" buttons
+Keep the mini-calendar grid showing all 12 months for quick reference
+5. Responsive Behavior
+Mobile: Calendar should collapse to a compact month picker
+Tablet: Hybrid layout with calendar above cards
+Desktop: Full integrated layout as described above
+Technical Considerations
+Use the existing calendar component but integrate it into the main layout grid
+Update state management so calendar selection triggers destination filtering
+Ensure smooth transitions when switching months
+Maintain the existing TypeScript/React structure
+Visual Design Goals
+Create a more cohesive, unified interface where the calendar feels like part of the content, not a separate widget
+Reduce visual clutter by eliminating redundant month filters
+Make the temporal/seasonal aspect of travel planning more intuitive and interactive
