@@ -4865,6 +4865,112 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // ============================================
+  // TRAVELPULSE CITY-LEVEL ENDPOINTS
+  // ============================================
+
+  // Get all trending cities for the grid view
+  app.get("/api/travelpulse/cities", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const cities = await travelPulseService.getTrendingCities(limit);
+      res.json({ cities, count: cities.length });
+    } catch (error: any) {
+      console.error("Error fetching trending cities:", error);
+      res.status(500).json({ message: "Failed to fetch trending cities", error: error.message });
+    }
+  });
+
+  // Get full city intelligence (city details + hidden gems + alerts + happening now + activity)
+  app.get("/api/travelpulse/cities/:cityName", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const intelligence = await travelPulseService.getCityIntelligence(cityName);
+      
+      if (!intelligence) {
+        return res.status(404).json({ message: "City not found" });
+      }
+      
+      res.json(intelligence);
+    } catch (error: any) {
+      console.error("Error fetching city intelligence:", error);
+      res.status(500).json({ message: "Failed to fetch city intelligence", error: error.message });
+    }
+  });
+
+  // Get hidden gems for a city
+  app.get("/api/travelpulse/cities/:cityName/hidden-gems", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const gems = await travelPulseService.getHiddenGems(cityName, limit);
+      res.json({ gems, city: cityName, count: gems.length });
+    } catch (error: any) {
+      console.error("Error fetching hidden gems:", error);
+      res.status(500).json({ message: "Failed to fetch hidden gems", error: error.message });
+    }
+  });
+
+  // Get live activity for a city
+  app.get("/api/travelpulse/cities/:cityName/activity", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const activities = await travelPulseService.getLiveActivity(cityName, limit);
+      res.json({ activities, city: cityName, count: activities.length });
+    } catch (error: any) {
+      console.error("Error fetching live activity:", error);
+      res.status(500).json({ message: "Failed to fetch live activity", error: error.message });
+    }
+  });
+
+  // Get alerts for a city
+  app.get("/api/travelpulse/cities/:cityName/alerts", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const alerts = await travelPulseService.getCityAlerts(cityName);
+      res.json({ alerts, city: cityName, count: alerts.length });
+    } catch (error: any) {
+      console.error("Error fetching city alerts:", error);
+      res.status(500).json({ message: "Failed to fetch city alerts", error: error.message });
+    }
+  });
+
+  // Get happening now events for a city
+  app.get("/api/travelpulse/cities/:cityName/happening-now", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const events = await travelPulseService.getHappeningNow(cityName);
+      res.json({ events, city: cityName, count: events.length });
+    } catch (error: any) {
+      console.error("Error fetching happening now events:", error);
+      res.status(500).json({ message: "Failed to fetch happening now events", error: error.message });
+    }
+  });
+
+  // Get global live activity feed (across all cities)
+  app.get("/api/travelpulse/activity/global", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const activities = await travelPulseService.getGlobalLiveActivity(limit);
+      res.json({ activities, count: activities.length });
+    } catch (error: any) {
+      console.error("Error fetching global activity:", error);
+      res.status(500).json({ message: "Failed to fetch global activity", error: error.message });
+    }
+  });
+
+  // Seed cities data (for initial setup)
+  app.post("/api/travelpulse/seed", async (req, res) => {
+    try {
+      await travelPulseService.seedTrendingCities();
+      res.json({ message: "Cities seeded successfully" });
+    } catch (error: any) {
+      console.error("Error seeding cities:", error);
+      res.status(500).json({ message: "Failed to seed cities", error: error.message });
+    }
+  });
+
   return httpServer;
 }
 

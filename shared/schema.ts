@@ -1811,3 +1811,215 @@ export type TravelPulseCrowdForecast = typeof travelPulseCrowdForecasts.$inferSe
 export type InsertTravelPulseCrowdForecast = z.infer<typeof insertTravelPulseCrowdForecastSchema>;
 export type TravelPulseCalendarEvent = typeof travelPulseCalendarEvents.$inferSelect;
 export type InsertTravelPulseCalendarEvent = z.infer<typeof insertTravelPulseCalendarEventSchema>;
+
+// ============================================
+// TRAVELPULSE EXTENDED - Cities, Hidden Gems, Live Feed
+// ============================================
+
+// Vibe tags for cities
+export const cityVibeTagsEnum = ["romantic", "adventure", "foodie", "nightlife", "cultural", "relaxation", "family", "budget", "luxury", "nature"] as const;
+
+// City Pulse - Aggregated city-level intelligence
+export const travelPulseCities = pgTable("travel_pulse_cities", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  // City identification
+  cityName: varchar("city_name", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  countryCode: varchar("country_code", { length: 3 }),
+  region: varchar("region", { length: 100 }),
+  timezone: varchar("timezone", { length: 50 }),
+  
+  // Coordinates for map
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  
+  // Pulse metrics
+  pulseScore: integer("pulse_score").default(0), // 0-100 overall activity score
+  activeTravelers: integer("active_travelers").default(0), // Currently active travelers
+  trendingScore: integer("trending_score").default(0), // How hot is it trending
+  crowdLevel: varchar("crowd_level", { length: 20 }).default("moderate"), // quiet, moderate, busy, packed
+  
+  // Vibe and highlights
+  vibeTags: jsonb("vibe_tags").default([]), // Array of vibe tags
+  currentHighlight: text("current_highlight"), // e.g., "Cherry Blossom Season"
+  highlightEmoji: varchar("highlight_emoji", { length: 10 }),
+  
+  // Weather and conditions
+  currentWeather: jsonb("current_weather").default({}), // temp, conditions, etc.
+  weatherScore: integer("weather_score").default(50), // 0-100 how good is weather for travel
+  
+  // Price trends
+  avgHotelPrice: decimal("avg_hotel_price", { precision: 10, scale: 2 }),
+  priceChange: decimal("price_change", { precision: 5, scale: 2 }), // % change from last week
+  priceTrend: varchar("price_trend", { length: 20 }), // up, down, stable
+  dealAlert: text("deal_alert"), // e.g., "Hotels dropped 30%!"
+  
+  // Stats
+  totalTrendingSpots: integer("total_trending_spots").default(0),
+  totalHiddenGems: integer("total_hidden_gems").default(0),
+  totalAlerts: integer("total_alerts").default(0),
+  
+  // Images
+  imageUrl: text("image_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  
+  // Timestamps
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Hidden Gems - Local favorites tourists haven't discovered
+export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  // Location
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  placeName: varchar("place_name", { length: 200 }).notNull(),
+  placeType: varchar("place_type", { length: 50 }), // restaurant, cafe, attraction, etc.
+  address: text("address"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  
+  // Gem metrics
+  localRating: decimal("local_rating", { precision: 3, scale: 2 }), // How locals rate it
+  touristMentions: integer("tourist_mentions").default(0), // Low = more hidden
+  localMentions: integer("local_mentions").default(0), // High = local favorite
+  gemScore: integer("gem_score").default(0), // 0-100 how "hidden" and good it is
+  
+  // Discovery status
+  discoveryStatus: varchar("discovery_status", { length: 20 }).default("hidden"), // hidden, emerging, discovered
+  daysUntilMainstream: integer("days_until_mainstream"),
+  
+  // Details
+  description: text("description"),
+  whyLocalsLoveIt: text("why_locals_love_it"),
+  bestFor: jsonb("best_for").default([]), // Array of use cases
+  priceRange: varchar("price_range", { length: 10 }), // $, $$, $$$, $$$$
+  
+  // Media
+  imageUrl: text("image_url"),
+  
+  // Timestamps
+  detectedAt: timestamp("detected_at").defaultNow(),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+// Live Activity Feed - Real-time traveler activity
+export const travelPulseLiveActivity = pgTable("travel_pulse_live_activity", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  // Location
+  city: varchar("city", { length: 100 }).notNull(),
+  placeName: varchar("place_name", { length: 200 }),
+  
+  // Activity details
+  activityType: varchar("activity_type", { length: 50 }).notNull(), // check_in, discovery, review, photo, booking
+  activityText: text("activity_text").notNull(), // e.g., "discovered a hidden gem"
+  activityEmoji: varchar("activity_emoji", { length: 10 }),
+  
+  // User (anonymized)
+  userName: varchar("user_name", { length: 50 }), // First name only or pseudonym
+  userAvatar: text("user_avatar"),
+  
+  // Engagement
+  likesCount: integer("likes_count").default(0),
+  
+  // Timestamps
+  occurredAt: timestamp("occurred_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // Activity feed items expire
+});
+
+// User Discovery Scores - Gamification
+export const travelPulseDiscoveryScores = pgTable("travel_pulse_discovery_scores", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id", { length: 255 }).notNull(),
+  
+  // Scores
+  totalDiscoveryScore: integer("total_discovery_score").default(0),
+  hiddenGemsFound: integer("hidden_gems_found").default(0),
+  emergingSpotsVisited: integer("emerging_spots_visited").default(0),
+  tipsContributed: integer("tips_contributed").default(0),
+  
+  // Badges
+  badges: jsonb("badges").default([]), // Array of badge objects
+  
+  // Rank
+  rank: varchar("rank", { length: 50 }).default("Explorer"), // Explorer, Pathfinder, Pioneer, Legend
+  
+  // Timestamps
+  lastActivityAt: timestamp("last_activity_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// City Alerts - Safety, weather, events
+export const travelPulseCityAlerts = pgTable("travel_pulse_city_alerts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  city: varchar("city", { length: 100 }).notNull(),
+  alertType: varchar("alert_type", { length: 50 }).notNull(), // safety, weather, event, price, crowd
+  severity: varchar("severity", { length: 20 }).default("info"), // info, warning, critical
+  
+  title: varchar("title", { length: 200 }).notNull(),
+  message: text("message").notNull(),
+  emoji: varchar("emoji", { length: 10 }),
+  
+  actionUrl: text("action_url"),
+  actionText: varchar("action_text", { length: 50 }),
+  
+  isActive: boolean("is_active").default(true),
+  startsAt: timestamp("starts_at"),
+  endsAt: timestamp("ends_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// What's Happening Now - Live events in cities
+export const travelPulseHappeningNow = pgTable("travel_pulse_happening_now", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  city: varchar("city", { length: 100 }).notNull(),
+  eventType: varchar("event_type", { length: 50 }).notNull(), // popup, festival, market, performance, special
+  
+  title: varchar("title", { length: 200 }).notNull(),
+  description: text("description"),
+  venue: varchar("venue", { length: 200 }),
+  address: text("address"),
+  
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  
+  startsAt: timestamp("starts_at").notNull(),
+  endsAt: timestamp("ends_at"),
+  
+  crowdLevel: varchar("crowd_level", { length: 20 }),
+  entryFee: varchar("entry_fee", { length: 50 }),
+  
+  imageUrl: text("image_url"),
+  sourceUrl: text("source_url"),
+  
+  isLive: boolean("is_live").default(false),
+  detectedAt: timestamp("detected_at").defaultNow(),
+});
+
+// Extended TravelPulse schemas and types
+export const insertTravelPulseCitySchema = createInsertSchema(travelPulseCities).omit({ id: true, lastUpdated: true, createdAt: true });
+export const insertTravelPulseHiddenGemSchema = createInsertSchema(travelPulseHiddenGems).omit({ id: true, detectedAt: true, lastUpdated: true });
+export const insertTravelPulseLiveActivitySchema = createInsertSchema(travelPulseLiveActivity).omit({ id: true, occurredAt: true });
+export const insertTravelPulseDiscoveryScoreSchema = createInsertSchema(travelPulseDiscoveryScores).omit({ id: true, lastActivityAt: true, createdAt: true });
+export const insertTravelPulseCityAlertSchema = createInsertSchema(travelPulseCityAlerts).omit({ id: true, createdAt: true });
+export const insertTravelPulseHappeningNowSchema = createInsertSchema(travelPulseHappeningNow).omit({ id: true, detectedAt: true });
+
+export type TravelPulseCity = typeof travelPulseCities.$inferSelect;
+export type InsertTravelPulseCity = z.infer<typeof insertTravelPulseCitySchema>;
+export type TravelPulseHiddenGem = typeof travelPulseHiddenGems.$inferSelect;
+export type InsertTravelPulseHiddenGem = z.infer<typeof insertTravelPulseHiddenGemSchema>;
+export type TravelPulseLiveActivity = typeof travelPulseLiveActivity.$inferSelect;
+export type InsertTravelPulseLiveActivity = z.infer<typeof insertTravelPulseLiveActivitySchema>;
+export type TravelPulseDiscoveryScore = typeof travelPulseDiscoveryScores.$inferSelect;
+export type InsertTravelPulseDiscoveryScore = z.infer<typeof insertTravelPulseDiscoveryScoreSchema>;
+export type TravelPulseCityAlert = typeof travelPulseCityAlerts.$inferSelect;
+export type InsertTravelPulseCityAlert = z.infer<typeof insertTravelPulseCityAlertSchema>;
+export type TravelPulseHappeningNow = typeof travelPulseHappeningNow.$inferSelect;
+export type InsertTravelPulseHappeningNow = z.infer<typeof insertTravelPulseHappeningNowSchema>;
