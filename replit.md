@@ -82,7 +82,11 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
     - CityGrid (Trending tab) and GlobalCalendar (Calendar tab) both open CityDetailView on city click
     - Pattern: local selectedCity state → render CityDetailView → onBack resets to list
   - Environment variable: `SERP_API_KEY` for SerpAPI access
-  - Beta cities with AI data: Tokyo, Paris, New York, Barcelona, Rome, London, Sydney, Dubai
+  - Launch market cities (Year 1): Kyoto, Edinburgh, Goa, Mumbai, Bogotá, Porto, Jaipur, Cartagena
+- **Landing Page Ticker Tape** (`client/src/components/CityTickerTape.tsx`):
+  - Animated horizontal scroll showing all 8 launch cities
+  - CSS keyframe animation with seamless loop
+  - Accessibility: pauses on hover, respects prefers-reduced-motion
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search (with caching layer).
 - **Viator Partner API**: Real-time tours and activities search (with caching layer).
