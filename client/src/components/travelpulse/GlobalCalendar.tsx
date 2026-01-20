@@ -692,8 +692,8 @@ function CitySection({
     return true;
   });
   
-  const firstRowCities = uniqueCities.slice(0, 3);
-  const secondRowCities = uniqueCities.slice(3, 7);
+  const firstRowCities = uniqueCities.slice(0, 2);
+  const secondRowCities = uniqueCities.slice(2, 6);
   
   return (
     <div>
@@ -706,8 +706,8 @@ function CitySection({
         </h3>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      {/* First row: 3 cards to wrap beside calendar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+      {/* First row: 2 cards to wrap beside calendar */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         {firstRowCities.map((city) => {
           const experienceSuggestions = getExperienceSuggestionsForCity(city);
           const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
