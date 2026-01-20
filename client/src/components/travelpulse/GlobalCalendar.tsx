@@ -692,8 +692,9 @@ function CitySection({
     return true;
   });
   
-  const firstRowCities = uniqueCities.slice(0, 2);
-  const secondRowCities = uniqueCities.slice(2, 6);
+  const firstRowCities = uniqueCities.slice(0, 3);
+  const secondRowCities = uniqueCities.slice(3, 7);
+  const thirdRowCities = uniqueCities.slice(7, 11);
   
   return (
     <div>
@@ -706,8 +707,8 @@ function CitySection({
         </h3>
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      {/* First row: 2 cards to wrap beside calendar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      {/* First row: 3 cards to wrap beside calendar */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         {firstRowCities.map((city) => {
           const experienceSuggestions = getExperienceSuggestionsForCity(city);
           const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
@@ -824,6 +825,122 @@ function CitySection({
       {secondRowCities.length > 0 && (
         <div className="clear-both grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {secondRowCities.map((city) => {
+            const experienceSuggestions = getExperienceSuggestionsForCity(city);
+            const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
+            
+            return (
+            <Card 
+              key={city.id}
+              className="overflow-hidden h-full"
+              data-testid={`city-card-${city.id}`}
+            >
+              <div 
+                className="cursor-pointer hover-elevate"
+                onClick={() => onCityClick?.(city.cityName, city.country)}
+              >
+                {city.heroImage && (
+                  <div className="h-32 relative">
+                    <img
+                      src={city.heroImage}
+                      alt={city.cityName}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute bottom-2 left-3 right-3">
+                      <h4 className="font-semibold text-white">{city.cityName}</h4>
+                      <p className="text-xs text-white/80">{city.country}</p>
+                    </div>
+                  </div>
+                )}
+                <CardContent className={city.heroImage ? "p-3" : "p-4"}>
+                  {!city.heroImage && (
+                    <div className="mb-2">
+                      <h4 className="font-semibold">{city.cityName}</h4>
+                      <p className="text-xs text-muted-foreground">{city.country}</p>
+                    </div>
+                  )}
+                  
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {city.weatherDescription && (
+                      <span className="flex items-center gap-1">
+                        {getWeatherIcon(city.weatherDescription)}
+                        <span className="text-muted-foreground">{city.averageTemp}</span>
+                      </span>
+                    )}
+                    {city.seasonCrowdLevel && (
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3 w-3 text-muted-foreground" />
+                        <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
+                      </span>
+                    )}
+                    {city.pulseScore && city.pulseScore > 70 && (
+                      <span className="flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3 text-green-500" />
+                        <span className="text-green-600 dark:text-green-400">Trending</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {city.events.length > 0 && (
+                    <div className="mt-2 pt-2 border-t">
+                      <div className="flex items-center gap-1 text-xs">
+                        <Ticket className="h-3 w-3 text-muted-foreground" />
+                        <span className="font-medium">{city.events[0].title}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {city.currentHighlight && (
+                    <div className="mt-2 pt-2 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        {city.currentHighlight}
+                      </p>
+                    </div>
+                  )}
+
+                  {city.vibeTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {city.vibeTags.slice(0, 3).map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs capitalize">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </div>
+              
+              <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
+                <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
+                <div className="flex flex-wrap gap-2">
+                  {experienceSuggestions.map((suggestion, idx) => (
+                    <Link 
+                      key={idx} 
+                      href={`/experiences/${suggestion.slug}?destination=${destination}`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        data-testid={`button-plan-${city.id}-${suggestion.slug}`}
+                      >
+                        <Plane className="h-3 w-3 mr-1" />
+                        {suggestion.label}
+                      </Button>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Third row: 4 more cards */}
+      {thirdRowCities.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          {thirdRowCities.map((city) => {
             const experienceSuggestions = getExperienceSuggestionsForCity(city);
             const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
             
