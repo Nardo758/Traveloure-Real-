@@ -32,8 +32,10 @@ import { Link } from "wouter";
 import { CityDetailView } from "./CityDetailView";
 import { YearOverviewCalendar } from "./YearOverviewCalendar";
 import { MonthCalendarGrid } from "./MonthCalendarGrid";
+import { CompactYearCalendar } from "./CompactYearCalendar";
 
 type CalendarView = "year" | "month-grid" | "month-destinations";
+type FilterMode = "month" | "week" | "day";
 
 interface GlobalCity {
   id: string;
@@ -176,6 +178,9 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [selectedVibe, setSelectedVibe] = useState("all");
   const [selectedCity, setSelectedCity] = useState<{ name: string; country: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [filterMode, setFilterMode] = useState<FilterMode>("month");
+  const [selectedWeek, setSelectedWeek] = useState<number | undefined>(undefined);
+  const [selectedDay, setSelectedDay] = useState<number | undefined>(undefined);
 
   const { data, isLoading, error, refetch } = useQuery<GlobalCalendarResponse>({
     queryKey: [`/api/travelpulse/global-calendar?month=${selectedMonth}&vibe=${selectedVibe}&limit=30`],
@@ -283,10 +288,14 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 
   const handlePrevMonth = () => {
     setSelectedMonth((prev) => (prev === 1 ? 12 : prev - 1));
+    setSelectedWeek(undefined);
+    setSelectedDay(undefined);
   };
 
   const handleNextMonth = () => {
     setSelectedMonth((prev) => (prev === 12 ? 1 : prev + 1));
+    setSelectedWeek(undefined);
+    setSelectedDay(undefined);
   };
 
   if (selectedCity) {
@@ -373,97 +382,162 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
 
   const { grouped, allEvents, monthName } = data || { grouped: { best: [], good: [], average: [], avoid: [] }, allEvents: [], monthName: "" };
 
+  const getFilterDescription = () => {
+    if (filterMode === "day" && selectedDay) {
+      return `${months[selectedMonth - 1]} ${selectedDay}, ${currentYear}`;
+    }
+    if (filterMode === "week" && selectedWeek) {
+      return `${months[selectedMonth - 1]} Week ${selectedWeek}`;
+    }
+    return monthName;
+  };
+
+  const getWeekDays = (year: number, month: number, week: number): number[] => {
+    const firstDay = new Date(year, month - 1, 1);
+    const startDayOfWeek = firstDay.getDay();
+    const firstDayOfFirstWeek = 1 - startDayOfWeek;
+    const weekStart = firstDayOfFirstWeek + (week - 1) * 7;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    const days: number[] = [];
+    for (let i = 0; i < 7; i++) {
+      const day = weekStart + i;
+      if (day >= 1 && day <= daysInMonth) {
+        days.push(day);
+      }
+    }
+    return days;
+  };
+
+  const filterEvents = (events: GlobalEvent[]): GlobalEvent[] => {
+    if (filterMode === "month" || (!selectedWeek && !selectedDay)) {
+      return events;
+    }
+
+    return events.filter(event => {
+      if (!event.specificDate) {
+        return true;
+      }
+      
+      const eventDate = new Date(event.specificDate);
+      const eventDay = eventDate.getDate();
+      const eventMonth = eventDate.getMonth() + 1;
+      
+      if (eventMonth !== selectedMonth) {
+        return false;
+      }
+      
+      if (filterMode === "day" && selectedDay) {
+        return eventDay === selectedDay;
+      }
+      
+      if (filterMode === "week" && selectedWeek) {
+        const weekDays = getWeekDays(currentYear, selectedMonth, selectedWeek);
+        return weekDays.includes(eventDay);
+      }
+      
+      return true;
+    });
+  };
+
+  const filteredEvents = filterEvents(allEvents);
+
   return (
-    <div className="space-y-6" data-testid="global-calendar">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBackToYear}
-            data-testid="button-back-to-year"
-          >
-            <ChevronLeft className="h-5 w-5" />
-          </Button>
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              Where to Go in {monthName}
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              AI-powered recommendations based on weather, events, and crowd levels
-            </p>
+    <div className="flex gap-6" data-testid="global-calendar">
+      <div className="flex-1 space-y-6 min-w-0">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBackToYear}
+              data-testid="button-back-to-year"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                Where to Go in {getFilterDescription()}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                AI-powered recommendations based on weather, events, and crowd levels
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setView("month-grid")}
+              data-testid="button-calendar-view"
+            >
+              <CalendarDays className="h-4 w-4 mr-1" />
+              Calendar
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handlePrevMonth}
+              data-testid="button-prev-month"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-[120px] text-center font-medium">
+              {monthName}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleNextMonth}
+              data-testid="button-next-month"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setView("month-grid")}
-            data-testid="button-calendar-view"
-          >
-            <CalendarDays className="h-4 w-4 mr-1" />
-            Calendar
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handlePrevMonth}
-            data-testid="button-prev-month"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="min-w-[120px] text-center font-medium">
-            {monthName}
+
+        <ScrollArea className="w-full">
+          <div className="flex gap-2 pb-2">
+            {months.map((month, idx) => (
+              <Button
+                key={month}
+                variant={selectedMonth === idx + 1 ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setSelectedMonth(idx + 1);
+                  setSelectedWeek(undefined);
+                  setSelectedDay(undefined);
+                }}
+                className="flex-shrink-0"
+                data-testid={`button-month-${idx + 1}`}
+              >
+                {month.slice(0, 3)}
+              </Button>
+            ))}
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleNextMonth}
-            data-testid="button-next-month"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
 
-      <ScrollArea className="w-full">
-        <div className="flex gap-2 pb-2">
-          {months.map((month, idx) => (
-            <Button
-              key={month}
-              variant={selectedMonth === idx + 1 ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedMonth(idx + 1)}
-              className="flex-shrink-0"
-              data-testid={`button-month-${idx + 1}`}
-            >
-              {month.slice(0, 3)}
-            </Button>
-          ))}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
-
-      <ScrollArea className="w-full">
-        <div className="flex gap-2 pb-2">
-          {vibeFilters.map((vibe) => (
-            <Button
-              key={vibe.id}
-              variant={selectedVibe === vibe.id ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedVibe(vibe.id)}
-              className="flex-shrink-0"
-              data-testid={`button-vibe-${vibe.id}`}
-            >
-              <vibe.icon className="h-4 w-4 mr-1" />
-              {vibe.label}
-            </Button>
-          ))}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+        <ScrollArea className="w-full">
+          <div className="flex gap-2 pb-2">
+            {vibeFilters.map((vibe) => (
+              <Button
+                key={vibe.id}
+                variant={selectedVibe === vibe.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedVibe(vibe.id)}
+                className="flex-shrink-0"
+                data-testid={`button-vibe-${vibe.id}`}
+              >
+                <vibe.icon className="h-4 w-4 mr-1" />
+                {vibe.label}
+              </Button>
+            ))}
+          </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
 
       {grouped.best.length > 0 && (
         <CitySection
@@ -495,14 +569,14 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         />
       )}
 
-      {allEvents.length > 0 && (
+      {filteredEvents.length > 0 && (
         <div className="mt-8">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <Ticket className="h-5 w-5 text-muted-foreground" />
-            Events & Festivals in {monthName}
+            Events & Festivals{filterMode === "day" && selectedDay ? ` on ${months[selectedMonth - 1]} ${selectedDay}` : filterMode === "week" && selectedWeek ? ` in Week ${selectedWeek}` : ` in ${monthName}`}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {allEvents.slice(0, 6).map((event) => (
+            {filteredEvents.slice(0, 6).map((event) => (
               <Card key={event.id} className="hover-elevate" data-testid={`event-card-${event.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
@@ -538,14 +612,46 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         </div>
       )}
 
-      {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && (
-        <Card className="p-8 text-center">
-          <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">No destination data available for {monthName}</p>
-          <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
-        </Card>
-      )}
+        {grouped.best.length === 0 && grouped.good.length === 0 && grouped.average.length === 0 && (
+          <Card className="p-8 text-center">
+            <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">No destination data available for {monthName}</p>
+            <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
+          </Card>
+        )}
+      </div>
 
+      <div className="hidden lg:block w-72 flex-shrink-0 sticky top-4 self-start">
+        <CompactYearCalendar
+          year={currentYear}
+          monthSummaries={yearData?.summaries || []}
+          selectedMonth={selectedMonth}
+          selectedWeek={selectedWeek}
+          selectedDay={selectedDay}
+          filterMode={filterMode}
+          onFilterModeChange={(mode) => {
+            setFilterMode(mode);
+            if (mode === "month") {
+              setSelectedWeek(undefined);
+              setSelectedDay(undefined);
+            }
+          }}
+          onMonthSelect={(month) => {
+            setSelectedMonth(month);
+            setSelectedWeek(undefined);
+            setSelectedDay(undefined);
+          }}
+          onWeekSelect={(month, week) => {
+            setSelectedMonth(month);
+            setSelectedWeek(week);
+            setSelectedDay(undefined);
+          }}
+          onDaySelect={(month, day) => {
+            setSelectedMonth(month);
+            setSelectedDay(day);
+          }}
+        />
+      </div>
     </div>
   );
 }
