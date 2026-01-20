@@ -1,5 +1,6 @@
 import { useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import DOMPurify from "dompurify";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -163,6 +164,7 @@ interface CityMedia {
   sourceUrl?: string | null;
   isPrimary?: boolean | null;
   downloadLocationUrl?: string | null; // For Unsplash API compliance tracking
+  htmlAttributions?: string[] | null; // Required by Google - must display exactly as provided
 }
 
 interface CityMediaResponse {
@@ -720,6 +722,9 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                   <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                     <Camera className="h-5 w-5 text-primary" />
                     Photo Gallery
+                    {mediaData.gallery.some(m => m.source === 'google_places') && (
+                      <span className="text-xs text-muted-foreground ml-auto font-medium">Powered by Google</span>
+                    )}
                   </h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                     {mediaData.gallery.map((photo, idx) => (
@@ -737,6 +742,11 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                               Featured
                             </Badge>
                           )}
+                          {photo.source === 'google_places' && (
+                            <Badge className="absolute top-2 right-2 bg-white/90 text-gray-700 text-[10px]">
+                              Google
+                            </Badge>
+                          )}
                           {photo.attractionName && (
                             <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
                               <p className="text-xs text-white truncate">{photo.attractionName}</p>
@@ -744,17 +754,28 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                           )}
                         </div>
                         <CardContent className="p-2">
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span className="truncate">{photo.photographerName}</span>
-                            <a
-                              href={photo.sourceUrl || '#'}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline flex items-center gap-0.5 flex-shrink-0"
-                            >
-                              {photo.sourceName}
-                              <ExternalLink className="h-2.5 w-2.5" />
-                            </a>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                              <span className="truncate">{photo.photographerName}</span>
+                              <a
+                                href={photo.sourceUrl || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline flex items-center gap-0.5 flex-shrink-0"
+                              >
+                                {photo.sourceName}
+                                <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            </div>
+                            {/* Google Places HTML attribution - required by API */}
+                            {photo.source === 'google_places' && photo.htmlAttributions && photo.htmlAttributions.length > 0 && (
+                              <div 
+                                className="text-[10px] text-muted-foreground truncate"
+                                dangerouslySetInnerHTML={{ 
+                                  __html: DOMPurify.sanitize(photo.htmlAttributions.join(' '), { ALLOWED_TAGS: ['a'], ALLOWED_ATTR: ['href'] })
+                                }}
+                              />
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -763,12 +784,13 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                 </div>
               )}
 
-              {/* Attraction-specific photos */}
+              {/* Attraction-specific photos (Google Places) */}
               {Object.keys(mediaData.byAttraction).length > 0 && (
                 <div data-testid="attractions-media-section">
                   <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                     <MapPin className="h-5 w-5 text-primary" />
                     Photos by Attraction
+                    <span className="text-xs text-muted-foreground ml-auto">Powered by Google</span>
                   </h3>
                   <div className="space-y-4">
                     {Object.entries(mediaData.byAttraction).map(([attractionName, photos]) => (
@@ -778,15 +800,26 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                           {photos.map((photo, idx) => (
                             <div
                               key={photo.id}
-                              className="flex-shrink-0 w-40 aspect-[4/3] rounded-lg overflow-hidden bg-muted"
+                              className="flex-shrink-0 relative"
                               data-testid={`attraction-photo-${attractionName}-${idx}`}
                             >
-                              <img
-                                src={photo.thumbnailUrl || photo.url}
-                                alt={attractionName}
-                                className="w-full h-full object-cover"
-                                loading="lazy"
-                              />
+                              <div className="w-40 aspect-[4/3] rounded-lg overflow-hidden bg-muted">
+                                <img
+                                  src={photo.thumbnailUrl || photo.url}
+                                  alt={attractionName}
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                              </div>
+                              {/* Google Places HTML attribution - required by API */}
+                              {photo.htmlAttributions && photo.htmlAttributions.length > 0 && (
+                                <div 
+                                  className="text-[10px] text-muted-foreground mt-1 max-w-40 truncate"
+                                  dangerouslySetInnerHTML={{ 
+                                    __html: DOMPurify.sanitize(photo.htmlAttributions.join(' '), { ALLOWED_TAGS: ['a'], ALLOWED_ATTR: ['href'] })
+                                  }}
+                                />
+                              )}
                             </div>
                           ))}
                         </div>
@@ -796,10 +829,19 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                 </div>
               )}
 
-              {/* Attribution notice */}
-              <p className="text-xs text-muted-foreground text-center mt-4">
-                Photos and videos provided by Unsplash, Pexels, and Google Places. Click source links for attribution.
-              </p>
+              {/* Attribution notice with Google branding */}
+              <div className="text-center mt-4 space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  Photos and videos provided by Unsplash, Pexels, and Google Places.
+                </p>
+                {(mediaData.gallery.some(m => m.source === 'google_places') || 
+                  Object.values(mediaData.byAttraction).flat().some(m => m.source === 'google_places')) && (
+                  <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
+                    <span>Attraction photos</span>
+                    <span className="font-medium">Powered by Google</span>
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </TabsContent>
