@@ -497,15 +497,14 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
       </div>
 
       <div className="space-y-4">
-        <ScrollArea className="w-full">
-          <div className="flex gap-2 pb-2">
-            {vibeFilters.map((vibe) => (
+        <div className="space-y-2">
+          <div className="flex gap-2 flex-wrap">
+            {vibeFilters.slice(0, 5).map((vibe) => (
               <Button
                 key={vibe.id}
                 variant={selectedVibe === vibe.id ? "default" : "outline"}
                 size="sm"
                 onClick={() => setSelectedVibe(vibe.id)}
-                className="flex-shrink-0"
                 data-testid={`button-vibe-${vibe.id}`}
               >
                 <vibe.icon className="h-4 w-4 mr-1" />
@@ -513,8 +512,21 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
               </Button>
             ))}
           </div>
-          <ScrollBar orientation="horizontal" />
-          </ScrollArea>
+          <div className="flex gap-2 flex-wrap">
+            {vibeFilters.slice(5).map((vibe) => (
+              <Button
+                key={vibe.id}
+                variant={selectedVibe === vibe.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedVibe(vibe.id)}
+                data-testid={`button-vibe-${vibe.id}`}
+              >
+                <vibe.icon className="h-4 w-4 mr-1" />
+                {vibe.label}
+              </Button>
+            ))}
+          </div>
+        </div>
 
           {grouped.best.length > 0 && (
             <CitySection
