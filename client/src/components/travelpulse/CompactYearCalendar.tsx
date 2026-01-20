@@ -340,14 +340,16 @@ export function CompactYearCalendar({
   const [zoomedMonth, setZoomedMonth] = useState<number | null>(null);
   const currentMonth = new Date().getMonth() + 1;
   
-  const currentSummary = monthSummaries.find(s => s.month === (zoomedMonth || selectedMonth));
+  // Use zoomedMonth if set, otherwise fall back to selectedMonth for zoom views
+  const activeMonth = zoomedMonth || selectedMonth;
+  const currentSummary = monthSummaries.find(s => s.month === activeMonth);
   
-  if (filterMode === "day" && selectedDay && zoomedMonth) {
+  if (filterMode === "day" && selectedDay) {
     return (
       <Card className="p-3 w-[432px]" data-testid="compact-calendar-day-view">
         <DayZoomView
           year={year}
-          month={zoomedMonth}
+          month={activeMonth}
           day={selectedDay}
           highlights={currentSummary?.highlights}
           onBack={() => {
@@ -357,14 +359,14 @@ export function CompactYearCalendar({
           onPrevDay={() => {
             const newDay = selectedDay - 1;
             if (newDay >= 1) {
-              onDaySelect(zoomedMonth, newDay);
+              onDaySelect(activeMonth, newDay);
             }
           }}
           onNextDay={() => {
-            const daysInMonth = new Date(year, zoomedMonth, 0).getDate();
+            const daysInMonth = new Date(year, activeMonth, 0).getDate();
             const newDay = selectedDay + 1;
             if (newDay <= daysInMonth) {
-              onDaySelect(zoomedMonth, newDay);
+              onDaySelect(activeMonth, newDay);
             }
           }}
         />
@@ -372,19 +374,19 @@ export function CompactYearCalendar({
     );
   }
   
-  if (filterMode === "week" && selectedWeek && zoomedMonth) {
+  if (filterMode === "week" && selectedWeek) {
     return (
       <Card className="p-3 w-[432px]" data-testid="compact-calendar-week-view">
         <WeekZoomView
           year={year}
-          month={zoomedMonth}
+          month={activeMonth}
           week={selectedWeek}
           eventDays={currentSummary?.eventDays}
           highlights={currentSummary?.highlights}
           selectedDay={selectedDay}
           onDayClick={(day) => {
             onFilterModeChange("day");
-            onDaySelect(zoomedMonth, day);
+            onDaySelect(activeMonth, day);
           }}
           onBack={() => {
             setZoomedMonth(null);
