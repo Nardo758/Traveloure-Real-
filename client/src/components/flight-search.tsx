@@ -204,6 +204,9 @@ export function FlightSearch({
   const [showModify, setShowModify] = useState(false);
   const [prevDestination, setPrevDestination] = useState(destination);
   const [prevOrigin, setPrevOrigin] = useState(originProp);
+  
+  // Step-by-step round trip selection state
+  const [selectedOutboundFlight, setSelectedOutboundFlight] = useState<FlightOffer | null>(null);
 
   useEffect(() => {
     if (startDate) {
@@ -326,6 +329,7 @@ export function FlightSearch({
 
   const canSearch = !!originCode && !!destinationCode && !!departureDate && !!adults;
 
+  // For round-trip: always search one-way flights for outbound first
   const {
     data: flightResponse,
     isLoading,
@@ -337,9 +341,8 @@ export function FlightSearch({
       originCode,
       destinationCode,
       departureDate,
-      tripType === "roundtrip" ? returnDate : null,
       adults,
-      tripType,
+      "outbound",
     ],
     enabled: canSearch,
     queryFn: async () => {
@@ -349,7 +352,7 @@ export function FlightSearch({
         departureDate,
         adults: adults.toString(),
       });
-      if (tripType === "roundtrip" && returnDate) params.append("returnDate", returnDate);
+      // Always search one-way for outbound
 
       const res = await fetch(`/api/cache/flights?${params}`, {
         credentials: "include",
@@ -362,7 +365,42 @@ export function FlightSearch({
     },
   });
 
+  // Return flight query - only enabled after outbound is selected (for round-trip)
+  const {
+    data: returnFlightResponse,
+    isLoading: returnLoading,
+    error: returnError,
+  } = useQuery<{ flights: FlightOffer[]; fromCache: boolean; lastUpdated?: string }>({
+    queryKey: [
+      "/api/cache/flights",
+      destinationCode, // Swapped: destination becomes origin
+      originCode,      // Swapped: origin becomes destination
+      returnDate,
+      adults,
+      "return",
+    ],
+    enabled: tripType === "roundtrip" && !!selectedOutboundFlight && !!returnDate,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        origin: destinationCode,     // Swapped
+        destination: originCode,      // Swapped
+        departureDate: returnDate,
+        adults: adults.toString(),
+      });
+
+      const res = await fetch(`/api/cache/flights?${params}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Return flight search failed");
+      }
+      return res.json();
+    },
+  });
+
   const flights = flightResponse?.flights;
+  const returnFlights = returnFlightResponse?.flights;
 
   const isDetecting = (autoDetectDestLoading && !destinationCode && !!destination) || 
                       (autoDetectOriginLoading && !originCode && !!originProp);
@@ -377,17 +415,17 @@ export function FlightSearch({
     return hours * 60 + minutes;
   };
 
-  const filteredAndSortedFlights = useMemo(() => {
-    if (!flights) return [];
+  const filterAndSortFlights = (flightList: FlightOffer[] | undefined) => {
+    if (!flightList) return [];
     
-    let result = flights.filter((flight) => {
+    let result = flightList.filter((flight) => {
       const price = parseFloat(flight.price.total);
       if (price > maxPrice) return false;
       
-      const outboundStops = (flight.itineraries[0]?.segments.length || 1) - 1;
+      const segmentStops = (flight.itineraries[0]?.segments.length || 1) - 1;
       
-      if (stops === "nonstop" && outboundStops > 0) return false;
-      if (stops === "1stop" && outboundStops > 1) return false;
+      if (stops === "nonstop" && segmentStops > 0) return false;
+      if (stops === "1stop" && segmentStops > 1) return false;
       
       return true;
     });
@@ -408,7 +446,15 @@ export function FlightSearch({
     });
 
     return result;
-  }, [flights, maxPrice, stops, sortBy]);
+  };
+
+  const filteredAndSortedFlights = useMemo(() => filterAndSortFlights(flights), [flights, maxPrice, stops, sortBy]);
+  const filteredAndSortedReturnFlights = useMemo(() => filterAndSortFlights(returnFlights), [returnFlights, maxPrice, stops, sortBy]);
+  
+  // Clear outbound selection when search params change
+  useEffect(() => {
+    setSelectedOutboundFlight(null);
+  }, [originCode, destinationCode, departureDate]);
 
   const hasTravelDetails = !!originProp && !!destination && !!startDate;
   const needsInitialForm = !originCode || !destinationCode || !departureDate;
@@ -843,11 +889,58 @@ export function FlightSearch({
         </Card>
       )}
 
-      {filteredAndSortedFlights && filteredAndSortedFlights.length > 0 && (
+      {/* Selected Outbound Flight Summary (for round-trip) */}
+      {tripType === "roundtrip" && selectedOutboundFlight && (
+        <Card className="border-[#FF385C] bg-[#FF385C]/5">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-[#FF385C]">Outbound Selected</Badge>
+                <span className="text-sm text-muted-foreground">Step 1 of 2</span>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setSelectedOutboundFlight(null)}
+                data-testid="button-change-outbound"
+              >
+                Change
+              </Button>
+            </div>
+            {(() => {
+              const outbound = selectedOutboundFlight.itineraries[0];
+              const firstSeg = outbound?.segments[0];
+              const lastSeg = outbound?.segments[outbound.segments.length - 1];
+              const carrierCode = firstSeg?.carrierCode || "";
+              const airlineName = airlineNames[carrierCode] || carrierCode;
+              return (
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold">{firstSeg?.departure.iataCode}</span>
+                      <ArrowRight className="h-4 w-4" />
+                      <span className="font-bold">{lastSeg?.arrival.iataCode}</span>
+                    </div>
+                    <span className="text-sm text-muted-foreground">{airlineName}</span>
+                    <span className="text-sm text-muted-foreground">{formatDate(firstSeg?.departure.at || "")}</span>
+                    <span className="text-sm text-muted-foreground">{formatTime(firstSeg?.departure.at || "")} - {formatTime(lastSeg?.arrival.at || "")}</span>
+                  </div>
+                  <Badge variant="secondary" className="text-lg font-bold">
+                    ${selectedOutboundFlight.price.total}
+                  </Badge>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Outbound Flights Section */}
+      {filteredAndSortedFlights && filteredAndSortedFlights.length > 0 && !selectedOutboundFlight && (
         <div className="space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="font-semibold text-lg">
-              {filteredAndSortedFlights.length} flight{filteredAndSortedFlights.length !== 1 ? "s" : ""} available
+              {tripType === "roundtrip" ? "Step 1: Select Outbound Flight" : `${filteredAndSortedFlights.length} flight${filteredAndSortedFlights.length !== 1 ? "s" : ""} available`}
               {flights && flights.length !== filteredAndSortedFlights.length && (
                 <span className="text-sm font-normal text-muted-foreground ml-2">
                   (filtered from {flights.length})
@@ -870,7 +963,6 @@ export function FlightSearch({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {filteredAndSortedFlights.map((flight) => {
               const outbound = flight.itineraries[0];
-              const inbound = flight.itineraries[1];
               const firstSeg = outbound?.segments[0];
               const lastSeg = outbound?.segments[outbound.segments.length - 1];
               const carrierCode = firstSeg?.carrierCode || "";
@@ -966,42 +1058,6 @@ export function FlightSearch({
                         )}
                       </div>
 
-                      {inbound && (
-                        <div className="pt-3 border-t mt-3 space-y-2">
-                          <div className="flex items-center gap-2 text-sm font-medium text-[#FF385C]">
-                            <ArrowRight className="h-3 w-3 rotate-180" />
-                            <span>Return Flight</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold">
-                              {inbound.segments[0]?.departure.iataCode}
-                            </span>
-                            <ArrowRight className="h-3 w-3" />
-                            <span className="font-semibold">
-                              {inbound.segments[inbound.segments.length - 1]?.arrival.iataCode}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 flex-wrap text-sm">
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Calendar className="h-3 w-3" />
-                              <span>{formatDate(inbound.segments[0]?.departure.at || "")}</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              <span>{formatDuration(inbound.duration)}</span>
-                            </div>
-                            <Badge variant="outline" className="text-xs">
-                              {inbound.segments.length === 1
-                                ? "Direct"
-                                : `${inbound.segments.length - 1} stop${inbound.segments.length > 2 ? "s" : ""}`}
-                            </Badge>
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatTime(inbound.segments[0]?.departure.at || "")} - {formatTime(inbound.segments[inbound.segments.length - 1]?.arrival.at || "")}
-                          </div>
-                        </div>
-                      )}
-
                       {lastTicketDate && (
                         <div className="text-xs text-muted-foreground">
                           Book by {formatDate(lastTicketDate + "T00:00:00")}
@@ -1009,7 +1065,15 @@ export function FlightSearch({
                       )}
                     </div>
 
-                    {onSelectFlight && (
+                    {tripType === "roundtrip" ? (
+                      <Button
+                        className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                        onClick={() => setSelectedOutboundFlight(flight)}
+                        data-testid={`button-select-outbound-${flight.id}`}
+                      >
+                        Select Outbound
+                      </Button>
+                    ) : onSelectFlight && (
                       <Button
                         className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
                         onClick={() => onSelectFlight(flight)}
@@ -1023,6 +1087,201 @@ export function FlightSearch({
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Return Flights Section (for round-trip after outbound selection) */}
+      {tripType === "roundtrip" && selectedOutboundFlight && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="font-semibold text-lg">
+              Step 2: Select Return Flight
+              {filteredAndSortedReturnFlights.length > 0 && (
+                <span className="text-sm font-normal text-muted-foreground ml-2">
+                  ({filteredAndSortedReturnFlights.length} available)
+                </span>
+              )}
+            </h3>
+            {returnFlightResponse?.fromCache && (
+              <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
+                <Database className="h-3 w-3" />
+                <span>
+                  {returnFlightResponse.lastUpdated ? (
+                    <>Updated {formatDistanceToNow(new Date(returnFlightResponse.lastUpdated), { addSuffix: true })}</>
+                  ) : (
+                    <>From cache</>
+                  )}
+                </span>
+              </Badge>
+            )}
+          </div>
+
+          {returnLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <Skeleton className="h-6 w-3/4 mb-2" />
+                    <Skeleton className="h-4 w-1/2 mb-4" />
+                    <Skeleton className="h-8 w-24" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {returnError && (
+            <Card className="border-red-200 bg-red-50">
+              <CardContent className="p-4 text-red-600">
+                {returnError.message || "Failed to search return flights. Please try again."}
+              </CardContent>
+            </Card>
+          )}
+
+          {filteredAndSortedReturnFlights.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {filteredAndSortedReturnFlights.map((flight) => {
+                const returnItinerary = flight.itineraries[0];
+                const firstSeg = returnItinerary?.segments[0];
+                const lastSeg = returnItinerary?.segments[returnItinerary.segments.length - 1];
+                const carrierCode = firstSeg?.carrierCode || "";
+                const airlineName = airlineNames[carrierCode] || carrierCode;
+                
+                const travelerPricing = flight.travelerPricings?.[0];
+                const fareDetails = travelerPricing?.fareDetailsBySegment?.[0];
+                const cabin = fareDetails?.cabin || "ECONOMY";
+                const cabinDisplay = cabin.charAt(0) + cabin.slice(1).toLowerCase().replace("_", " ");
+                const checkedBags = fareDetails?.includedCheckedBags;
+                const bagsInfo = checkedBags?.quantity !== undefined 
+                  ? `${checkedBags.quantity} bag${checkedBags.quantity !== 1 ? 's' : ''}`
+                  : checkedBags?.weight 
+                    ? `${checkedBags.weight}${checkedBags.weightUnit || 'kg'}`
+                    : null;
+                
+                const seatsLeft = flight.numberOfBookableSeats;
+                const lastTicketDate = flight.lastTicketingDate;
+
+                // Calculate combined total
+                const outboundPrice = parseFloat(selectedOutboundFlight.price.total);
+                const returnPrice = parseFloat(flight.price.total);
+                const combinedTotal = (outboundPrice + returnPrice).toFixed(2);
+
+                return (
+                  <Card key={flight.id} className="hover-elevate">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-lg">
+                              {firstSeg?.departure.iataCode}
+                            </span>
+                            <ArrowRight className="h-4 w-4" />
+                            <span className="font-bold text-lg">
+                              {lastSeg?.arrival.iataCode}
+                            </span>
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {formatDate(firstSeg?.departure.at || "")}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="secondary" className="text-lg font-bold">
+                            ${flight.price.total}
+                          </Badge>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            Trip total: ${combinedTotal}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-sm font-medium">{airlineName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {carrierCode} {firstSeg?.number}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 text-sm">
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span>{formatDuration(returnItinerary?.duration || "")}</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {returnItinerary?.segments.length === 1
+                              ? "Direct"
+                              : `${returnItinerary?.segments.length - 1} stop${
+                                  returnItinerary?.segments.length > 2 ? "s" : ""
+                                }`}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            <Briefcase className="h-3 w-3 mr-1" />
+                            {cabinDisplay}
+                          </Badge>
+                        </div>
+
+                        <div className="text-muted-foreground">
+                          {formatTime(firstSeg?.departure.at || "")} -{" "}
+                          {formatTime(lastSeg?.arrival.at || "")}
+                        </div>
+
+                        <div className="flex items-center gap-3 flex-wrap text-xs">
+                          {bagsInfo && (
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <Luggage className="h-3 w-3" />
+                              <span>{bagsInfo} included</span>
+                            </div>
+                          )}
+                          {seatsLeft && seatsLeft <= 5 && (
+                            <div className="flex items-center gap-1 text-amber-600">
+                              <AlertCircle className="h-3 w-3" />
+                              <span>Only {seatsLeft} seats left</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {lastTicketDate && (
+                          <div className="text-xs text-muted-foreground">
+                            Book by {formatDate(lastTicketDate + "T00:00:00")}
+                          </div>
+                        )}
+                      </div>
+
+                      {onSelectFlight && (
+                        <Button
+                          className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                          onClick={() => {
+                            // Add both outbound and return flights
+                            onSelectFlight(selectedOutboundFlight);
+                            onSelectFlight(flight);
+                            setSelectedOutboundFlight(null);
+                          }}
+                          data-testid={`button-select-return-${flight.id}`}
+                        >
+                          Select Return & Add Both
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {returnFlights && returnFlights.length === 0 && !returnLoading && (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Plane className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-medium mb-2">No return flights found</h3>
+                <p className="text-muted-foreground text-sm mb-4">
+                  Try a different return date or select a different outbound flight.
+                </p>
+                <Button variant="outline" onClick={() => setSelectedOutboundFlight(null)}>
+                  Change Outbound Flight
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
