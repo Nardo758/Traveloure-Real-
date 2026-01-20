@@ -1126,7 +1126,9 @@ export default function ExperienceTemplatePage() {
     }
     
     const isCustomVenue = item.id.startsWith("custom-");
-    const isExternal = item.isExternal === true;
+    // Check both the flag AND the ID prefix for external items (hotels, activities, flights from external APIs)
+    const isExternalByPrefix = item.id.startsWith("hotel-") || item.id.startsWith("activity-") || item.id.startsWith("flight-");
+    const isExternal = item.isExternal === true || isExternalByPrefix;
     const existing = cart.find((i) => i.id === item.id);
     
     if (isExternal) {
