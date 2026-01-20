@@ -25,7 +25,6 @@ import {
   Mountain,
   Utensils,
   Plane,
-  PartyPopper,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -341,15 +340,47 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         </Card>
       )}
 
-      <ExperienceInspirationWidget
-        selectedMonth={selectedMonth}
-        selectedVibe={selectedVibe}
-        monthName={monthName}
-        topCities={[...grouped.best, ...grouped.good].slice(0, 3)}
-        events={allEvents.slice(0, 3)}
-      />
     </div>
   );
+}
+
+function getExperienceSuggestionsForCity(city: GlobalCity): Array<{ label: string; slug: string }> {
+  const suggestions: Array<{ label: string; slug: string }> = [];
+  const vibes = city.vibeTags.map(v => v.toLowerCase());
+  
+  if (vibes.includes("romantic")) {
+    suggestions.push({ label: "Romantic Getaway", slug: "date-night" });
+  }
+  if (vibes.includes("adventure")) {
+    suggestions.push({ label: "Adventure Trip", slug: "travel" });
+  }
+  if (vibes.includes("cultural")) {
+    suggestions.push({ label: "Cultural Tour", slug: "travel" });
+  }
+  if (vibes.includes("luxury")) {
+    suggestions.push({ label: "Luxury Escape", slug: "travel" });
+  }
+  if (vibes.includes("nightlife")) {
+    suggestions.push({ label: "Nightlife Experience", slug: "date-night" });
+  }
+  if (vibes.includes("beach")) {
+    suggestions.push({ label: "Beach Vacation", slug: "travel" });
+  }
+  if (vibes.includes("nature")) {
+    suggestions.push({ label: "Nature Retreat", slug: "retreat" });
+  }
+  if (vibes.includes("foodie")) {
+    suggestions.push({ label: "Food & Wine Tour", slug: "travel" });
+  }
+  if (vibes.includes("family")) {
+    suggestions.push({ label: "Family Trip", slug: "reunion" });
+  }
+  
+  if (suggestions.length === 0) {
+    suggestions.push({ label: "Plan a Trip", slug: "travel" });
+  }
+  
+  return suggestions.slice(0, 2);
 }
 
 function CitySection({
@@ -377,291 +408,118 @@ function CitySection({
         <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cities.slice(0, 6).map((city) => (
-          <Card 
-            key={city.id}
-            className="overflow-hidden hover-elevate cursor-pointer h-full"
-            onClick={() => onCityClick?.(city.cityName, city.country)}
-            data-testid={`city-card-${city.id}`}
-          >
-            {city.heroImage && (
-              <div className="h-32 relative">
-                <img
-                  src={city.heroImage}
-                  alt={city.cityName}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                <div className="absolute bottom-2 left-3 right-3">
-                  <h4 className="font-semibold text-white">{city.cityName}</h4>
-                  <p className="text-xs text-white/80">{city.country}</p>
-                </div>
-              </div>
-            )}
-            <CardContent className={city.heroImage ? "p-3" : "p-4"}>
-              {!city.heroImage && (
-                <div className="mb-2">
-                  <h4 className="font-semibold">{city.cityName}</h4>
-                  <p className="text-xs text-muted-foreground">{city.country}</p>
-                </div>
-              )}
-              
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                {city.weatherDescription && (
-                  <span className="flex items-center gap-1">
-                    {getWeatherIcon(city.weatherDescription)}
-                    <span className="text-muted-foreground">{city.averageTemp}</span>
-                  </span>
-                )}
-                {city.seasonCrowdLevel && (
-                  <span className="flex items-center gap-1">
-                    <Users className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
-                  </span>
-                )}
-                {city.pulseScore && city.pulseScore > 70 && (
-                  <span className="flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3 text-green-500" />
-                    <span className="text-green-600 dark:text-green-400">Trending</span>
-                  </span>
-                )}
-              </div>
-
-              {city.events.length > 0 && (
-                <div className="mt-2 pt-2 border-t">
-                  <div className="flex items-center gap-1 text-xs">
-                    <Ticket className="h-3 w-3 text-muted-foreground" />
-                    <span className="font-medium">{city.events[0].title}</span>
-                  </div>
-                </div>
-              )}
-
-              {city.currentHighlight && (
-                <div className="mt-2 pt-2 border-t">
-                  <p className="text-xs text-muted-foreground">
-                    {city.highlightEmoji} {city.currentHighlight}
-                  </p>
-                </div>
-              )}
-
-              {city.vibeTags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {city.vibeTags.slice(0, 3).map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs capitalize">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-interface ExperienceIdea {
-  title: string;
-  description: string;
-  slug: string;
-  source: string;
-  destination?: string;
-  event?: string;
-}
-
-function getExperienceIdeasFromContext(
-  month: number,
-  vibe: string,
-  cities: GlobalCity[],
-  events: GlobalEvent[]
-): ExperienceIdea[] {
-  const ideas: ExperienceIdea[] = [];
-  
-  const monthNames = ["January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"];
-  const monthName = monthNames[month - 1];
-  
-  if (cities.length > 0) {
-    const topCity = cities[0];
-    ideas.push({
-      title: `${monthName} Getaway to ${topCity.cityName}`,
-      description: topCity.currentHighlight 
-        ? `${topCity.currentHighlight} - Perfect timing for your trip`
-        : `Rated best time to visit with ${topCity.weatherDescription || "great weather"}`,
-      slug: "travel",
-      source: `${topCity.cityName}, ${topCity.country}`,
-      destination: `${topCity.cityName}, ${topCity.country}`
-    });
-    
-    if (topCity.vibeTags.includes("romantic") || vibe === "romantic") {
-      ideas.push({
-        title: `Romantic Escape to ${topCity.cityName}`,
-        description: `Create unforgettable memories in ${topCity.cityName}`,
-        slug: "date-night",
-        source: `${topCity.cityName}, ${topCity.country}`,
-        destination: `${topCity.cityName}, ${topCity.country}`
-      });
-    }
-    
-    if (cities.length > 1) {
-      const secondCity = cities[1];
-      ideas.push({
-        title: `Explore ${secondCity.cityName}`,
-        description: secondCity.currentHighlight || `Discover what makes ${secondCity.cityName} special this ${monthName}`,
-        slug: "travel",
-        source: `${secondCity.cityName}, ${secondCity.country}`,
-        destination: `${secondCity.cityName}, ${secondCity.country}`
-      });
-    }
-  }
-  
-  if (events.length > 0) {
-    const featuredEvent = events[0];
-    ideas.push({
-      title: `Experience ${featuredEvent.title}`,
-      description: featuredEvent.description || `Join the ${featuredEvent.eventType || "celebration"} in ${featuredEvent.city || featuredEvent.country}`,
-      slug: "travel",
-      source: featuredEvent.city ? `${featuredEvent.city}, ${featuredEvent.country}` : featuredEvent.country,
-      destination: featuredEvent.city || featuredEvent.country,
-      event: featuredEvent.title
-    });
-  }
-  
-  if (month === 2 || vibe === "romantic") {
-    const romanticCity = cities.find(c => c.vibeTags.includes("romantic"));
-    ideas.push({
-      title: "Plan a Romantic Proposal",
-      description: romanticCity 
-        ? `${romanticCity.cityName} is perfect for your special moment`
-        : "Use our AI insights to find the perfect destination and timing",
-      slug: "proposal",
-      source: romanticCity ? `${romanticCity.cityName}, ${romanticCity.country}` : "AI Recommendation",
-      destination: romanticCity ? `${romanticCity.cityName}, ${romanticCity.country}` : undefined
-    });
-  }
-  
-  if (month === 6 || month === 9) {
-    ideas.push({
-      title: "Destination Wedding Planning",
-      description: "Optimal weather conditions in multiple destinations this month",
-      slug: "wedding",
-      source: "Seasonal Insight"
-    });
-  }
-  
-  if (month === 12) {
-    ideas.push({
-      title: "Holiday Celebration Trip",
-      description: "Festive events and celebrations happening worldwide",
-      slug: "birthday",
-      source: "Holiday Season"
-    });
-  }
-  
-  if (vibe === "corporate" || vibe === "business") {
-    ideas.push({
-      title: "Team Retreat Planning",
-      description: "Find destinations with ideal conditions for team building",
-      slug: "corporate",
-      source: "Business Travel"
-    });
-  }
-  
-  if (vibe === "family") {
-    ideas.push({
-      title: "Family Reunion Trip",
-      description: "Gather everyone for an unforgettable family adventure",
-      slug: "reunion",
-      source: "Family Travel"
-    });
-  }
-  
-  return ideas.slice(0, 4);
-}
-
-function ExperienceInspirationWidget({
-  selectedMonth,
-  selectedVibe,
-  monthName,
-  topCities,
-  events,
-}: {
-  selectedMonth: number;
-  selectedVibe: string;
-  monthName: string;
-  topCities: GlobalCity[];
-  events: GlobalEvent[];
-}) {
-  const ideas = getExperienceIdeasFromContext(selectedMonth, selectedVibe, topCities, events);
-  
-  if (ideas.length === 0) {
-    return null;
-  }
-  
-  return (
-    <div className="mt-8 pt-6 border-t" data-testid="experience-inspiration-widget">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-        <div>
-          <h3 className="text-lg font-semibold flex items-center gap-2" data-testid="heading-experience-ideas">
-            <Sparkles className="h-5 w-5 text-muted-foreground" />
-            Create an Experience
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Ideas inspired by {monthName} travel insights
-          </p>
-        </div>
-        <Link href="/experience">
-          <Button variant="ghost" size="sm" data-testid="button-view-all-experiences">
-            View All
-            <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </Link>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {ideas.map((idea, idx) => {
-          const params = new URLSearchParams();
-          if (idea.destination) params.set("destination", idea.destination);
-          if (idea.event) params.set("event", idea.event);
-          const queryString = params.toString();
-          const href = `/experience/${idea.slug}${queryString ? `?${queryString}` : ""}`;
+        {cities.slice(0, 6).map((city) => {
+          const experienceSuggestions = getExperienceSuggestionsForCity(city);
+          const destination = encodeURIComponent(`${city.cityName}, ${city.country}`);
           
           return (
-          <Link key={idx} href={href}>
-            <Card 
-              className="hover-elevate cursor-pointer h-full"
-              data-testid={`experience-idea-${idx}`}
+          <Card 
+            key={city.id}
+            className="overflow-hidden h-full"
+            data-testid={`city-card-${city.id}`}
+          >
+            <div 
+              className="cursor-pointer hover-elevate"
+              onClick={() => onCityClick?.(city.cityName, city.country)}
             >
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                    {idea.slug === "travel" ? (
-                      <Plane className="h-5 w-5 text-foreground" />
-                    ) : idea.slug === "wedding" || idea.slug === "proposal" || idea.slug === "date-night" ? (
-                      <Heart className="h-5 w-5 text-foreground" />
-                    ) : (
-                      <PartyPopper className="h-5 w-5 text-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm line-clamp-1" data-testid={`idea-title-${idx}`}>
-                      {idea.title}
-                    </h4>
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-                      {idea.description}
-                    </p>
-                    <Badge variant="secondary" className="mt-2 text-xs">
-                      {idea.source}
-                    </Badge>
+              {city.heroImage && (
+                <div className="h-32 relative">
+                  <img
+                    src={city.heroImage}
+                    alt={city.cityName}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  <div className="absolute bottom-2 left-3 right-3">
+                    <h4 className="font-semibold text-white">{city.cityName}</h4>
+                    <p className="text-xs text-white/80">{city.country}</p>
                   </div>
                 </div>
+              )}
+              <CardContent className={city.heroImage ? "p-3" : "p-4"}>
+                {!city.heroImage && (
+                  <div className="mb-2">
+                    <h4 className="font-semibold">{city.cityName}</h4>
+                    <p className="text-xs text-muted-foreground">{city.country}</p>
+                  </div>
+                )}
+                
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {city.weatherDescription && (
+                    <span className="flex items-center gap-1">
+                      {getWeatherIcon(city.weatherDescription)}
+                      <span className="text-muted-foreground">{city.averageTemp}</span>
+                    </span>
+                  )}
+                  {city.seasonCrowdLevel && (
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-muted-foreground capitalize">{city.seasonCrowdLevel}</span>
+                    </span>
+                  )}
+                  {city.pulseScore && city.pulseScore > 70 && (
+                    <span className="flex items-center gap-1">
+                      <TrendingUp className="h-3 w-3 text-green-500" />
+                      <span className="text-green-600 dark:text-green-400">Trending</span>
+                    </span>
+                  )}
+                </div>
+
+                {city.events.length > 0 && (
+                  <div className="mt-2 pt-2 border-t">
+                    <div className="flex items-center gap-1 text-xs">
+                      <Ticket className="h-3 w-3 text-muted-foreground" />
+                      <span className="font-medium">{city.events[0].title}</span>
+                    </div>
+                  </div>
+                )}
+
+                {city.currentHighlight && (
+                  <div className="mt-2 pt-2 border-t">
+                    <p className="text-xs text-muted-foreground">
+                      {city.highlightEmoji} {city.currentHighlight}
+                    </p>
+                  </div>
+                )}
+
+                {city.vibeTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {city.vibeTags.slice(0, 3).map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs capitalize">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
               </CardContent>
-            </Card>
-          </Link>
+            </div>
+            
+            <div className="px-3 pb-3 pt-2 border-t bg-muted/30">
+              <p className="text-xs text-muted-foreground mb-2">Plan an experience:</p>
+              <div className="flex flex-wrap gap-2">
+                {experienceSuggestions.map((suggestion, idx) => (
+                  <Link 
+                    key={idx} 
+                    href={`/experience/${suggestion.slug}?destination=${destination}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      data-testid={`button-plan-${city.id}-${suggestion.slug}`}
+                    >
+                      <Plane className="h-3 w-3 mr-1" />
+                      {suggestion.label}
+                    </Button>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </Card>
           );
         })}
       </div>
     </div>
   );
 }
+
