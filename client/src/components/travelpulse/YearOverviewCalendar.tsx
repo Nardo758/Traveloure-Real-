@@ -12,6 +12,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface EventHighlight {
+  name: string;
+  day: number;
+  city?: string;
+}
+
 interface MonthSummary {
   month: number;
   monthName: string;
@@ -21,6 +27,7 @@ interface MonthSummary {
   topRating: string;
   cityCount: number;
   eventDays?: number[];
+  highlights?: EventHighlight[];
 }
 
 function getMiniCalendarDays(year: number, month: number): (number | null)[][] {
@@ -249,6 +256,27 @@ export function YearOverviewCalendar({
                       onMonthClick(idx + 1);
                     }}
                   />
+                  
+                  {summary.highlights && summary.highlights.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border/50 space-y-1">
+                      {summary.highlights.slice(0, 2).map((highlight, hIdx) => (
+                        <div 
+                          key={hIdx} 
+                          className="text-[10px] text-muted-foreground flex items-start gap-1"
+                        >
+                          <span className="text-primary font-medium shrink-0">
+                            {highlight.day}:
+                          </span>
+                          <span className="truncate">
+                            {highlight.name}
+                            {highlight.city && (
+                              <span className="text-muted-foreground/70"> ({highlight.city})</span>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground">
