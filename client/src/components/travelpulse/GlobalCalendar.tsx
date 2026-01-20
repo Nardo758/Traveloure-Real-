@@ -87,6 +87,12 @@ interface GlobalCalendarResponse {
   allEvents: GlobalEvent[];
 }
 
+interface EventHighlight {
+  name: string;
+  day: number;
+  city?: string;
+}
+
 interface MonthSummary {
   month: number;
   monthName: string;
@@ -96,6 +102,7 @@ interface MonthSummary {
   topRating: string;
   cityCount: number;
   eventDays?: number[];
+  highlights?: EventHighlight[];
 }
 
 const vibeFilters = [
@@ -195,16 +202,33 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             : "Normal";
 
           const eventDays: number[] = [];
+          const highlights: EventHighlight[] = [];
+          
           if (monthData.allEvents) {
             monthData.allEvents.forEach(event => {
               if (event.specificDate) {
                 const eventDate = new Date(event.specificDate);
                 if (eventDate.getMonth() + 1 === m) {
-                  eventDays.push(eventDate.getDate());
+                  const day = eventDate.getDate();
+                  eventDays.push(day);
+                  if (highlights.length < 3) {
+                    highlights.push({
+                      name: event.title,
+                      day,
+                      city: event.city || undefined,
+                    });
+                  }
                 }
               } else if (event.startMonth === m || event.endMonth === m) {
                 for (let d = 1; d <= 28; d += 7) {
                   eventDays.push(d);
+                }
+                if (highlights.length < 3) {
+                  highlights.push({
+                    name: event.title,
+                    day: event.startMonth === m ? 1 : 15,
+                    city: event.city || undefined,
+                  });
                 }
               }
             });
@@ -219,6 +243,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             topRating,
             cityCount: monthData.totalCities || allCities.length,
             eventDays: Array.from(new Set(eventDays)),
+            highlights,
           });
         }
       }
