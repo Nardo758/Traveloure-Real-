@@ -93,6 +93,7 @@ import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
 import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
+import GlobalCalendarPage from "@/pages/global-calendar";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -165,6 +166,9 @@ function Router() {
       </Route>
       <Route path="/help-me-decide">
         <Layout><HelpMeDecidePage /></Layout>
+      </Route>
+      <Route path="/global-calendar">
+        <Layout><GlobalCalendarPage /></Layout>
       </Route>
       <Route path="/partner-with-us">
         <Layout><PartnerWithUsPage /></Layout>
