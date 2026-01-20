@@ -52,9 +52,24 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - **Replit Auth**: OpenID Connect for user authentication.
 - **PostgreSQL**: Primary database.
 - **Dual AI System**:
-  - **Grok (xAI)**: Expert matching, real-time intelligence, content generation, and autonomous itinerary building via AI Orchestrator routing (grok-3-mini-beta model).
+  - **Grok (xAI)**: Expert matching, real-time intelligence, content generation, autonomous itinerary building, and TravelPulse city intelligence via AI Orchestrator routing (grok-2-1212 model).
   - **Anthropic Claude**: Empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice (claude-sonnet-4-20250514 model).
   - **AI Orchestrator** (`server/services/ai-orchestrator.ts`): Routes requests to appropriate provider based on task type, with central logging to database.
+- **TravelPulse AI Intelligence System** (`server/services/travelpulse.service.ts`, `server/services/grok.service.ts`):
+  - Daily AI refresh scheduler runs every 24 hours to update city intelligence
+  - `generateCityIntelligence()` in grok.service.ts generates comprehensive data including:
+    - Pulse metrics (pulseScore, trendingScore, crowdLevel, weatherScore)
+    - Seasonal insights (best time to visit, 12-month highlights, upcoming events)
+    - Travel recommendations (optimal duration, budget estimates, must-see attractions, hidden gems)
+    - Safety notes and cultural insights
+  - Data merges into `travelPulseCities`, `destinationSeasons`, and `destinationEvents` tables
+  - AI fields: `aiGeneratedAt`, `aiSeasonalHighlights`, `aiUpcomingEvents`, `aiTravelTips`, `aiLocalInsights`, `aiBudgetEstimate`, `aiMustSeeAttractions`, `aiAvoidDates`
+  - Admin-only API endpoints with rate limiting (max 10 manual refreshes per hour):
+    - `GET /api/travelpulse/ai/status` - Scheduler status and cities needing refresh
+    - `POST /api/travelpulse/ai/refresh/:cityName/:country` - Manual city refresh
+    - `POST /api/travelpulse/ai/refresh-all` - Batch refresh all stale cities
+    - `GET /api/travelpulse/ai/city/:cityName` - Get city with full AI data
+  - Scheduler service: `server/services/travelpulse-scheduler.service.ts`
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search (with caching layer).
 - **Viator Partner API**: Real-time tours and activities search (with caching layer).

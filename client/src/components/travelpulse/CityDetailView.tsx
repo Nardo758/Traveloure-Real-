@@ -604,25 +604,25 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
             </Card>
           ) : (
             <div className="space-y-4">
-              <Card className="border-l-4 border-l-primary">
+              <Card data-testid="card-best-time">
                 <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
+                      <Clock className="h-4 w-4 text-primary" />
                       Best Time to Visit
                     </CardTitle>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground" data-testid="text-ai-updated">
                       Updated {city.aiGeneratedAt && formatDistanceToNow(new Date(city.aiGeneratedAt), { addSuffix: true })}
                     </p>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm font-medium">{city.aiBestTimeToVisit || "Year-round destination"}</p>
+                  <p className="text-sm font-medium" data-testid="text-best-time">{city.aiBestTimeToVisit || "Year-round destination"}</p>
                 </CardContent>
               </Card>
 
               {city.aiOptimalDuration && (
-                <Card>
+                <Card data-testid="card-optimal-duration">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Compass className="h-4 w-4" />
@@ -630,13 +630,13 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm">{city.aiOptimalDuration}</p>
+                    <p className="text-sm" data-testid="text-optimal-duration">{city.aiOptimalDuration}</p>
                   </CardContent>
                 </Card>
               )}
 
               {city.aiBudgetEstimate && (
-                <Card>
+                <Card data-testid="card-budget-estimate">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Wallet className="h-4 w-4" />
@@ -669,7 +669,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               )}
 
               {city.aiMustSeeAttractions && city.aiMustSeeAttractions.length > 0 && (
-                <Card>
+                <Card data-testid="card-must-see">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Star className="h-4 w-4" />
@@ -690,7 +690,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               )}
 
               {city.aiTravelTips && city.aiTravelTips.length > 0 && (
-                <Card>
+                <Card data-testid="card-travel-tips">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Lightbulb className="h-4 w-4" />
@@ -711,7 +711,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               )}
 
               {city.aiLocalInsights && (
-                <Card>
+                <Card data-testid="card-local-insights">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Heart className="h-4 w-4" />
@@ -719,27 +719,27 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">{city.aiLocalInsights}</p>
+                    <p className="text-sm text-muted-foreground" data-testid="text-local-insights">{city.aiLocalInsights}</p>
                   </CardContent>
                 </Card>
               )}
 
               {city.aiSafetyNotes && (
-                <Card className="border-l-4 border-l-yellow-500">
+                <Card className="bg-yellow-50 dark:bg-yellow-900/20" data-testid="card-safety-notes">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <Shield className="h-4 w-4" />
+                      <Shield className="h-4 w-4 text-yellow-600" />
                       Safety Notes
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">{city.aiSafetyNotes}</p>
+                    <p className="text-sm text-muted-foreground" data-testid="text-safety-notes">{city.aiSafetyNotes}</p>
                   </CardContent>
                 </Card>
               )}
 
               {city.aiSeasonalHighlights && city.aiSeasonalHighlights.length > 0 && (
-                <Card>
+                <Card data-testid="card-seasonal-guide">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Sun className="h-4 w-4" />
@@ -777,17 +777,17 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               )}
 
               {city.aiAvoidDates && city.aiAvoidDates.length > 0 && (
-                <Card className="border-l-4 border-l-red-500">
+                <Card className="bg-red-50 dark:bg-red-900/20" data-testid="card-avoid-dates">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <CalendarX className="h-4 w-4" />
+                      <CalendarX className="h-4 w-4 text-red-600" />
                       Dates to Avoid
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-2">
                       {city.aiAvoidDates.map((avoid, idx) => (
-                        <li key={idx} className="text-sm">
+                        <li key={idx} className="text-sm" data-testid={`avoid-date-${idx}`}>
                           <span className="font-medium text-red-600 dark:text-red-400">{avoid.dateRange}</span>
                           <span className="text-muted-foreground"> - {avoid.reason}</span>
                         </li>
@@ -798,7 +798,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               )}
 
               {city.aiUpcomingEvents && city.aiUpcomingEvents.length > 0 && (
-                <Card>
+                <Card data-testid="card-upcoming-events">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
