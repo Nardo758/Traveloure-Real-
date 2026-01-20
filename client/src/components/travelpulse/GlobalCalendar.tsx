@@ -173,7 +173,7 @@ interface GlobalCalendarProps {
 
 export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const currentYear = new Date().getFullYear();
-  const [view, setView] = useState<CalendarView>("year");
+  const [view, setView] = useState<CalendarView>("month-destinations");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedVibe, setSelectedVibe] = useState("all");
   const [selectedCity, setSelectedCity] = useState<{ name: string; country: string } | null>(null);
@@ -476,24 +476,14 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         />
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={handleBackToYear}
-          data-testid="button-back-to-year"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
-            Where to Go in {getFilterDescription()}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            AI-powered recommendations based on weather, events, and crowd levels
-          </p>
-        </div>
+      <div className="mb-6">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <Calendar className="h-5 w-5 text-muted-foreground" />
+          Where to Go
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          AI-powered recommendations based on weather, events, and crowd levels
+        </p>
       </div>
 
       <div className="space-y-4">
