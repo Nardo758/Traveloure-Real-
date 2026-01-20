@@ -2028,12 +2028,61 @@ export const travelPulseHappeningNow = pgTable("travel_pulse_happening_now", {
 });
 
 // Extended TravelPulse schemas and types
+// City Media Cache - Aggregated photos and videos from multiple sources
+export const cityMediaCache = pgTable("city_media_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  // City reference
+  cityId: varchar("city_id").references(() => travelPulseCities.id, { onDelete: "cascade" }),
+  cityName: varchar("city_name", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  
+  // Media source
+  source: varchar("source", { length: 20 }).notNull(), // unsplash, pexels, google_places
+  mediaType: varchar("media_type", { length: 20 }).notNull(), // photo, video
+  
+  // Media details
+  url: text("url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  previewUrl: text("preview_url"), // For videos
+  
+  // Dimensions
+  width: integer("width"),
+  height: integer("height"),
+  duration: integer("duration"), // For videos, in seconds
+  
+  // Context - what this media represents
+  context: varchar("context", { length: 50 }), // hero, attraction, seasonal, general, hidden_gem
+  contextQuery: text("context_query"), // Search query used to find this
+  attractionName: varchar("attraction_name", { length: 200 }), // If linked to specific attraction
+  
+  // Attribution (required by APIs)
+  photographerName: varchar("photographer_name", { length: 200 }),
+  photographerUrl: text("photographer_url"),
+  sourceName: varchar("source_name", { length: 100 }), // e.g., "Unsplash", "Pexels"
+  sourceUrl: text("source_url"), // Link back to original
+  license: varchar("license", { length: 50 }),
+  
+  // Google Places specific
+  googlePlaceId: varchar("google_place_id", { length: 200 }),
+  
+  // Quality and ranking
+  qualityScore: integer("quality_score").default(50), // 0-100 for sorting
+  isPrimary: boolean("is_primary").default(false), // Is this the main image for this context
+  
+  // Cache management
+  fetchedAt: timestamp("fetched_at").defaultNow(),
+  expiresAt: timestamp("expires_at"), // When to refresh
+  isActive: boolean("is_active").default(true),
+});
+
 export const insertTravelPulseCitySchema = createInsertSchema(travelPulseCities).omit({ id: true, lastUpdated: true, createdAt: true });
 export const insertTravelPulseHiddenGemSchema = createInsertSchema(travelPulseHiddenGems).omit({ id: true, detectedAt: true, lastUpdated: true });
 export const insertTravelPulseLiveActivitySchema = createInsertSchema(travelPulseLiveActivity).omit({ id: true, occurredAt: true });
 export const insertTravelPulseDiscoveryScoreSchema = createInsertSchema(travelPulseDiscoveryScores).omit({ id: true, lastActivityAt: true, createdAt: true });
 export const insertTravelPulseCityAlertSchema = createInsertSchema(travelPulseCityAlerts).omit({ id: true, createdAt: true });
 export const insertTravelPulseHappeningNowSchema = createInsertSchema(travelPulseHappeningNow).omit({ id: true, detectedAt: true });
+export const insertCityMediaCacheSchema = createInsertSchema(cityMediaCache).omit({ id: true, fetchedAt: true });
 
 export type TravelPulseCity = typeof travelPulseCities.$inferSelect;
 export type InsertTravelPulseCity = z.infer<typeof insertTravelPulseCitySchema>;
@@ -2047,3 +2096,5 @@ export type TravelPulseCityAlert = typeof travelPulseCityAlerts.$inferSelect;
 export type InsertTravelPulseCityAlert = z.infer<typeof insertTravelPulseCityAlertSchema>;
 export type TravelPulseHappeningNow = typeof travelPulseHappeningNow.$inferSelect;
 export type InsertTravelPulseHappeningNow = z.infer<typeof insertTravelPulseHappeningNowSchema>;
+export type CityMediaCache = typeof cityMediaCache.$inferSelect;
+export type InsertCityMediaCache = z.infer<typeof insertCityMediaCacheSchema>;
