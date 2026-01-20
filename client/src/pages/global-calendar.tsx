@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, addDays, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isWithinInterval, parseISO } from "date-fns";
+import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isWithinInterval, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,18 +89,17 @@ export default function GlobalCalendarPage() {
   const startDate = startOfMonth(currentMonth);
   const endDate = endOfMonth(addMonths(currentMonth, 2));
 
+  const calendarUrl = `/api/travelpulse/calendar/${encodeURIComponent(selectedCity)}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`;
+  
   const { data: calendarData, isLoading } = useQuery<CalendarResponse>({
-    queryKey: ["/api/travelpulse/calendar", selectedCity, startDate.toISOString()],
-    queryFn: () => 
-      fetch(`/api/travelpulse/calendar/${encodeURIComponent(selectedCity)}?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`)
-        .then(r => r.json()),
+    queryKey: [calendarUrl],
     staleTime: 60 * 60 * 1000,
   });
 
-  const monthDays = eachDayOfInterval({
+  const monthDays = useMemo(() => eachDayOfInterval({
     start: startOfMonth(currentMonth),
     end: endOfMonth(currentMonth)
-  });
+  }), [currentMonth]);
 
   const getEventsForDate = (date: Date): CalendarEvent[] => {
     if (!calendarData?.events) return [];
@@ -162,7 +161,7 @@ export default function GlobalCalendarPage() {
                   setSelectedCity(city);
                   setSelectedDate(null);
                 }}
-                data-testid={`button-city-${city.toLowerCase()}`}
+                data-testid={`button-city-${city.toLowerCase().replace(/\s+/g, "-")}`}
               >
                 {city}
               </Button>
@@ -175,7 +174,7 @@ export default function GlobalCalendarPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
                 <CardTitle className="text-lg font-medium">
                   {format(currentMonth, "MMMM yyyy")} - {selectedCity}
                 </CardTitle>
@@ -184,6 +183,7 @@ export default function GlobalCalendarPage() {
                     variant="outline" 
                     size="icon" 
                     onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
+                    aria-label="Previous month"
                     data-testid="button-prev-month"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -192,6 +192,7 @@ export default function GlobalCalendarPage() {
                     variant="outline" 
                     size="icon" 
                     onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                    aria-label="Next month"
                     data-testid="button-next-month"
                   >
                     <ChevronRight className="h-4 w-4" />
@@ -231,16 +232,19 @@ export default function GlobalCalendarPage() {
                         const events = getEventsForDate(day);
                         const hasHighImpact = events.some(e => e.crowdImpact === "extreme" || e.crowdImpact === "high");
                         const isSelected = selectedDate && isSameDay(day, selectedDate);
+                        const dateLabel = format(day, "MMMM d, yyyy");
+                        const eventCount = events.length;
                         
                         return (
                           <button
                             key={day.toISOString()}
                             onClick={() => setSelectedDate(day)}
+                            aria-label={`${dateLabel}${eventCount > 0 ? `, ${eventCount} event${eventCount > 1 ? 's' : ''}` : ''}`}
                             className={cn(
-                              "h-16 p-1 rounded-lg border transition-all text-left relative",
+                              "h-16 p-1 rounded-lg border transition-all text-left relative hover-elevate active-elevate-2",
                               isSelected 
                                 ? "border-primary bg-primary/10 ring-2 ring-primary" 
-                                : "border-border hover:border-primary/50",
+                                : "border-border",
                               events.length > 0 && "bg-muted/50",
                               hasHighImpact && "border-orange-300"
                             )}
@@ -275,7 +279,7 @@ export default function GlobalCalendarPage() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 mt-4 pt-4 border-t">
+                <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t">
                   <span className="text-sm text-muted-foreground">Crowd Impact:</span>
                   <div className="flex items-center gap-1">
                     <div className="h-3 w-3 rounded-full bg-green-500" />
@@ -299,7 +303,7 @@ export default function GlobalCalendarPage() {
           </div>
 
           <div>
-            <Card className="sticky top-4">
+            <Card className="sticky top-4 z-50">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
                   {selectedDate ? (
@@ -323,27 +327,38 @@ export default function GlobalCalendarPage() {
                         {selectedDateEvents.map((event) => {
                           const priceLabel = getPriceImpactLabel(event.priceImpact);
                           return (
-                            <div key={event.id} className="p-4 border rounded-lg space-y-3">
-                              <div className="flex items-start justify-between gap-2">
+                            <div 
+                              key={event.id} 
+                              className="p-4 border rounded-lg space-y-3"
+                              data-testid={`card-event-${event.id}`}
+                            >
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-2">
                                   {getEventIcon(event.eventType)}
-                                  <h4 className="font-medium">{event.eventName}</h4>
+                                  <h4 className="font-medium" data-testid={`text-event-name-${event.id}`}>
+                                    {event.eventName}
+                                  </h4>
                                 </div>
-                                <Badge className={getImpactColor(event.crowdImpact)}>
+                                <Badge 
+                                  className={getImpactColor(event.crowdImpact)}
+                                  data-testid={`badge-impact-${event.id}`}
+                                >
                                   {event.crowdImpact || "Normal"}
                                 </Badge>
                               </div>
 
-                              <p className="text-sm text-muted-foreground">{event.description}</p>
+                              <p className="text-sm text-muted-foreground" data-testid={`text-event-desc-${event.id}`}>
+                                {event.description}
+                              </p>
 
-                              <div className="flex items-center gap-4 text-sm">
-                                <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-4 text-sm flex-wrap">
+                                <div className="flex items-center gap-1" data-testid={`text-crowd-${event.id}`}>
                                   <Users className="h-4 w-4 text-muted-foreground" />
                                   <span>
                                     +{event.crowdImpactPercent || 0}% crowds
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1" data-testid={`text-price-${event.id}`}>
                                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                                   <span className={priceLabel.color}>
                                     {priceLabel.text} prices
