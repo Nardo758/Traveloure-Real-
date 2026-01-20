@@ -5099,6 +5099,90 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Get full destination calendar data (seasonal + events) for a city
+  app.get("/api/travelpulse/destination-calendar/:cityName/:country", async (req, res) => {
+    try {
+      const { cityName, country } = req.params;
+      const calendarData = await travelPulseService.getFullCalendarData(cityName, country);
+      
+      res.json({
+        city: cityName,
+        country,
+        ...calendarData
+      });
+    } catch (error: any) {
+      console.error("Error getting destination calendar:", error);
+      res.status(500).json({ message: "Failed to get destination calendar", error: error.message });
+    }
+  });
+
+  // AI-enhanced recommendations based on calendar data
+  app.get("/api/travelpulse/ai-recommendations/:cityName/:country", async (req, res) => {
+    try {
+      const { cityName, country } = req.params;
+      const { month, budget, preferences, limit } = req.query;
+      
+      const { aiRecommendationEngineService } = await import("./services/ai-recommendation-engine.service");
+      
+      const recommendations = await aiRecommendationEngineService.getAIEnhancedRecommendations({
+        cityName,
+        country,
+        travelMonth: month ? parseInt(month as string) : undefined,
+        budget: budget as "budget" | "mid-range" | "luxury" | undefined,
+        preferences: preferences ? (preferences as string).split(",") : undefined,
+      }, limit ? parseInt(limit as string) : 20);
+      
+      res.json(recommendations);
+    } catch (error: any) {
+      console.error("Error getting AI recommendations:", error);
+      res.status(500).json({ message: "Failed to get AI recommendations", error: error.message });
+    }
+  });
+
+  // Event-aligned recommendations
+  app.get("/api/travelpulse/event-recommendations/:cityName/:country/:eventId", async (req, res) => {
+    try {
+      const { cityName, country, eventId } = req.params;
+      
+      const { aiRecommendationEngineService } = await import("./services/ai-recommendation-engine.service");
+      
+      const recommendations = await aiRecommendationEngineService.getEventAlignedRecommendations(
+        cityName,
+        country,
+        eventId
+      );
+      
+      if (!recommendations) {
+        return res.status(404).json({ message: "Event not found" });
+      }
+      
+      res.json(recommendations);
+    } catch (error: any) {
+      console.error("Error getting event recommendations:", error);
+      res.status(500).json({ message: "Failed to get event recommendations", error: error.message });
+    }
+  });
+
+  // Best time to visit analysis
+  app.get("/api/travelpulse/best-time/:cityName/:country", async (req, res) => {
+    try {
+      const { cityName, country } = req.params;
+      
+      const { aiRecommendationEngineService } = await import("./services/ai-recommendation-engine.service");
+      
+      const analysis = await aiRecommendationEngineService.getBestTimeRecommendations(cityName, country);
+      
+      res.json({
+        city: cityName,
+        country,
+        ...analysis
+      });
+    } catch (error: any) {
+      console.error("Error getting best time analysis:", error);
+      res.status(500).json({ message: "Failed to get best time analysis", error: error.message });
+    }
+  });
+
   // Get city with full AI intelligence data (admin only)
   app.get("/api/travelpulse/ai/city/:cityName", requireAdmin, async (req, res) => {
     try {

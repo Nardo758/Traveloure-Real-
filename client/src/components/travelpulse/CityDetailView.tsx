@@ -47,6 +47,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { DestinationCalendar } from "./DestinationCalendar";
+import { AIRecommendationBadges, SeasonalInsightBanner } from "./AIRecommendationBadges";
 
 interface TravelPulseCity {
   id: string;
@@ -246,6 +248,201 @@ function getActivityIcon(type: string) {
     case "booking": return <Calendar className="h-4 w-4 text-green-500" />;
     default: return <Activity className="h-4 w-4 text-muted-foreground" />;
   }
+}
+
+interface EnhancedItem {
+  id: string;
+  name?: string;
+  title?: string;
+  description?: string | null;
+  price?: string | number | null;
+  rating?: string | null;
+  starRating?: number | null;
+  city?: string | null;
+  address?: string | null;
+  category?: string | null;
+  preferenceTags?: string[];
+  aiScore: number;
+  aiReasons: string[];
+  seasonalMatch: boolean;
+  eventNearby?: boolean;
+  eventRelated?: boolean;
+  budgetMatch: boolean;
+  bestTimeMatch: boolean;
+  preferenceMatch?: boolean;
+}
+
+interface AIRecommendationsResponse {
+  hotels: EnhancedItem[];
+  activities: EnhancedItem[];
+  seasonalInsight: {
+    rating: string;
+    weatherDescription: string | null;
+    crowdLevel: string | null;
+    priceLevel: string | null;
+    highlights: string[];
+    events: { id: string; title: string; eventType: string | null }[];
+  } | null;
+  bestTimeToVisit: string | null;
+  totalHotels: number;
+  totalActivities: number;
+}
+
+function AIRecommendationsSection({ cityName, country }: { cityName: string; country: string }) {
+  const currentMonth = new Date().getMonth() + 1;
+  
+  const { data, isLoading, error } = useQuery<AIRecommendationsResponse>({
+    queryKey: ["/api/travelpulse/ai-recommendations", cityName, country, currentMonth],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/travelpulse/ai-recommendations/${encodeURIComponent(cityName)}/${encodeURIComponent(country)}?month=${currentMonth}&limit=10`
+      );
+      if (!res.ok) throw new Error("Failed to fetch AI recommendations");
+      return res.json();
+    },
+    enabled: !!cityName && !!country,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-20 w-full" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <Card className="p-8 text-center">
+        <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+        <p className="text-muted-foreground">AI recommendations not available yet for {cityName}</p>
+        <p className="text-xs text-muted-foreground mt-2">Check back after the next data refresh</p>
+      </Card>
+    );
+  }
+
+  const { hotels, activities, seasonalInsight, bestTimeToVisit } = data;
+
+  return (
+    <div className="space-y-6" data-testid="ai-recommendations-section">
+      {seasonalInsight && (
+        <SeasonalInsightBanner
+          rating={seasonalInsight.rating}
+          weatherDescription={seasonalInsight.weatherDescription}
+          events={seasonalInsight.events}
+          bestTimeToVisit={bestTimeToVisit}
+        />
+      )}
+
+      {hotels.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-primary" />
+            Recommended Places to Stay
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {hotels.slice(0, 6).map((hotel) => (
+              <Card key={hotel.id} className="overflow-hidden" data-testid={`rec-hotel-${hotel.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-sm line-clamp-1">{hotel.name}</h4>
+                      {hotel.address && (
+                        <p className="text-xs text-muted-foreground line-clamp-1">{hotel.address}</p>
+                      )}
+                    </div>
+                    {hotel.starRating && (
+                      <div className="flex items-center gap-0.5 ml-2">
+                        {Array.from({ length: hotel.starRating }).map((_, i) => (
+                          <Star key={i} className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <AIRecommendationBadges
+                    aiScore={hotel.aiScore}
+                    aiReasons={hotel.aiReasons}
+                    seasonalMatch={hotel.seasonalMatch}
+                    eventNearby={hotel.eventNearby}
+                    budgetMatch={hotel.budgetMatch}
+                    bestTimeMatch={hotel.bestTimeMatch}
+                    showScore={true}
+                  />
+                  {hotel.price && (
+                    <p className="text-sm font-semibold mt-2">
+                      ${typeof hotel.price === 'string' ? hotel.price : hotel.price.toFixed(0)}
+                      <span className="text-xs text-muted-foreground font-normal">/night</span>
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activities.length > 0 && (
+        <div>
+          <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <Compass className="h-5 w-5 text-primary" />
+            Recommended Activities
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {activities.slice(0, 6).map((activity) => (
+              <Card key={activity.id} className="overflow-hidden" data-testid={`rec-activity-${activity.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-sm line-clamp-2">{activity.title || activity.name}</h4>
+                      {activity.category && (
+                        <Badge variant="outline" className="text-xs mt-1 capitalize">
+                          {activity.category}
+                        </Badge>
+                      )}
+                    </div>
+                    {activity.rating && (
+                      <div className="flex items-center gap-1 ml-2">
+                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                        <span className="text-xs font-medium">{activity.rating}</span>
+                      </div>
+                    )}
+                  </div>
+                  <AIRecommendationBadges
+                    aiScore={activity.aiScore}
+                    aiReasons={activity.aiReasons}
+                    seasonalMatch={activity.seasonalMatch}
+                    eventRelated={activity.eventRelated}
+                    budgetMatch={activity.budgetMatch}
+                    bestTimeMatch={activity.bestTimeMatch}
+                    preferenceMatch={activity.preferenceMatch}
+                    showScore={true}
+                  />
+                  {activity.price && (
+                    <p className="text-sm font-semibold mt-2">
+                      ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hotels.length === 0 && activities.length === 0 && (
+        <Card className="p-8 text-center">
+          <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-muted-foreground">No cached recommendations yet for {cityName}</p>
+          <p className="text-xs text-muted-foreground mt-2">Search for hotels or activities to populate recommendations</p>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 function CityDetailSkeleton() {
@@ -476,10 +673,14 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
       </div>
 
       <Tabs defaultValue="hidden-gems" className="w-full">
-        <TabsList className="w-full grid grid-cols-5">
+        <TabsList className="w-full grid grid-cols-6">
           <TabsTrigger value="hidden-gems" data-testid="tab-hidden-gems">
             <Gem className="h-4 w-4 mr-2" />
             Hidden Gems
+          </TabsTrigger>
+          <TabsTrigger value="recommendations" data-testid="tab-recommendations">
+            <Sparkles className="h-4 w-4 mr-2" />
+            For You
           </TabsTrigger>
           <TabsTrigger value="happening-now" data-testid="tab-happening-now">
             <Calendar className="h-4 w-4 mr-2" />
@@ -560,6 +761,10 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="recommendations" className="mt-4">
+          <AIRecommendationsSection cityName={city.cityName} country={city.country} />
         </TabsContent>
 
         <TabsContent value="happening-now" className="mt-4">
@@ -1048,31 +1253,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                 </Card>
               )}
 
-              {city.aiUpcomingEvents && city.aiUpcomingEvents.length > 0 && (
-                <Card data-testid="card-upcoming-events">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      Upcoming Events
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {city.aiUpcomingEvents.map((event, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                          <div>
-                            <p className="text-sm font-medium">{event.name}</p>
-                            <p className="text-xs text-muted-foreground">{event.dateRange}</p>
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {event.type}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              <DestinationCalendar cityName={city.cityName} country={city.country} />
             </div>
           )}
         </TabsContent>

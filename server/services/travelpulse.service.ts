@@ -21,6 +21,8 @@ import {
   TravelPulseLiveActivity,
   TravelPulseCityAlert,
   TravelPulseHappeningNow,
+  DestinationSeason,
+  DestinationEvent,
 } from "@shared/schema";
 import { eq, and, gte, lte, desc, asc, sql, isNull, lt } from "drizzle-orm";
 import crypto from "crypto";
@@ -1246,7 +1248,7 @@ Return JSON:
           cityName,
           country,
           attractions: result.travelRecommendations.mustSeeAttractions,
-          hiddenGems: result.travelRecommendations.hiddenGems,
+          hiddenGems: result.travelRecommendations.hiddenGems.map(gem => gem.name),
         });
       } catch (mediaError: any) {
         console.error(`[TravelPulse] Media fetch error for ${cityName}:`, mediaError.message);
@@ -1409,6 +1411,57 @@ Return JSON:
       .where(
         sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`
       );
+  }
+
+  // Get destination seasonal data for calendar display
+  async getDestinationSeasons(city: string, country: string): Promise<DestinationSeason[]> {
+    return db
+      .select()
+      .from(destinationSeasons)
+      .where(and(
+        eq(destinationSeasons.city, city),
+        eq(destinationSeasons.country, country)
+      ))
+      .orderBy(destinationSeasons.month);
+  }
+
+  // Get destination events for calendar display
+  async getDestinationEvents(city: string, country: string): Promise<DestinationEvent[]> {
+    return db
+      .select()
+      .from(destinationEvents)
+      .where(and(
+        eq(destinationEvents.city, city),
+        eq(destinationEvents.country, country),
+        eq(destinationEvents.status, "approved")
+      ))
+      .orderBy(destinationEvents.startMonth);
+  }
+
+  // Get full calendar data (seasonal + events)
+  async getFullCalendarData(city: string, country: string): Promise<{
+    seasons: DestinationSeason[];
+    events: DestinationEvent[];
+    bestTimeToVisit: string | null;
+    lastUpdated: Date | null;
+  }> {
+    const [seasons, events, cityData] = await Promise.all([
+      this.getDestinationSeasons(city, country),
+      this.getDestinationEvents(city, country),
+      db.select().from(travelPulseCities)
+        .where(and(
+          eq(travelPulseCities.cityName, city),
+          eq(travelPulseCities.country, country)
+        ))
+        .limit(1)
+    ]);
+
+    return {
+      seasons,
+      events,
+      bestTimeToVisit: cityData[0]?.aiBestTimeToVisit || null,
+      lastUpdated: cityData[0]?.aiGeneratedAt || null
+    };
   }
 }
 
