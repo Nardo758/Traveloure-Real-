@@ -39,6 +39,7 @@ export interface GooglePlacesPhotoResult {
   license: string;
   googlePlaceId: string;
   attractionName: string;
+  htmlAttributions: string[]; // Required by Google - must display exactly as provided
 }
 
 class GooglePlacesPhotosService {
@@ -167,6 +168,7 @@ class GooglePlacesPhotosService {
       license: 'Google Maps Terms of Service',
       googlePlaceId: place.place_id,
       attractionName: place.name,
+      htmlAttributions: photo.html_attributions || [], // Required by Google - must display exactly as provided
     };
   }
 }

@@ -2066,6 +2066,7 @@ export const cityMediaCache = pgTable("city_media_cache", {
   
   // Google Places specific
   googlePlaceId: varchar("google_place_id", { length: 200 }),
+  htmlAttributions: text("html_attributions").array(), // Required by Google - must display exactly as provided
   
   // Quality and ranking
   qualityScore: integer("quality_score").default(50), // 0-100 for sorting

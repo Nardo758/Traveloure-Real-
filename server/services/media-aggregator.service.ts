@@ -337,6 +337,7 @@ class MediaAggregatorService {
       sourceUrl: photo.sourceUrl,
       license: photo.license,
       googlePlaceId: photo.googlePlaceId,
+      htmlAttributions: photo.htmlAttributions, // Required by Google - must display exactly as provided
       qualityScore: 85, // Google Places often has better quality for attractions
       isPrimary: false,
       expiresAt,
