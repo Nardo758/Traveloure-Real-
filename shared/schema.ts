@@ -1864,6 +1864,26 @@ export const travelPulseCities = pgTable("travel_pulse_cities", {
   imageUrl: text("image_url"),
   thumbnailUrl: text("thumbnail_url"),
   
+  // AI Intelligence Data
+  aiGeneratedAt: timestamp("ai_generated_at"), // When AI last updated this city
+  aiSourceModel: varchar("ai_source_model", { length: 50 }), // e.g., "grok-2-1212"
+  
+  // AI Seasonal Insights (for Calendar integration)
+  aiBestTimeToVisit: text("ai_best_time_to_visit"), // e.g., "March-May for cherry blossoms"
+  aiSeasonalHighlights: jsonb("ai_seasonal_highlights").default([]), // Monthly highlights
+  aiUpcomingEvents: jsonb("ai_upcoming_events").default([]), // Next 30 days events
+  
+  // AI Travel Tips & Recommendations
+  aiTravelTips: jsonb("ai_travel_tips").default([]), // Array of tips
+  aiLocalInsights: text("ai_local_insights"), // Cultural nuances, local customs
+  aiSafetyNotes: text("ai_safety_notes"), // Current safety considerations
+  
+  // AI Optimization Data (for itinerary optimization)
+  aiOptimalDuration: varchar("ai_optimal_duration", { length: 50 }), // e.g., "3-5 days"
+  aiBudgetEstimate: jsonb("ai_budget_estimate").default({}), // { low: 100, mid: 200, high: 400 }
+  aiMustSeeAttractions: jsonb("ai_must_see_attractions").default([]), // Top attractions
+  aiAvoidDates: jsonb("ai_avoid_dates").default([]), // Dates to avoid
+  
   // Timestamps
   lastUpdated: timestamp("last_updated").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1900,6 +1920,10 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   
   // Media
   imageUrl: text("image_url"),
+  
+  // AI source tracking
+  aiGenerated: boolean("ai_generated").default(false),
+  aiGeneratedAt: timestamp("ai_generated_at"),
   
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),

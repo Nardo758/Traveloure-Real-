@@ -594,6 +594,159 @@ Create a detailed, actionable itinerary.`;
       return false;
     }
   }
+
+  // TravelPulse City Intelligence - Unified data for Trending, Calendar, and AI Optimization
+  async generateCityIntelligence(cityName: string, country: string): Promise<{ result: CityIntelligenceResult; usage: GrokUsageStats }> {
+    const systemPrompt = `You are TravelPulse, an AI travel intelligence system for Traveloure. Generate comprehensive city intelligence that powers trending displays, travel calendars, and trip optimization.
+
+Analyze the destination and provide real-time intelligence based on current knowledge. Be specific, actionable, and traveler-focused.
+
+Return JSON with this exact structure:
+{
+  "cityName": "<city name>",
+  "country": "<country>",
+  
+  "pulseMetrics": {
+    "pulseScore": <0-100 overall travel appeal right now>,
+    "trendingScore": <0-100 how viral/trending>,
+    "crowdLevel": "<quiet|moderate|busy|packed>",
+    "weatherScore": <0-100 how good for travel>
+  },
+  
+  "currentVibe": {
+    "vibeTags": ["<romantic|adventure|foodie|nightlife|cultural|relaxation|family|budget|luxury|nature>"],
+    "currentHighlight": "<what's special right now, e.g., Cherry Blossom Season>",
+    "whatsHotNow": "<trending experience or event>"
+  },
+  
+  "priceIntelligence": {
+    "avgHotelPriceUsd": <number>,
+    "priceTrend": "<up|down|stable>",
+    "priceChangePercent": <number, negative for drops>,
+    "dealAlert": "<deal description if significant, or null>"
+  },
+  
+  "seasonalInsights": {
+    "bestTimeToVisit": "<e.g., March-May for cherry blossoms, September-November for fall colors>",
+    "monthlyHighlights": [
+      {"month": 1, "rating": "<excellent|good|average|poor>", "highlight": "<what's special>", "weatherDesc": "<weather>"},
+      ...for all 12 months
+    ],
+    "upcomingEvents": [
+      {"name": "<event>", "dateRange": "<date range>", "type": "<festival|holiday|sports|cultural|music>", "significance": "<high|medium|low>"}
+    ]
+  },
+  
+  "travelRecommendations": {
+    "optimalDuration": "<e.g., 3-5 days>",
+    "budgetEstimate": {"budget": <daily USD>, "midRange": <daily USD>, "luxury": <daily USD>},
+    "mustSeeAttractions": ["<attraction 1>", "<attraction 2>", "<attraction 3>"],
+    "hiddenGems": [
+      {"name": "<place>", "type": "<restaurant|cafe|attraction|neighborhood|experience>", "whySpecial": "<reason>", "priceRange": "<$|$$|$$$|$$$$>"}
+    ],
+    "localTips": ["<tip 1>", "<tip 2>", "<tip 3>"],
+    "culturalInsights": "<important cultural nuances for travelers>",
+    "safetyNotes": "<current safety considerations>"
+  },
+  
+  "avoidDates": [
+    {"dateRange": "<date range>", "reason": "<why to avoid>"}
+  ]
+}`;
+
+    const userPrompt = `Generate comprehensive travel intelligence for:
+City: ${cityName}
+Country: ${country}
+
+Provide current, real-world data based on your knowledge. Include seasonal patterns, current events, pricing trends, and local insights that help travelers plan better trips.`;
+
+    try {
+      const response = await getGrokClient().chat.completions.create({
+        model: GROK_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4096,
+      });
+
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error("Empty response from Grok");
+      }
+
+      const result = JSON.parse(content) as CityIntelligenceResult;
+      const usage = this.extractUsageStats(response);
+
+      return { result, usage };
+    } catch (error: any) {
+      console.error("Grok city intelligence error:", error);
+      throw new Error(`City intelligence generation failed: ${error.message}`);
+    }
+  }
+}
+
+// City Intelligence Result Interface
+export interface CityIntelligenceResult {
+  cityName: string;
+  country: string;
+  
+  pulseMetrics: {
+    pulseScore: number;
+    trendingScore: number;
+    crowdLevel: "quiet" | "moderate" | "busy" | "packed";
+    weatherScore: number;
+  };
+  
+  currentVibe: {
+    vibeTags: string[];
+    currentHighlight: string;
+    whatsHotNow: string;
+  };
+  
+  priceIntelligence: {
+    avgHotelPriceUsd: number;
+    priceTrend: "up" | "down" | "stable";
+    priceChangePercent: number;
+    dealAlert: string | null;
+  };
+  
+  seasonalInsights: {
+    bestTimeToVisit: string;
+    monthlyHighlights: Array<{
+      month: number;
+      rating: "excellent" | "good" | "average" | "poor";
+      highlight: string;
+      weatherDesc: string;
+    }>;
+    upcomingEvents: Array<{
+      name: string;
+      dateRange: string;
+      type: string;
+      significance: "high" | "medium" | "low";
+    }>;
+  };
+  
+  travelRecommendations: {
+    optimalDuration: string;
+    budgetEstimate: { budget: number; midRange: number; luxury: number };
+    mustSeeAttractions: string[];
+    hiddenGems: Array<{
+      name: string;
+      type: string;
+      whySpecial: string;
+      priceRange: string;
+    }>;
+    localTips: string[];
+    culturalInsights: string;
+    safetyNotes: string;
+  };
+  
+  avoidDates: Array<{
+    dateRange: string;
+    reason: string;
+  }>;
 }
 
 export const grokService = new GrokService();
