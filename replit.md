@@ -70,6 +70,16 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
     - `POST /api/travelpulse/ai/refresh-all` - Batch refresh all stale cities
     - `GET /api/travelpulse/ai/city/:cityName` - Get city with full AI data
   - Scheduler service: `server/services/travelpulse-scheduler.service.ts`
+- **Content Enrichment System** (`server/services/content-enrichment.service.ts`, `server/services/serp.service.ts`):
+  - Merges AI-generated recommendations with real booking/affiliate data
+  - SERP Service searches Google Maps via SerpAPI for venues (restaurants, attractions, nightlife)
+  - Returns enriched venues with ratings, reviews, hours, addresses, Google Maps links
+  - Booking options include Viator (tours), OpenTable (restaurants), GetYourGuide
+  - API endpoints:
+    - `GET /api/travelpulse/enriched/:cityName` - Get enriched recommendations with booking links
+    - `GET /api/travelpulse/serp-search` - Search for venues by type (restaurant, attraction, nightlife)
+  - UI integration: EnrichedRecommendationsSection in CityDetailView "For You" tab
+  - Environment variable: `SERP_API_KEY` for SerpAPI access
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search (with caching layer).
 - **Viator Partner API**: Real-time tours and activities search (with caching layer).

@@ -445,6 +445,250 @@ function AIRecommendationsSection({ cityName, country }: { cityName: string; cou
   );
 }
 
+interface BookingOption {
+  platform: string;
+  url: string;
+  type: 'reservation' | 'tickets' | 'tour' | 'website';
+}
+
+interface EnrichedRecommendation {
+  name: string;
+  address?: string;
+  rating?: number;
+  reviewCount?: number;
+  priceLevel?: string;
+  type?: string;
+  phone?: string;
+  website?: string;
+  openNow?: boolean;
+  thumbnail?: string;
+  googleMapsUrl?: string;
+  serpLink?: string;
+  aiReason?: string;
+  aiPriceRange?: string;
+  matchConfidence?: 'high' | 'medium' | 'low';
+  actionType?: 'book' | 'visit' | 'explore' | 'reserve';
+  bookingOptions?: BookingOption[];
+}
+
+interface CityEnrichedContent {
+  cityName: string;
+  country: string;
+  lastUpdated: string;
+  restaurants: EnrichedRecommendation[];
+  attractions: EnrichedRecommendation[];
+  nightlife: EnrichedRecommendation[];
+  hiddenGems: EnrichedRecommendation[];
+  trendingNow: EnrichedRecommendation[];
+}
+
+function EnrichedRecommendationCard({ rec, idx }: { rec: EnrichedRecommendation; idx: number }) {
+  return (
+    <Card className="overflow-hidden" data-testid={`enriched-rec-${idx}`}>
+      {rec.thumbnail && (
+        <div className="h-32 overflow-hidden">
+          <img 
+            src={rec.thumbnail} 
+            alt={rec.name}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      )}
+      <CardContent className="p-4">
+        <div className="flex justify-between items-start mb-2">
+          <div className="flex-1">
+            <h4 className="font-medium text-sm line-clamp-1" data-testid={`rec-name-${idx}`}>{rec.name}</h4>
+            {rec.address && (
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                <MapPin className="h-3 w-3 inline mr-1" />
+                {rec.address}
+              </p>
+            )}
+          </div>
+          {rec.rating && (
+            <div className="flex items-center gap-1 ml-2">
+              <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+              <span className="text-xs font-medium">{rec.rating}</span>
+              {rec.reviewCount && (
+                <span className="text-xs text-muted-foreground">({rec.reviewCount})</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {rec.aiReason && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{rec.aiReason}</p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          {rec.type && (
+            <Badge variant="secondary" className="text-xs capitalize">{rec.type}</Badge>
+          )}
+          {rec.priceLevel && (
+            <Badge variant="outline" className="text-xs">{rec.priceLevel}</Badge>
+          )}
+          {rec.openNow !== undefined && (
+            <Badge 
+              variant={rec.openNow ? "default" : "secondary"} 
+              className={cn("text-xs", rec.openNow && "bg-green-500")}
+            >
+              {rec.openNow ? "Open Now" : "Closed"}
+            </Badge>
+          )}
+          {rec.matchConfidence === 'high' && (
+            <Badge className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              <Sparkles className="h-3 w-3 mr-1" />
+              Top Pick
+            </Badge>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {rec.bookingOptions?.slice(0, 3).map((booking, bidx) => (
+            <Button
+              key={bidx}
+              size="sm"
+              variant="outline"
+              onClick={() => window.open(booking.url, '_blank')}
+              data-testid={`booking-btn-${idx}-${bidx}`}
+            >
+              <ExternalLink className="h-3 w-3 mr-1" />
+              {booking.platform}
+            </Button>
+          ))}
+          {rec.googleMapsUrl && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => window.open(rec.googleMapsUrl, '_blank')}
+              data-testid={`maps-btn-${idx}`}
+            >
+              <MapPin className="h-3 w-3 mr-1" />
+              Map
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
+  const { data, isLoading, error } = useQuery<CityEnrichedContent>({
+    queryKey: ["/api/travelpulse/enriched", cityName],
+    enabled: !!cityName,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 mt-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return null;
+  }
+
+  const hasContent = 
+    data.restaurants.length > 0 || 
+    data.attractions.length > 0 || 
+    data.nightlife.length > 0 ||
+    data.hiddenGems.length > 0 ||
+    data.trendingNow.length > 0;
+
+  if (!hasContent) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-6 mt-6" data-testid="enriched-recommendations-section">
+      <div className="flex items-center gap-2">
+        <ExternalLink className="h-5 w-5 text-muted-foreground" />
+        <h3 className="text-lg font-semibold">Book Experiences</h3>
+        <Badge variant="outline" className="text-xs">AI + Booking</Badge>
+      </div>
+
+      {data.trendingNow.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-orange-500" />
+            Trending Now
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.trendingNow.slice(0, 2).map((rec, idx) => (
+              <EnrichedRecommendationCard key={`trending-${idx}`} rec={rec} idx={idx} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.attractions.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-blue-500" />
+            Top Attractions
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.attractions.slice(0, 4).map((rec, idx) => (
+              <EnrichedRecommendationCard key={`attraction-${idx}`} rec={rec} idx={100 + idx} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.restaurants.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Star className="h-4 w-4 text-amber-500" />
+            Restaurants & Dining
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.restaurants.slice(0, 4).map((rec, idx) => (
+              <EnrichedRecommendationCard key={`restaurant-${idx}`} rec={rec} idx={200 + idx} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.hiddenGems.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Gem className="h-4 w-4 text-purple-500" />
+            Hidden Gems
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.hiddenGems.slice(0, 4).map((rec, idx) => (
+              <EnrichedRecommendationCard key={`gem-${idx}`} rec={rec} idx={300 + idx} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.nightlife.length > 0 && (
+        <div>
+          <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+            <Activity className="h-4 w-4 text-pink-500" />
+            Nightlife
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {data.nightlife.slice(0, 4).map((rec, idx) => (
+              <EnrichedRecommendationCard key={`nightlife-${idx}`} rec={rec} idx={400 + idx} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CityDetailSkeleton() {
   return (
     <div className="space-y-6">
@@ -765,6 +1009,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
 
         <TabsContent value="recommendations" className="mt-4">
           <AIRecommendationsSection cityName={city.cityName} country={city.country} />
+          <EnrichedRecommendationsSection cityName={city.cityName} />
         </TabsContent>
 
         <TabsContent value="happening-now" className="mt-4">
