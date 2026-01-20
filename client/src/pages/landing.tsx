@@ -5,7 +5,6 @@ import { motion } from "framer-motion";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { 
   ArrowRight,
-  X,
   Rocket,
   Plane,
   Heart,
@@ -33,7 +32,6 @@ import {
   Bot,
   UserCheck
 } from "lucide-react";
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
 import {
@@ -42,17 +40,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-
-const launchCities = [
-  { city: "Kyoto", country: "Japan" },
-  { city: "Edinburgh", country: "Scotland" },
-  { city: "Goa", country: "India" },
-  { city: "Mumbai", country: "India" },
-  { city: "Bogotá", country: "Colombia" },
-  { city: "Porto", country: "Portugal" },
-  { city: "Jaipur", country: "India" },
-  { city: "Cartagena", country: "Colombia" },
-];
 
 const experienceCategories = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500" },
@@ -153,49 +140,10 @@ const footerLinks = {
 };
 
 export default function LandingPage() {
-  const [showBanner, setShowBanner] = useState(true);
-
   return (
     <div className="flex flex-col min-h-screen bg-[#F9FAFB]">
-      {/* Coral Gradient Announcement Banner */}
-      {showBanner && (
-        <div className="bg-gradient-to-r from-[#FF6B6B] via-[#FF8E53] to-[#FF6B6B] text-white py-2.5 px-4">
-          <div className="container mx-auto flex flex-col md:flex-row items-center justify-between gap-2 max-w-6xl">
-            <div className="flex flex-col md:flex-row items-center gap-2 text-center md:text-left text-sm">
-              <span className="font-semibold">Join Our Beta Launch in 8 Cities Worldwide</span>
-              <span className="hidden md:inline text-white/60">|</span>
-              <span className="text-white/90">Limited Expert Spots Available</span>
-              <span className="hidden lg:inline text-white/60">|</span>
-              <span className="hidden lg:flex gap-1 text-white/80">
-                {launchCities.map((loc, i) => (
-                  <span key={loc.city}>
-                    {loc.city}{i < launchCities.length - 1 && ","}
-                  </span>
-                ))}
-              </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <a href="/api/login">
-                <Button 
-                  size="sm"
-                  variant="outline"
-                  className="bg-white/10 border-white/30 text-white hover:bg-white/20 rounded-full text-xs font-medium h-8"
-                  data-testid="button-apply-now"
-                >
-                  Apply Now <ArrowRight className="w-3 h-3 ml-1" />
-                </Button>
-              </a>
-              <button 
-                onClick={() => setShowBanner(false)}
-                className="text-white/70 hover:text-white"
-                data-testid="button-close-banner"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Top Ribbon Announcement Banner with Animated Cities */}
+      <CityTickerTape />
 
       {/* Hero Section with Background Image */}
       <section 
@@ -358,9 +306,6 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
-
-      {/* Animated City Ticker Tape */}
-      <CityTickerTape />
 
       {/* Accordion FAQ Section (Expert Section) */}
       <section className="py-16 lg:py-20 bg-white">

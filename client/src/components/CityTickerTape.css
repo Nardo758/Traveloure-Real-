@@ -1,16 +1,15 @@
 .ticker-wrapper {
   overflow: hidden;
-  width: 100%;
+  position: relative;
 }
 
-.ticker-content {
-  display: flex;
-  gap: 1rem;
-  animation: ticker-scroll 30s linear infinite;
-  width: fit-content;
+.ticker-content-inline {
+  display: inline-flex;
+  animation: ticker-scroll-inline 20s linear infinite;
+  white-space: nowrap;
 }
 
-@keyframes ticker-scroll {
+@keyframes ticker-scroll-inline {
   0% {
     transform: translateX(0);
   }
@@ -19,12 +18,12 @@
   }
 }
 
-.ticker-content:hover {
+.ticker-content-inline:hover {
   animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ticker-content {
+  .ticker-content-inline {
     animation: none;
   }
 }

@@ -1,4 +1,5 @@
-import { MapPin, Sparkles } from "lucide-react";
+import { MapPin } from "lucide-react";
+import { Link } from "wouter";
 import "./CityTickerTape.css";
 
 const launchCities = [
@@ -14,26 +15,50 @@ const launchCities = [
 
 export function CityTickerTape() {
   return (
-    <div className="w-full overflow-hidden bg-gradient-to-r from-primary/10 via-primary/5 to-primary/10 py-3 border-y border-primary/10">
-      <div className="flex items-center gap-2 mb-2 justify-center">
-        <Sparkles className="w-4 h-4 text-primary" />
-        <span className="text-sm font-medium text-foreground/70">Now Live in 8 Cities</span>
-        <Sparkles className="w-4 h-4 text-primary" />
-      </div>
-      <div className="ticker-wrapper">
-        <div className="ticker-content">
-          {[...launchCities, ...launchCities].map((city, index) => (
-            <div
-              key={`${city.city}-${index}`}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-background/80 border border-border/50 flex-shrink-0"
-              data-testid={`ticker-city-${city.city.toLowerCase()}-${index}`}
-            >
-              <MapPin className="w-3.5 h-3.5 text-primary" />
-              <span className="font-medium text-foreground">{city.city}</span>
-              <span className="text-muted-foreground text-sm">{city.country}</span>
-            </div>
-          ))}
+    <div 
+      className="w-full bg-primary text-primary-foreground py-2 px-4"
+      data-testid="top-ribbon-banner"
+    >
+      <div className="flex items-center justify-center gap-2 text-sm">
+        <span className="font-semibold whitespace-nowrap hidden sm:inline">
+          Join Our Beta in 8 Cities World Wide
+        </span>
+        <span className="font-semibold whitespace-nowrap sm:hidden">
+          Beta in 8 Cities
+        </span>
+        
+        <span className="text-primary-foreground/60">|</span>
+        
+        <span className="whitespace-nowrap hidden md:inline">
+          Limited Expert Spots Available
+        </span>
+        
+        <span className="text-primary-foreground/60 hidden md:inline">|</span>
+        
+        <div className="ticker-wrapper flex-1 max-w-xs sm:max-w-sm md:max-w-md overflow-hidden">
+          <div className="ticker-content-inline">
+            {[...launchCities, ...launchCities].map((city, index) => (
+              <span
+                key={`${city.city}-${index}`}
+                className="inline-flex items-center gap-1 mx-2 whitespace-nowrap"
+                data-testid={`ticker-city-${city.city.toLowerCase()}-${index}`}
+              >
+                <MapPin className="w-3 h-3" />
+                <span>{city.city}</span>
+              </span>
+            ))}
+          </div>
         </div>
+        
+        <span className="text-primary-foreground/60">|</span>
+        
+        <Link 
+          href="/experiences/travel"
+          className="font-semibold underline underline-offset-2 whitespace-nowrap"
+          data-testid="link-apply-now"
+        >
+          Apply Now
+        </Link>
       </div>
     </div>
   );
