@@ -345,7 +345,7 @@ export function CompactYearCalendar({
   
   if (filterMode === "day" && selectedDay && zoomedMonth) {
     return (
-      <Card className="p-3" data-testid="compact-calendar-day-view">
+      <Card className="p-3 w-[360px]" data-testid="compact-calendar-day-view">
         <DayZoomView
           year={year}
           month={zoomedMonth}
@@ -375,7 +375,7 @@ export function CompactYearCalendar({
   
   if (filterMode === "week" && selectedWeek && zoomedMonth) {
     return (
-      <Card className="p-3" data-testid="compact-calendar-week-view">
+      <Card className="p-3 w-[360px]" data-testid="compact-calendar-week-view">
         <WeekZoomView
           year={year}
           month={zoomedMonth}
@@ -397,7 +397,7 @@ export function CompactYearCalendar({
   }
 
   return (
-    <Card className="p-3" data-testid="compact-year-calendar">
+    <Card className="p-3 w-[360px]" data-testid="compact-year-calendar">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
           <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
