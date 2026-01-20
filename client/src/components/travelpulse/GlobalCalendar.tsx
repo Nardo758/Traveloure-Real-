@@ -194,6 +194,22 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             ? allCities[0].seasonCrowdLevel
             : "Normal";
 
+          const eventDays: number[] = [];
+          if (monthData.allEvents) {
+            monthData.allEvents.forEach(event => {
+              if (event.specificDate) {
+                const eventDate = new Date(event.specificDate);
+                if (eventDate.getMonth() + 1 === m) {
+                  eventDays.push(eventDate.getDate());
+                }
+              } else if (event.startMonth === m || event.endMonth === m) {
+                for (let d = 1; d <= 28; d += 7) {
+                  eventDays.push(d);
+                }
+              }
+            });
+          }
+
           summaries.push({
             month: m,
             monthName: months[m - 1],
@@ -202,6 +218,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             avgCrowdLevel: avgCrowd,
             topRating,
             cityCount: monthData.totalCities || allCities.length,
+            eventDays: Array.from(new Set(eventDays)),
           });
         }
       }
@@ -284,29 +301,6 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   if (view === "year") {
     return (
       <div className="space-y-4" data-testid="global-calendar">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              {currentYear} Travel Calendar
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Click any month to see the best dates and destinations
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setView("month-destinations")}
-              data-testid="button-list-view"
-            >
-              <Compass className="h-4 w-4 mr-1" />
-              Destinations
-            </Button>
-          </div>
-        </div>
-
         <YearOverviewCalendar
           year={currentYear}
           monthSummaries={yearData?.summaries || []}
