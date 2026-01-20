@@ -25,9 +25,15 @@ import {
   Mountain,
   Utensils,
   Plane,
+  Grid3X3,
+  CalendarDays,
 } from "lucide-react";
 import { Link } from "wouter";
 import { CityDetailView } from "./CityDetailView";
+import { YearOverviewCalendar } from "./YearOverviewCalendar";
+import { MonthCalendarGrid } from "./MonthCalendarGrid";
+
+type CalendarView = "year" | "month-grid" | "month-destinations";
 
 interface GlobalCity {
   id: string;
@@ -63,6 +69,7 @@ interface GlobalEvent {
   country: string;
   startMonth?: number | null;
   endMonth?: number | null;
+  specificDate?: string | null;
 }
 
 interface GlobalCalendarResponse {
@@ -78,6 +85,16 @@ interface GlobalCalendarResponse {
     avoid: GlobalCity[];
   };
   allEvents: GlobalEvent[];
+}
+
+interface MonthSummary {
+  month: number;
+  monthName: string;
+  eventCount: number;
+  avgWeather: string;
+  avgCrowdLevel: string;
+  topRating: string;
+  cityCount: number;
 }
 
 const vibeFilters = [
@@ -145,12 +162,51 @@ interface GlobalCalendarProps {
 }
 
 export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
+  const currentYear = new Date().getFullYear();
+  const [view, setView] = useState<CalendarView>("year");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedVibe, setSelectedVibe] = useState("all");
   const [selectedCity, setSelectedCity] = useState<{ name: string; country: string } | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<GlobalCalendarResponse>({
     queryKey: [`/api/travelpulse/global-calendar?month=${selectedMonth}&vibe=${selectedVibe}&limit=30`],
+  });
+
+  const { data: yearData } = useQuery<{ summaries: MonthSummary[] }>({
+    queryKey: ["/api/travelpulse/year-summary", currentYear],
+    queryFn: async () => {
+      const summaries: MonthSummary[] = [];
+      for (let m = 1; m <= 12; m++) {
+        const res = await fetch(`/api/travelpulse/global-calendar?month=${m}&limit=10`);
+        if (res.ok) {
+          const monthData: GlobalCalendarResponse = await res.json();
+          const allCities = [...monthData.grouped.best, ...monthData.grouped.good, ...monthData.grouped.average];
+          const topRating = monthData.grouped.best.length > 0 ? "best" :
+                           monthData.grouped.good.length > 0 ? "good" :
+                           monthData.grouped.average.length > 0 ? "average" : "avoid";
+          
+          const avgWeather = allCities.length > 0 && allCities[0].weatherDescription 
+            ? allCities[0].weatherDescription 
+            : "Varied";
+          const avgCrowd = allCities.length > 0 && allCities[0].seasonCrowdLevel
+            ? allCities[0].seasonCrowdLevel
+            : "Normal";
+
+          summaries.push({
+            month: m,
+            monthName: months[m - 1],
+            eventCount: monthData.allEvents?.length || 0,
+            avgWeather,
+            avgCrowdLevel: avgCrowd,
+            topRating,
+            cityCount: monthData.totalCities || allCities.length,
+          });
+        }
+      }
+      return { summaries };
+    },
+    staleTime: 1000 * 60 * 30,
   });
 
   const handleCityClick = (cityName: string, country: string) => {
@@ -162,14 +218,25 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     setSelectedCity(null);
   };
 
-  if (selectedCity) {
-    return (
-      <CityDetailView
-        cityName={selectedCity.name}
-        onBack={handleBackFromCity}
-      />
-    );
-  }
+  const handleMonthClick = (month: number) => {
+    setSelectedMonth(month);
+    setView("month-grid");
+  };
+
+  const handleDateClick = (date: Date) => {
+    setSelectedDate(date);
+    setView("month-destinations");
+  };
+
+  const handleBackToYear = () => {
+    setView("year");
+    setSelectedDate(null);
+  };
+
+  const handleBackToMonthGrid = () => {
+    setView("month-grid");
+    setSelectedDate(null);
+  };
 
   const handlePrevMonth = () => {
     setSelectedMonth((prev) => (prev === 1 ? 12 : prev - 1));
@@ -179,7 +246,16 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     setSelectedMonth((prev) => (prev === 12 ? 1 : prev + 1));
   };
 
-  if (isLoading) {
+  if (selectedCity) {
+    return (
+      <CityDetailView
+        cityName={selectedCity.name}
+        onBack={handleBackFromCity}
+      />
+    );
+  }
+
+  if (isLoading && view !== "year") {
     return (
       <div className="space-y-4">
         <Skeleton className="h-12 w-full" />
@@ -204,22 +280,112 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
     );
   }
 
+  if (view === "year") {
+    return (
+      <div className="space-y-4" data-testid="global-calendar">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              {currentYear} Travel Calendar
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Click any month to see the best dates and destinations
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setView("month-destinations")}
+              data-testid="button-list-view"
+            >
+              <Compass className="h-4 w-4 mr-1" />
+              Destinations
+            </Button>
+          </div>
+        </div>
+
+        <YearOverviewCalendar
+          year={currentYear}
+          monthSummaries={yearData?.summaries || []}
+          onMonthClick={handleMonthClick}
+        />
+      </div>
+    );
+  }
+
+  if (view === "month-grid") {
+    const { allEvents, monthName } = data || { allEvents: [], monthName: months[selectedMonth - 1] };
+    
+    return (
+      <div className="space-y-4" data-testid="global-calendar">
+        <MonthCalendarGrid
+          year={currentYear}
+          month={selectedMonth}
+          monthName={monthName}
+          events={allEvents.map(e => ({
+            ...e,
+            eventType: e.eventType || null,
+          }))}
+          seasonInfo={[]}
+          onDateClick={handleDateClick}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+          onBack={handleBackToYear}
+          selectedDate={selectedDate}
+        />
+
+        <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setView("month-destinations")}
+            data-testid="button-show-destinations"
+          >
+            <MapPin className="h-4 w-4 mr-1" />
+            View Destinations for {monthName}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const { grouped, allEvents, monthName } = data || { grouped: { best: [], good: [], average: [], avoid: [] }, allEvents: [], monthName: "" };
 
   return (
     <div className="space-y-6" data-testid="global-calendar">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-muted-foreground" />
-            Where to Go in {monthName}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            AI-powered recommendations based on weather, events, and crowd levels
-          </p>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleBackToYear}
+            data-testid="button-back-to-year"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-muted-foreground" />
+              Where to Go in {monthName}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              AI-powered recommendations based on weather, events, and crowd levels
+            </p>
+          </div>
         </div>
         
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setView("month-grid")}
+            data-testid="button-calendar-view"
+          >
+            <CalendarDays className="h-4 w-4 mr-1" />
+            Calendar
+          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -332,7 +498,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
                         <MapPin className="h-3 w-3" />
                         {event.city ? `${event.city}, ` : ""}{event.country}
                       </div>
-                      <Link href={`/experience/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
+                      <Link href={`/experiences/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
                         <Button 
                           variant="outline" 
                           size="sm" 
@@ -516,7 +682,7 @@ function CitySection({
                 {city.currentHighlight && (
                   <div className="mt-2 pt-2 border-t">
                     <p className="text-xs text-muted-foreground">
-                      {city.highlightEmoji} {city.currentHighlight}
+                      {city.currentHighlight}
                     </p>
                   </div>
                 )}
@@ -539,7 +705,7 @@ function CitySection({
                 {experienceSuggestions.map((suggestion, idx) => (
                   <Link 
                     key={idx} 
-                    href={`/experience/${suggestion.slug}?destination=${destination}`}
+                    href={`/experiences/${suggestion.slug}?destination=${destination}`}
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Button 
@@ -561,4 +727,3 @@ function CitySection({
     </div>
   );
 }
-
