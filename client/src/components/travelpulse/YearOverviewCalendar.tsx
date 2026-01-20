@@ -20,6 +20,95 @@ interface MonthSummary {
   avgCrowdLevel: string;
   topRating: string;
   cityCount: number;
+  eventDays?: number[];
+}
+
+function getMiniCalendarDays(year: number, month: number): (number | null)[][] {
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const daysInMonth = lastDay.getDate();
+  const startDay = firstDay.getDay();
+  
+  const weeks: (number | null)[][] = [];
+  let currentWeek: (number | null)[] = [];
+  
+  for (let i = 0; i < startDay; i++) {
+    currentWeek.push(null);
+  }
+  
+  for (let day = 1; day <= daysInMonth; day++) {
+    currentWeek.push(day);
+    if (currentWeek.length === 7) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+  }
+  
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) {
+      currentWeek.push(null);
+    }
+    weeks.push(currentWeek);
+  }
+  
+  return weeks;
+}
+
+function MiniCalendar({ 
+  year, 
+  month, 
+  eventDays = [],
+  onDayClick 
+}: { 
+  year: number; 
+  month: number; 
+  eventDays?: number[];
+  onDayClick?: (day: number) => void;
+}) {
+  const weeks = getMiniCalendarDays(year, month);
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+  const currentDay = today.getDate();
+  
+  return (
+    <div className="mt-2">
+      <div className="grid grid-cols-7 gap-0.5 text-[9px] text-muted-foreground mb-1">
+        {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+          <div key={i} className="text-center font-medium">{d}</div>
+        ))}
+      </div>
+      <div className="space-y-0.5">
+        {weeks.map((week, weekIdx) => (
+          <div key={weekIdx} className="grid grid-cols-7 gap-0.5">
+            {week.map((day, dayIdx) => {
+              const hasEvent = day !== null && eventDays.includes(day);
+              const isToday = isCurrentMonth && day === currentDay;
+              
+              return (
+                <div
+                  key={dayIdx}
+                  className={`
+                    text-[9px] text-center py-0.5 rounded-sm
+                    ${day === null ? "" : "cursor-pointer hover:bg-muted"}
+                    ${isToday ? "bg-primary text-primary-foreground font-bold" : ""}
+                    ${hasEvent && !isToday ? "bg-primary/20 font-medium" : ""}
+                  `}
+                  onClick={(e) => {
+                    if (day !== null && onDayClick) {
+                      e.stopPropagation();
+                      onDayClick(day);
+                    }
+                  }}
+                >
+                  {day || ""}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface YearOverviewCalendarProps {
@@ -101,52 +190,65 @@ export function YearOverviewCalendar({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         {months.map((monthName, idx) => {
           const summary = monthSummaries.find(s => s.month === idx + 1);
-          const isCurrentMonth = idx === currentMonth;
+          const isCurrentMonthCard = idx === currentMonth;
           
           return (
             <Card
               key={monthName}
-              className={`p-3 cursor-pointer hover-elevate transition-all ${
-                isCurrentMonth ? "ring-2 ring-primary" : ""
+              className={`p-4 cursor-pointer hover-elevate transition-all ${
+                isCurrentMonthCard ? "ring-2 ring-primary" : ""
               }`}
               onClick={() => onMonthClick(idx + 1)}
               data-testid={`month-card-${idx + 1}`}
             >
               <div className="flex items-center justify-between mb-2">
-                <span className="font-semibold text-sm">{monthName.slice(0, 3)}</span>
+                <span className="font-semibold">{monthName}</span>
                 {summary && (
-                  <div className={`w-2 h-2 rounded-full ${getRatingColor(summary.topRating)}`} />
+                  <div className={`w-2.5 h-2.5 rounded-full ${getRatingColor(summary.topRating)}`} />
                 )}
               </div>
               
               {summary ? (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {getWeatherIcon(summary.avgWeather)}
-                    <span className="truncate">{summary.avgWeather || "Varied"}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    {getCrowdIcon(summary.avgCrowdLevel)}
-                    <span>{summary.avgCrowdLevel || "Normal"}</span>
-                  </div>
-                  
-                  {summary.eventCount > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Ticket className="h-3 w-3 text-primary" />
-                      <span className="text-xs font-medium text-primary">
-                        {summary.eventCount} event{summary.eventCount !== 1 ? "s" : ""}
-                      </span>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      {getWeatherIcon(summary.avgWeather)}
+                      <span className="truncate">{summary.avgWeather || "Varied"}</span>
                     </div>
-                  )}
-                  
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <TrendingUp className="h-3 w-3" />
-                    <span>{summary.cityCount} destinations</span>
+                    
+                    <div className="flex items-center gap-1.5">
+                      {getCrowdIcon(summary.avgCrowdLevel)}
+                      <span>{summary.avgCrowdLevel || "Normal"}</span>
+                    </div>
                   </div>
+                  
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                    {summary.eventCount > 0 && (
+                      <div className="flex items-center gap-1 text-primary">
+                        <Ticket className="h-3 w-3" />
+                        <span className="font-medium">
+                          {summary.eventCount} event{summary.eventCount !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-1 text-muted-foreground">
+                      <TrendingUp className="h-3 w-3" />
+                      <span>{summary.cityCount} destinations</span>
+                    </div>
+                  </div>
+                  
+                  <MiniCalendar 
+                    year={year} 
+                    month={idx + 1}
+                    eventDays={summary.eventDays || []}
+                    onDayClick={(day) => {
+                      onMonthClick(idx + 1);
+                    }}
+                  />
                 </div>
               ) : (
                 <div className="text-xs text-muted-foreground">
