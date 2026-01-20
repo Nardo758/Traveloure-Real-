@@ -12,7 +12,6 @@ import {
   Cloud,
   CloudRain,
   Snowflake,
-  Thermometer,
   Users,
   TrendingUp,
   ChevronLeft,
@@ -24,9 +23,9 @@ import {
   BookOpen,
   Waves,
   Mountain,
-  Building,
   Utensils,
 } from "lucide-react";
+import { ExperienceTemplates } from "./ExperienceTemplates";
 
 interface GlobalCity {
   id: string;
@@ -328,6 +327,13 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
           <p className="text-xs text-muted-foreground mt-2">Check back after the next AI refresh</p>
         </Card>
       )}
+
+      <div className="mt-8 pt-6 border-t">
+        <ExperienceTemplates
+          selectedMonth={selectedMonth}
+          selectedVibe={selectedVibe}
+        />
+      </div>
     </div>
   );
 }
