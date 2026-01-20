@@ -52,7 +52,7 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - **Replit Auth**: OpenID Connect for user authentication.
 - **PostgreSQL**: Primary database.
 - **Dual AI System**:
-  - **Grok (xAI)**: Expert matching, real-time intelligence, content generation, autonomous itinerary building, and TravelPulse city intelligence via AI Orchestrator routing (grok-2-1212 model).
+  - **Grok (xAI)**: Expert matching, real-time intelligence, content generation, autonomous itinerary building, and TravelPulse city intelligence via AI Orchestrator routing (grok-3 model).
   - **Anthropic Claude**: Empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice (claude-sonnet-4-20250514 model).
   - **AI Orchestrator** (`server/services/ai-orchestrator.ts`): Routes requests to appropriate provider based on task type, with central logging to database.
 - **TravelPulse AI Intelligence System** (`server/services/travelpulse.service.ts`, `server/services/grok.service.ts`):

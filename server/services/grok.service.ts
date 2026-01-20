@@ -3,7 +3,7 @@ import OpenAI from "openai";
 // xAI Grok service using OpenAI-compatible API
 // Reference: blueprint:javascript_xai
 
-const GROK_MODEL = "grok-2-1212";
+const GROK_MODEL = "grok-3";
 const GROK_VISION_MODEL = "grok-2-vision-1212";
 
 // Lazy initialization to avoid startup errors when API key not configured
