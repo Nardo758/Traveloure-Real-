@@ -5060,6 +5060,19 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Get city media (public - for frontend gallery)
+  app.get("/api/travelpulse/media/:cityName/:country", async (req, res) => {
+    try {
+      const { cityName, country } = req.params;
+      const { mediaAggregatorService } = await import("./services/media-aggregator.service");
+      const media = await mediaAggregatorService.getMediaForCity(cityName, country);
+      res.json(media);
+    } catch (error: any) {
+      console.error("Error getting city media:", error);
+      res.status(500).json({ message: "Failed to get city media", error: error.message });
+    }
+  });
+
   // Get city with full AI intelligence data (admin only)
   app.get("/api/travelpulse/ai/city/:cityName", requireAdmin, async (req, res) => {
     try {

@@ -1238,6 +1238,21 @@ Return JSON:
       // Create/update hidden gems from AI recommendations
       await this.mergeAIHiddenGems(result.travelRecommendations.hiddenGems, cityName, country);
 
+      // Fetch and cache media from Unsplash, Pexels, and Google Places
+      try {
+        const { mediaAggregatorService } = await import("./media-aggregator.service");
+        await mediaAggregatorService.fetchAndCacheMedia({
+          cityId: updatedCity.id,
+          cityName,
+          country,
+          attractions: result.travelRecommendations.mustSeeAttractions,
+          hiddenGems: result.travelRecommendations.hiddenGems,
+        });
+      } catch (mediaError: any) {
+        console.error(`[TravelPulse] Media fetch error for ${cityName}:`, mediaError.message);
+        // Continue even if media fetch fails
+      }
+
       console.log(`[TravelPulse] City ${cityName} updated with AI intelligence`);
       
       return { success: true, city: updatedCity };
