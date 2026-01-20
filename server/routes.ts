@@ -5073,6 +5073,32 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Track Unsplash download (required by Unsplash API guidelines)
+  // Must be called when a photo is displayed prominently or used
+  app.post("/api/travelpulse/media/track-download", async (req, res) => {
+    try {
+      const { downloadLocationUrl } = req.body;
+      
+      if (!downloadLocationUrl || typeof downloadLocationUrl !== 'string') {
+        return res.status(400).json({ message: "downloadLocationUrl is required" });
+      }
+      
+      // Validate it's an Unsplash URL for security
+      if (!downloadLocationUrl.includes('api.unsplash.com')) {
+        return res.status(400).json({ message: "Invalid download location URL" });
+      }
+      
+      const { unsplashService } = await import("./services/unsplash.service");
+      await unsplashService.trackDownload(downloadLocationUrl);
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      // Don't fail the request - tracking is best-effort
+      console.error("Error tracking Unsplash download:", error);
+      res.json({ success: false, error: error.message });
+    }
+  });
+
   // Get city with full AI intelligence data (admin only)
   app.get("/api/travelpulse/ai/city/:cityName", requireAdmin, async (req, res) => {
     try {

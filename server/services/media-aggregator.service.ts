@@ -234,6 +234,7 @@ class MediaAggregatorService {
       sourceName: photo.sourceName,
       sourceUrl: photo.sourceUrl,
       license: photo.license,
+      downloadLocationUrl: photo.downloadLocationUrl, // For Unsplash API compliance
       qualityScore: isPrimary ? 100 : 80,
       isPrimary,
       expiresAt,

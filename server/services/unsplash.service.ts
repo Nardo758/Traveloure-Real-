@@ -50,6 +50,7 @@ export interface UnsplashMediaResult {
   sourceUrl: string;
   license: string;
   description: string | null;
+  downloadLocationUrl: string; // Required for Unsplash API compliance - must trigger when photo is used
 }
 
 class UnsplashService {
@@ -150,6 +151,11 @@ class UnsplashService {
     }
   }
 
+  private addUtmParams(url: string): string {
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}utm_source=traveloure&utm_medium=referral`;
+  }
+
   private transformPhoto(photo: UnsplashPhoto): UnsplashMediaResult {
     return {
       source: 'unsplash',
@@ -159,11 +165,12 @@ class UnsplashService {
       width: photo.width,
       height: photo.height,
       photographerName: photo.user.name,
-      photographerUrl: photo.user.links.html,
+      photographerUrl: this.addUtmParams(photo.user.links.html), // UTM params required by Unsplash
       sourceName: 'Unsplash',
-      sourceUrl: photo.links.html,
+      sourceUrl: this.addUtmParams(photo.links.html), // UTM params required by Unsplash
       license: 'Unsplash License',
       description: photo.alt_description || photo.description,
+      downloadLocationUrl: photo.links.download_location, // For download tracking compliance
     };
   }
 }
