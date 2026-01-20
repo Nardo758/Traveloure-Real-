@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DestinationCalendar } from "@/components/destination-calendar";
+import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 
 interface Service {
   id: string;
@@ -213,9 +214,17 @@ export default function HelpMeDecidePage() {
   const [favorites, setFavorites] = useState<number[]>([]);
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
   const [creatingComparison, setCreatingComparison] = useState(false);
+  const [travelPulseCity, setTravelPulseCity] = useState("Tokyo");
+  const [travelPulseCityInput, setTravelPulseCityInput] = useState("");
   const { user } = useAuth();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+
+  const { data: trendingData, isLoading: trendingLoading } = useQuery<{ trending: TravelPulseTrendingData[]; city: string; count: number }>({
+    queryKey: ["/api/travelpulse/trending", travelPulseCity],
+    queryFn: () => fetch(`/api/travelpulse/trending/${encodeURIComponent(travelPulseCity)}?limit=6`).then(r => r.json()),
+    staleTime: 30 * 60 * 1000,
+  });
 
   const { data: services, isLoading: servicesLoading } = useQuery<Service[]>({
     queryKey: ["/api/provider-services"],
@@ -399,6 +408,14 @@ export default function HelpMeDecidePage() {
               >
                 <Ticket className="w-4 h-4 mr-2" />
                 Upcoming Events
+              </TabsTrigger>
+              <TabsTrigger
+                value="travelpulse"
+                className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white"
+                data-testid="tab-travelpulse"
+              >
+                <TrendingUp className="w-4 h-4 mr-2" />
+                TravelPulse
               </TabsTrigger>
             </TabsList>
 
@@ -825,6 +842,109 @@ export default function HelpMeDecidePage() {
                   </Button>
                 </Link>
               </div>
+            </TabsContent>
+
+            {/* TravelPulse Tab - Real-time travel intelligence */}
+            <TabsContent value="travelpulse">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-[#111827] flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                      Trending in {travelPulseCity}
+                    </h3>
+                    <p className="text-sm text-[#6B7280]">
+                      Real-time insights from travelers worldwide
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-xs">
+                    Powered by AI
+                  </Badge>
+                </div>
+                
+                {/* City Selection */}
+                <div className="flex flex-col sm:flex-row gap-3 mb-6">
+                  <div className="relative flex-1 max-w-md">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Input
+                      placeholder="Enter city name..."
+                      value={travelPulseCityInput}
+                      onChange={(e) => setTravelPulseCityInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && travelPulseCityInput.trim()) {
+                          setTravelPulseCity(travelPulseCityInput.trim());
+                        }
+                      }}
+                      className="pl-10 h-12 border-[#E5E7EB] text-[#111827]"
+                      data-testid="input-travelpulse-city"
+                    />
+                  </div>
+                  <Button
+                    className="h-12 px-6 bg-[#FF385C] hover:bg-[#E23350] text-white"
+                    onClick={() => {
+                      if (travelPulseCityInput.trim()) {
+                        setTravelPulseCity(travelPulseCityInput.trim());
+                      }
+                    }}
+                    data-testid="button-explore-city"
+                  >
+                    <Search className="w-4 h-4 mr-2" />
+                    Explore
+                  </Button>
+                </div>
+
+                {/* Quick City Selection */}
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {["Tokyo", "Paris", "New York", "Barcelona", "Bali", "Rome", "Dubai", "London"].map((city) => (
+                    <Button
+                      key={city}
+                      variant={travelPulseCity === city ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setTravelPulseCity(city)}
+                      className={cn(
+                        travelPulseCity === city 
+                          ? "bg-[#FF385C] hover:bg-[#E23350] text-white" 
+                          : "border-[#E5E7EB]"
+                      )}
+                      data-testid={`button-city-${city.toLowerCase()}`}
+                    >
+                      {city}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Trending Destinations Grid */}
+              {trendingLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <Card key={i} className="bg-white border-[#E5E7EB]">
+                      <CardContent className="p-4">
+                        <Skeleton className="h-6 w-3/4 mb-2" />
+                        <Skeleton className="h-4 w-1/2 mb-4" />
+                        <Skeleton className="h-16 w-full mb-2" />
+                        <Skeleton className="h-4 w-full" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : trendingData?.trending && trendingData.trending.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {trendingData.trending.map((destination) => (
+                    <TravelPulseCard key={destination.id} data={destination} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 bg-white rounded-lg border border-[#E5E7EB]">
+                  <Globe className="w-12 h-12 text-[#9CA3AF] mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-[#111827] mb-2">
+                    No trending data yet
+                  </h3>
+                  <p className="text-[#6B7280] max-w-md mx-auto">
+                    Try searching for a different city or check back later for real-time travel intelligence.
+                  </p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
