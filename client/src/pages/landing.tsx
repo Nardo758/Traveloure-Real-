@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
+import { CityTickerTape } from "@/components/CityTickerTape";
 import { 
   ArrowRight,
   X,
@@ -43,11 +44,14 @@ import {
 } from "@/components/ui/accordion";
 
 const launchCities = [
-  { city: "Mumbai", country: "India" },
-  { city: "Bogota", country: "Colombia" },
-  { city: "Goa", country: "India" },
   { city: "Kyoto", country: "Japan" },
-  { city: "Edinburgh", country: "UK" },
+  { city: "Edinburgh", country: "Scotland" },
+  { city: "Goa", country: "India" },
+  { city: "Mumbai", country: "India" },
+  { city: "Bogotá", country: "Colombia" },
+  { city: "Porto", country: "Portugal" },
+  { city: "Jaipur", country: "India" },
+  { city: "Cartagena", country: "Colombia" },
 ];
 
 const experienceCategories = [
@@ -354,6 +358,9 @@ export default function LandingPage() {
           </motion.div>
         </div>
       </section>
+
+      {/* Animated City Ticker Tape */}
+      <CityTickerTape />
 
       {/* Accordion FAQ Section (Expert Section) */}
       <section className="py-16 lg:py-20 bg-white">
