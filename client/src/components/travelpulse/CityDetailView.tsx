@@ -30,6 +30,15 @@ import {
   Heart,
   Camera,
   ThumbsUp,
+  Brain,
+  Sun,
+  CloudRain,
+  Thermometer,
+  Shield,
+  Lightbulb,
+  Wallet,
+  Compass,
+  CalendarX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -56,6 +65,18 @@ interface TravelPulseCity {
   totalHiddenGems: number;
   totalAlerts: number;
   imageUrl?: string | null;
+  aiGeneratedAt?: string | null;
+  aiSourceModel?: string | null;
+  aiBestTimeToVisit?: string | null;
+  aiSeasonalHighlights?: Array<{ month: number; rating: string; highlight: string; weatherDesc: string }> | null;
+  aiUpcomingEvents?: Array<{ name: string; dateRange: string; type: string; significance: string }> | null;
+  aiTravelTips?: string[] | null;
+  aiLocalInsights?: string | null;
+  aiSafetyNotes?: string | null;
+  aiOptimalDuration?: string | null;
+  aiBudgetEstimate?: { budget?: number; midRange?: number; luxury?: number } | null;
+  aiMustSeeAttractions?: string[] | null;
+  aiAvoidDates?: Array<{ dateRange: string; reason: string }> | null;
 }
 
 interface HiddenGem {
@@ -391,18 +412,22 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
       </div>
 
       <Tabs defaultValue="hidden-gems" className="w-full">
-        <TabsList className="w-full grid grid-cols-3">
+        <TabsList className="w-full grid grid-cols-4">
           <TabsTrigger value="hidden-gems" data-testid="tab-hidden-gems">
             <Gem className="h-4 w-4 mr-2" />
-            Hidden Gems ({hiddenGems.length})
+            Hidden Gems
           </TabsTrigger>
           <TabsTrigger value="happening-now" data-testid="tab-happening-now">
             <Calendar className="h-4 w-4 mr-2" />
-            Happening Now ({happeningNow.length})
+            Happening Now
           </TabsTrigger>
           <TabsTrigger value="activity" data-testid="tab-activity">
             <Activity className="h-4 w-4 mr-2" />
-            Live Feed ({liveActivity.length})
+            Live Feed
+          </TabsTrigger>
+          <TabsTrigger value="ai-insights" data-testid="tab-ai-insights">
+            <Brain className="h-4 w-4 mr-2" />
+            AI Insights
           </TabsTrigger>
         </TabsList>
 
@@ -567,6 +592,237 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                 ))}
               </div>
             </ScrollArea>
+          )}
+        </TabsContent>
+
+        <TabsContent value="ai-insights" className="mt-4">
+          {!city.aiGeneratedAt ? (
+            <Card className="p-8 text-center">
+              <Brain className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">AI insights are being generated for {city.cityName}</p>
+              <p className="text-xs text-muted-foreground mt-2">Check back soon for personalized travel intelligence</p>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              <Card className="border-l-4 border-l-primary">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Best Time to Visit
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      Updated {city.aiGeneratedAt && formatDistanceToNow(new Date(city.aiGeneratedAt), { addSuffix: true })}
+                    </p>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm font-medium">{city.aiBestTimeToVisit || "Year-round destination"}</p>
+                </CardContent>
+              </Card>
+
+              {city.aiOptimalDuration && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Compass className="h-4 w-4" />
+                      Recommended Duration
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm">{city.aiOptimalDuration}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiBudgetEstimate && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Wallet className="h-4 w-4" />
+                      Daily Budget Estimate (USD)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                        <p className="text-xs text-muted-foreground">Budget</p>
+                        <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                          ${city.aiBudgetEstimate.budget || 50}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <p className="text-xs text-muted-foreground">Mid-Range</p>
+                        <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                          ${city.aiBudgetEstimate.midRange || 150}
+                        </p>
+                      </div>
+                      <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                        <p className="text-xs text-muted-foreground">Luxury</p>
+                        <p className="text-lg font-semibold text-purple-600 dark:text-purple-400">
+                          ${city.aiBudgetEstimate.luxury || 300}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiMustSeeAttractions && city.aiMustSeeAttractions.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Star className="h-4 w-4" />
+                      Must-See Attractions
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {city.aiMustSeeAttractions.map((attraction, idx) => (
+                        <Badge key={idx} variant="outline" className="bg-yellow-50 dark:bg-yellow-900/20">
+                          <MapPin className="h-3 w-3 mr-1" />
+                          {attraction}
+                        </Badge>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiTravelTips && city.aiTravelTips.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Lightbulb className="h-4 w-4" />
+                      Local Tips
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {city.aiTravelTips.map((tip, idx) => (
+                        <li key={idx} className="text-sm flex items-start gap-2">
+                          <span className="text-primary">-</span>
+                          {tip}
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiLocalInsights && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Heart className="h-4 w-4" />
+                      Cultural Insights
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{city.aiLocalInsights}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiSafetyNotes && (
+                <Card className="border-l-4 border-l-yellow-500">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Safety Notes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{city.aiSafetyNotes}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiSeasonalHighlights && city.aiSeasonalHighlights.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Sun className="h-4 w-4" />
+                      Seasonal Guide
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-48">
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                        {city.aiSeasonalHighlights.map((month) => {
+                          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                          const ratingColors: Record<string, string> = {
+                            excellent: "bg-green-100 dark:bg-green-900/30 border-green-300",
+                            good: "bg-blue-100 dark:bg-blue-900/30 border-blue-300",
+                            average: "bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300",
+                            poor: "bg-red-100 dark:bg-red-900/30 border-red-300",
+                          };
+                          return (
+                            <div 
+                              key={month.month} 
+                              className={cn("p-2 rounded-lg border", ratingColors[month.rating] || "bg-muted")}
+                              data-testid={`month-${month.month}`}
+                            >
+                              <p className="text-xs font-medium">{monthNames[month.month - 1]}</p>
+                              <p className="text-xs text-muted-foreground truncate" title={month.highlight}>
+                                {month.highlight}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiAvoidDates && city.aiAvoidDates.length > 0 && (
+                <Card className="border-l-4 border-l-red-500">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <CalendarX className="h-4 w-4" />
+                      Dates to Avoid
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-2">
+                      {city.aiAvoidDates.map((avoid, idx) => (
+                        <li key={idx} className="text-sm">
+                          <span className="font-medium text-red-600 dark:text-red-400">{avoid.dateRange}</span>
+                          <span className="text-muted-foreground"> - {avoid.reason}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              )}
+
+              {city.aiUpcomingEvents && city.aiUpcomingEvents.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Calendar className="h-4 w-4" />
+                      Upcoming Events
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {city.aiUpcomingEvents.map((event, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
+                          <div>
+                            <p className="text-sm font-medium">{event.name}</p>
+                            <p className="text-xs text-muted-foreground">{event.dateRange}</p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {event.type}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           )}
         </TabsContent>
       </Tabs>
