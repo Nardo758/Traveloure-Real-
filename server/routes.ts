@@ -4972,13 +4972,43 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // ============================================
-  // TRAVELPULSE AI INTELLIGENCE ROUTES
+  // TRAVELPULSE AI INTELLIGENCE ROUTES (Admin-only)
   // ============================================
 
   const { travelPulseScheduler } = await import("./services/travelpulse-scheduler.service");
 
-  // Get AI scheduler status
-  app.get("/api/travelpulse/ai/status", async (req, res) => {
+  // Middleware to check admin role for AI endpoints
+  const requireAdmin = (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    next();
+  };
+
+  // Global rate limiter for AI endpoints (max 10 refreshes per hour)
+  let aiRefreshCount = 0;
+  let aiRefreshResetTime = Date.now() + 60 * 60 * 1000;
+  
+  const checkAIRateLimit = (req: any, res: any, next: any) => {
+    if (Date.now() > aiRefreshResetTime) {
+      aiRefreshCount = 0;
+      aiRefreshResetTime = Date.now() + 60 * 60 * 1000;
+    }
+    if (aiRefreshCount >= 10) {
+      return res.status(429).json({ 
+        message: "AI refresh rate limit exceeded. Maximum 10 manual refreshes per hour.",
+        resetAt: new Date(aiRefreshResetTime),
+      });
+    }
+    aiRefreshCount++;
+    next();
+  };
+
+  // Get AI scheduler status (admin only)
+  app.get("/api/travelpulse/ai/status", requireAdmin, async (req, res) => {
     try {
       const status = travelPulseScheduler.getStatus();
       const citiesNeedingRefresh = await travelPulseService.getCitiesNeedingRefresh();
@@ -4993,12 +5023,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  // Manually trigger AI refresh for a specific city
-  app.post("/api/travelpulse/ai/refresh/:cityName/:country", async (req, res) => {
+  // Manually trigger AI refresh for a specific city (admin only, rate limited)
+  app.post("/api/travelpulse/ai/refresh/:cityName/:country", requireAdmin, checkAIRateLimit, async (req, res) => {
     try {
       const { cityName, country } = req.params;
       
-      // Rate limiting check - prevent refresh if city was updated in last hour
+      // Per-city rate limiting check - prevent refresh if city was updated in last hour
       const city = await travelPulseService.getCityByName(cityName);
       if (city?.aiGeneratedAt) {
         const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -5019,8 +5049,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  // Manually trigger AI refresh for all stale cities
-  app.post("/api/travelpulse/ai/refresh-all", async (req, res) => {
+  // Manually trigger AI refresh for all stale cities (admin only, rate limited)
+  app.post("/api/travelpulse/ai/refresh-all", requireAdmin, checkAIRateLimit, async (req, res) => {
     try {
       const result = await travelPulseScheduler.triggerManualRefresh();
       res.json(result);
@@ -5030,8 +5060,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  // Get city with full AI intelligence data
-  app.get("/api/travelpulse/ai/city/:cityName", async (req, res) => {
+  // Get city with full AI intelligence data (admin only)
+  app.get("/api/travelpulse/ai/city/:cityName", requireAdmin, async (req, res) => {
     try {
       const { cityName } = req.params;
       const city = await travelPulseService.getCityByName(cityName);
