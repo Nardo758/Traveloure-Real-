@@ -11,6 +11,8 @@ import {
   travelPulseLiveActivity,
   travelPulseCityAlerts,
   travelPulseHappeningNow,
+  destinationSeasons,
+  destinationEvents,
   TravelPulseTrending,
   TravelPulseTruthCheck,
   TravelPulseCalendarEvent,
@@ -20,8 +22,9 @@ import {
   TravelPulseCityAlert,
   TravelPulseHappeningNow,
 } from "@shared/schema";
-import { eq, and, gte, lte, desc, asc, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, sql, isNull, lt } from "drizzle-orm";
 import crypto from "crypto";
+import { grokService, CityIntelligenceResult } from "./grok.service";
 
 const GROK_MODEL = "grok-3";
 
@@ -1146,6 +1149,251 @@ Return JSON:
       await db.insert(travelPulseHappeningNow).values(event);
     }
     console.log(`Seeded ${events.length} happening now events`);
+  }
+
+  // ============================================
+  // AI INTELLIGENCE UPDATE METHODS
+  // ============================================
+
+  // Update a city with AI-generated intelligence from Grok
+  async updateCityWithAI(cityName: string, country: string): Promise<{ success: boolean; city?: TravelPulseCity; error?: string }> {
+    try {
+      console.log(`[TravelPulse] Generating AI intelligence for ${cityName}, ${country}...`);
+      
+      // Get AI intelligence from Grok
+      const { result, usage } = await grokService.generateCityIntelligence(cityName, country);
+      
+      console.log(`[TravelPulse] AI intelligence generated. Tokens used: ${usage.totalTokens}`);
+
+      // Find existing city or create new one
+      const [existingCity] = await db
+        .select()
+        .from(travelPulseCities)
+        .where(and(
+          eq(travelPulseCities.cityName, cityName),
+          eq(travelPulseCities.country, country)
+        ))
+        .limit(1);
+
+      const cityUpdate = {
+        // Core identity
+        cityName: result.cityName,
+        country: result.country,
+        
+        // Pulse metrics from AI
+        pulseScore: result.pulseMetrics.pulseScore,
+        trendingScore: result.pulseMetrics.trendingScore,
+        crowdLevel: result.pulseMetrics.crowdLevel,
+        weatherScore: result.pulseMetrics.weatherScore,
+        
+        // Vibe from AI
+        vibeTags: result.currentVibe.vibeTags,
+        currentHighlight: result.currentVibe.currentHighlight,
+        
+        // Price intelligence from AI
+        avgHotelPrice: String(result.priceIntelligence.avgHotelPriceUsd),
+        priceChange: String(result.priceIntelligence.priceChangePercent),
+        priceTrend: result.priceIntelligence.priceTrend,
+        dealAlert: result.priceIntelligence.dealAlert,
+        
+        // AI-specific fields
+        aiGeneratedAt: new Date(),
+        aiSourceModel: "grok-2-1212",
+        aiBestTimeToVisit: result.seasonalInsights.bestTimeToVisit,
+        aiSeasonalHighlights: result.seasonalInsights.monthlyHighlights,
+        aiUpcomingEvents: result.seasonalInsights.upcomingEvents,
+        aiTravelTips: result.travelRecommendations.localTips,
+        aiLocalInsights: result.travelRecommendations.culturalInsights,
+        aiSafetyNotes: result.travelRecommendations.safetyNotes,
+        aiOptimalDuration: result.travelRecommendations.optimalDuration,
+        aiBudgetEstimate: result.travelRecommendations.budgetEstimate,
+        aiMustSeeAttractions: result.travelRecommendations.mustSeeAttractions,
+        aiAvoidDates: result.avoidDates,
+        
+        lastUpdated: new Date(),
+      };
+
+      let updatedCity: TravelPulseCity;
+
+      if (existingCity) {
+        // Update existing city
+        const [updated] = await db
+          .update(travelPulseCities)
+          .set(cityUpdate)
+          .where(eq(travelPulseCities.id, existingCity.id))
+          .returning();
+        updatedCity = updated;
+      } else {
+        // Insert new city
+        const [inserted] = await db
+          .insert(travelPulseCities)
+          .values(cityUpdate)
+          .returning();
+        updatedCity = inserted;
+      }
+
+      // Merge AI data into destination calendar tables
+      await this.mergeAIToCalendar(result, cityName, country);
+      
+      // Create/update hidden gems from AI recommendations
+      await this.mergeAIHiddenGems(result.travelRecommendations.hiddenGems, cityName, country);
+
+      console.log(`[TravelPulse] City ${cityName} updated with AI intelligence`);
+      
+      return { success: true, city: updatedCity };
+    } catch (error: any) {
+      console.error(`[TravelPulse] Error updating ${cityName} with AI:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Merge AI seasonal insights into destinationSeasons table
+  private async mergeAIToCalendar(result: CityIntelligenceResult, city: string, country: string): Promise<void> {
+    // Merge monthly highlights into destinationSeasons
+    for (const monthData of result.seasonalInsights.monthlyHighlights) {
+      const existing = await db
+        .select()
+        .from(destinationSeasons)
+        .where(and(
+          eq(destinationSeasons.city, city),
+          eq(destinationSeasons.country, country),
+          eq(destinationSeasons.month, monthData.month)
+        ))
+        .limit(1);
+
+      const seasonData = {
+        city,
+        country,
+        month: monthData.month,
+        rating: monthData.rating,
+        weatherDescription: monthData.weatherDesc,
+        highlights: [monthData.highlight],
+        sourceType: "ai" as const,
+        updatedAt: new Date(),
+      };
+
+      if (existing.length > 0) {
+        // Only update if it was AI-generated (don't overwrite user contributions)
+        if (existing[0].sourceType === "ai" || existing[0].sourceType === "system") {
+          await db
+            .update(destinationSeasons)
+            .set(seasonData)
+            .where(eq(destinationSeasons.id, existing[0].id));
+        }
+      } else {
+        await db.insert(destinationSeasons).values(seasonData);
+      }
+    }
+
+    // Merge upcoming events into destinationEvents
+    for (const event of result.seasonalInsights.upcomingEvents) {
+      // Check if similar event already exists
+      const existing = await db
+        .select()
+        .from(destinationEvents)
+        .where(and(
+          eq(destinationEvents.city, city),
+          eq(destinationEvents.country, country),
+          eq(destinationEvents.title, event.name)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(destinationEvents).values({
+          city,
+          country,
+          title: event.name,
+          description: `${event.type} event: ${event.dateRange}`,
+          eventType: event.type,
+          seasonRating: event.significance,
+          sourceType: "ai",
+          status: "approved",
+        });
+      }
+    }
+  }
+
+  // Merge AI hidden gems into travelPulseHiddenGems
+  private async mergeAIHiddenGems(gems: CityIntelligenceResult["travelRecommendations"]["hiddenGems"], city: string, country: string): Promise<void> {
+    for (const gem of gems) {
+      const existing = await db
+        .select()
+        .from(travelPulseHiddenGems)
+        .where(and(
+          eq(travelPulseHiddenGems.city, city),
+          eq(travelPulseHiddenGems.placeName, gem.name)
+        ))
+        .limit(1);
+
+      const gemData = {
+        city,
+        country,
+        placeName: gem.name,
+        placeType: gem.type,
+        description: gem.whySpecial,
+        whyLocalsLoveIt: gem.whySpecial,
+        priceRange: gem.priceRange,
+        gemScore: 85, // AI-recommended gems get high default score
+        discoveryStatus: "hidden" as const,
+        aiGenerated: true,
+        aiGeneratedAt: new Date(),
+        lastUpdated: new Date(),
+      };
+
+      if (existing.length === 0) {
+        await db.insert(travelPulseHiddenGems).values(gemData);
+      } else if (existing[0].aiGenerated) {
+        // Update only if it was AI-generated
+        await db
+          .update(travelPulseHiddenGems)
+          .set(gemData)
+          .where(eq(travelPulseHiddenGems.id, existing[0].id));
+      }
+    }
+  }
+
+  // Refresh all cities that need AI update (stale data > 24 hours)
+  async refreshStaleAICities(): Promise<{ refreshed: number; errors: number }> {
+    const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000); // 24 hours ago
+    
+    // Get cities with stale or missing AI data
+    const staleCities = await db
+      .select()
+      .from(travelPulseCities)
+      .where(
+        sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`
+      )
+      .limit(10); // Process max 10 cities per run to control API costs
+
+    let refreshed = 0;
+    let errors = 0;
+
+    for (const city of staleCities) {
+      const result = await this.updateCityWithAI(city.cityName, city.country);
+      if (result.success) {
+        refreshed++;
+      } else {
+        errors++;
+      }
+      
+      // Rate limit: wait 2 seconds between API calls
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    console.log(`[TravelPulse] Daily refresh complete: ${refreshed} updated, ${errors} errors`);
+    return { refreshed, errors };
+  }
+
+  // Get cities that need AI refresh
+  async getCitiesNeedingRefresh(): Promise<TravelPulseCity[]> {
+    const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    return db
+      .select()
+      .from(travelPulseCities)
+      .where(
+        sql`${travelPulseCities.aiGeneratedAt} IS NULL OR ${travelPulseCities.aiGeneratedAt} < ${staleThreshold}`
+      );
   }
 }
 
