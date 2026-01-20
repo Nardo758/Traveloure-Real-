@@ -350,6 +350,8 @@ function getExperienceSuggestionsForCity(city: GlobalCity): Array<{ label: strin
   
   if (vibes.includes("romantic")) {
     suggestions.push({ label: "Romantic Getaway", slug: "date-night" });
+    suggestions.push({ label: "Plan a Proposal", slug: "proposal" });
+    suggestions.push({ label: "Destination Wedding", slug: "wedding" });
   }
   if (vibes.includes("adventure")) {
     suggestions.push({ label: "Adventure Trip", slug: "travel" });
@@ -359,28 +361,45 @@ function getExperienceSuggestionsForCity(city: GlobalCity): Array<{ label: strin
   }
   if (vibes.includes("luxury")) {
     suggestions.push({ label: "Luxury Escape", slug: "travel" });
+    suggestions.push({ label: "Destination Wedding", slug: "wedding" });
   }
   if (vibes.includes("nightlife")) {
     suggestions.push({ label: "Nightlife Experience", slug: "date-night" });
+    suggestions.push({ label: "Birthday Celebration", slug: "birthday" });
   }
   if (vibes.includes("beach")) {
     suggestions.push({ label: "Beach Vacation", slug: "travel" });
+    suggestions.push({ label: "Destination Wedding", slug: "wedding" });
   }
   if (vibes.includes("nature")) {
     suggestions.push({ label: "Nature Retreat", slug: "retreat" });
+    suggestions.push({ label: "Corporate Retreat", slug: "corporate" });
   }
   if (vibes.includes("foodie")) {
     suggestions.push({ label: "Food & Wine Tour", slug: "travel" });
+    suggestions.push({ label: "Birthday Celebration", slug: "birthday" });
   }
   if (vibes.includes("family")) {
-    suggestions.push({ label: "Family Trip", slug: "reunion" });
+    suggestions.push({ label: "Family Reunion", slug: "reunion" });
+    suggestions.push({ label: "Birthday Celebration", slug: "birthday" });
+  }
+  if (vibes.includes("business") || vibes.includes("urban") || vibes.includes("city")) {
+    suggestions.push({ label: "Corporate Event", slug: "corporate" });
+  }
+  if (vibes.includes("celebration") || vibes.includes("festive") || vibes.includes("party")) {
+    suggestions.push({ label: "Birthday Celebration", slug: "birthday" });
+    suggestions.push({ label: "Reunion Trip", slug: "reunion" });
   }
   
   if (suggestions.length === 0) {
     suggestions.push({ label: "Plan a Trip", slug: "travel" });
   }
   
-  return suggestions.slice(0, 2);
+  const uniqueSuggestions = suggestions.filter((suggestion, index, self) =>
+    index === self.findIndex(s => s.slug === suggestion.slug)
+  );
+  
+  return uniqueSuggestions.slice(0, 2);
 }
 
 function CitySection({
