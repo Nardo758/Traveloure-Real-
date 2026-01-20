@@ -79,7 +79,10 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
     - `GET /api/travelpulse/enriched/:cityName` - Get enriched recommendations with booking links
     - `GET /api/travelpulse/serp-search` - Search for venues by type (restaurant, attraction, nightlife)
   - UI integration: EnrichedRecommendationsSection in CityDetailView "For You" tab
+    - CityGrid (Trending tab) and GlobalCalendar (Calendar tab) both open CityDetailView on city click
+    - Pattern: local selectedCity state → render CityDetailView → onBack resets to list
   - Environment variable: `SERP_API_KEY` for SerpAPI access
+  - Beta cities with AI data: Tokyo, Paris, New York, Barcelona, Rome, London, Sydney, Dubai
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search (with caching layer).
 - **Viator Partner API**: Real-time tours and activities search (with caching layer).
