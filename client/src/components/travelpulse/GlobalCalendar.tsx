@@ -457,6 +457,12 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             if (mode === "month") {
               setSelectedWeek(undefined);
               setSelectedDay(undefined);
+            } else if (mode === "week") {
+              setSelectedWeek(1);
+              setSelectedDay(undefined);
+            } else if (mode === "day") {
+              setSelectedDay(1);
+              setSelectedWeek(undefined);
             }
           }}
           onMonthSelect={(month) => {
