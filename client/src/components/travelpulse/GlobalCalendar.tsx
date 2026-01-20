@@ -24,8 +24,10 @@ import {
   Waves,
   Mountain,
   Utensils,
+  Plane,
+  PartyPopper,
 } from "lucide-react";
-import { ExperienceTemplates } from "./ExperienceTemplates";
+import { Link } from "wouter";
 
 interface GlobalCity {
   id: string;
@@ -190,7 +192,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
+            <Calendar className="h-5 w-5 text-muted-foreground" />
             Where to Go in {monthName}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
@@ -291,16 +293,16 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
       {allEvents.length > 0 && (
         <div className="mt-8">
           <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-            <Ticket className="h-5 w-5 text-primary" />
+            <Ticket className="h-5 w-5 text-muted-foreground" />
             Events & Festivals in {monthName}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {allEvents.slice(0, 6).map((event) => (
-              <Card key={event.id} className="hover-elevate cursor-pointer" data-testid={`event-card-${event.id}`}>
+              <Card key={event.id} className="hover-elevate" data-testid={`event-card-${event.id}`}>
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Ticket className="h-5 w-5 text-primary" />
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                      <Ticket className="h-5 w-5 text-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <Badge variant="secondary" className="mb-1 text-xs capitalize">
@@ -311,6 +313,17 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
                         <MapPin className="h-3 w-3" />
                         {event.city ? `${event.city}, ` : ""}{event.country}
                       </div>
+                      <Link href={`/experience/travel?destination=${encodeURIComponent(event.city || event.country)}&event=${encodeURIComponent(event.title)}`}>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="mt-2"
+                          data-testid={`button-plan-event-${event.id}`}
+                        >
+                          <Plane className="h-3 w-3 mr-1" />
+                          Plan This Trip
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 </CardContent>
@@ -328,12 +341,13 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
         </Card>
       )}
 
-      <div className="mt-8 pt-6 border-t">
-        <ExperienceTemplates
-          selectedMonth={selectedMonth}
-          selectedVibe={selectedVibe}
-        />
-      </div>
+      <ExperienceInspirationWidget
+        selectedMonth={selectedMonth}
+        selectedVibe={selectedVibe}
+        monthName={monthName}
+        topCities={[...grouped.best, ...grouped.good].slice(0, 3)}
+        events={allEvents.slice(0, 3)}
+      />
     </div>
   );
 }
@@ -416,8 +430,8 @@ function CitySection({
               {city.events.length > 0 && (
                 <div className="mt-2 pt-2 border-t">
                   <div className="flex items-center gap-1 text-xs">
-                    <Ticket className="h-3 w-3 text-primary" />
-                    <span className="font-medium text-primary">{city.events[0].title}</span>
+                    <Ticket className="h-3 w-3 text-muted-foreground" />
+                    <span className="font-medium">{city.events[0].title}</span>
                   </div>
                 </div>
               )}
@@ -442,6 +456,211 @@ function CitySection({
             </CardContent>
           </Card>
         ))}
+      </div>
+    </div>
+  );
+}
+
+interface ExperienceIdea {
+  title: string;
+  description: string;
+  slug: string;
+  source: string;
+  destination?: string;
+  event?: string;
+}
+
+function getExperienceIdeasFromContext(
+  month: number,
+  vibe: string,
+  cities: GlobalCity[],
+  events: GlobalEvent[]
+): ExperienceIdea[] {
+  const ideas: ExperienceIdea[] = [];
+  
+  const monthNames = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+  const monthName = monthNames[month - 1];
+  
+  if (cities.length > 0) {
+    const topCity = cities[0];
+    ideas.push({
+      title: `${monthName} Getaway to ${topCity.cityName}`,
+      description: topCity.currentHighlight 
+        ? `${topCity.currentHighlight} - Perfect timing for your trip`
+        : `Rated best time to visit with ${topCity.weatherDescription || "great weather"}`,
+      slug: "travel",
+      source: `${topCity.cityName}, ${topCity.country}`,
+      destination: `${topCity.cityName}, ${topCity.country}`
+    });
+    
+    if (topCity.vibeTags.includes("romantic") || vibe === "romantic") {
+      ideas.push({
+        title: `Romantic Escape to ${topCity.cityName}`,
+        description: `Create unforgettable memories in ${topCity.cityName}`,
+        slug: "date-night",
+        source: `${topCity.cityName}, ${topCity.country}`,
+        destination: `${topCity.cityName}, ${topCity.country}`
+      });
+    }
+    
+    if (cities.length > 1) {
+      const secondCity = cities[1];
+      ideas.push({
+        title: `Explore ${secondCity.cityName}`,
+        description: secondCity.currentHighlight || `Discover what makes ${secondCity.cityName} special this ${monthName}`,
+        slug: "travel",
+        source: `${secondCity.cityName}, ${secondCity.country}`,
+        destination: `${secondCity.cityName}, ${secondCity.country}`
+      });
+    }
+  }
+  
+  if (events.length > 0) {
+    const featuredEvent = events[0];
+    ideas.push({
+      title: `Experience ${featuredEvent.title}`,
+      description: featuredEvent.description || `Join the ${featuredEvent.eventType || "celebration"} in ${featuredEvent.city || featuredEvent.country}`,
+      slug: "travel",
+      source: featuredEvent.city ? `${featuredEvent.city}, ${featuredEvent.country}` : featuredEvent.country,
+      destination: featuredEvent.city || featuredEvent.country,
+      event: featuredEvent.title
+    });
+  }
+  
+  if (month === 2 || vibe === "romantic") {
+    const romanticCity = cities.find(c => c.vibeTags.includes("romantic"));
+    ideas.push({
+      title: "Plan a Romantic Proposal",
+      description: romanticCity 
+        ? `${romanticCity.cityName} is perfect for your special moment`
+        : "Use our AI insights to find the perfect destination and timing",
+      slug: "proposal",
+      source: romanticCity ? `${romanticCity.cityName}, ${romanticCity.country}` : "AI Recommendation",
+      destination: romanticCity ? `${romanticCity.cityName}, ${romanticCity.country}` : undefined
+    });
+  }
+  
+  if (month === 6 || month === 9) {
+    ideas.push({
+      title: "Destination Wedding Planning",
+      description: "Optimal weather conditions in multiple destinations this month",
+      slug: "wedding",
+      source: "Seasonal Insight"
+    });
+  }
+  
+  if (month === 12) {
+    ideas.push({
+      title: "Holiday Celebration Trip",
+      description: "Festive events and celebrations happening worldwide",
+      slug: "birthday",
+      source: "Holiday Season"
+    });
+  }
+  
+  if (vibe === "corporate" || vibe === "business") {
+    ideas.push({
+      title: "Team Retreat Planning",
+      description: "Find destinations with ideal conditions for team building",
+      slug: "corporate",
+      source: "Business Travel"
+    });
+  }
+  
+  if (vibe === "family") {
+    ideas.push({
+      title: "Family Reunion Trip",
+      description: "Gather everyone for an unforgettable family adventure",
+      slug: "reunion",
+      source: "Family Travel"
+    });
+  }
+  
+  return ideas.slice(0, 4);
+}
+
+function ExperienceInspirationWidget({
+  selectedMonth,
+  selectedVibe,
+  monthName,
+  topCities,
+  events,
+}: {
+  selectedMonth: number;
+  selectedVibe: string;
+  monthName: string;
+  topCities: GlobalCity[];
+  events: GlobalEvent[];
+}) {
+  const ideas = getExperienceIdeasFromContext(selectedMonth, selectedVibe, topCities, events);
+  
+  if (ideas.length === 0) {
+    return null;
+  }
+  
+  return (
+    <div className="mt-8 pt-6 border-t" data-testid="experience-inspiration-widget">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2" data-testid="heading-experience-ideas">
+            <Sparkles className="h-5 w-5 text-muted-foreground" />
+            Create an Experience
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Ideas inspired by {monthName} travel insights
+          </p>
+        </div>
+        <Link href="/experience">
+          <Button variant="ghost" size="sm" data-testid="button-view-all-experiences">
+            View All
+            <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
+        </Link>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {ideas.map((idea, idx) => {
+          const params = new URLSearchParams();
+          if (idea.destination) params.set("destination", idea.destination);
+          if (idea.event) params.set("event", idea.event);
+          const queryString = params.toString();
+          const href = `/experience/${idea.slug}${queryString ? `?${queryString}` : ""}`;
+          
+          return (
+          <Link key={idx} href={href}>
+            <Card 
+              className="hover-elevate cursor-pointer h-full"
+              data-testid={`experience-idea-${idx}`}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
+                    {idea.slug === "travel" ? (
+                      <Plane className="h-5 w-5 text-foreground" />
+                    ) : idea.slug === "wedding" || idea.slug === "proposal" || idea.slug === "date-night" ? (
+                      <Heart className="h-5 w-5 text-foreground" />
+                    ) : (
+                      <PartyPopper className="h-5 w-5 text-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm line-clamp-1" data-testid={`idea-title-${idx}`}>
+                      {idea.title}
+                    </h4>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                      {idea.description}
+                    </p>
+                    <Badge variant="secondary" className="mt-2 text-xs">
+                      {idea.source}
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+          );
+        })}
       </div>
     </div>
   );
