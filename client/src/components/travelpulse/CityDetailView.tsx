@@ -39,6 +39,9 @@ import {
   Wallet,
   Compass,
   CalendarX,
+  Play,
+  Image,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -141,6 +144,32 @@ interface CityIntelligence {
   liveActivity: LiveActivity[];
 }
 
+interface CityMedia {
+  id: string;
+  source: 'unsplash' | 'pexels' | 'google_places';
+  mediaType: 'photo' | 'video';
+  url: string;
+  thumbnailUrl?: string | null;
+  previewUrl?: string | null;
+  width?: number | null;
+  height?: number | null;
+  duration?: number | null;
+  context?: string | null;
+  attractionName?: string | null;
+  photographerName?: string | null;
+  photographerUrl?: string | null;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+  isPrimary?: boolean | null;
+}
+
+interface CityMediaResponse {
+  hero: CityMedia | null;
+  gallery: CityMedia[];
+  videos: CityMedia[];
+  byAttraction: Record<string, CityMedia[]>;
+}
+
 interface CityDetailViewProps {
   cityName: string;
   onBack: () => void;
@@ -239,6 +268,12 @@ function CityDetailSkeleton() {
 export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
   const { data, isLoading, error } = useQuery<CityIntelligence>({
     queryKey: ["/api/travelpulse/cities", cityName],
+  });
+
+  // Fetch media for this city (after we have city data)
+  const { data: mediaData } = useQuery<CityMediaResponse>({
+    queryKey: ["/api/travelpulse/media", cityName, data?.city?.country],
+    enabled: !!data?.city?.country,
   });
 
   if (isLoading) {
@@ -412,7 +447,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
       </div>
 
       <Tabs defaultValue="hidden-gems" className="w-full">
-        <TabsList className="w-full grid grid-cols-4">
+        <TabsList className="w-full grid grid-cols-5">
           <TabsTrigger value="hidden-gems" data-testid="tab-hidden-gems">
             <Gem className="h-4 w-4 mr-2" />
             Hidden Gems
@@ -424,6 +459,10 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
           <TabsTrigger value="activity" data-testid="tab-activity">
             <Activity className="h-4 w-4 mr-2" />
             Live Feed
+          </TabsTrigger>
+          <TabsTrigger value="media" data-testid="tab-media">
+            <Image className="h-4 w-4 mr-2" />
+            Photos & Videos
           </TabsTrigger>
           <TabsTrigger value="ai-insights" data-testid="tab-ai-insights">
             <Brain className="h-4 w-4 mr-2" />
@@ -592,6 +631,149 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                 ))}
               </div>
             </ScrollArea>
+          )}
+        </TabsContent>
+
+        <TabsContent value="media" className="mt-4">
+          {!mediaData || (mediaData.gallery.length === 0 && mediaData.videos.length === 0) ? (
+            <Card className="p-8 text-center" data-testid="card-no-media">
+              <Image className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No media available yet for {city.cityName}</p>
+              <p className="text-xs text-muted-foreground mt-2">Photos and videos will be added when AI intelligence is refreshed</p>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {/* Videos Section */}
+              {mediaData.videos.length > 0 && (
+                <div data-testid="videos-section">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <Play className="h-5 w-5 text-primary" />
+                    Destination Videos
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {mediaData.videos.map((video, idx) => (
+                      <Card key={video.id} className="overflow-hidden" data-testid={`video-card-${idx}`}>
+                        <div className="relative aspect-video bg-muted">
+                          <video
+                            src={video.url}
+                            poster={video.thumbnailUrl || video.previewUrl || undefined}
+                            controls
+                            preload="metadata"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <CardContent className="p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>by {video.photographerName}</span>
+                              {video.duration && (
+                                <span>({Math.floor(video.duration / 60)}:{(video.duration % 60).toString().padStart(2, '0')})</span>
+                              )}
+                            </div>
+                            <a
+                              href={video.sourceUrl || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                            >
+                              {video.sourceName}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Photo Gallery Section */}
+              {mediaData.gallery.length > 0 && (
+                <div data-testid="gallery-section">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <Camera className="h-5 w-5 text-primary" />
+                    Photo Gallery
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {mediaData.gallery.map((photo, idx) => (
+                      <Card key={photo.id} className="overflow-hidden group" data-testid={`photo-card-${idx}`}>
+                        <div className="relative aspect-[4/3] bg-muted">
+                          <img
+                            src={photo.thumbnailUrl || photo.url}
+                            alt={photo.attractionName || `${city.cityName} photo`}
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            loading="lazy"
+                          />
+                          {photo.isPrimary && (
+                            <Badge className="absolute top-2 left-2 bg-primary/90 text-white">
+                              <Star className="h-3 w-3 mr-1" />
+                              Featured
+                            </Badge>
+                          )}
+                          {photo.attractionName && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                              <p className="text-xs text-white truncate">{photo.attractionName}</p>
+                            </div>
+                          )}
+                        </div>
+                        <CardContent className="p-2">
+                          <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span className="truncate">{photo.photographerName}</span>
+                            <a
+                              href={photo.sourceUrl || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline flex items-center gap-0.5 flex-shrink-0"
+                            >
+                              {photo.sourceName}
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Attraction-specific photos */}
+              {Object.keys(mediaData.byAttraction).length > 0 && (
+                <div data-testid="attractions-media-section">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <MapPin className="h-5 w-5 text-primary" />
+                    Photos by Attraction
+                  </h3>
+                  <div className="space-y-4">
+                    {Object.entries(mediaData.byAttraction).map(([attractionName, photos]) => (
+                      <div key={attractionName}>
+                        <h4 className="text-sm font-medium mb-2">{attractionName}</h4>
+                        <div className="flex gap-2 overflow-x-auto pb-2">
+                          {photos.map((photo, idx) => (
+                            <div
+                              key={photo.id}
+                              className="flex-shrink-0 w-40 aspect-[4/3] rounded-lg overflow-hidden bg-muted"
+                              data-testid={`attraction-photo-${attractionName}-${idx}`}
+                            >
+                              <img
+                                src={photo.thumbnailUrl || photo.url}
+                                alt={attractionName}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Attribution notice */}
+              <p className="text-xs text-muted-foreground text-center mt-4">
+                Photos and videos provided by Unsplash, Pexels, and Google Places. Click source links for attribution.
+              </p>
+            </div>
           )}
         </TabsContent>
 
