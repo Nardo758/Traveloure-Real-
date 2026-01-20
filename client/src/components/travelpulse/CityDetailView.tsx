@@ -148,9 +148,9 @@ function getAlertSeverityIcon(severity: string) {
 
 function getAlertSeverityClass(severity: string) {
   switch (severity) {
-    case "critical": return "border-red-500/50 bg-red-50 dark:bg-red-900/20";
-    case "warning": return "border-yellow-500/50 bg-yellow-50 dark:bg-yellow-900/20";
-    default: return "border-blue-500/50 bg-blue-50 dark:bg-blue-900/20";
+    case "critical": return "bg-red-50 dark:bg-red-900/20";
+    case "warning": return "bg-yellow-50 dark:bg-yellow-900/20";
+    default: return "bg-blue-50 dark:bg-blue-900/20";
   }
 }
 
@@ -304,47 +304,47 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               {getAlertSeverityIcon(alert.severity)}
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium" data-testid="alert-title">{alert.title}</span>
+                  <span className="font-medium" data-testid={`alert-title-${alert.id}`}>{alert.title}</span>
                 </div>
-                <p className="text-sm text-muted-foreground" data-testid="alert-message">{alert.message}</p>
+                <p className="text-sm text-muted-foreground" data-testid={`alert-message-${alert.id}`}>{alert.message}</p>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-testid="stats-grid">
+        <Card data-testid="stat-active-travelers">
           <CardContent className="py-4 text-center">
             <Users className="h-6 w-6 mx-auto mb-2 text-primary" />
-            <p className="text-2xl font-bold">{city.activeTravelers.toLocaleString()}</p>
+            <p className="text-2xl font-bold" data-testid="value-active-travelers">{city.activeTravelers.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Active Travelers</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card data-testid="stat-trending-spots">
           <CardContent className="py-4 text-center">
             <TrendingUp className="h-6 w-6 mx-auto mb-2 text-primary" />
-            <p className="text-2xl font-bold">{city.totalTrendingSpots}</p>
+            <p className="text-2xl font-bold" data-testid="value-trending-spots">{city.totalTrendingSpots}</p>
             <p className="text-xs text-muted-foreground">Trending Spots</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card data-testid="stat-hidden-gems">
           <CardContent className="py-4 text-center">
             <Gem className="h-6 w-6 mx-auto mb-2 text-primary" />
-            <p className="text-2xl font-bold">{city.totalHiddenGems}</p>
+            <p className="text-2xl font-bold" data-testid="value-hidden-gems">{city.totalHiddenGems}</p>
             <p className="text-xs text-muted-foreground">Hidden Gems</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card data-testid="stat-avg-price">
           <CardContent className="py-4 text-center">
             <DollarSign className="h-6 w-6 mx-auto mb-2 text-primary" />
             <div className="flex items-center justify-center gap-1">
-              <p className="text-2xl font-bold">${city.avgHotelPrice || "N/A"}</p>
+              <p className="text-2xl font-bold" data-testid="value-avg-price">${city.avgHotelPrice || "N/A"}</p>
               {priceChange !== 0 && (
                 <span className={cn(
                   "flex items-center text-sm",
                   priceChange < 0 ? "text-green-500" : "text-red-500"
-                )}>
+                )} data-testid="price-change-indicator">
                   {priceChange < 0 ? <TrendingDown className="h-4 w-4" /> : <TrendingUp className="h-4 w-4" />}
                 </span>
               )}
@@ -415,7 +415,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
           ) : (
             <div className="space-y-4">
               {hiddenGems.map((gem) => (
-                <Card key={gem.id} className="overflow-hidden">
+                <Card key={gem.id} className="overflow-hidden" data-testid={`hidden-gem-${gem.id}`}>
                   <div className="flex">
                     {gem.imageUrl && (
                       <div className="w-32 h-32 flex-shrink-0">
@@ -534,7 +534,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
             <ScrollArea className="h-96">
               <div className="space-y-3">
                 {liveActivity.map((activity) => (
-                  <Card key={activity.id} className="hover-elevate">
+                  <Card key={activity.id} className="hover-elevate" data-testid={`activity-item-${activity.id}`}>
                     <CardContent className="py-3 px-4">
                       <div className="flex items-start gap-3">
                         {getActivityIcon(activity.activityType)}
