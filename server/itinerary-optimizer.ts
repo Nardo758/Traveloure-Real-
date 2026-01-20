@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import { db } from "./db";
 import {
   itineraryComparisons,
@@ -15,9 +15,36 @@ import {
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Use Grok for faster optimization (xAI API with OpenAI-compatible interface)
+const GROK_MODEL = "grok-2-1212";
+
+function getGrokClient(): OpenAI {
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("XAI_API_KEY is not configured");
+  }
+  return new OpenAI({
+    baseURL: "https://api.x.ai/v1",
+    apiKey,
+  });
+}
+
+// Helper to extract JSON from markdown code blocks or raw text
+function extractJSON(text: string): string {
+  // Try to extract from markdown code blocks first
+  const jsonBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonBlockMatch) {
+    return jsonBlockMatch[1].trim();
+  }
+  
+  // Try to find JSON object directly
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    return jsonMatch[0];
+  }
+  
+  return text.trim();
+}
 
 interface ItineraryItem {
   id: string;
@@ -191,24 +218,31 @@ Respond with valid JSON in this exact format:
   ]
 }`;
 
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON.",
+    const grok = getGrokClient();
+    const response = await grok.chat.completions.create({
+      model: GROK_MODEL,
       messages: [
+        { 
+          role: "system", 
+          content: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON." 
+        },
         { role: "user", content: prompt },
       ],
+      temperature: 0.7,
+      max_tokens: 4096,
     });
 
-    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
+    const content = response.choices[0]?.message?.content;
     if (!content) {
       throw new Error("No response from AI");
     }
 
     let aiResponse: AIResponse;
     try {
-      aiResponse = JSON.parse(content);
+      const jsonContent = extractJSON(content);
+      aiResponse = JSON.parse(jsonContent);
     } catch (parseError) {
+      console.error("Failed to parse AI response:", content);
       throw new Error("Failed to parse AI response");
     }
 
