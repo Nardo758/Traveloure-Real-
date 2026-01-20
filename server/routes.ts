@@ -5216,6 +5216,205 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Global Calendar - Get all cities ranked by seasonal rating for a given month
+  app.get("/api/travelpulse/global-calendar", async (req, res) => {
+    try {
+      const month = parseInt(req.query.month as string) || new Date().getMonth() + 1;
+      const vibeFilter = req.query.vibe as string;
+      const limit = parseInt(req.query.limit as string) || 20;
+      
+      // Get all cities with their seasonal data for the given month
+      const cities = await travelPulseService.getAllCities();
+      
+      // Get seasonal data for all cities for this month
+      const { destinationSeasons, destinationEvents } = await import("@shared/schema");
+      const seasonsData = await db
+        .select()
+        .from(destinationSeasons)
+        .where(eq(destinationSeasons.month, month));
+      
+      // Get upcoming events for this month
+      const eventsData = await db
+        .select()
+        .from(destinationEvents)
+        .where(
+          and(
+            eq(destinationEvents.startMonth, month),
+            eq(destinationEvents.status, "approved")
+          )
+        );
+      
+      // Create a map of city+country to seasonal data
+      const seasonMap = new Map<string, typeof seasonsData[0]>();
+      for (const season of seasonsData) {
+        const key = `${season.city || ""}-${season.country}`.toLowerCase();
+        seasonMap.set(key, season);
+      }
+      
+      // Create a map of city to events
+      const eventMap = new Map<string, typeof eventsData>();
+      for (const event of eventsData) {
+        const key = `${event.city || ""}-${event.country}`.toLowerCase();
+        if (!eventMap.has(key)) {
+          eventMap.set(key, []);
+        }
+        eventMap.get(key)!.push(event);
+      }
+      
+      // Combine cities with seasonal data - ONLY include cities that have seasonal data for this month
+      const citiesWithSeasons = cities
+        .map(city => {
+          const key = `${city.cityName}-${city.country}`.toLowerCase();
+          const season = seasonMap.get(key);
+          const events = eventMap.get(key) || [];
+          
+          // Skip cities without seasonal data for this month
+          if (!season) return null;
+          
+          return {
+            id: city.id,
+            cityName: city.cityName,
+            country: city.country,
+            countryCode: city.countryCode,
+            heroImage: city.imageUrl,
+            pulseScore: city.pulseScore,
+            trendingScore: city.trendingScore,
+            vibeTags: city.vibeTags as string[] || [],
+            weatherScore: city.weatherScore,
+            crowdLevel: city.crowdLevel,
+            currentHighlight: city.currentHighlight,
+            highlightEmoji: city.highlightEmoji,
+            // Seasonal data for this month
+            seasonalRating: season.rating,
+            weatherDescription: season.weatherDescription,
+            averageTemp: season.averageTemp,
+            rainfall: season.rainfall,
+            seasonCrowdLevel: season.crowdLevel,
+            priceLevel: season.priceLevel,
+            highlights: season.highlights || [],
+            // Events this month
+            events: events.map(e => ({
+              id: e.id,
+              title: e.title,
+              eventType: e.eventType,
+              description: e.description,
+            })),
+            // AI data
+            aiBestTimeToVisit: city.aiBestTimeToVisit,
+            aiBudgetEstimate: city.aiBudgetEstimate as any,
+          };
+        })
+        .filter((city): city is NonNullable<typeof city> => city !== null);
+      
+      // Filter by vibe if specified (with null-safety)
+      let filteredCities = citiesWithSeasons;
+      if (vibeFilter && vibeFilter !== "all") {
+        filteredCities = citiesWithSeasons.filter(city => {
+          const tags = city.vibeTags || [];
+          return tags.some((tag: string) => 
+            tag && tag.toLowerCase().includes(vibeFilter.toLowerCase())
+          );
+        });
+      }
+      
+      // Sort by rating priority: best > good > average > avoid
+      const ratingOrder: Record<string, number> = {
+        "best": 0,
+        "excellent": 0,
+        "good": 1,
+        "average": 2,
+        "avoid": 3,
+        "poor": 3,
+      };
+      
+      filteredCities.sort((a: typeof citiesWithSeasons[0], b: typeof citiesWithSeasons[0]) => {
+        const aRating = ratingOrder[a.seasonalRating] ?? 2;
+        const bRating = ratingOrder[b.seasonalRating] ?? 2;
+        if (aRating !== bRating) return aRating - bRating;
+        // Secondary sort by pulse score
+        return (b.pulseScore || 0) - (a.pulseScore || 0);
+      });
+      
+      // Group by rating for easier display
+      type CityWithSeason = typeof citiesWithSeasons[0];
+      const grouped = {
+        best: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "best" || c.seasonalRating === "excellent"),
+        good: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "good"),
+        average: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "average" || !c.seasonalRating),
+        avoid: filteredCities.filter((c: CityWithSeason) => c.seasonalRating === "avoid" || c.seasonalRating === "poor"),
+      };
+      
+      res.json({
+        month,
+        monthName: new Date(2024, month - 1).toLocaleString("default", { month: "long" }),
+        totalCities: filteredCities.length,
+        vibeFilter: vibeFilter || null,
+        cities: filteredCities.slice(0, limit),
+        grouped,
+        allEvents: eventsData.map(e => ({
+          id: e.id,
+          title: e.title,
+          eventType: e.eventType,
+          city: e.city,
+          country: e.country,
+          description: e.description,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Error getting global calendar:", error);
+      res.status(500).json({ message: "Failed to get global calendar", error: error.message });
+    }
+  });
+
+  // Get all upcoming events globally
+  app.get("/api/travelpulse/global-events", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const eventType = req.query.eventType as string;
+      
+      const { destinationEvents } = await import("@shared/schema");
+      const currentMonth = new Date().getMonth() + 1;
+      
+      // Get events from current month onwards
+      let query = db.select().from(destinationEvents);
+      
+      const events = await query;
+      
+      // Filter to approved events starting from current month
+      let filteredEvents = events.filter(e => 
+        e.status === "approved" && 
+        (e.startMonth ? e.startMonth >= currentMonth : true)
+      );
+      
+      if (eventType && eventType !== "all") {
+        filteredEvents = filteredEvents.filter(e => e.eventType === eventType);
+      }
+      
+      // Sort by start month
+      filteredEvents.sort((a, b) => (a.startMonth || 12) - (b.startMonth || 12));
+      
+      res.json({
+        total: filteredEvents.length,
+        events: filteredEvents.slice(0, limit).map(e => ({
+          id: e.id,
+          title: e.title,
+          description: e.description,
+          eventType: e.eventType,
+          city: e.city,
+          country: e.country,
+          startMonth: e.startMonth,
+          endMonth: e.endMonth,
+          seasonRating: e.seasonRating,
+          highlights: e.highlights,
+          tips: e.tips,
+        })),
+      });
+    } catch (error: any) {
+      console.error("Error getting global events:", error);
+      res.status(500).json({ message: "Failed to get global events", error: error.message });
+    }
+  });
+
   // Start the scheduler when routes are registered
   travelPulseScheduler.start();
 

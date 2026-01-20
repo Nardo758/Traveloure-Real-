@@ -547,6 +547,15 @@ Return JSON:
     return city || null;
   }
 
+  async getAllCities(): Promise<TravelPulseCity[]> {
+    const cities = await db
+      .select()
+      .from(travelPulseCities)
+      .orderBy(desc(travelPulseCities.pulseScore));
+
+    return cities;
+  }
+
   async getCityIntelligence(cityName: string) {
     const city = await this.getCityByName(cityName);
     if (!city) {
