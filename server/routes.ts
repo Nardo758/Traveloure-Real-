@@ -5415,6 +5415,67 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Get enriched recommendations for a city (AI + affiliate/booking links)
+  app.get("/api/travelpulse/enriched/:cityName", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      if (!cityName) {
+        return res.status(400).json({ message: "City name is required" });
+      }
+
+      const { contentEnrichmentService } = await import("./services/content-enrichment.service");
+      const enrichedContent = await contentEnrichmentService.getEnrichedContentForCity(cityName);
+
+      // Return 200 with empty arrays for consistent empty-state handling
+      if (!enrichedContent) {
+        return res.json({
+          cityName,
+          country: "",
+          lastUpdated: new Date(),
+          restaurants: [],
+          attractions: [],
+          nightlife: [],
+          hiddenGems: [],
+          trendingNow: [],
+        });
+      }
+
+      res.json(enrichedContent);
+    } catch (error: any) {
+      console.error("Error getting enriched content:", error);
+      res.status(500).json({ message: "Failed to get enriched content", error: error.message });
+    }
+  });
+
+  // Search SERP for venue-specific results
+  app.get("/api/travelpulse/serp-search", async (req, res) => {
+    try {
+      const { query, city, country, type } = req.query;
+      if (!city) {
+        return res.status(400).json({ message: "City is required" });
+      }
+
+      const { serpService } = await import("./services/serp.service");
+      let results;
+      
+      switch (type as string) {
+        case "restaurant":
+          results = await serpService.searchRestaurants(city as string, country as string || "", query as string);
+          break;
+        case "nightlife":
+          results = await serpService.searchNightlife(city as string, country as string || "");
+          break;
+        default:
+          results = await serpService.searchAttractions(city as string, country as string || "", query as string);
+      }
+
+      res.json({ results });
+    } catch (error: any) {
+      console.error("Error searching SERP:", error);
+      res.status(500).json({ message: "Failed to search venues", error: error.message });
+    }
+  });
+
   // Start the scheduler when routes are registered
   travelPulseScheduler.start();
 
