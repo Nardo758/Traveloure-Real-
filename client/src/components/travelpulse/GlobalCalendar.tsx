@@ -27,6 +27,7 @@ import {
   Plane,
 } from "lucide-react";
 import { Link } from "wouter";
+import { CityDetailView } from "./CityDetailView";
 
 interface GlobalCity {
   id: string;
@@ -146,10 +147,29 @@ interface GlobalCalendarProps {
 export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedVibe, setSelectedVibe] = useState("all");
+  const [selectedCity, setSelectedCity] = useState<{ name: string; country: string } | null>(null);
 
   const { data, isLoading, error, refetch } = useQuery<GlobalCalendarResponse>({
     queryKey: [`/api/travelpulse/global-calendar?month=${selectedMonth}&vibe=${selectedVibe}&limit=30`],
   });
+
+  const handleCityClick = (cityName: string, country: string) => {
+    setSelectedCity({ name: cityName, country });
+    onCityClick?.(cityName, country);
+  };
+
+  const handleBackFromCity = () => {
+    setSelectedCity(null);
+  };
+
+  if (selectedCity) {
+    return (
+      <CityDetailView
+        cityName={selectedCity.name}
+        onBack={handleBackFromCity}
+      />
+    );
+  }
 
   const handlePrevMonth = () => {
     setSelectedMonth((prev) => (prev === 1 ? 12 : prev - 1));
@@ -265,7 +285,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
           subtitle="Perfect conditions for travel"
           cities={grouped.best}
           rating="best"
-          onCityClick={onCityClick}
+          onCityClick={handleCityClick}
         />
       )}
 
@@ -275,7 +295,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
           subtitle="Favorable conditions overall"
           cities={grouped.good}
           rating="good"
-          onCityClick={onCityClick}
+          onCityClick={handleCityClick}
         />
       )}
 
@@ -285,7 +305,7 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
           subtitle="Mixed conditions, check details"
           cities={grouped.average}
           rating="average"
-          onCityClick={onCityClick}
+          onCityClick={handleCityClick}
         />
       )}
 
