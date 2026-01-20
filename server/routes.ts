@@ -2190,6 +2190,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const userId = (req.user as any).claims.sub;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       
+      console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug });
+      
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
       }
@@ -2198,6 +2200,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (serviceId) {
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
+          console.log("[Cart] Service not found for ID:", serviceId);
           return res.status(404).json({ message: "Service not found" });
         }
       }
