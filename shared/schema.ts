@@ -2062,6 +2062,7 @@ export const cityMediaCache = pgTable("city_media_cache", {
   sourceName: varchar("source_name", { length: 100 }), // e.g., "Unsplash", "Pexels"
   sourceUrl: text("source_url"), // Link back to original
   license: varchar("license", { length: 50 }),
+  downloadLocationUrl: text("download_location_url"), // For Unsplash API compliance - must trigger when photo is used
   
   // Google Places specific
   googlePlaceId: varchar("google_place_id", { length: 200 }),

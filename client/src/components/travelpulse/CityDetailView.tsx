@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -161,6 +162,7 @@ interface CityMedia {
   sourceName?: string | null;
   sourceUrl?: string | null;
   isPrimary?: boolean | null;
+  downloadLocationUrl?: string | null; // For Unsplash API compliance tracking
 }
 
 interface CityMediaResponse {
@@ -275,6 +277,31 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
     queryKey: ["/api/travelpulse/media", cityName, data?.city?.country],
     enabled: !!data?.city?.country,
   });
+
+  // Track Unsplash downloads for API compliance (when Unsplash media is displayed)
+  const trackedDownloadsRef = useRef<Set<string>>(new Set());
+  
+  useEffect(() => {
+    if (!mediaData) return;
+    
+    // Collect all Unsplash media with download tracking URLs
+    const unsplashMedia = [
+      ...(mediaData.hero && mediaData.hero.source === 'unsplash' && mediaData.hero.downloadLocationUrl ? [mediaData.hero] : []),
+      ...mediaData.gallery.filter(m => m.source === 'unsplash' && m.downloadLocationUrl),
+    ];
+    
+    // Track downloads for Unsplash images (fire-and-forget, best effort)
+    unsplashMedia.forEach(media => {
+      if (media.downloadLocationUrl && !trackedDownloadsRef.current.has(media.downloadLocationUrl)) {
+        trackedDownloadsRef.current.add(media.downloadLocationUrl);
+        fetch('/api/travelpulse/media/track-download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ downloadLocationUrl: media.downloadLocationUrl }),
+        }).catch(() => {}); // Silently ignore tracking failures
+      }
+    });
+  }, [mediaData]);
 
   if (isLoading) {
     return <CityDetailSkeleton />;
