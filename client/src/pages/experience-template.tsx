@@ -1462,8 +1462,8 @@ export default function ExperienceTemplatePage() {
     <Layout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
-          <Panel defaultSize={60} minSize={40} maxSize={80} className="flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
+          <Panel defaultSize={60} minSize={40} maxSize={80} className="h-full flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto min-h-0">
           {/* Hero Section with ribbon bar */}
           <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
             <div 
@@ -2600,9 +2600,9 @@ export default function ExperienceTemplatePage() {
             <div className="w-1 h-8 bg-gray-400 dark:bg-gray-500 rounded-full" />
           </PanelResizeHandle>
 
-          <Panel defaultSize={40} minSize={20} maxSize={60} className="flex flex-col overflow-hidden">
-            <div className="h-full flex flex-col overflow-hidden">
-              <div className="flex-1 relative min-h-0">
+          <Panel defaultSize={40} minSize={20} maxSize={60} className="h-full flex flex-col overflow-hidden">
+            <div className="h-full flex flex-col">
+              <div className="flex-1 relative min-h-0 overflow-hidden">
                 <ExperienceMap
                   providers={mapProviders}
                   selectedProviderIds={selectedProviderIds}
