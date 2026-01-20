@@ -352,7 +352,7 @@ export default function HelpMeDecidePage() {
 
       {/* Main Content */}
       <section className="py-12">
-        <div className="container mx-auto px-4 max-w-6xl">
+        <div className="container mx-auto px-4 max-w-[1400px]">
           <Tabs defaultValue="services" className="w-full">
             <TabsList className="bg-white border border-[#E5E7EB] p-1 mb-8 flex-wrap">
               <TabsTrigger
