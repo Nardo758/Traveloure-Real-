@@ -95,6 +95,7 @@ interface MonthSummary {
   avgCrowdLevel: string;
   topRating: string;
   cityCount: number;
+  eventDays?: number[];
 }
 
 const vibeFilters = [
