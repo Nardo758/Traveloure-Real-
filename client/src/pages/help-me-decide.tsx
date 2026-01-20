@@ -220,9 +220,9 @@ export default function HelpMeDecidePage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  const trendingUrl = `/api/travelpulse/trending/${encodeURIComponent(travelPulseCity)}?limit=6`;
   const { data: trendingData, isLoading: trendingLoading } = useQuery<{ trending: TravelPulseTrendingData[]; city: string; count: number }>({
-    queryKey: ["/api/travelpulse/trending", travelPulseCity],
-    queryFn: () => fetch(`/api/travelpulse/trending/${encodeURIComponent(travelPulseCity)}?limit=6`).then(r => r.json()),
+    queryKey: [trendingUrl],
     staleTime: 30 * 60 * 1000,
   });
 
