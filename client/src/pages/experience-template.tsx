@@ -2600,31 +2600,27 @@ export default function ExperienceTemplatePage() {
             <div className="w-1 h-8 bg-gray-400 dark:bg-gray-500 rounded-full" />
           </PanelResizeHandle>
 
-          <Panel defaultSize={40} minSize={20} maxSize={60} className="h-full flex flex-col overflow-hidden">
-            <div className="h-full flex flex-col">
-              <div className="flex-1 relative min-h-0 overflow-hidden">
-                <ExperienceMap
-                  providers={mapProviders}
-                  selectedProviderIds={selectedProviderIds}
-                  destination={destination}
-                  destinationCenter={destinationCenter}
-                  onAddToCart={(provider) => addToCart({
-                    id: provider.id,
-                    type: provider.category,
-                    name: provider.name,
-                    price: provider.price,
-                    quantity: 1,
-                    provider: "Platform Provider"
-                  })}
-                  onRemoveFromCart={removeFromCart}
-                  height="100%"
-                  activityLocations={activityLocations}
-                  hotelLocation={hotelLocation}
-                  transitRoutes={transitRoutes}
-                  highlightedActivityId={highlightedActivityId}
-                />
-              </div>
-            </div>
+          <Panel defaultSize={40} minSize={20} maxSize={60} className="relative">
+            <ExperienceMap
+              providers={mapProviders}
+              selectedProviderIds={selectedProviderIds}
+              destination={destination}
+              destinationCenter={destinationCenter}
+              onAddToCart={(provider) => addToCart({
+                id: provider.id,
+                type: provider.category,
+                name: provider.name,
+                price: provider.price,
+                quantity: 1,
+                provider: "Platform Provider"
+              })}
+              onRemoveFromCart={removeFromCart}
+              height="100%"
+              activityLocations={activityLocations}
+              hotelLocation={hotelLocation}
+              transitRoutes={transitRoutes}
+              highlightedActivityId={highlightedActivityId}
+            />
           </Panel>
         </PanelGroup>
 
