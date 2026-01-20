@@ -1605,3 +1605,209 @@ export type AIGeneratedItinerary = typeof aiGeneratedItineraries.$inferSelect;
 export type InsertAIGeneratedItinerary = z.infer<typeof insertAIGeneratedItinerarySchema>;
 export type ExpertAiTask = typeof expertAiTasks.$inferSelect;
 export type InsertExpertAiTask = z.infer<typeof insertExpertAiTaskSchema>;
+
+// ============================================
+// TRAVELPULSE - Real-Time Collective Intelligence
+// ============================================
+
+// Enums for TravelPulse
+export const travelPulseTrendStatusEnum = ["emerging", "viral", "mainstream", "declining"] as const;
+export const travelPulseVerdictEnum = ["highly_recommended", "recommended", "mixed", "skip"] as const;
+export const travelPulseCrowdLevelEnum = ["quiet", "moderate", "busy", "packed"] as const;
+
+// Trending Destinations - Core table for trending places with full intelligence
+export const travelPulseTrending = pgTable("travel_pulse_trending", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  destinationName: varchar("destination_name", { length: 255 }).notNull(),
+  destinationType: varchar("destination_type", { length: 50 }), // restaurant, attraction, hotel, tour, etc.
+  
+  // Trending metrics
+  trendScore: integer("trend_score").default(0), // 0-1000 velocity score
+  growthPercent: integer("growth_percent").default(0), // % increase in mentions
+  mentionCount: integer("mention_count").default(0),
+  trendStatus: varchar("trend_status", { length: 20 }).default("emerging"),
+  triggerEvent: text("trigger_event"), // What caused the trend (influencer, news, etc.)
+  
+  // LiveScore data
+  liveScore: decimal("live_score", { precision: 3, scale: 2 }), // 1.00 to 5.00
+  liveScoreChange: decimal("live_score_change", { precision: 3, scale: 2 }), // change from 24h ago
+  sentimentScore: decimal("sentiment_score", { precision: 3, scale: 2 }), // -1.00 to +1.00
+  sentimentTrend: varchar("sentiment_trend", { length: 10 }), // up, down, stable
+  
+  // Truth Check data
+  worthItPercent: integer("worth_it_percent"), // 0-100
+  mehPercent: integer("meh_percent"),
+  avoidPercent: integer("avoid_percent"),
+  overallVerdict: varchar("overall_verdict", { length: 20 }),
+  realityScore: integer("reality_score"), // 1-10 (photo vs reality)
+  
+  // Insights
+  topHighlights: jsonb("top_highlights").default([]), // ["amazing views", "worth the wait"]
+  topWarnings: jsonb("top_warnings").default([]), // ["too crowded", "overpriced"]
+  crowdsourcedTips: jsonb("crowdsourced_tips").default([]), // [{tip, mentionCount}]
+  
+  // Best times
+  bestTimeToVisit: varchar("best_time_to_visit", { length: 100 }),
+  worstTimeToVisit: varchar("worst_time_to_visit", { length: 100 }),
+  crowdForecast: jsonb("crowd_forecast").default([]), // [{hour, level, percent}]
+  
+  // Metadata
+  imageUrl: text("image_url"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  detectedAt: timestamp("detected_at").defaultNow(),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+});
+
+// LiveScores - Real-time ratings for destinations/experiences
+export const travelPulseLiveScores = pgTable("travel_pulse_live_scores", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  entityName: varchar("entity_name", { length: 255 }).notNull(),
+  entityType: varchar("entity_type", { length: 50 }), // restaurant, hotel, attraction, tour
+  city: varchar("city", { length: 100 }).notNull(),
+  
+  // Time window
+  windowPeriod: varchar("window_period", { length: 20 }).default("24h"), // 24h, 7d, 30d
+  
+  // Metrics
+  mentionCount: integer("mention_count").default(0),
+  uniqueUsersCount: integer("unique_users_count").default(0),
+  
+  // Sentiment
+  avgSentiment: decimal("avg_sentiment", { precision: 3, scale: 2 }), // -1.00 to +1.00
+  positiveCount: integer("positive_count").default(0),
+  neutralCount: integer("neutral_count").default(0),
+  negativeCount: integer("negative_count").default(0),
+  sentimentTrend: varchar("sentiment_trend", { length: 10 }), // up, down, stable
+  
+  // LiveScore
+  liveScore: decimal("live_score", { precision: 3, scale: 2 }), // 1.00 to 5.00
+  scoreChange24h: decimal("score_change_24h", { precision: 3, scale: 2 }),
+  scoreChange7d: decimal("score_change_7d", { precision: 3, scale: 2 }),
+  
+  // Trending
+  isTrending: boolean("is_trending").default(false),
+  trendVelocity: integer("trend_velocity").default(0),
+  
+  // Keywords
+  topPositiveKeywords: jsonb("top_positive_keywords").default([]),
+  topNegativeKeywords: jsonb("top_negative_keywords").default([]),
+  
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+  validUntil: timestamp("valid_until"),
+});
+
+// Truth Checks - Cached "Is X worth it?" analysis
+export const travelPulseTruthChecks = pgTable("travel_pulse_truth_checks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  queryText: text("query_text").notNull(),
+  queryHash: varchar("query_hash", { length: 64 }).unique().notNull(),
+  
+  // Subject
+  subjectName: varchar("subject_name", { length: 255 }),
+  subjectType: varchar("subject_type", { length: 50 }), // place, experience, claim
+  city: varchar("city", { length: 100 }),
+  
+  // Analysis
+  postsAnalyzed: integer("posts_analyzed").default(0),
+  analysisStartDate: date("analysis_start_date"),
+  analysisEndDate: date("analysis_end_date"),
+  
+  // Results
+  worthItPercent: integer("worth_it_percent"), // 0-100
+  mehPercent: integer("meh_percent"),
+  avoidPercent: integer("avoid_percent"),
+  overallVerdict: varchar("overall_verdict", { length: 20 }),
+  
+  // Insights
+  positiveMentions: jsonb("positive_mentions").default([]), // [{text, count}]
+  negativeMentions: jsonb("negative_mentions").default([]),
+  crowdsourcedTips: jsonb("crowdsourced_tips").default([]), // [{tip, mentions, context}]
+  
+  // Photo vs Reality
+  realityScore: integer("reality_score"), // 1-10
+  expectationGap: integer("expectation_gap"), // -5 to +5
+  
+  // Cache metadata
+  hitCount: integer("hit_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
+});
+
+// Crowd Forecasts - Predicted crowd levels by hour
+export const travelPulseCrowdForecasts = pgTable("travel_pulse_crowd_forecasts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  placeName: varchar("place_name", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }).notNull(),
+  
+  // Forecast period
+  forecastDate: date("forecast_date").notNull(),
+  hourOfDay: integer("hour_of_day").notNull(), // 0-23
+  
+  // Prediction
+  crowdLevelPercent: integer("crowd_level_percent"), // 0-100
+  crowdLevelLabel: varchar("crowd_level_label", { length: 20 }), // quiet, moderate, busy, packed
+  confidenceScore: decimal("confidence_score", { precision: 3, scale: 2 }), // 0.00 to 1.00
+  
+  // Context
+  weatherForecast: varchar("weather_forecast", { length: 50 }),
+  specialEvents: jsonb("special_events").default([]),
+  
+  // Recommendations
+  isOptimalWindow: boolean("is_optimal_window").default(false),
+  isAvoidWindow: boolean("is_avoid_window").default(false),
+  
+  generatedAt: timestamp("generated_at").defaultNow(),
+});
+
+// Calendar Events - Festivals, holidays, events affecting travel
+export const travelPulseCalendarEvents = pgTable("travel_pulse_calendar_events", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventName: varchar("event_name", { length: 255 }).notNull(),
+  eventType: varchar("event_type", { length: 50 }), // festival, holiday, conference, sporting, cultural
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  region: varchar("region", { length: 100 }), // For multi-city events
+  
+  // Dates
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  
+  // Impact
+  crowdImpact: varchar("crowd_impact", { length: 20 }), // low, moderate, high, extreme
+  priceImpact: varchar("price_impact", { length: 20 }), // lower, normal, higher, surge
+  crowdImpactPercent: integer("crowd_impact_percent"), // Expected % increase
+  
+  // Details
+  description: text("description"),
+  affectedAreas: jsonb("affected_areas").default([]), // Specific neighborhoods/attractions affected
+  tips: jsonb("tips").default([]), // Advice for travelers during this event
+  
+  // Metadata
+  source: varchar("source", { length: 50 }),
+  imageUrl: text("image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// TravelPulse schemas and types
+export const insertTravelPulseTrendingSchema = createInsertSchema(travelPulseTrending).omit({ id: true, detectedAt: true, lastUpdated: true });
+export const insertTravelPulseLiveScoreSchema = createInsertSchema(travelPulseLiveScores).omit({ id: true, calculatedAt: true });
+export const insertTravelPulseTruthCheckSchema = createInsertSchema(travelPulseTruthChecks).omit({ id: true, createdAt: true, lastAccessedAt: true });
+export const insertTravelPulseCrowdForecastSchema = createInsertSchema(travelPulseCrowdForecasts).omit({ id: true, generatedAt: true });
+export const insertTravelPulseCalendarEventSchema = createInsertSchema(travelPulseCalendarEvents).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type TravelPulseTrending = typeof travelPulseTrending.$inferSelect;
+export type InsertTravelPulseTrending = z.infer<typeof insertTravelPulseTrendingSchema>;
+export type TravelPulseLiveScore = typeof travelPulseLiveScores.$inferSelect;
+export type InsertTravelPulseLiveScore = z.infer<typeof insertTravelPulseLiveScoreSchema>;
+export type TravelPulseTruthCheck = typeof travelPulseTruthChecks.$inferSelect;
+export type InsertTravelPulseTruthCheck = z.infer<typeof insertTravelPulseTruthCheckSchema>;
+export type TravelPulseCrowdForecast = typeof travelPulseCrowdForecasts.$inferSelect;
+export type InsertTravelPulseCrowdForecast = z.infer<typeof insertTravelPulseCrowdForecastSchema>;
+export type TravelPulseCalendarEvent = typeof travelPulseCalendarEvents.$inferSelect;
+export type InsertTravelPulseCalendarEvent = z.infer<typeof insertTravelPulseCalendarEventSchema>;

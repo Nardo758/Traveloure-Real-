@@ -4766,6 +4766,105 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // ============================================
+  // TRAVELPULSE API - Real-Time Travel Intelligence
+  // ============================================
+  
+  const { travelPulseService } = await import("./services/travelpulse.service");
+
+  app.get("/api/travelpulse/trending/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const trending = await travelPulseService.getTrendingDestinations(city, limit);
+      res.json({ trending, city, count: trending.length });
+    } catch (error: any) {
+      console.error("Error fetching trending destinations:", error);
+      res.status(500).json({ message: "Failed to fetch trending destinations", error: error.message });
+    }
+  });
+
+  app.post("/api/travelpulse/truth-check", async (req, res) => {
+    try {
+      const { query, city } = req.body;
+      
+      if (!query) {
+        return res.status(400).json({ message: "Query is required" });
+      }
+      
+      const result = await travelPulseService.getTruthCheck(query, city);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Error performing truth check:", error);
+      res.status(500).json({ message: "Failed to perform truth check", error: error.message });
+    }
+  });
+
+  app.get("/api/travelpulse/destination/:city/:name", async (req, res) => {
+    try {
+      const { city, name } = req.params;
+      
+      const intelligence = await travelPulseService.getDestinationIntelligence(
+        decodeURIComponent(name),
+        city
+      );
+      res.json(intelligence);
+    } catch (error: any) {
+      console.error("Error fetching destination intelligence:", error);
+      res.status(500).json({ message: "Failed to fetch destination intelligence", error: error.message });
+    }
+  });
+
+  app.get("/api/travelpulse/livescore/:city/:entity", async (req, res) => {
+    try {
+      const { city, entity } = req.params;
+      
+      const liveScore = await travelPulseService.getLiveScore(
+        decodeURIComponent(entity),
+        city
+      );
+      res.json(liveScore);
+    } catch (error: any) {
+      console.error("Error fetching LiveScore:", error);
+      res.status(500).json({ message: "Failed to fetch LiveScore", error: error.message });
+    }
+  });
+
+  app.get("/api/travelpulse/calendar/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const startDate = new Date(req.query.startDate as string || new Date());
+      const endDate = new Date(req.query.endDate as string || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+      
+      const events = await travelPulseService.getCalendarEvents(city, startDate, endDate);
+      res.json({ events, city, startDate, endDate });
+    } catch (error: any) {
+      console.error("Error fetching calendar events:", error);
+      res.status(500).json({ message: "Failed to fetch calendar events", error: error.message });
+    }
+  });
+
+  app.get("/api/travelpulse/help-decide", async (req, res) => {
+    try {
+      const { query, city } = req.query;
+      
+      if (!query) {
+        return res.status(400).json({ message: "Query parameter is required" });
+      }
+      
+      const truthCheck = await travelPulseService.getTruthCheck(query as string, city as string);
+      res.json({
+        question: query,
+        answer: truthCheck,
+        timestamp: new Date(),
+      });
+    } catch (error: any) {
+      console.error("Error in help-decide:", error);
+      res.status(500).json({ message: "Failed to process query", error: error.message });
+    }
+  });
+
   return httpServer;
 }
 
