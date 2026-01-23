@@ -3035,6 +3035,10 @@ export default function ExperienceTemplatePage() {
                   travelers={travelers}
                   experienceType={experienceType?.name}
                   onClose={() => setAiItineraryDialogOpen(false)}
+                  onSave={(tripId) => {
+                    setAiItineraryDialogOpen(false);
+                    setLocation(`/itinerary/${tripId}`);
+                  }}
                 />
               )}
             </div>

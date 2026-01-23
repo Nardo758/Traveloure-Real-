@@ -14,7 +14,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems,
-  insertCustomVenueSchema
+  insertCustomVenueSchema, insertGeneratedItinerarySchema
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
@@ -158,6 +158,66 @@ export async function registerRoutes(
       status: "generated"
     });
     res.status(201).json(itinerary);
+  });
+
+  // Create generated itinerary (save AI-generated itinerary)
+  app.post("/api/generated-itineraries", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = insertGeneratedItinerarySchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid itinerary data", 
+          errors: parseResult.error.errors 
+        });
+      }
+      
+      const { tripId, itineraryData, status } = parseResult.data;
+      
+      const trip = await storage.getTrip(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+      
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const itinerary = await storage.createGeneratedItinerary({
+        tripId,
+        itineraryData: itineraryData || {},
+        status: status || "generated",
+      });
+      
+      res.status(201).json(itinerary);
+    } catch (err) {
+      console.error("Error saving generated itinerary:", err);
+      res.status(500).json({ message: "Failed to save itinerary" });
+    }
+  });
+
+  // Get generated itinerary for a trip
+  app.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+      
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const itinerary = await storage.getGeneratedItineraryByTripId(req.params.tripId);
+      if (!itinerary) {
+        return res.status(404).json({ message: "Itinerary not found" });
+      }
+      res.json(itinerary);
+    } catch (err) {
+      console.error("Error fetching generated itinerary:", err);
+      res.status(500).json({ message: "Failed to fetch itinerary" });
+    }
   });
 
   // Tourist Places Routes

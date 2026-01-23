@@ -196,6 +196,12 @@ export default function Dashboard() {
                                   Open Plan
                                 </Button>
                               </Link>
+                              <Link href={`/itinerary/${trip.id}`}>
+                                <Button size="sm" variant="default" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-itinerary-${trip.id}`}>
+                                  <Calendar className="w-4 h-4 mr-1" />
+                                  View Itinerary
+                                </Button>
+                              </Link>
                               <Link href="/chat">
                                 <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-chat-${trip.id}`}>
                                   <MessageSquare className="w-4 h-4 mr-1" />

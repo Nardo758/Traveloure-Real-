@@ -34,8 +34,10 @@ import {
   CircleDot,
   Gauge,
   Timer,
+  Loader2,
 } from "lucide-react";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { format, addDays } from "date-fns";
 
 const itineraryData = {
@@ -284,10 +286,77 @@ const typeColors: Record<string, string> = {
 
 export default function ItineraryPage() {
   const [, params] = useRoute("/itinerary/:id");
+  const tripId = params?.id || "1";
+  const { data: tripData, isLoading: tripLoading } = useTrip(tripId);
+  const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(tripId);
   const [selectedDay, setSelectedDay] = useState(1);
   const [isSaved, setIsSaved] = useState(false);
 
-  const itinerary = itineraryData;
+  const isLoading = tripLoading || itineraryLoading;
+
+  // Transform generated itinerary data to match the expected format
+  const transformGeneratedDays = (itineraryData: any) => {
+    // Check for both 'days' and 'dailyItinerary' shapes from AI generation
+    const daysData = itineraryData?.days || itineraryData?.dailyItinerary;
+    if (!daysData) return null;
+    
+    const iconMap: Record<string, any> = {
+      transport: Plane,
+      accommodation: Hotel,
+      attraction: Camera,
+      dining: Utensils,
+      activity: Mountain,
+      shopping: ShoppingBag,
+      entertainment: Sparkles,
+      breakfast: Coffee,
+      lunch: Utensils,
+      dinner: Utensils,
+    };
+    
+    return daysData.map((day: any, index: number) => ({
+      day: day.day || day.dayNumber || index + 1,
+      date: tripData ? addDays(new Date(tripData.startDate), index) : addDays(new Date(), index),
+      title: day.title || day.theme || `Day ${index + 1}`,
+      activities: (day.activities || []).map((activity: any, actIdx: number) => ({
+        id: `a${index}-${actIdx}`,
+        time: activity.time || activity.startTime || "09:00",
+        title: activity.name || activity.title || "Activity",
+        type: activity.type || "activity",
+        icon: iconMap[activity.type?.toLowerCase()] || Camera,
+        location: activity.location || activity.venue || "",
+        duration: activity.duration || "1h",
+        notes: activity.description || activity.notes || "",
+        booked: activity.bookingRequired === false || activity.booked || false,
+        price: activity.estimatedCost || activity.cost || activity.price || 0,
+      })),
+    }));
+  };
+
+  // Use generated itinerary data if available, otherwise fall back to mock data
+  const generatedDays = generatedItinerary?.itineraryData 
+    ? transformGeneratedDays(generatedItinerary.itineraryData)
+    : null;
+
+  const itinerary = tripData ? {
+    ...itineraryData,
+    id: tripData.id,
+    title: tripData.title || itineraryData.title,
+    destination: tripData.destination,
+    startDate: new Date(tripData.startDate),
+    endDate: new Date(tripData.endDate),
+    travelers: tripData.numberOfTravelers || 1,
+    budget: Number(tripData.budget) || itineraryData.budget,
+    status: tripData.status || "draft",
+    days: generatedDays || itineraryData.days,
+  } : itineraryData;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900 flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
+      </div>
+    );
+  }
   const currentDayData = itinerary.days.find(d => d.day === selectedDay);
   const totalBooked = itinerary.days.flatMap(d => d.activities).filter(a => a.booked).length;
   const totalActivities = itinerary.days.flatMap(d => d.activities).length;
@@ -477,7 +546,6 @@ export default function ItineraryPage() {
             </Card>
             
             <TwelveGoTransport
-              origin="London"
               destination={itinerary.destination.split(',')[0]}
               departureDate={itinerary.startDate.toISOString()}
               passengers={itinerary.travelers}
