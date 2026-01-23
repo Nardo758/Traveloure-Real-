@@ -1,0 +1,958 @@
+Spontaneous Activities & Live Intel Engine
+This is a brilliant feature that differentiates you from static planning platforms. Here's a comprehensive implementation plan:
+
+🎯 Core Concept: "Serendipity Engine"
+1. Architecture Overview
+text
+┌─────────────────────────────────────────────────────────────────────┐
+│                      Serendipity Engine                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │
+│  │ Real-time   │  │   Trending   │  │  Personal   │                 │
+│  │ Data Feeds  │  │   Discovery  │  │   Context   │                 │
+│  └─────────────┘  └─────────────┘  └─────────────┘                 │
+│          │               │                │                         │
+│          ▼               ▼                ▼                         │
+│  ┌──────────────────────────────────────────────────────────┐      │
+│  │            Intelligence Fusion Layer                      │      │
+│  │   - Real-time + Trending + Personal = Recommendations    │      │
+│  └──────────────────────────────────────────────────────────┘      │
+│                            │                                         │
+│                            ▼                                         │
+│  ┌──────────────────────────────────────────────────────────┐      │
+│  │       Affiliate Action Engine                            │      │
+│  │   - Instant booking capability                          │      │
+│  │   - Last-minute deals                                  │      │
+│  │   - Live availability checking                         │      │
+│  └──────────────────────────────────────────────────────────┘      │
+└─────────────────────────────────────────────────────────────────────┘
+📊 Database Schema Additions
+sql
+-- Add to your schema.ts
+export const spontaneousOpportunities = pgTable('spontaneous_opportunities', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  city: varchar('city', { length: 100 }).notNull(),
+  type: varchar('type', { length: 50 }).notNull(), -- 'last_minute', 'trending', 'local_event'
+  title: varchar('title', { length: 200 }).notNull(),
+  description: text('description'),
+  affiliateUrl: text('affiliate_url'),
+  originalPrice: decimal('original_price', { precision: 10, scale: 2 }),
+  currentPrice: decimal('current_price', { precision: 10, scale: 2 }),
+  discountPercent: integer('discount_percent'),
+  startTime: timestamp('start_time'),
+  endTime: timestamp('end_time'),
+  capacity: integer('capacity'),
+  remainingSpots: integer('remaining_spots'),
+  trendingScore: decimal('trending_score', { precision: 5, scale: 2 }).default('0.0'),
+  realtimeSignalStrength: integer('realtime_signal_strength').default(0), -- 0-100
+  expirationTime: timestamp('expiration_time'), -- When this opportunity expires
+  metadata: jsonb('metadata').default({}),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+-- Real-time signals table
+export const realtimeSignals = pgTable('realtime_signals', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  source: varchar('source', { length: 50 }).notNull(), -- 'twitter', 'tiktok', 'instagram', 'google_trends'
+  keyword: varchar('keyword', { length: 100 }).notNull(),
+  location: varchar('location', { length: 100 }),
+  signalStrength: integer('signal_strength').notNull(), -- 1-100
+  volume: integer('volume'), -- Number of mentions/posts
+  sentiment: decimal('sentiment', { precision: 3, scale: 2 }), -- -1 to 1
+  detectedAt: timestamp('detected_at').defaultNow(),
+  metadata: jsonb('metadata').default({}),
+});
+
+-- User preferences for spontaneity
+export const userSpontaneityPreferences = pgTable('user_spontaneity_preferences', {
+  userId: uuid('user_id').references(() => users.id).primaryKey(),
+  spontaneityLevel: integer('spontaneity_level').default(50), -- 0-100
+  notificationRadius: integer('notification_radius').default(10), -- km
+  preferredCategories: text('preferred_categories').array().default([]),
+  priceSensitivity: integer('price_sensitivity').default(50), -- 0-100
+  timeWindows: jsonb('time_windows').default([
+    { day: 'weekend', hours: ['18:00', '22:00'] },
+    { day: 'weekday', hours: ['19:00', '23:00'] }
+  ]),
+  blacklistedTypes: text('blacklisted_types').array().default([]),
+  lastNotifiedAt: timestamp('last_notified_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+🔄 Real-time Data Ingestion Pipeline
+1. Trending Data Collector Service
+typescript
+// server/services/trending-collector.service.ts
+import { WebSocket } from 'ws';
+import { Redis } from 'ioredis';
+
+export class TrendingCollectorService {
+  private redis: Redis;
+  private twitterStream: WebSocket | null = null;
+  private tiktokTrendsInterval: NodeJS.Timeout | null = null;
+
+  constructor() {
+    this.redis = new Redis(process.env.REDIS_URL);
+  }
+
+  async startCollectors() {
+    // 1. Twitter/X real-time stream
+    await this.startTwitterStream();
+    
+    // 2. TikTok trending (via RapidAPI)
+    this.startTikTokTrendingCollector();
+    
+    // 3. Instagram location trends
+    this.startInstagramLocationCollector();
+    
+    // 4. Google Trends
+    this.startGoogleTrendsCollector();
+    
+    // 5. Reddit local event detection
+    this.startRedditEventCollector();
+  }
+
+  private async startTwitterStream() {
+    const token = process.env.TWITTER_BEARER_TOKEN;
+    const rules = [
+      { value: '#thingsToDoTonight -is:retweet', tag: 'tonight-events' },
+      { value: '#lastMinuteDeals -is:retweet', tag: 'last-minute-deals' },
+      { value: '#popupEvent -is:retweet', tag: 'popup-events' },
+      { value: '(spontaneous OR impromptu) (event OR activity) -is:retweet', tag: 'spontaneous-events' },
+    ];
+
+    // Set up filtered stream
+    this.twitterStream = new WebSocket('https://api.twitter.com/2/tweets/search/stream', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    this.twitterStream.on('message', async (data) => {
+      const tweet = JSON.parse(data.toString());
+      await this.processTweetSignal(tweet);
+    });
+  }
+
+  private async processTweetSignal(tweet: any) {
+    // Extract location, intent, and urgency
+    const signal = {
+      source: 'twitter',
+      text: tweet.data.text,
+      location: this.extractLocation(tweet),
+      hashtags: this.extractHashtags(tweet),
+      urgencyScore: this.calculateUrgency(tweet),
+      timestamp: new Date(),
+    };
+
+    // Store in Redis sorted set for real-time access
+    await this.redis.zadd('realtime_signals:twitter', Date.now(), JSON.stringify(signal));
+    
+    // Trigger opportunity generation if high urgency
+    if (signal.urgencyScore > 70) {
+      await this.triggerOpportunityGeneration(signal);
+    }
+  }
+
+  private startTikTokTrendingCollector() {
+    this.tiktokTrendsInterval = setInterval(async () => {
+      try {
+        const response = await fetch('https://tiktok-api.p.rapidapi.com/trending/hashtags', {
+          headers: {
+            'X-RapidAPI-Key': process.env.RAPIDAPI_KEY,
+            'X-RapidAPI-Host': 'tiktok-api.p.rapidapi.com'
+          }
+        });
+        
+        const trends = await response.json();
+        await this.processTikTokTrends(trends);
+      } catch (error) {
+        console.error('TikTok trending error:', error);
+      }
+    }, 300000); // Every 5 minutes
+  }
+
+  private async processTikTokTrends(trends: any[]) {
+    for (const trend of trends.slice(0, 10)) {
+      // Check if trend is location-specific
+      if (trend.location) {
+        const opportunity = {
+          type: 'trending',
+          source: 'tiktok',
+          title: `Trending: ${trend.name}`,
+          city: trend.location,
+          trendingScore: trend.viewCount / 1000000, // Normalize
+          detectedAt: new Date(),
+          metadata: { videoCount: trend.videoCount }
+        };
+        
+        await this.createSpontaneousOpportunity(opportunity);
+      }
+    }
+  }
+}
+2. Affiliate Data Fusion Service
+typescript
+// server/services/affiliate-fusion.service.ts
+export class AffiliateFusionService {
+  
+  async fuseTrendingWithAffiliates(city: string, trend: any) {
+    // Step 1: Search affiliate inventory for matches
+    const affiliateMatches = await this.searchAffiliateInventory(city, trend);
+    
+    // Step 2: Score and rank matches
+    const scoredMatches = await this.scoreAffiliateMatches(affiliateMatches, trend);
+    
+    // Step 3: Create actionable opportunities
+    const opportunities = await this.createActionableOpportunities(scoredMatches);
+    
+    // Step 4: Push to real-time feed
+    await this.pushToRealtimeFeed(city, opportunities);
+    
+    return opportunities;
+  }
+
+  private async searchAffiliateInventory(city: string, trend: any) {
+    // Search across all affiliate partners
+    const searches = [
+      this.searchViatorLastMinute(city, trend.keywords),
+      this.searchFeverTonightEvents(city),
+      this.searchAmadeusLastMinuteHotels(city),
+      this.searchLocalEventPlatforms(city, trend),
+    ];
+    
+    const results = await Promise.allSettled(searches);
+    return results
+      .filter(r => r.status === 'fulfilled')
+      .flatMap(r => (r as PromiseFulfilledResult<any[]>).value);
+  }
+
+  private async searchViatorLastMinute(city: string, keywords: string[]) {
+    // Call Viator API with last-minute filter
+    const response = await fetch(
+      `https://api.viator.com/products/search?dest=${city}&sort=RELEVANCE&startDate=today`,
+      {
+        headers: { 'X-Api-Key': process.env.VIATOR_API_KEY }
+      }
+    );
+    
+    const data = await response.json();
+    return data.products
+      .filter((p: any) => 
+        p.availableToday && 
+        p.bookingCloseTime && 
+        new Date(p.bookingCloseTime) > new Date()
+      )
+      .map((p: any) => ({
+        source: 'viator',
+        type: 'last_minute_activity',
+        title: p.title,
+        originalPrice: p.price,
+        currentPrice: p.price * 0.8, // Assume 20% last-minute discount
+        startTime: p.nextAvailableTime,
+        affiliateUrl: p.bookingUrl,
+        metadata: p
+      }));
+  }
+
+  private async searchFeverTonightEvents(city: string) {
+    // Fever API for tonight's events
+    const response = await fetch(
+      `https://api.feverup.com/api/events?city=${city}&date=today&time=tonight`,
+      {
+        headers: { 'X-Api-Key': process.env.FEVER_API_KEY }
+      }
+    );
+    
+    const data = await response.json();
+    return data.events.map((e: any) => ({
+      source: 'fever',
+      type: 'tonight_event',
+      title: e.title,
+      currentPrice: e.price,
+      startTime: e.start_time,
+      remainingSpots: e.available_tickets,
+      affiliateUrl: e.ticket_url,
+      metadata: e
+    }));
+  }
+}
+3. Real-time Opportunity Engine
+typescript
+// server/services/opportunity-engine.service.ts
+export class OpportunityEngineService {
+  
+  async generateSpontaneousOpportunities(userId: string, location: { lat: number; lng: number }) {
+    // Get user preferences
+    const preferences = await this.getUserPreferences(userId);
+    
+    // Get real-time signals for location
+    const signals = await this.getRealtimeSignals(location, 10); // 10km radius
+    
+    // Get trending content
+    const trending = await this.getTrendingContent(location);
+    
+    // Get affiliate last-minute deals
+    const affiliateDeals = await this.getAffiliateDeals(location);
+    
+    // Fusion algorithm
+    const opportunities = await this.fuseOpportunities(
+      preferences,
+      signals,
+      trending,
+      affiliateDeals
+    );
+    
+    // Personalize ranking
+    const personalized = await this.personalizeRanking(userId, opportunities);
+    
+    return personalized;
+  }
+
+  private async fuseOpportunities(preferences: any, signals: any[], trending: any[], affiliateDeals: any[]) {
+    const fusedOpportunities = [];
+    
+    // Algorithm: Weighted fusion of all sources
+    for (const signal of signals) {
+      // Find matching affiliate deals
+      const matchingDeals = this.findMatchingDeals(signal, affiliateDeals);
+      
+      // Find trending correlations
+      const trendingMatches = this.findTrendingMatches(signal, trending);
+      
+      // Create fused opportunity
+      if (matchingDeals.length > 0 || trendingMatches.length > 0) {
+        const opportunity = {
+          // Base from signal
+          ...signal,
+          // Enhanced with affiliate data
+          affiliateOffers: matchingDeals,
+          // Boosted by trending
+          trendingBoost: trendingMatches.length,
+          // Calculated urgency score
+          urgencyScore: this.calculateUrgencyScore(signal, matchingDeals, trendingMatches),
+          // Actionability score
+          actionabilityScore: this.calculateActionabilityScore(matchingDeals),
+          // Personalization potential
+          personalizationScore: this.calculatePersonalizationScore(preferences, signal),
+        };
+        
+        fusedOpportunities.push(opportunity);
+      }
+    }
+    
+    return fusedOpportunities.sort((a, b) => b.urgencyScore - a.urgencyScore);
+  }
+
+  private calculateUrgencyScore(signal: any, deals: any[], trending: any[]): number {
+    let score = 0;
+    
+    // Time-based urgency (closer to start = higher)
+    if (signal.startTime) {
+      const hoursUntil = (new Date(signal.startTime).getTime() - Date.now()) / (1000 * 60 * 60);
+      score += Math.max(0, 100 - (hoursUntil * 10));
+    }
+    
+    // Deal-based urgency (discounts, limited spots)
+    for (const deal of deals) {
+      if (deal.discountPercent) score += deal.discountPercent * 0.5;
+      if (deal.remainingSpots && deal.remainingSpots < 10) score += 30;
+    }
+    
+    // Trending urgency (social proof)
+    score += trending.length * 5;
+    
+    return Math.min(100, score);
+  }
+}
+🎨 Frontend Components
+1. Spontaneous Discovery UI
+tsx
+// client/src/components/spontaneous/SpontaneousDiscovery.tsx
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Clock, TrendingUp, Users, Zap, MapPin } from 'lucide-react';
+
+interface SpontaneousOpportunity {
+  id: string;
+  title: string;
+  description: string;
+  type: 'last_minute' | 'trending' | 'local_event' | 'flash_deal';
+  urgencyScore: number;
+  actionabilityScore: number;
+  startTime: string;
+  endTime: string;
+  originalPrice?: number;
+  currentPrice?: number;
+  discountPercent?: number;
+  remainingSpots?: number;
+  distance: number; // km
+  affiliateUrl: string;
+  metadata: {
+    source: string;
+    trendingOn?: string[];
+    bookedRecently?: number;
+  };
+}
+
+export function SpontaneousDiscovery({ location }: { location: { lat: number; lng: number } }) {
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  
+  const { data: opportunities, refetch } = useQuery({
+    queryKey: ['/api/spontaneous/opportunities', location],
+    queryFn: async () => {
+      const response = await fetch(`/api/spontaneous/opportunities?lat=${location.lat}&lng=${location.lng}`);
+      return response.json();
+    },
+    refetchInterval: autoRefresh ? 30000 : false, // Auto-refresh every 30 seconds
+  });
+
+  const bookMutation = useMutation({
+    mutationFn: async (opportunityId: string) => {
+      const response = await fetch(`/api/spontaneous/${opportunityId}/book`, {
+        method: 'POST',
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      // Show success message
+      // Refresh opportunities
+      refetch();
+    },
+  });
+
+  const getUrgencyColor = (score: number) => {
+    if (score > 80) return 'bg-red-500';
+    if (score > 60) return 'bg-orange-500';
+    return 'bg-yellow-500';
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Live Opportunities Near You</h2>
+          <p className="text-gray-600">
+            Last-minute activities, trending experiences, and exclusive flash deals
+          </p>
+        </div>
+        
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="auto-refresh"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="mr-2"
+            />
+            <label htmlFor="auto-refresh" className="text-sm">
+              Auto-refresh (30s)
+            </label>
+          </div>
+          
+          <Button
+            variant="outline"
+            onClick={() => refetch()}
+            disabled={opportunities?.refreshing}
+          >
+            Refresh Now
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {opportunities?.map((opp: SpontaneousOpportunity) => (
+          <Card key={opp.id} className="relative overflow-hidden">
+            {/* Urgency Indicator */}
+            <div className={`absolute top-0 right-0 ${getUrgencyColor(opp.urgencyScore)} text-white px-2 py-1 text-xs font-bold`}>
+              {opp.urgencyScore}% URGENT
+            </div>
+            
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between mb-3">
+                <Badge variant={opp.type === 'last_minute' ? 'destructive' : 'default'}>
+                  {opp.type.replace('_', ' ').toUpperCase()}
+                </Badge>
+                
+                {opp.discountPercent && (
+                  <Badge className="bg-green-100 text-green-800">
+                    -{opp.discountPercent}%
+                  </Badge>
+                )}
+              </div>
+              
+              <h3 className="font-bold text-lg mb-2">{opp.title}</h3>
+              <p className="text-gray-600 text-sm mb-4">{opp.description}</p>
+              
+              {/* Metadata */}
+              <div className="space-y-2">
+                <div className="flex items-center text-sm">
+                  <Clock className="w-4 h-4 mr-2" />
+                  Starts: {new Date(opp.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+                
+                {opp.remainingSpots && (
+                  <div className="flex items-center text-sm">
+                    <Users className="w-4 h-4 mr-2" />
+                    Only {opp.remainingSpots} spots left
+                  </div>
+                )}
+                
+                {opp.metadata.trendingOn && (
+                  <div className="flex items-center text-sm">
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    Trending on: {opp.metadata.trendingOn.join(', ')}
+                  </div>
+                )}
+                
+                <div className="flex items-center text-sm">
+                  <MapPin className="w-4 h-4 mr-2" />
+                  {opp.distance.toFixed(1)} km away
+                </div>
+              </div>
+              
+              {/* Pricing */}
+              {opp.currentPrice && (
+                <div className="mt-4">
+                  <div className="flex items-center">
+                    <span className="text-2xl font-bold">${opp.currentPrice}</span>
+                    {opp.originalPrice && (
+                      <span className="ml-2 text-sm text-gray-500 line-through">
+                        ${opp.originalPrice}
+                      </span>
+                    )}
+                    <span className="ml-auto text-sm font-medium">
+                      Actionable: {opp.actionabilityScore}%
+                    </span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+            
+            <CardFooter>
+              <Button
+                className="w-full"
+                onClick={() => bookMutation.mutate(opp.id)}
+                disabled={bookMutation.isPending}
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                Book Now (Instant)
+              </Button>
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+2. Real-time Notification System
+tsx
+// client/src/components/spontaneous/LiveNotificationCenter.tsx
+import { useEffect, useState } from 'react';
+import { Bell, X, ExternalLink } from 'lucide-react';
+import { useWebSocket } from '@/hooks/use-websocket';
+
+interface LiveNotification {
+  id: string;
+  type: 'flash_deal' | 'trending_alert' | 'availability_update';
+  title: string;
+  message: string;
+  opportunityId?: string;
+  expiresIn: number; // seconds
+  priority: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export function LiveNotificationCenter() {
+  const [notifications, setNotifications] = useState<LiveNotification[]>([]);
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const { lastMessage } = useWebSocket('/ws/notifications');
+  
+  useEffect(() => {
+    if (lastMessage) {
+      const notification = JSON.parse(lastMessage.data);
+      setNotifications(prev => [notification, ...prev.slice(0, 9)]);
+      
+      // Auto-remove after expiration
+      setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== notification.id));
+      }, notification.expiresIn * 1000);
+    }
+  }, [lastMessage]);
+  
+  const removeNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+  
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'critical': return 'bg-red-100 border-red-300';
+      case 'high': return 'bg-orange-100 border-orange-300';
+      case 'medium': return 'bg-yellow-100 border-yellow-300';
+      default: return 'bg-blue-100 border-blue-300';
+    }
+  };
+  
+  return (
+    <div className="fixed bottom-4 right-4 z-50">
+      {/* Notification Bell */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative bg-white rounded-full p-3 shadow-lg hover:shadow-xl transition-shadow"
+      >
+        <Bell className="w-6 h-6" />
+        {notifications.length > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            {notifications.length}
+          </span>
+        )}
+      </button>
+      
+      {/* Notification Panel */}
+      {isOpen && (
+        <div className="absolute bottom-full right-0 mb-2 w-96 bg-white rounded-lg shadow-xl border max-h-96 overflow-y-auto">
+          <div className="p-4 border-b">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold">Live Opportunities</h3>
+              <button
+                onClick={() => setNotifications([])}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+          
+          {notifications.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              <Bell className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p>No live opportunities right now</p>
+              <p className="text-sm">We'll notify you when something pops up!</p>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {notifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className={`p-4 border-l-4 ${getPriorityColor(notification.priority)}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center">
+                        <span className="font-bold mr-2">{notification.title}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {notification.type.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
+                      
+                      {notification.opportunityId && (
+                        <button className="mt-2 text-sm text-blue-600 hover:text-blue-800 flex items-center">
+                          <ExternalLink className="w-3 h-3 mr-1" />
+                          View details
+                        </button>
+                      )}
+                    </div>
+                    
+                    <button
+                      onClick={() => removeNotification(notification.id)}
+                      className="ml-2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+📡 API Endpoints
+typescript
+// server/routes/spontaneous.ts
+import { Router } from 'express';
+import { z } from 'zod';
+
+const router = Router();
+
+// GET /api/spontaneous/opportunities
+router.get('/opportunities', async (req, res) => {
+  const schema = z.object({
+    lat: z.coerce.number().min(-90).max(90),
+    lng: z.coerce.number().min(-180).max(180),
+    radius: z.coerce.number().min(1).max(100).default(10),
+    limit: z.coerce.number().min(1).max(50).default(10),
+    types: z.string().optional(), // comma-separated types
+  });
+  
+  const params = schema.parse(req.query);
+  
+  const opportunities = await spontaneousService.getOpportunities(
+    req.user?.id,
+    params
+  );
+  
+  res.json(opportunities);
+});
+
+// POST /api/spontaneous/preferences
+router.post('/preferences', async (req, res) => {
+  const schema = z.object({
+    spontaneityLevel: z.number().min(0).max(100),
+    notificationRadius: z.number().min(1).max(100),
+    preferredCategories: z.array(z.string()),
+    priceSensitivity: z.number().min(0).max(100),
+    timeWindows: z.array(z.object({
+      day: z.enum(['weekday', 'weekend', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']),
+      hours: z.array(z.string()), // ['18:00', '22:00']
+    })),
+    blacklistedTypes: z.array(z.string()),
+  });
+  
+  const preferences = schema.parse(req.body);
+  
+  await spontaneousService.saveUserPreferences(req.user.id, preferences);
+  
+  res.json({ success: true });
+});
+
+// POST /api/spontaneous/:id/book
+router.post('/:id/book', async (req, res) => {
+  const booking = await spontaneousService.bookOpportunity(
+    req.user.id,
+    req.params.id
+  );
+  
+  // Trigger immediate affiliate booking
+  const result = await affiliateService.processInstantBooking(booking);
+  
+  res.json(result);
+});
+
+// WebSocket endpoint for real-time updates
+router.ws('/stream', (ws, req) => {
+  // Subscribe user to location-based updates
+  const userId = req.user?.id;
+  const location = req.query.location; // lat,lng
+  
+  ws.on('message', async (message) => {
+    const data = JSON.parse(message.toString());
+    
+    if (data.type === 'subscribe') {
+      // Subscribe to location-based opportunities
+      const subscription = await spontaneousService.subscribeToLocation(
+        userId,
+        data.location,
+        ws
+      );
+    }
+    
+    if (data.type === 'unsubscribe') {
+      // Remove subscription
+      await spontaneousService.unsubscribe(userId);
+    }
+  });
+  
+  ws.on('close', () => {
+    spontaneousService.unsubscribe(userId);
+  });
+});
+
+export default router;
+🤖 AI-Powered Serendipity Engine
+typescript
+// server/services/serendipity-ai.service.ts
+export class SerendipityAIService {
+  
+  async generateSerendipitousItinerary(userId: string, constraints: {
+    location: { lat: number; lng: number };
+    timeWindow: { start: Date; end: Date };
+    budget?: number;
+    preferences?: string[];
+  }) {
+    // Step 1: Gather real-time opportunities
+    const opportunities = await spontaneousService.getOpportunities(
+      userId,
+      {
+        lat: constraints.location.lat,
+        lng: constraints.location.lng,
+        radius: 5,
+        limit: 50,
+      }
+    );
+    
+    // Step 2: Get user's travel style
+    const userProfile = await userService.getTravelProfile(userId);
+    
+    // Step 3: Call Grok AI with real-time data
+    const prompt = this.buildSerendipityPrompt(
+      opportunities,
+      constraints,
+      userProfile
+    );
+    
+    const itinerary = await grokService.generate({
+      system: "You are a spontaneous travel planner who creates exciting, last-minute itineraries based on real-time opportunities.",
+      prompt: prompt,
+      temperature: 0.8, // Higher for creativity
+    });
+    
+    // Step 4: Add affiliate booking links
+    const enrichedItinerary = await this.enrichWithAffiliateLinks(itinerary);
+    
+    return enrichedItinerary;
+  }
+  
+  private buildSerendipityPrompt(opportunities: any[], constraints: any, userProfile: any) {
+    return `
+      Create a spontaneous ${constraints.timeWindow.start.toDateString()} itinerary based on REAL-TIME opportunities.
+      
+      USER PROFILE:
+      - Travel style: ${userProfile.travelStyle}
+      - Interests: ${userProfile.interests.join(', ')}
+      - Budget: ${constraints.budget ? `$${constraints.budget}` : 'Flexible'}
+      
+      REAL-TIME OPPORTUNITIES (right now):
+      ${opportunities.map(opp => `
+        • ${opp.title} (${opp.type})
+        - Time: ${new Date(opp.startTime).toLocaleTimeString()}
+        - Price: ${opp.currentPrice ? `$${opp.currentPrice}` : 'Free'}
+        - Urgency: ${opp.urgencyScore}/100
+        - Description: ${opp.description}
+      `).join('\n')}
+      
+      CONSTRAINTS:
+      - Time window: ${constraints.timeWindow.start.toLocaleTimeString()} to ${constraints.timeWindow.end.toLocaleTimeString()}
+      - Location: Within 5km of current location
+      
+      Create an itinerary that:
+      1. Maximizes serendipity and surprise
+      2. Balances popular trending activities with hidden gems
+      3. Respects time and budget constraints
+      4. Includes at least one "flash deal" if available
+      5. Has logical geographical flow
+      
+      Format as a timeline with:
+      - Time slot
+      - Activity (with booking link if available)
+      - Travel time to next activity
+      - Why it's a good spontaneous choice
+    `;
+  }
+}
+📱 User Flow Implementation
+1. Spontaneous Mode Toggle
+tsx
+// Add to trip planning interface
+<ToggleGroup type="single" value={planningMode} onValueChange={setPlanningMode}>
+  <ToggleGroupItem value="planned">
+    <Calendar className="w-4 h-4 mr-2" />
+    Planned Itinerary
+  </ToggleGroupItem>
+  <ToggleGroupItem value="spontaneous">
+    <Zap className="w-4 h-4 mr-2" />
+    Spontaneous Mode
+  </ToggleGroupItem>
+  <ToggleGroupItem value="hybrid">
+    <Sparkles className="w-4 h-4 mr-2" />
+    AI-Suggested Surprises
+  </ToggleGroupItem>
+</ToggleGroup>
+2. Quick Spontaneous Search
+tsx
+// Quick search component
+<Card>
+  <CardHeader>
+    <CardTitle>Feeling Spontaneous?</CardTitle>
+    <CardDescription>Find something exciting happening right now</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <div className="grid grid-cols-2 gap-4">
+      <Button onClick={() => searchSpontaneous('tonight')}>
+        Tonight
+      </Button>
+      <Button onClick={() => searchSpontaneous('tomorrow')}>
+        Tomorrow
+      </Button>
+      <Button onClick={() => searchSpontaneous('weekend')}>
+        This Weekend
+      </Button>
+      <Button onClick={() => searchSpontaneous('surprise_me')}>
+        Surprise Me!
+      </Button>
+    </div>
+    
+    <div className="mt-4">
+      <p className="text-sm text-gray-600 mb-2">Or find something specific:</p>
+      <div className="flex space-x-2">
+        <Badge className="cursor-pointer" onClick={() => filterByType('last_minute')}>
+          Last Minute
+        </Badge>
+        <Badge className="cursor-pointer" onClick={() => filterByType('trending')}>
+          Trending Now
+        </Badge>
+        <Badge className="cursor-pointer" onClick={() => filterByType('flash_deal')}>
+          Flash Deals
+        </Badge>
+        <Badge className="cursor-pointer" onClick={() => filterByType('local_event')}>
+          Local Events
+        </Badge>
+      </div>
+    </div>
+  </CardContent>
+</Card>
+📊 Analytics & Optimization
+typescript
+// server/services/serendipity-analytics.service.ts
+export class SerendipityAnalyticsService {
+  
+  async trackOpportunityPerformance() {
+    // Track which opportunities convert best
+    const metrics = await db.query(`
+      SELECT 
+        opportunity_type,
+        COUNT(*) as total_impressions,
+        SUM(CASE WHEN booked THEN 1 ELSE 0 END) as bookings,
+        AVG(urgency_score) as avg_urgency,
+        AVG(time_to_book_minutes) as avg_decision_time,
+        AVG(discount_percent) as avg_discount
+      FROM opportunity_impressions
+      WHERE created_at > NOW() - INTERVAL '7 days'
+      GROUP BY opportunity_type
+      ORDER BY conversion_rate DESC
+    `);
+    
+    // Use this data to optimize opportunity generation
+    return this.optimizeGenerationWeights(metrics);
+  }
+  
+  async optimizeGenerationWeights(metrics: any[]) {
+    // AI-powered optimization of what types of opportunities to show
+    const prompt = `
+      Based on these opportunity performance metrics:
+      ${JSON.stringify(metrics, null, 2)}
+      
+      Optimize the mix of opportunity types to show users.
+      Consider:
+      1. Conversion rates
+      2. User satisfaction (if available)
+      3. Profit margins
+      4. Inventory availability
+      
+      Return a JSON with optimal weights for each opportunity type (sum to 100):
+    `;
+    
+    const optimizedWeights = await grokService.generate({
+      prompt: prompt,
+      temperature: 0.3,
+    });
+    
+    return JSON.parse(optimizedWeights);
+  }
