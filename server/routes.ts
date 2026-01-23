@@ -6127,10 +6127,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const participant = await coordinationService.updateParticipant(req.params.id, req.body);
-      if (!participant) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await coordinationService.getParticipant(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const participant = await coordinationService.updateParticipant(req.params.id, req.body);
       res.json(participant);
     } catch (error) {
       res.status(500).json({ message: "Failed to update participant" });
@@ -6139,11 +6144,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
     try {
-      const { status, notes } = req.body;
-      const participant = await coordinationService.updateRSVP(req.params.id, status, notes);
-      if (!participant) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await coordinationService.getParticipant(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const { status, notes } = req.body;
+      const participant = await coordinationService.updateRSVP(req.params.id, status, notes);
       res.json(participant);
     } catch (error) {
       res.status(500).json({ message: "Failed to update RSVP" });
@@ -6152,11 +6162,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const { amount, method, notes } = req.body;
-      const participant = await coordinationService.updatePayment(req.params.id, amount, method, notes);
-      if (!participant) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await coordinationService.getParticipant(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const { amount, method, notes } = req.body;
+      const participant = await coordinationService.updatePayment(req.params.id, amount, method, notes);
       res.json(participant);
     } catch (error) {
       res.status(500).json({ message: "Failed to record payment" });
@@ -6165,6 +6180,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await coordinationService.getParticipant(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       await coordinationService.deleteParticipant(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -6234,10 +6257,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const contract = await vendorManagementService.updateContract(req.params.id, req.body);
-      if (!contract) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await vendorManagementService.getContract(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const contract = await vendorManagementService.updateContract(req.params.id, req.body);
       res.json(contract);
     } catch (error) {
       res.status(500).json({ message: "Failed to update contract" });
@@ -6246,11 +6274,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/contracts/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const { amount, milestoneName } = req.body;
-      const contract = await vendorManagementService.recordPayment(req.params.id, amount, milestoneName);
-      if (!contract) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await vendorManagementService.getContract(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const { amount, milestoneName } = req.body;
+      const contract = await vendorManagementService.recordPayment(req.params.id, amount, milestoneName);
       res.json(contract);
     } catch (error) {
       res.status(500).json({ message: "Failed to record payment" });
@@ -6259,10 +6292,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/contracts/:id/milestone", isAuthenticated, async (req, res) => {
     try {
-      const contract = await vendorManagementService.addPaymentMilestone(req.params.id, req.body);
-      if (!contract) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await vendorManagementService.getContract(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const contract = await vendorManagementService.addPaymentMilestone(req.params.id, req.body);
       res.json(contract);
     } catch (error) {
       res.status(500).json({ message: "Failed to add milestone" });
@@ -6271,10 +6309,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/contracts/:id/communication", isAuthenticated, async (req, res) => {
     try {
-      const contract = await vendorManagementService.logCommunication(req.params.id, req.body);
-      if (!contract) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await vendorManagementService.getContract(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const contract = await vendorManagementService.logCommunication(req.params.id, req.body);
       res.json(contract);
     } catch (error) {
       res.status(500).json({ message: "Failed to log communication" });
@@ -6283,6 +6326,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await vendorManagementService.getContract(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       await vendorManagementService.deleteContract(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -6389,10 +6440,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const transaction = await budgetService.updateTransaction(req.params.id, req.body);
-      if (!transaction) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await budgetService.getTransaction(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const transaction = await budgetService.updateTransaction(req.params.id, req.body);
       res.json(transaction);
     } catch (error) {
       res.status(500).json({ message: "Failed to update transaction" });
@@ -6401,6 +6457,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await budgetService.getTransaction(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Transaction not found" });
+      }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       await budgetService.deleteTransaction(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -6460,10 +6524,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
-      if (!item) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await itineraryIntelligenceService.getItem(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
       res.json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to update itinerary item" });
@@ -6472,11 +6541,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
-      const { backupItemId } = req.body;
-      const item = await itineraryIntelligenceService.setBackupPlan(req.params.id, backupItemId);
-      if (!item) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await itineraryIntelligenceService.getItem(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const { backupItemId } = req.body;
+      const item = await itineraryIntelligenceService.setBackupPlan(req.params.id, backupItemId);
       res.json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to set backup plan" });
@@ -6515,6 +6589,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await itineraryIntelligenceService.getItem(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Itinerary item not found" });
+      }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       await itineraryIntelligenceService.deleteItem(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -6555,10 +6637,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const contact = await emergencyService.updateContact(req.params.id, req.body);
-      if (!contact) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await emergencyService.getContact(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const contact = await emergencyService.updateContact(req.params.id, req.body);
       res.json(contact);
     } catch (error) {
       res.status(500).json({ message: "Failed to update emergency contact" });
@@ -6567,6 +6654,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await emergencyService.getContact(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ message: "Emergency contact not found" });
+      }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
       await emergencyService.deleteContact(req.params.id);
       res.status(204).send();
     } catch (error) {
@@ -6617,10 +6712,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const alert = await emergencyService.acknowledgeAlert(req.params.id, userId);
-      if (!alert) {
+      const existing = await emergencyService.getAlert(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const alert = await emergencyService.acknowledgeAlert(req.params.id, userId);
       res.json(alert);
     } catch (error) {
       res.status(500).json({ message: "Failed to acknowledge alert" });
@@ -6629,10 +6728,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
     try {
-      const alert = await emergencyService.dismissAlert(req.params.id);
-      if (!alert) {
+      const userId = (req.user as any).claims.sub;
+      const existing = await emergencyService.getAlert(req.params.id);
+      if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
       }
+      if (!await verifyTripOwnership(existing.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const alert = await emergencyService.dismissAlert(req.params.id);
       res.json(alert);
     } catch (error) {
       res.status(500).json({ message: "Failed to dismiss alert" });
