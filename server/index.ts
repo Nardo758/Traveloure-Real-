@@ -133,15 +133,17 @@ export function log(message: string, source = "express") {
     logger.error({ err }, "Failed to seed destination calendar");
   }
 
-  app.use(notFoundHandler);
-  app.use(globalErrorHandler);
-
+  // Set up frontend serving before error handlers
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
+
+  // Error handlers must come after Vite so SPA routes are served first
+  app.use(notFoundHandler);
+  app.use(globalErrorHandler);
 
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(

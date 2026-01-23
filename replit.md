@@ -83,6 +83,12 @@ The application features a modern, responsive design built with Tailwind CSS and
 - **Fever Partner API**: Integration for event discovery and ticketing in 29 global cities, supporting various event categories. Includes a caching system with a 24-hour expiry to manage API rate limits.
 - **12Go Transportation Booking**: Affiliate widget for ground transportation bookings (trains, buses, ferries) with deep linking capabilities.
 - **External API Caching System**: Provides 24-hour caching for hotel, flight, and activity data, with background schedulers to refresh stale data. Includes filtering capabilities by text, price, rating, preference tags, and location, along with various sorting options. Automatically infers preference tags for cached items.
+- **Unified Experience Catalog Service** (`server/services/experience-catalog.service.ts`):
+  - Unified search across all provider caches (activityCache, hotelCache, feverEventCache)
+  - Template-driven experience type retrieval with tabs and filters
+  - Multi-provider filtering, sorting (popular, price_low, price_high, rating), and destination aggregation
+  - API endpoints: `/api/catalog/search`, `/api/catalog/templates/:slug`, `/api/catalog/items/:type/:id`, `/api/catalog/destinations`
+- **Experience Discovery Page** (`client/src/pages/experience-discovery.tsx`): Frontend for browsing the unified catalog with reactive filters, provider selection, and visual result cards
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management.
