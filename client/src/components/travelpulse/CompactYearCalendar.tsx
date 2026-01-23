@@ -119,7 +119,7 @@ function CompactMiniCalendar({
   const currentDay = today.getDate();
   
   return (
-    <div className="mt-1">
+    <div className="mt-1" data-mini-calendar>
       <div className="grid grid-cols-7 gap-px text-[7px] text-muted-foreground mb-0.5">
         {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
           <div key={i} className="text-center">{d}</div>
@@ -134,7 +134,7 @@ function CompactMiniCalendar({
               key={weekIdx} 
               className={cn(
                 "grid grid-cols-7 gap-px rounded-sm transition-colors",
-                filterMode === "week" && "cursor-pointer hover:bg-primary/10",
+                filterMode === "week" && "cursor-pointer hover:bg-primary/20 hover:ring-1 hover:ring-primary/50",
                 isSelectedWeek && "bg-primary/20 ring-1 ring-primary"
               )}
               onClick={(e) => {
@@ -143,6 +143,7 @@ function CompactMiniCalendar({
                   onWeekClick(weekIdx + 1);
                 }
               }}
+              data-testid={`week-row-${weekIdx + 1}`}
             >
               {week.map((day, dayIdx) => {
                 const hasEvent = day !== null && eventDays.includes(day);
@@ -509,7 +510,14 @@ export function CompactYearCalendar({
                   : "border-transparent hover:bg-muted",
                 isCurrentMonth && !isSelected && "border-primary/30"
               )}
-              onClick={() => {
+              onClick={(e) => {
+                // Don't handle clicks on the month container if we're in week/day mode
+                // and the click came from within the mini calendar (week rows or day cells)
+                const target = e.target as HTMLElement;
+                const isFromMiniCalendar = target.closest('[data-mini-calendar]');
+                if (isFromMiniCalendar && filterMode !== "month") {
+                  return; // Let the child handlers deal with it
+                }
                 onMonthSelect(month);
                 if (filterMode !== "month") {
                   setZoomedMonth(month);
