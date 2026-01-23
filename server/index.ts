@@ -12,13 +12,16 @@ import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
   logger,
+  httpLogger,
   createHealthRouter,
   createMetricsRouter,
   metricsMiddleware,
   globalErrorHandler,
+  notFoundHandler,
   generalRateLimiter,
   aiRateLimiter,
   searchRateLimiter,
+  authRateLimiter,
 } from "./infrastructure";
 
 const app = express();
@@ -43,6 +46,8 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
+app.use(httpLogger as unknown as RequestHandler);
+
 app.use(createHealthRouter());
 app.use(createMetricsRouter());
 
@@ -65,6 +70,7 @@ app.use("/api/search", searchRateLimiter as RequestHandler);
 app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
 app.use("/api/activities", searchRateLimiter as RequestHandler);
+app.use("/api/auth", authRateLimiter as RequestHandler);
 
 export function log(message: string, source = "express") {
   logger.info({ source }, message);
@@ -127,6 +133,7 @@ export function log(message: string, source = "express") {
     logger.error({ err }, "Failed to seed destination calendar");
   }
 
+  app.use(notFoundHandler);
   app.use(globalErrorHandler);
 
   if (process.env.NODE_ENV === "production") {

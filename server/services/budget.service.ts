@@ -7,6 +7,7 @@ import {
   type TripParticipant 
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface BudgetSummary {
   totalBudget: number;
@@ -69,11 +70,16 @@ const TIP_PERCENTAGES: Record<string, { restaurant: number; taxi: number; hotel:
   "DEFAULT": { restaurant: 10, taxi: 10, hotel: 2 },
 };
 
+const logger = createChildLogger("budget-service");
+
 export class BudgetService {
   async getTransactions(tripId: string): Promise<TripTransaction[]> {
-    return db.select().from(tripTransactions)
+    const start = Date.now();
+    const result = await db.select().from(tripTransactions)
       .where(eq(tripTransactions.tripId, tripId))
       .orderBy(desc(tripTransactions.transactionDate));
+    databaseQueryDuration.labels("select", "trip_transactions").observe((Date.now() - start) / 1000);
+    return result;
   }
 
   async getTransaction(id: string): Promise<TripTransaction | undefined> {

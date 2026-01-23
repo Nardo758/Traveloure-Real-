@@ -36,6 +36,7 @@ import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
 import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
 import { emergencyService } from "./services/emergency.service";
+import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -6052,58 +6053,42 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // === Logistics Intelligence Layer Routes ===
 
-  // --- Coordination / Participants Routes ---
-  app.get("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      if (!await verifyTripOwnership(req.params.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const participants = await coordinationService.getParticipants(req.params.tripId);
-      res.json(participants);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch participants" });
+  // --- Coordination / Participants Routes (using asyncHandler for consistent error handling) ---
+  app.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    if (!await verifyTripOwnership(req.params.tripId, userId)) {
+      throw new ForbiddenError("Access denied to this trip");
     }
-  });
+    const participants = await coordinationService.getParticipants(req.params.tripId);
+    res.json(participants);
+  }));
 
-  app.get("/api/trips/:tripId/participants/stats", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      if (!await verifyTripOwnership(req.params.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const stats = await coordinationService.getParticipantStats(req.params.tripId);
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch participant stats" });
+  app.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandler(async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    if (!await verifyTripOwnership(req.params.tripId, userId)) {
+      throw new ForbiddenError("Access denied to this trip");
     }
-  });
+    const stats = await coordinationService.getParticipantStats(req.params.tripId);
+    res.json(stats);
+  }));
 
-  app.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      if (!await verifyTripOwnership(req.params.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const stats = await coordinationService.getPaymentStats(req.params.tripId);
-      res.json(stats);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch payment stats" });
+  app.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asyncHandler(async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    if (!await verifyTripOwnership(req.params.tripId, userId)) {
+      throw new ForbiddenError("Access denied to this trip");
     }
-  });
+    const stats = await coordinationService.getPaymentStats(req.params.tripId);
+    res.json(stats);
+  }));
 
-  app.get("/api/trips/:tripId/participants/dietary", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      if (!await verifyTripOwnership(req.params.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const dietary = await coordinationService.getDietaryRequirements(req.params.tripId);
-      res.json(dietary);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch dietary requirements" });
+  app.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHandler(async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    if (!await verifyTripOwnership(req.params.tripId, userId)) {
+      throw new ForbiddenError("Access denied to this trip");
     }
-  });
+    const dietary = await coordinationService.getDietaryRequirements(req.params.tripId);
+    res.json(dietary);
+  }));
 
   app.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
     try {
