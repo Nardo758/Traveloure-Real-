@@ -35,10 +35,30 @@ import {
   Gauge,
   Timer,
   Loader2,
+  ExternalLink,
+  ShieldCheck,
+  UserCheck,
+  Headphones,
+  CreditCard,
+  AlertCircle,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { format, addDays } from "date-fns";
+
+// Booking types: 'inApp' = API-based (book on our site), 'partner' = affiliate links (external)
+type BookingType = 'inApp' | 'partner';
+type BookingStatus = 'pending' | 'booked' | 'confirmed';
 
 const itineraryData = {
   id: "1",
@@ -66,6 +86,9 @@ const itineraryData = {
           duration: "1h",
           notes: "Private transfer to hotel",
           booked: true,
+          bookingType: "partner" as BookingType, // 12Go affiliate
+          bookingStatus: "confirmed" as BookingStatus,
+          partnerName: "12Go",
           price: 85,
         },
         {
@@ -78,6 +101,8 @@ const itineraryData = {
           duration: "30min",
           notes: "Suite with Eiffel Tower view",
           booked: true,
+          bookingType: "inApp" as BookingType, // Amadeus API
+          bookingStatus: "confirmed" as BookingStatus,
           price: 0,
         },
         {
@@ -90,6 +115,8 @@ const itineraryData = {
           duration: "2h",
           notes: "Skip-the-line tickets included",
           booked: true,
+          bookingType: "inApp" as BookingType, // Viator API
+          bookingStatus: "confirmed" as BookingStatus,
           price: 45,
         },
         {
@@ -291,8 +318,70 @@ export default function ItineraryPage() {
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(tripId);
   const [selectedDay, setSelectedDay] = useState(1);
   const [isSaved, setIsSaved] = useState(false);
+  const [showExpertDialog, setShowExpertDialog] = useState(false);
+  const [expertNotes, setExpertNotes] = useState("");
+  const [isRequestingExpert, setIsRequestingExpert] = useState(false);
+  const { toast } = useToast();
 
   const isLoading = tripLoading || itineraryLoading;
+
+  // Handle expert booking request
+  const handleExpertBookingRequest = async () => {
+    setIsRequestingExpert(true);
+    try {
+      const response = await fetch('/api/expert-booking-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ tripId, notes: expertNotes }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit request');
+      }
+      
+      setShowExpertDialog(false);
+      setExpertNotes("");
+      toast({
+        title: "Request Sent",
+        description: "An expert will review your itinerary and handle all bookings. You'll be notified when complete.",
+      });
+    } catch (error) {
+      toast({
+        title: "Request Failed",
+        description: "Unable to submit your request. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRequestingExpert(false);
+    }
+  };
+
+  // Determine booking type based on activity type
+  const getBookingType = (actType: string): BookingType => {
+    // Partner bookings (affiliate links): ground transport, events, entertainment
+    const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
+    // In-app bookings (API): hotels, flights, tours, attractions, dining, activities
+    if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
+    return 'inApp';
+  };
+
+  const getPartnerName = (actType: string): string | undefined => {
+    if (actType.toLowerCase() === 'transport') return '12Go';
+    if (['event', 'concert', 'show', 'entertainment'].includes(actType.toLowerCase())) return 'Fever';
+    return undefined;
+  };
+
+  const getPartnerUrl = (partnerName: string | undefined, destination?: string): string => {
+    if (partnerName === '12Go') {
+      const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
+      return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
+    }
+    if (partnerName === 'Fever') {
+      return 'https://feverup.com/';
+    }
+    return '#';
+  };
 
   // Transform generated itinerary data to match the expected format
   const transformGeneratedDays = (itineraryData: any) => {
@@ -317,18 +406,24 @@ export default function ItineraryPage() {
       day: day.day || day.dayNumber || index + 1,
       date: tripData ? addDays(new Date(tripData.startDate), index) : addDays(new Date(), index),
       title: day.title || day.theme || `Day ${index + 1}`,
-      activities: (day.activities || []).map((activity: any, actIdx: number) => ({
-        id: `a${index}-${actIdx}`,
-        time: activity.time || activity.startTime || "09:00",
-        title: activity.name || activity.title || "Activity",
-        type: activity.type || "activity",
-        icon: iconMap[activity.type?.toLowerCase()] || Camera,
-        location: activity.location || activity.venue || "",
-        duration: activity.duration || "1h",
-        notes: activity.description || activity.notes || "",
-        booked: activity.bookingRequired === false || activity.booked || false,
-        price: activity.estimatedCost || activity.cost || activity.price || 0,
-      })),
+      activities: (day.activities || []).map((activity: any, actIdx: number) => {
+        const actType = activity.type || "activity";
+        return {
+          id: `a${index}-${actIdx}`,
+          time: activity.time || activity.startTime || "09:00",
+          title: activity.name || activity.title || "Activity",
+          type: actType,
+          icon: iconMap[actType.toLowerCase()] || Camera,
+          location: activity.location || activity.venue || "",
+          duration: activity.duration || "1h",
+          notes: activity.description || activity.notes || "",
+          booked: activity.bookingRequired === false || activity.booked || false,
+          bookingType: activity.bookingType || getBookingType(actType),
+          bookingStatus: activity.bookingStatus || (activity.booked ? 'confirmed' : 'pending') as BookingStatus,
+          partnerName: activity.partnerName || getPartnerName(actType),
+          price: activity.estimatedCost || activity.cost || activity.price || 0,
+        };
+      }),
     }));
   };
 
@@ -615,9 +710,20 @@ export default function ItineraryPage() {
                                           <Badge variant="outline" className="text-xs">
                                             {activity.duration}
                                           </Badge>
+                                          {(activity.bookingType || getBookingType(activity.type)) === 'inApp' ? (
+                                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs" data-testid={`badge-inapp-${activity.id}`}>
+                                              <ShieldCheck className="w-3 h-3 mr-1" />
+                                              Book on Traveloure
+                                            </Badge>
+                                          ) : (
+                                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs" data-testid={`badge-partner-${activity.id}`}>
+                                              <ExternalLink className="w-3 h-3 mr-1" />
+                                              {activity.partnerName || getPartnerName(activity.type) || 'Partner'}
+                                            </Badge>
+                                          )}
                                           {activity.booked && (
-                                            <Badge className="bg-green-100 text-green-700 text-xs">
-                                              Booked
+                                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                                              {activity.bookingStatus === 'confirmed' ? 'Confirmed' : 'Booked'}
                                             </Badge>
                                           )}
                                         </div>
@@ -642,9 +748,26 @@ export default function ItineraryPage() {
                                         </p>
                                       )}
                                       {!activity.booked && activity.price > 0 && (
-                                        <Button size="sm" className="mt-2 bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-book-${activity.id}`}>
-                                          Book Now
-                                        </Button>
+                                        (activity.bookingType || getBookingType(activity.type)) === 'inApp' ? (
+                                          <Button size="sm" className="mt-2 bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-book-${activity.id}`}>
+                                            <CreditCard className="w-3 h-3 mr-1" />
+                                            Book Now
+                                          </Button>
+                                        ) : (
+                                          <Button 
+                                            size="sm" 
+                                            variant="outline"
+                                            className="mt-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" 
+                                            data-testid={`button-book-partner-${activity.id}`}
+                                            onClick={() => {
+                                              const partnerName = activity.partnerName || getPartnerName(activity.type);
+                                              window.open(getPartnerUrl(partnerName, itinerary.destination), '_blank');
+                                            }}
+                                          >
+                                            <ExternalLink className="w-3 h-3 mr-1" />
+                                            Book via {activity.partnerName || getPartnerName(activity.type) || 'Partner'}
+                                          </Button>
+                                        )
                                       )}
                                     </div>
                                   </div>
@@ -659,6 +782,88 @@ export default function ItineraryPage() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Expert Booking Option */}
+            <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/40">
+                      <UserCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-[#111827] dark:text-white flex items-center gap-2">
+                        Let an Expert Book Everything
+                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-xs">Recommended</Badge>
+                      </h4>
+                      <p className="text-sm text-[#6B7280]">
+                        Our travel experts will handle all bookings for you - both on-site and partner bookings.
+                      </p>
+                    </div>
+                  </div>
+                  <Button 
+                    className="bg-amber-500 hover:bg-amber-600 text-white whitespace-nowrap" 
+                    onClick={() => setShowExpertDialog(true)}
+                    data-testid="button-expert-booking"
+                  >
+                    <Headphones className="w-4 h-4 mr-2" />
+                    Request Expert Booking
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Booking Summary Card */}
+            <Card className="bg-white dark:bg-gray-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#FF385C]" />
+                  Booking Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-2">
+                <div className="space-y-3">
+                  {(() => {
+                    const allActivities = itinerary.days.flatMap((d: any) => d.activities);
+                    const inAppBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'inApp' && !a.booked);
+                    const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
+                    const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                    const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                    
+                    return (
+                      <>
+                        <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                            <span className="text-sm font-medium">Book on Traveloure</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm text-[#6B7280]">{inAppBookings.length} items</span>
+                            <p className="font-semibold text-emerald-600">${inAppTotal}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <ExternalLink className="w-4 h-4 text-blue-600" />
+                            <span className="text-sm font-medium">Book via Partners</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm text-[#6B7280]">{partnerBookings.length} items</span>
+                            <p className="font-semibold text-blue-600">${partnerTotal}</p>
+                          </div>
+                        </div>
+                        <div className="border-t pt-3 mt-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-[#111827] dark:text-white">Total Pending</span>
+                            <span className="font-bold text-lg text-[#FF385C]">${inAppTotal + partnerTotal}</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
 
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-4">
@@ -687,6 +892,91 @@ export default function ItineraryPage() {
           </div>
         </div>
       </div>
+
+      {/* Expert Booking Dialog */}
+      <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-amber-500" />
+              Request Expert Booking Assistance
+            </DialogTitle>
+            <DialogDescription>
+              Let our travel experts handle all bookings for your itinerary. They'll coordinate both on-site and partner bookings, ensuring everything is confirmed before your trip.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg">
+              <h4 className="font-medium text-amber-800 dark:text-amber-300 mb-2">What's included:</h4>
+              <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  All hotel and accommodation bookings
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Tour and activity reservations
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Ground transportation (trains, buses, ferries)
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Event and show tickets
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Restaurant reservations
+                </li>
+              </ul>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium mb-2">Special requests or notes (optional)</label>
+              <Textarea
+                placeholder="Any preferences, dietary requirements, accessibility needs, or special occasions..."
+                value={expertNotes}
+                onChange={(e) => setExpertNotes(e.target.value)}
+                className="min-h-[100px]"
+                data-testid="input-expert-notes"
+              />
+            </div>
+
+            <div className="flex items-start gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <AlertCircle className="w-5 h-5 text-[#6B7280] flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-[#6B7280]">
+                An expert will contact you within 24 hours to confirm your itinerary and payment details. You'll only be charged once all bookings are confirmed.
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowExpertDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={handleExpertBookingRequest}
+              disabled={isRequestingExpert}
+              data-testid="button-confirm-expert-booking"
+            >
+              {isRequestingExpert ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Headphones className="w-4 h-4 mr-2" />
+                  Submit Request
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
