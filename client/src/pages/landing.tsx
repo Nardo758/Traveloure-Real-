@@ -30,7 +30,9 @@ import {
   HandHeart,
   TreePine,
   Bot,
-  UserCheck
+  UserCheck,
+  Wine,
+  HeartHandshake
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
@@ -47,6 +49,8 @@ const experienceCategories = [
   { icon: Gem, label: "Proposal", slug: "proposal", color: "text-purple-500" },
   { icon: Sparkles, label: "Date Night", slug: "date-night", color: "text-red-500" },
   { icon: Cake, label: "Birthday", slug: "birthday", color: "text-orange-500" },
+  { icon: PartyPopper, label: "Bachelor/Bachelorette", slug: "bachelor-bachelorette", color: "text-pink-600" },
+  { icon: HeartHandshake, label: "Anniversary Trip", slug: "anniversary-trip", color: "text-rose-600" },
   { icon: Building2, label: "Corporate Events", slug: "corporate-events", color: "text-slate-600" },
   { icon: Users, label: "Reunions", slug: "reunions", color: "text-indigo-500" },
   { icon: CalendarHeart, label: "Wedding Anniversaries", slug: "wedding-anniversaries", color: "text-rose-500" },
@@ -55,7 +59,7 @@ const experienceCategories = [
   { icon: GraduationCap, label: "Graduation Party", slug: "graduation-party", color: "text-amber-500" },
   { icon: Diamond, label: "Engagement Party", slug: "engagement-party", color: "text-fuchsia-500" },
   { icon: Home, label: "Housewarming Party", slug: "housewarming-party", color: "text-teal-500" },
-  { icon: PartyPopper, label: "Retirement Party", slug: "retirement-party", color: "text-violet-500" },
+  { icon: Wine, label: "Retirement Party", slug: "retirement-party", color: "text-violet-500" },
   { icon: Trophy, label: "Career Achievement Party", slug: "career-achievement-party", color: "text-yellow-500" },
   { icon: HandHeart, label: "Farewell Party", slug: "farewell-party", color: "text-cyan-500" },
   { icon: TreePine, label: "Holiday Party", slug: "holiday-party", color: "text-green-600" },
