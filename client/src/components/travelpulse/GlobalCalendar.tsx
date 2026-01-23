@@ -470,14 +470,20 @@ export function GlobalCalendar({ onCityClick }: GlobalCalendarProps) {
             filterMode={filterMode}
             onFilterModeChange={(mode) => {
               setFilterMode(mode);
+              // Only clear selections when switching modes, don't auto-select
+              // This allows users to click on week rows or day cells to make their selection
               if (mode === "month") {
                 setSelectedWeek(undefined);
                 setSelectedDay(undefined);
               } else if (mode === "week") {
-                setSelectedWeek(1);
+                // Don't auto-select week 1 - let user click on a week row to select
                 setSelectedDay(undefined);
+                // Only clear selectedWeek if coming from day mode, keep if already in week
+                if (filterMode !== "week") {
+                  setSelectedWeek(undefined);
+                }
               } else if (mode === "day") {
-                setSelectedDay(1);
+                // Don't auto-select day 1 - let user click on a day cell to select
                 setSelectedWeek(undefined);
               }
             }}
