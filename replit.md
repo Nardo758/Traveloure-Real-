@@ -90,6 +90,23 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Real-time flight and hotel search (with caching layer).
 - **Viator Partner API**: Real-time tours and activities search (with caching layer).
+- **Fever Partner API** (`server/services/fever.service.ts`):
+  - Integration with Fever (feverup.com) for event discovery and ticketing
+  - Partner signup via impact.com affiliate network
+  - Supports 29 cities globally including launch markets
+  - Event categories: experiences, concerts, theater, exhibitions, festivals, nightlife, food-drink, sports, wellness, tours, classes, family
+  - Affiliate tracking for commission via impact.com
+  - API endpoints:
+    - `GET /api/fever/status` - Service status and supported cities/categories
+    - `GET /api/fever/events?city=London&limit=10` - Search events by city with filters
+    - `GET /api/fever/events/:eventId` - Get event details
+    - `GET /api/fever/cities/:cityCode/upcoming` - Upcoming events for a city
+    - `GET /api/fever/cities/:cityCode/free` - Free events for a city
+    - `GET /api/fever/cities/:cityCode/dates?startDate=&endDate=` - Events by date range
+    - `GET /api/fever/cities` - List all supported cities
+    - `GET /api/travelpulse/fever-events/:cityName` - Merged Fever + TravelPulse events for calendar
+  - Mock data available for development (when API not configured)
+  - Environment variables: `FEVER_API_KEY`, `FEVER_PARTNER_ID`
 - **External API Caching System** (`server/services/cache.service.ts`):
   - Hotels: `/api/cache/hotels` - 24-hour cache with `hotelCache` and `hotelOfferCache` tables.
   - Flights: `/api/cache/flights` - 24-hour cache with `flightCache` table.
@@ -137,3 +154,5 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - `VIATOR_API_KEY`: Viator API key.
 - `ANTHROPIC_API_KEY`: Anthropic Claude API key.
 - `XAI_API_KEY`: xAI Grok API key.
+- `FEVER_API_KEY`: Fever Partner API key (from impact.com after approval).
+- `FEVER_PARTNER_ID`: Fever Partner ID for affiliate tracking.

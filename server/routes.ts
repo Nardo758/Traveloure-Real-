@@ -28,7 +28,27 @@ import { claudeService } from "./services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "./services/routes.service";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions } from "@shared/schema";
+import { feverService } from "./services/fever.service";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents } from "@shared/schema";
+
+// Helper function to map Fever categories to TravelPulse event types
+function mapFeverCategoryToEventType(category: string): string {
+  const categoryMap: Record<string, string> = {
+    'experiences': 'cultural',
+    'concerts': 'cultural',
+    'theater': 'cultural',
+    'exhibitions': 'cultural',
+    'festivals': 'cultural',
+    'nightlife': 'nightlife',
+    'food-drink': 'culinary',
+    'sports': 'sports',
+    'wellness': 'wellness',
+    'tours': 'cultural',
+    'classes': 'cultural',
+    'family': 'family',
+  };
+  return categoryMap[category] || 'other';
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -5476,6 +5496,263 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error("Error searching SERP:", error);
       res.status(500).json({ message: "Failed to search venues", error: error.message });
+    }
+  });
+
+  // ============================================
+  // FEVER PARTNER API ROUTES
+  // Events and experiences from Fever (feverup.com)
+  // ============================================
+
+  // Get Fever service status and supported cities
+  app.get("/api/fever/status", async (_req, res) => {
+    try {
+      const cities = feverService.getSupportedCities();
+      const categories = feverService.getCategories();
+      const isConfigured = feverService.isReady();
+
+      res.json({
+        configured: isConfigured,
+        message: isConfigured 
+          ? "Fever API is configured and ready" 
+          : "Fever API not configured - add FEVER_API_KEY and FEVER_PARTNER_ID secrets",
+        supportedCities: cities.length,
+        cities: cities.map(c => ({ code: c.code, name: c.name, country: c.country })),
+        categories,
+      });
+    } catch (error) {
+      console.error("[Fever] Status check error:", error);
+      res.status(500).json({ error: "Failed to get Fever status" });
+    }
+  });
+
+  // Search events by city
+  app.get("/api/fever/events", async (req, res) => {
+    try {
+      const { 
+        city, 
+        query, 
+        category, 
+        startDate, 
+        endDate, 
+        minPrice, 
+        maxPrice, 
+        free, 
+        page, 
+        limit, 
+        sortBy 
+      } = req.query;
+
+      if (!city || typeof city !== 'string') {
+        return res.status(400).json({ error: "City parameter is required" });
+      }
+
+      const result = await feverService.searchEvents({
+        city,
+        query: query as string | undefined,
+        category: category as string | undefined,
+        startDate: startDate as string | undefined,
+        endDate: endDate as string | undefined,
+        minPrice: minPrice ? Number(minPrice) : undefined,
+        maxPrice: maxPrice ? Number(maxPrice) : undefined,
+        isFree: free === 'true',
+        page: page ? Number(page) : 1,
+        limit: limit ? Number(limit) : 20,
+        sortBy: sortBy as 'date' | 'popularity' | 'price' | 'rating' | undefined,
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: "No events found or city not supported" });
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("[Fever] Event search error:", error);
+      res.status(500).json({ error: "Failed to search Fever events" });
+    }
+  });
+
+  // Get event details by ID
+  app.get("/api/fever/events/:eventId", async (req, res) => {
+    try {
+      const { eventId } = req.params;
+      const event = await feverService.getEventById(eventId);
+
+      if (!event) {
+        return res.status(404).json({ error: "Event not found" });
+      }
+
+      res.json(event);
+    } catch (error) {
+      console.error("[Fever] Event details error:", error);
+      res.status(500).json({ error: "Failed to get event details" });
+    }
+  });
+
+  // Get upcoming events for a city
+  app.get("/api/fever/cities/:cityCode/upcoming", async (req, res) => {
+    try {
+      const { cityCode } = req.params;
+      const { limit, category } = req.query;
+
+      const events = await feverService.getUpcomingEvents(cityCode, {
+        limit: limit ? Number(limit) : 10,
+        category: category as string | undefined,
+      });
+
+      res.json({ events, count: events.length });
+    } catch (error) {
+      console.error("[Fever] Upcoming events error:", error);
+      res.status(500).json({ error: "Failed to get upcoming events" });
+    }
+  });
+
+  // Get free events for a city
+  app.get("/api/fever/cities/:cityCode/free", async (req, res) => {
+    try {
+      const { cityCode } = req.params;
+      const { limit } = req.query;
+
+      const events = await feverService.getFreeEvents(cityCode, {
+        limit: limit ? Number(limit) : 20,
+      });
+
+      res.json({ events, count: events.length });
+    } catch (error) {
+      console.error("[Fever] Free events error:", error);
+      res.status(500).json({ error: "Failed to get free events" });
+    }
+  });
+
+  // Get events by date range for a city
+  app.get("/api/fever/cities/:cityCode/dates", async (req, res) => {
+    try {
+      const { cityCode } = req.params;
+      const { startDate, endDate, category, limit } = req.query;
+
+      if (!startDate || !endDate) {
+        return res.status(400).json({ error: "startDate and endDate are required" });
+      }
+
+      const events = await feverService.getEventsByDateRange(
+        cityCode,
+        startDate as string,
+        endDate as string,
+        {
+          category: category as string | undefined,
+          limit: limit ? Number(limit) : 50,
+        }
+      );
+
+      res.json({ events, count: events.length });
+    } catch (error) {
+      console.error("[Fever] Date range events error:", error);
+      res.status(500).json({ error: "Failed to get events by date range" });
+    }
+  });
+
+  // Get list of supported cities
+  app.get("/api/fever/cities", async (_req, res) => {
+    try {
+      const cities = feverService.getSupportedCities();
+      res.json({ cities, count: cities.length });
+    } catch (error) {
+      console.error("[Fever] Cities list error:", error);
+      res.status(500).json({ error: "Failed to get cities list" });
+    }
+  });
+
+  // Merge Fever events with TravelPulse destination events for calendar integration
+  app.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const { year, month, limit } = req.query;
+
+      // Find matching Fever city
+      const feverCity = feverService.findCity(cityName);
+      
+      // Get Fever events for this city
+      let feverEvents: any[] = [];
+      if (feverCity) {
+        const currentYear = year ? Number(year) : new Date().getFullYear();
+        const currentMonth = month ? Number(month) : new Date().getMonth() + 1;
+        
+        // Calculate date range for the month (or year if no month specified)
+        let startDate: string;
+        let endDate: string;
+        
+        if (month) {
+          startDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+          const lastDay = new Date(currentYear, currentMonth, 0).getDate();
+          endDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${lastDay}`;
+        } else {
+          startDate = `${currentYear}-01-01`;
+          endDate = `${currentYear}-12-31`;
+        }
+
+        const result = await feverService.searchEvents({
+          city: feverCity.code,
+          startDate,
+          endDate,
+          limit: limit ? Number(limit) : 50,
+          sortBy: 'date',
+        });
+
+        if (result?.events) {
+          feverEvents = result.events.map(event => ({
+            id: `fever-${event.id}`,
+            source: 'fever',
+            title: event.title,
+            description: event.shortDescription || event.description,
+            city: event.city,
+            country: event.country,
+            eventType: mapFeverCategoryToEventType(event.category),
+            specificDate: event.dates.startDate?.split('T')[0],
+            startMonth: currentMonth,
+            endMonth: currentMonth,
+            crowdLevel: 'moderate',
+            pricing: event.pricing,
+            bookingUrl: event.affiliateUrl || event.bookingUrl,
+            imageUrl: event.imageUrl,
+            rating: event.rating,
+            isFree: event.isFree,
+            tags: event.tags,
+          }));
+        }
+      }
+
+      // Get existing TravelPulse destination events for this city
+      const existingEvents = await db.select()
+        .from(destinationEvents)
+        .where(eq(destinationEvents.city, cityName));
+
+      // Merge and deduplicate (prefer Fever events for matching titles)
+      const mergedEvents = [...feverEvents];
+      for (const event of existingEvents) {
+        const isDuplicate = feverEvents.some(
+          fe => fe.title.toLowerCase().includes(event.title.toLowerCase()) ||
+                event.title.toLowerCase().includes(fe.title.toLowerCase())
+        );
+        if (!isDuplicate) {
+          mergedEvents.push({
+            ...event,
+            source: 'travelpulse',
+          });
+        }
+      }
+
+      res.json({
+        city: cityName,
+        feverSupported: !!feverCity,
+        feverCity: feverCity || null,
+        events: mergedEvents,
+        count: mergedEvents.length,
+        feverCount: feverEvents.length,
+        travelpulseCount: existingEvents.length,
+      });
+    } catch (error) {
+      console.error("[TravelPulse] Fever events merge error:", error);
+      res.status(500).json({ error: "Failed to get merged Fever events" });
     }
   });
 
