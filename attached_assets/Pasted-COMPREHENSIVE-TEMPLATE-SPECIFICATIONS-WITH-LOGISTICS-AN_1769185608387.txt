@@ -1,0 +1,299 @@
+COMPREHENSIVE TEMPLATE SPECIFICATIONS WITH LOGISTICS ANALYSIS
+PRIORITY TEMPLATE #1: BACHELOR/BACHELORETTE PARTY
+Logistics Function Summary
+Primary Challenge: Multi-day, multi-person coordination with diverse preferences, budget constraints, and activity sequencing across accommodation, transportation, meals, and experiences while managing group dynamics, payment collection, and time-sensitive bookings.
+Key Logistics Operations:
+
+Headcount Management: Track RSVPs, deposits, dietary restrictions, room pairings
+Payment Orchestration: Split costs, collect contributions, manage shared expenses vs individual add-ons
+Itinerary Sequencing: Balance high-energy activities with recovery time, coordinate group vs optional activities
+Transportation Logistics: Airport pickups, inter-activity transport, designated driver coordination
+Accommodation Coordination: Room assignments, check-in/out timing, group vs split bookings
+Contingency Planning: Weather backups, activity substitutions, late arrivals/early departures
+
+
+BACHELOR/BACHELORETTE PARTY - DETAILED SPECIFICATION
+Primary Tabs:
+
+DESTINATIONS
+
+Logistics Role: Travel feasibility assessment & airport logistics
+Content: Destination guides, flight hub accessibility, visa requirements, seasonal considerations
+Filters:
+
+Distance from Origin (Drivable, Short Flight 0-3hrs, Long Flight 3-6hrs, International)
+Vibe (Beach Party, City Nightlife, Adventure/Outdoors, Chill/Wellness, Vegas-Style, International Culture)
+Group Size Friendly (4-8, 8-12, 12-20, 20+)
+Budget Tier (Budget $500-1000 pp, Mid $1000-2000 pp, Luxury $2000-5000 pp, Ultra $5000+ pp)
+Season/Weather (Year-Round, Summer Peak, Winter Escape, Spring/Fall Sweet Spot)
+Bachelor/Bachelorette Friendly Rating
+
+
+
+
+ACCOMMODATIONS
+
+Logistics Role: Sleeping arrangements, group gathering space, proximity to activities
+Content: Group houses, resort blocks, hotel suites, glamping, yacht rentals
+Filters:
+
+Property Type (Private House/Villa, Hotel Block, Resort, Boutique Hotel, Unique Stays, Yacht/Boat)
+Sleeps (4-8, 8-12, 12-16, 16-20, 20+)
+Bedrooms (Single Room Bookings, 3-5BR, 6-8BR, 9-12BR, 13+ BR)
+Amenities (Pool, Hot Tub, Game Room, Full Kitchen, BBQ/Outdoor Space, Party-Friendly, Quiet Hours Policy)
+Location (Walkable to Nightlife, Beach/Waterfront, Mountains/Nature, Downtown, Resort Area, Secluded)
+Price per Person per Night ($50-100, $100-200, $200-400, $400+)
+Check-in Flexibility (Early Check-in Available, Late Check-out, 24hr Access)
+
+
+
+
+DAYTIME ACTIVITIES
+
+Logistics Role: Energy expenditure planning, transportation needs, timing coordination
+Content: Adventures, sports, water activities, cultural experiences, wellness
+Filters:
+
+Activity Type (Water Sports, Adventure Sports, Golf/Sports, Spa/Wellness, Cultural Tours, Brewery/Winery, Cooking Classes, Beach Club, Boat Rental, ATV/Off-Road)
+Energy Level (Chill/Recovery, Moderate, High Energy, Extreme)
+Duration (1-2 hours, Half Day, Full Day, Multi-Day)
+Group Size Capacity (Small Groups 4-8, Medium 8-15, Large 15-30, XL 30+)
+Physical Fitness Required (Any Level, Moderate, High, Very High)
+Alcohol Friendly (Yes, No, BYOB)
+Weather Dependent (Indoor, Outdoor, Flexible)
+Transportation Included (Yes, No, Optional)
+Private Group Option (Private Only, Can Book Private, Shared Tours)
+
+
+
+
+NIGHTLIFE & ENTERTAINMENT
+
+Logistics Role: Reservation management, transportation safety, entry coordination
+Content: Clubs, bars, shows, private parties, experiences
+Filters:
+
+Venue Type (Nightclub, Bar/Lounge, Strip Club, Comedy Club, Drag Show, Live Music, Private Party Venue, Rooftop, Beach Club)
+Vibe (High Energy/Dancing, Chill/Cocktails, Upscale/VIP, Dive Bar/Casual, Unique Experience)
+Dress Code (Casual, Smart Casual, Upscale, Formal)
+Reservation Required (Walk-in Friendly, Reservation Recommended, Reservation Required, VIP Table Booking)
+Cost Structure (No Cover, Cover Charge, Minimum Spend, Bottle Service)
+Group Accommodation (Small Group Friendly, Large Group Packages, Private Section Available)
+Time (Happy Hour, Dinner Hours, Late Night 10pm-2am, After Hours 2am+)
+
+
+
+
+DINING
+
+Logistics Role: Meal timing, large group seating, dietary accommodations, budget management
+Content: Restaurants, group dining experiences, private chef, food tours
+Filters:
+
+Meal Type (Brunch, Lunch, Dinner, Late Night Eats, Food Tour)
+Cuisine Type (American, Italian, Mexican, Asian, Seafood, Steakhouse, BBQ, International Fusion)
+Group Size Capacity (Small 4-8, Medium 8-12, Large 12-20, XL 20+, Private Room Available)
+Atmosphere (Casual, Lively/Fun, Upscale, Party Atmosphere, Instagram-Worthy)
+Price per Person ($15-30, $30-60, $60-100, $100+)
+Reservation Requirements (Walk-in OK, Reservation Recommended, Reservation Required, Private Dining Available)
+Dietary Options (Vegan/Vegetarian Options, Gluten-Free, Allergy-Friendly, Full Menu Flexibility)
+Special Features (Bottomless Brunch, Prix Fixe Group Menu, BYOB, Entertainment/Music, Outdoor Seating)
+
+
+
+
+TRANSPORTATION
+
+Logistics Role: Group movement coordination, safety management, timing optimization
+Content: Party buses, limos, shuttles, rideshare coordination, designated drivers
+Filters:
+
+Vehicle Type (Party Bus, Limo, Sprinter Van, SUV Fleet, Trolley/Themed Vehicle, Boat Transfer, Bike Rentals)
+Capacity (4-8, 8-15, 15-25, 25-40, 40+)
+Service Type (Point-to-Point, Hourly Charter, Full Day, Airport Transfer, Multi-Day Package)
+Amenities (Sound System, Bar, Mood Lighting, Bathroom, Wi-Fi, Coolers Allowed)
+Price Structure (Flat Rate, Hourly, Per Person, Full Weekend Package)
+Availability (Advance Booking Required, Last-Minute Availability, 24/7 Service)
+
+
+
+
+PARTY SERVICES & ADD-ONS
+
+Logistics Role: Enhancement coordination, vendor management, surprise element timing
+Content: Photographers, decorations, entertainment, supplies, custom experiences
+Filters:
+
+Service Type (Photography/Video, DJ/Music, Decorations/Setup, Custom Apparel, Party Favors, Games/Entertainment, Private Chef, Bartender Service, Surprise Coordination)
+Timing (Pre-Party Setup, During Event, Full Weekend, Surprise Element)
+Customization Level (Pre-Packaged, Semi-Custom, Fully Custom)
+Price Range ($100-300, $300-600, $600-1200, $1200+)
+
+
+
+
+PLANNING TOOLS
+
+Logistics Role: Group coordination, payment tracking, itinerary sharing
+Content: Shared calendars, expense splitting, RSVP management, communication hub
+Features:
+
+RSVP Tracker with deposit status
+Shared Expense Calculator (Venmo/PayPal integration)
+Itinerary Builder with time blocking
+Group Chat Integration
+Packing List Generator
+Emergency Contact Sheet
+Vote/Poll System for activity selection
+Budget Tracker (Overall, Per Person, Paid/Pending)
+
+
+
+
+
+
+UNIVERSAL FILTER PANEL (appears on every tab)
+
+Date Range: Weekend getaway (2-3 days), Long weekend (3-4 days), Full week
+Total Budget per Person: (auto-calculates based on selections)
+Group Size: (fixed at planning start, affects all availability)
+Booking Status: Available Now, Request to Book, Fully Booked (with waitlist)
+Cancellation Policy: Flexible (full refund), Moderate (50% refund), Strict (no refund)
+Expert Verified: Shows recommendations from Local Experts
+Payment Options: Pay Now, Pay Later, Deposit + Balance, Split Payment Available
+
+
+PRIORITY TEMPLATE #2: ANNIVERSARY TRIP (ROMANTIC GETAWAY)
+Logistics Function Summary
+Primary Challenge: Curating intimate, seamless romantic experiences with high emotional stakes, managing surprise elements, coordinating special touches, and ensuring zero friction in couple logistics while balancing budget with once-a-year splurge mentality.
+Key Logistics Operations:
+
+Surprise Coordination: Managing bookings without partner knowledge, coordinating reveal timing
+Romance Sequencing: Building emotional crescendos through experience ordering
+Special Touch Orchestration: Room setup, champagne delivery, private access arrangements
+Intimacy Protection: Privacy guarantees, crowd avoidance, exclusive timing
+Milestone Recognition: Anniversary-specific customizations, traditional gift integration
+Contingency Without Stress: Backup plans that maintain romance, not just function
+
+
+ANNIVERSARY TRIP - DETAILED SPECIFICATION
+Primary Tabs:
+
+DESTINATIONS
+
+Logistics Role: Romance potential assessment, accessibility for couples, seasonal optimization
+Filters:
+
+Romance Level (Ultra Romantic, Very Romantic, Romantic with Adventure, Culturally Rich)
+Distance (Weekend Escape <3hrs, Short Flight 3-5hrs, International Adventure 6-12hrs, Bucket List 12+ hrs)
+Destination Type (Beach Paradise, Mountain Retreat, European City, Wine Country, Island Escape, Desert Luxury, Cultural Immersion)
+Season Optimization (Year-Round, Spring Blooms, Summer Sun, Fall Colors, Winter Cozy, Off-Season Deals)
+Activity Balance (Pure Relaxation, Balanced, Adventure-Forward)
+Crowd Level (Secluded/Private, Intimate, Popular but Spacious, Tourist-Heavy)
+Anniversary Milestone (1st-Paper, 5th-Wood, 10th-Tin, 25th-Silver, 50th-Gold)
+
+
+
+
+ROMANTIC ACCOMMODATIONS
+
+Logistics Role: Intimacy creation, special amenities, couple-centric design
+Filters:
+
+Property Type (Boutique Hotel, Luxury Resort, Private Villa, Overwater Bungalow, Treehouse, Castle/Historic, Adults-Only Resort, Glamping)
+Romantic Features (Private Pool, Outdoor Shower, Soaking Tub, Fireplace, Balcony/Terrace, Ocean/Mountain View, Four Poster Bed, In-Room Dining)
+Privacy Level (Completely Secluded, Private but Resort, Intimate Hotel <20 rooms, Boutique Property)
+Bed Configuration (King Bed Only - no twins!)
+Special Services (Couples Massage In-Room, Private Butler, Champagne Service, Rose Petal Turndown, Bath Drawn on Request)
+Price per Night ($200-400, $400-700, $700-1200, $1200+)
+Surprise Package Available (Anniversary Packages, Romance Add-ons, Proposal Coordination)
+
+
+
+
+COUPLE EXPERIENCES
+
+Logistics Role: Shared memory creation, bonding activity coordination, energy flow management
+Filters:
+
+Experience Type (Couples Spa, Private Cooking Class, Sunset Cruise, Hot Air Balloon, Wine Tasting, Private Beach Day, Couples Photography, Dance Lesson, Adventure Activity, Cultural Tour)
+Intimacy Level (Just the Two of Us - Private, Small Group OK <8 people, Shared Experience)
+Activity Level (Relaxing, Leisurely, Moderate, Active, Adventurous)
+Duration (1-2 hours, Half Day, Full Day, Multi-Day)
+Time of Day (Sunrise Special, Morning, Afternoon, Sunset Prime, Evening, Flexible)
+Romance Factor (Maximum Romance, Very Romantic, Fun/Romantic Balance, Adventure with Romance)
+Photo Opportunity (Professional Photos Included, Instagram-Worthy, Natural/Candid Setting)
+
+
+
+
+ROMANTIC DINING
+
+Logistics Role: Culinary experience timing, ambiance optimization, special occasion coordination
+Filters:
+
+Dining Type (Fine Dining, Casual Romantic, Beachfront, Rooftop, Private Chef, Wine Pairing Dinner, Picnic/Unique Setting, Michelin-Starred)
+Ambiance (Candlelit Elegance, Scenic Views, Intimate/Cozy, Seaside Casual, Hidden Gem)
+Seating Preference (Private Table, Secluded Corner, Beachfront, Rooftop, Garden/Outdoor, Chef's Table)
+Meal Type (Breakfast in Bed, Romantic Brunch, Lunch, Sunset Dinner, Late Night)
+Cuisine Style (French, Italian, Local Specialty, Fusion, Tasting Menu, Farm-to-Table)
+Price per Person ($50-100, $100-200, $200-400, $400+)
+Special Services (Anniversary Dessert, Champagne Included, Serenade Available, Proposal Coordination, Custom Menu)
+Dress Code (Resort Casual, Smart Casual, Elegant, Formal)
+
+
+
+
+SPA & WELLNESS
+
+Logistics Role: Relaxation scheduling, couples treatment coordination, recovery timing
+Filters:
+
+Treatment Type (Couples Massage, Facial, Body Treatment, Hydrotherapy, Wellness Ritual, Multi-Treatment Package)
+Duration (60 min, 90 min, 2 hours, Half Day, Full Day)
+Setting (Spa Facility, In-Room/Villa, Beach/Outdoor, Private Spa Suite)
+Wellness Focus (Relaxation, Rejuvenation, Romantic, Therapeutic, Detox)
+Price per Couple ($200-400, $400-700, $700-1000, $1000+)
+Special Features (Private Spa Suite, Champagne Included, Outdoor Setting, Aromatherapy Custom Blend)
+
+
+
+
+SPECIAL TOUCHES & ADD-ONS
+
+Logistics Role: Surprise element timing, special request fulfillment, memory enhancement
+Filters:
+
+Service Type (Room Decoration, Champagne/Wine Delivery, Floral Arrangements, Anniversary Cake, Gift Coordination, Surprise Planning, Photographer, Musicians/Serenade)
+Timing (Upon Arrival, Specific Time, Daily, During Experience)
+Customization (Pre-Set Package, Semi-Custom, Fully Personalized)
+Price Range ($50-150, $150-300, $300-600, $600+)
+
+
+
+
+TRANSPORTATION
+
+Logistics Role: Seamless couple movement, luxury transfer experience, stress elimination
+Filters:
+
+Service Type (Airport Transfer, Daily Driver, Car Rental, Private Tours, Helicopter Transfer, Boat Transfer)
+Vehicle Type (Luxury Sedan, SUV, Convertible, Classic Car, Exotic Rental)
+Service Level (Standard, Premium, Luxury, Ultra-Luxury)
+
+
+
+
+ITINERARY BUILDER
+
+Logistics Role: Holistic trip flow, pacing management, surprise integration
+Features:
+
+Day-by-day timeline with romance pacing
+Energy Level Balance (relax, explore, adventure, romance)
+Surprise Element Scheduler (hidden from partner until reveal)
+Budget Tracker with splurge vs. save insights
+Weather Contingency Suggestions
+Anniversary Milestone Traditions Integration
+Couple's Bucket List Integration
+Pre-Trip Countdown with booking confirmations
