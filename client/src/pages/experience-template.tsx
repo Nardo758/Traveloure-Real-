@@ -657,11 +657,6 @@ export default function ExperienceTemplatePage() {
   
   const { data: experienceType, isLoading: typeLoading } = useQuery<ExperienceType>({
     queryKey: ["/api/experience-types", slug],
-    queryFn: async () => {
-      const res = await fetch(`/api/experience-types/${slug}`);
-      if (!res.ok) throw new Error("Experience type not found");
-      return res.json();
-    },
     enabled: !!slug,
   });
 
@@ -684,12 +679,7 @@ export default function ExperienceTemplatePage() {
   }
 
   const { data: serverCart, refetch: refetchCart } = useQuery<ServerCartData>({
-    queryKey: ["/api/cart", slug],
-    queryFn: async () => {
-      const res = await fetch(`/api/cart?experience=${slug}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch cart");
-      return res.json();
-    },
+    queryKey: ["/api/cart", { experience: slug }],
     enabled: !!slug,
   });
 
@@ -984,12 +974,7 @@ export default function ExperienceTemplatePage() {
   }, [destination, detailsSubmitted]);
 
   const { data: customVenues = [] } = useQuery<CustomVenue[]>({
-    queryKey: ["/api/custom-venues", slug],
-    queryFn: async () => {
-      const res = await fetch(`/api/custom-venues?experienceType=${slug}`, { credentials: "include" });
-      if (!res.ok) return [];
-      return res.json();
-    },
+    queryKey: ["/api/custom-venues", { experienceType: slug }],
     enabled: !!slug,
   });
 
@@ -1040,15 +1025,6 @@ export default function ExperienceTemplatePage() {
 
   const { data: walletData } = useQuery<{ balance: number }>({
     queryKey: ["/api/wallet"],
-    queryFn: async () => {
-      try {
-        const res = await fetch("/api/wallet", { credentials: "include" });
-        if (!res.ok) return { balance: 0 };
-        return res.json();
-      } catch {
-        return { balance: 0 };
-      }
-    },
     retry: false,
     staleTime: 30000,
   });
