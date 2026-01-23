@@ -5814,7 +5814,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  // Get location summary for admin panel
+  // Get comprehensive location summary for admin panel
   app.get("/api/admin/data/location-summary", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
@@ -5822,20 +5822,64 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      // Get event counts grouped by city from cache
-      const { feverEventCache } = await import("@shared/schema");
+      const { feverEventCache, hotelCache, activityCache, flightCache } = await import("@shared/schema");
       const { sql } = await import("drizzle-orm");
       
-      const cityData = await db.select({
+      // Get events by city
+      const eventData = await db.select({
         cityCode: feverEventCache.cityCode,
         city: feverEventCache.city,
-        eventCount: sql<number>`count(*)::int`,
+        count: sql<number>`count(*)::int`,
         lastUpdated: sql<string>`max(${feverEventCache.lastUpdated})`,
       })
       .from(feverEventCache)
       .groupBy(feverEventCache.cityCode, feverEventCache.city);
 
-      res.json(cityData);
+      // Get hotels by city
+      const hotelData = await db.select({
+        cityCode: hotelCache.cityCode,
+        city: hotelCache.city,
+        count: sql<number>`count(*)::int`,
+        lastUpdated: sql<string>`max(${hotelCache.lastUpdated})`,
+      })
+      .from(hotelCache)
+      .groupBy(hotelCache.cityCode, hotelCache.city);
+
+      // Get activities by destination
+      const activityData = await db.select({
+        destination: activityCache.destination,
+        city: activityCache.city,
+        count: sql<number>`count(*)::int`,
+        lastUpdated: sql<string>`max(${activityCache.lastUpdated})`,
+      })
+      .from(activityCache)
+      .groupBy(activityCache.destination, activityCache.city);
+
+      // Get flights by origin/destination
+      const flightData = await db.select({
+        origin: flightCache.origin,
+        destination: flightCache.destination,
+        count: sql<number>`count(*)::int`,
+        lastUpdated: sql<string>`max(${flightCache.lastUpdated})`,
+      })
+      .from(flightCache)
+      .groupBy(flightCache.origin, flightCache.destination);
+
+      // Get totals
+      const totals = {
+        events: eventData.reduce((sum, e) => sum + e.count, 0),
+        hotels: hotelData.reduce((sum, h) => sum + h.count, 0),
+        activities: activityData.reduce((sum, a) => sum + a.count, 0),
+        flights: flightData.reduce((sum, f) => sum + f.count, 0),
+      };
+
+      res.json({
+        events: eventData,
+        hotels: hotelData,
+        activities: activityData,
+        flights: flightData,
+        totals,
+      });
     } catch (error) {
       console.error("[Admin] Location summary error:", error);
       res.status(500).json({ error: "Failed to get location summary" });
