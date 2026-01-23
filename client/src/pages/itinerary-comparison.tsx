@@ -892,6 +892,36 @@ export default function ItineraryComparisonPage() {
             
             <ScrollArea className="flex-1 px-6">
               <div className="py-4 space-y-6">
+                {/* Why it's better - Metrics */}
+                {modalVariant?.metrics && modalVariant.metrics.length > 0 && (
+                  <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-4 space-y-3">
+                    <h4 className="font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Why it's better
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {modalVariant.metrics.map((metric) => {
+                        const Icon = getMetricIcon(metric.metricKey);
+                        return (
+                          <div key={metric.id} className="flex items-center gap-2">
+                            <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                            <span className="text-sm">{metric.description}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Reasoning */}
+                {modalVariant?.aiReasoning && (
+                  <div className="bg-primary/5 rounded-lg p-4">
+                    <p className="text-sm text-muted-foreground italic">
+                      "{modalVariant.aiReasoning}"
+                    </p>
+                  </div>
+                )}
+
                 {/* Group items by day */}
                 {modalVariant && (() => {
                   const dayGroups = modalVariant.items.reduce((acc, item) => {
@@ -1003,19 +1033,6 @@ export default function ItineraryComparisonPage() {
                     </div>
                   ));
                 })()}
-                
-                {/* AI Reasoning */}
-                {modalVariant?.aiReasoning && (
-                  <div className="bg-primary/5 rounded-lg p-4">
-                    <h4 className="font-medium mb-2 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      AI Recommendation
-                    </h4>
-                    <p className="text-sm text-muted-foreground italic">
-                      "{modalVariant.aiReasoning}"
-                    </p>
-                  </div>
-                )}
               </div>
             </ScrollArea>
             
