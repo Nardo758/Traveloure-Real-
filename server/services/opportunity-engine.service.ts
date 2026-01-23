@@ -194,15 +194,15 @@ class OpportunityEngineService {
         return {
           id: `viator-${activity.productCode}`,
           city: activity.destination || params.city || "Unknown",
-          latitude: null,
-          longitude: null,
+          latitude: activity.latitude ? parseFloat(activity.latitude) : null,
+          longitude: activity.longitude ? parseFloat(activity.longitude) : null,
           type,
           source: "viator" as const,
           externalId: activity.productCode,
           title: activity.title || "Untitled Activity",
           description: activity.description,
           imageUrl: activity.imageUrl,
-          affiliateUrl: activity.bookingUrl,
+          affiliateUrl: null, // Viator activities don't store direct booking URLs in cache
           originalPrice: price,
           currentPrice: price,
           currency: activity.currency || "USD",
@@ -218,7 +218,7 @@ class OpportunityEngineService {
           category: activity.category,
           tags: activity.preferenceTags || [],
           metadata: {
-            duration: activity.duration,
+            durationMinutes: activity.durationMinutes,
             rating,
             reviewCount,
             flags: activity.flags || []
@@ -250,7 +250,7 @@ class OpportunityEngineService {
       }
       
       if (params.maxPrice) {
-        conditions.push(lte(feverEventCache.price, params.maxPrice.toString()));
+        conditions.push(lte(feverEventCache.minPrice, params.maxPrice.toString()));
       }
 
       const events = conditions.length > 0
@@ -258,24 +258,24 @@ class OpportunityEngineService {
         : await query.limit(50);
 
       return events.map(event => {
-        const price = parseFloat(event.price || "0");
+        const price = parseFloat(event.minPrice || "0");
         
         // Events are inherently time-sensitive - higher urgency
         const urgencyScore = this.calculateEventUrgency(event, timeWindow);
-        const actionabilityScore = event.ticketUrl ? 90 : 50;
+        const actionabilityScore = event.bookingUrl ? 90 : 50;
 
         return {
-          id: `fever-${event.externalId}`,
+          id: `fever-${event.eventId}`,
           city: event.city || params.city || "Unknown",
           latitude: event.latitude ? parseFloat(event.latitude) : null,
           longitude: event.longitude ? parseFloat(event.longitude) : null,
           type: "local_event" as const,
           source: "fever" as const,
-          externalId: event.externalId || "",
+          externalId: event.eventId || "",
           title: event.title || "Untitled Event",
           description: event.description,
           imageUrl: event.imageUrl,
-          affiliateUrl: event.ticketUrl,
+          affiliateUrl: event.bookingUrl || event.affiliateUrl,
           originalPrice: price,
           currentPrice: price,
           currency: event.currency || "USD",
@@ -284,20 +284,22 @@ class OpportunityEngineService {
           endTime: event.endDate ? new Date(event.endDate) : null,
           expirationTime: event.startDate ? new Date(event.startDate) : new Date(Date.now() + 24 * 60 * 60 * 1000),
           capacity: null,
-          remainingSpots: null,
+          remainingSpots: event.isSoldOut ? 0 : null,
           urgencyScore,
           actionabilityScore,
-          trendingScore: event.popularity ? parseFloat(event.popularity) : 0,
+          trendingScore: event.reviewCount ? Math.min(100, event.reviewCount) : 0,
           category: event.category,
-          tags: [],
+          tags: event.tags || [],
           metadata: {
-            venue: event.venue,
-            categories: event.categories
+            venueName: event.venueName,
+            venueAddress: event.venueAddress,
+            isFree: event.isFree,
+            isSoldOut: event.isSoldOut
           },
           createdAt: new Date(),
           updatedAt: new Date(),
           distance: undefined,
-          trendingOn: event.popularity && parseFloat(event.popularity) > 50 ? ["Fever"] : undefined,
+          trendingOn: event.reviewCount && event.reviewCount > 50 ? ["Fever"] : undefined,
           bookedRecently: undefined
         } as ScoredOpportunity;
       });
@@ -316,7 +318,7 @@ class OpportunityEngineService {
       const conditions: any[] = [];
       
       if (params.city) {
-        conditions.push(ilike(hotelCache.destination, `%${params.city}%`));
+        conditions.push(ilike(hotelCache.city, `%${params.city}%`));
       }
 
       const hotels = conditions.length > 0
@@ -338,7 +340,7 @@ class OpportunityEngineService {
 
           return {
             id: `amadeus-${hotel.hotelId}`,
-            city: hotel.destination || params.city || "Unknown",
+            city: hotel.city || params.city || "Unknown",
             latitude: hotel.latitude ? parseFloat(hotel.latitude) : null,
             longitude: hotel.longitude ? parseFloat(hotel.longitude) : null,
             type: "last_minute" as const,
@@ -565,15 +567,19 @@ class OpportunityEngineService {
         .where(eq(activityCache.productCode, externalId))
         .limit(1);
       
-      redirectUrl = activity?.bookingUrl || undefined;
+      // Viator activities: construct booking URL or use cached rawData
+      if (activity) {
+        const rawData = activity.rawData as any;
+        redirectUrl = rawData?.productUrl || `https://www.viator.com/tours/${externalId}`;
+      }
     } else if (provider === "fever") {
       const [event] = await db
         .select()
         .from(feverEventCache)
-        .where(eq(feverEventCache.externalId, externalId))
+        .where(eq(feverEventCache.eventId, externalId))
         .limit(1);
       
-      redirectUrl = event?.ticketUrl || undefined;
+      redirectUrl = event?.bookingUrl || event?.affiliateUrl || undefined;
     }
     
     if (redirectUrl) {
