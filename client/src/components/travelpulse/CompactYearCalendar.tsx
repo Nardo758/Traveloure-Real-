@@ -187,6 +187,9 @@ function WeekZoomView({
   selectedDay,
   onDayClick,
   onBack,
+  onPrevWeek,
+  onNextWeek,
+  totalWeeks,
 }: {
   year: number;
   month: number;
@@ -196,6 +199,9 @@ function WeekZoomView({
   selectedDay?: number;
   onDayClick: (day: number) => void;
   onBack: () => void;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+  totalWeeks: number;
 }) {
   const weeks = getMiniCalendarDays(year, month);
   const weekDays = weeks[week - 1] || [];
@@ -205,13 +211,35 @@ function WeekZoomView({
   
   return (
     <div className="space-y-2" data-testid="week-zoom-view">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between">
         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onBack} data-testid="button-week-back">
           <ChevronLeft className="h-3 w-3" />
         </Button>
         <span className="text-xs font-medium" data-testid="text-week-title">
           {monthAbbr[month - 1]} Week {week}
         </span>
+        <div className="flex gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-5 w-5" 
+            onClick={onPrevWeek}
+            disabled={month === 1 && week === 1}
+            data-testid="button-week-prev"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-5 w-5" 
+            onClick={onNextWeek}
+            disabled={month === 12 && week === totalWeeks}
+            data-testid="button-week-next"
+          >
+            <ChevronRight className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
       
       <div className="grid grid-cols-7 gap-1" data-testid="week-days-grid">
@@ -377,6 +405,29 @@ export function CompactYearCalendar({
   }
   
   if (filterMode === "week" && selectedWeek) {
+    const totalWeeks = getMiniCalendarDays(year, activeMonth).length;
+    
+    const handlePrevWeek = () => {
+      if (selectedWeek > 1) {
+        onWeekSelect(activeMonth, selectedWeek - 1);
+      } else if (activeMonth > 1) {
+        const prevMonth = activeMonth - 1;
+        const prevMonthWeeks = getMiniCalendarDays(year, prevMonth).length;
+        setZoomedMonth(prevMonth);
+        onWeekSelect(prevMonth, prevMonthWeeks);
+      }
+    };
+    
+    const handleNextWeek = () => {
+      if (selectedWeek < totalWeeks) {
+        onWeekSelect(activeMonth, selectedWeek + 1);
+      } else if (activeMonth < 12) {
+        const nextMonth = activeMonth + 1;
+        setZoomedMonth(nextMonth);
+        onWeekSelect(nextMonth, 1);
+      }
+    };
+    
     return (
       <Card className="p-3 w-[648px]" data-testid="compact-calendar-week-view">
         <WeekZoomView
@@ -386,6 +437,7 @@ export function CompactYearCalendar({
           eventDays={currentSummary?.eventDays}
           highlights={currentSummary?.highlights}
           selectedDay={selectedDay}
+          totalWeeks={totalWeeks}
           onDayClick={(day) => {
             onFilterModeChange("day");
             onDaySelect(activeMonth, day);
@@ -394,6 +446,8 @@ export function CompactYearCalendar({
             setZoomedMonth(null);
             onFilterModeChange("month");
           }}
+          onPrevWeek={handlePrevWeek}
+          onNextWeek={handleNextWeek}
         />
       </Card>
     );
