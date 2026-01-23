@@ -2037,6 +2037,872 @@ const travelUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
+// ============ WEDDING TEMPLATE ============
+const weddingTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Wedding ceremony and reception venue selection",
+    icon: "Building2",
+    filters: [
+      {
+        name: "Venue Type",
+        slug: "venue_type",
+        filterType: "multi_select",
+        icon: "Building",
+        options: [
+          { label: "Hotel/Resort", value: "hotel_resort" },
+          { label: "Vineyard/Winery", value: "vineyard" },
+          { label: "Beach/Waterfront", value: "beach" },
+          { label: "Garden/Estate", value: "garden_estate" },
+          { label: "Historic/Mansion", value: "historic" },
+          { label: "Barn/Rustic", value: "barn_rustic" },
+          { label: "Modern/Loft", value: "modern_loft" },
+          { label: "Religious Venue", value: "religious" },
+        ]
+      },
+      {
+        name: "Capacity",
+        slug: "capacity",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Intimate (10-50)", value: "10-50" },
+          { label: "Small (50-100)", value: "50-100" },
+          { label: "Medium (100-200)", value: "100-200" },
+          { label: "Large (200-350)", value: "200-350" },
+          { label: "Grand (350+)", value: "350+" },
+        ]
+      },
+      {
+        name: "Setting",
+        slug: "setting",
+        filterType: "multi_select",
+        icon: "Sun",
+        options: [
+          { label: "Indoor Only", value: "indoor" },
+          { label: "Outdoor Only", value: "outdoor" },
+          { label: "Indoor + Outdoor", value: "both" },
+          { label: "Weather Backup Plan", value: "weather_backup" },
+        ]
+      },
+      {
+        name: "Price Tier",
+        slug: "price_tier",
+        filterType: "single_select",
+        icon: "DollarSign",
+        options: [
+          { label: "Budget ($5K-15K)", value: "budget", minValue: 5000, maxValue: 15000 },
+          { label: "Mid-Range ($15K-35K)", value: "midrange", minValue: 15000, maxValue: 35000 },
+          { label: "Premium ($35K-75K)", value: "premium", minValue: 35000, maxValue: 75000 },
+          { label: "Luxury ($75K+)", value: "luxury", minValue: 75000 },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Vendors",
+    slug: "vendors",
+    description: "Photography, catering, florals, and essential services",
+    icon: "Camera",
+    filters: [
+      {
+        name: "Vendor Type",
+        slug: "vendor_type",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Photographer", value: "photographer" },
+          { label: "Videographer", value: "videographer" },
+          { label: "Caterer", value: "caterer" },
+          { label: "Florist", value: "florist" },
+          { label: "DJ/Band", value: "dj_band" },
+          { label: "Officiant", value: "officiant" },
+          { label: "Makeup/Hair", value: "beauty" },
+          { label: "Planner/Coordinator", value: "planner" },
+        ]
+      },
+      {
+        name: "Experience Level",
+        slug: "experience_level",
+        filterType: "single_select",
+        icon: "Award",
+        options: [
+          { label: "Rising Talent", value: "rising" },
+          { label: "Established", value: "established" },
+          { label: "Highly Experienced", value: "highly_experienced" },
+          { label: "Industry Leader", value: "leader" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Decor, rentals, and additional wedding services",
+    icon: "Sparkles",
+    filters: [
+      {
+        name: "Service Category",
+        slug: "service_category",
+        filterType: "multi_select",
+        icon: "Layers",
+        options: [
+          { label: "Decor/Design", value: "decor" },
+          { label: "Rentals", value: "rentals" },
+          { label: "Cake/Desserts", value: "cake" },
+          { label: "Transportation", value: "transportation" },
+          { label: "Invitations/Stationery", value: "stationery" },
+          { label: "Favors/Gifts", value: "favors" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Guest Accommodations",
+    slug: "guest-accommodations",
+    description: "Hotel blocks and lodging for wedding guests",
+    icon: "Bed",
+    filters: [
+      {
+        name: "Accommodation Type",
+        slug: "accommodation_type",
+        filterType: "multi_select",
+        icon: "Building",
+        options: [
+          { label: "Hotel Block", value: "hotel_block" },
+          { label: "Vacation Rentals", value: "vacation_rentals" },
+          { label: "Resort", value: "resort" },
+          { label: "B&B/Inn", value: "bb_inn" },
+        ]
+      },
+      {
+        name: "Distance from Venue",
+        slug: "distance",
+        filterType: "single_select",
+        icon: "MapPin",
+        options: [
+          { label: "On-site", value: "onsite" },
+          { label: "Walking Distance", value: "walking" },
+          { label: "Short Drive (<15 min)", value: "short_drive" },
+          { label: "Moderate Drive (15-30 min)", value: "moderate_drive" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Guest shuttles and wedding party transportation",
+    icon: "Car",
+    filters: [
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "multi_select",
+        icon: "Bus",
+        options: [
+          { label: "Classic Car", value: "classic_car" },
+          { label: "Limo", value: "limo" },
+          { label: "Party Bus", value: "party_bus" },
+          { label: "Guest Shuttle", value: "shuttle" },
+          { label: "Horse & Carriage", value: "horse_carriage" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Rehearsal",
+    slug: "rehearsal",
+    description: "Rehearsal dinner venues and coordination",
+    icon: "Calendar",
+    filters: [
+      {
+        name: "Venue Type",
+        slug: "venue_type",
+        filterType: "multi_select",
+        icon: "UtensilsCrossed",
+        options: [
+          { label: "Restaurant Private Room", value: "restaurant" },
+          { label: "Same as Wedding Venue", value: "same_venue" },
+          { label: "Unique Venue", value: "unique" },
+          { label: "Home/Backyard", value: "home" },
+        ]
+      },
+      {
+        name: "Guest Count",
+        slug: "guest_count",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Immediate Family (10-20)", value: "10-20" },
+          { label: "Wedding Party (20-40)", value: "20-40" },
+          { label: "Extended (40-60)", value: "40-60" },
+          { label: "All Guests (60+)", value: "60+" },
+        ]
+      },
+    ]
+  },
+];
+
+// ============ DATE NIGHT TEMPLATE ============
+const dateNightTabs: TabDef[] = [
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Romantic restaurant selection",
+    icon: "UtensilsCrossed",
+    filters: [
+      {
+        name: "Cuisine",
+        slug: "cuisine",
+        filterType: "multi_select",
+        icon: "ChefHat",
+        options: [
+          { label: "Italian", value: "italian" },
+          { label: "French", value: "french" },
+          { label: "Japanese", value: "japanese" },
+          { label: "Steakhouse", value: "steakhouse" },
+          { label: "Seafood", value: "seafood" },
+          { label: "Mediterranean", value: "mediterranean" },
+        ]
+      },
+      {
+        name: "Ambiance",
+        slug: "ambiance",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Romantic/Intimate", value: "romantic" },
+          { label: "Upscale", value: "upscale" },
+          { label: "Trendy/Modern", value: "trendy" },
+          { label: "Cozy/Casual", value: "cozy" },
+          { label: "Rooftop/Views", value: "rooftop" },
+        ]
+      },
+      {
+        name: "Price Range",
+        slug: "price",
+        filterType: "single_select",
+        icon: "DollarSign",
+        options: [
+          { label: "$30-60/person", value: "30-60", minValue: 30, maxValue: 60 },
+          { label: "$60-100/person", value: "60-100", minValue: 60, maxValue: 100 },
+          { label: "$100-150/person", value: "100-150", minValue: 100, maxValue: 150 },
+          { label: "$150+/person", value: "150+", minValue: 150 },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Date night experiences and entertainment",
+    icon: "Star",
+    filters: [
+      {
+        name: "Activity Type",
+        slug: "activity_type",
+        filterType: "multi_select",
+        icon: "Palette",
+        options: [
+          { label: "Cooking Class", value: "cooking" },
+          { label: "Wine/Cocktail Tasting", value: "tasting" },
+          { label: "Escape Room", value: "escape_room" },
+          { label: "Art Class", value: "art" },
+          { label: "Pottery/Crafts", value: "pottery" },
+          { label: "Dancing Lesson", value: "dancing" },
+          { label: "Axe Throwing", value: "axe_throwing" },
+          { label: "Mini Golf", value: "mini_golf" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Shows, concerts, and performances",
+    icon: "Music",
+    filters: [
+      {
+        name: "Entertainment Type",
+        slug: "entertainment_type",
+        filterType: "multi_select",
+        icon: "Ticket",
+        options: [
+          { label: "Live Music", value: "live_music" },
+          { label: "Comedy Show", value: "comedy" },
+          { label: "Theater/Musical", value: "theater" },
+          { label: "Concert", value: "concert" },
+          { label: "Movie Screening", value: "movie" },
+          { label: "Jazz/Blues Club", value: "jazz" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Spa, wellness, and special services",
+    icon: "Heart",
+    filters: [
+      {
+        name: "Service Type",
+        slug: "service_type",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Couples Massage", value: "couples_massage" },
+          { label: "Spa Package", value: "spa" },
+          { label: "Personal Chef", value: "personal_chef" },
+          { label: "Private Photography", value: "photography" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Getting around in style",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transport Type",
+        slug: "transport_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Rideshare", value: "rideshare" },
+          { label: "Car Service", value: "car_service" },
+          { label: "Bike Rental", value: "bike" },
+          { label: "Walking Tour", value: "walking" },
+        ]
+      },
+    ]
+  },
+];
+
+// ============ BIRTHDAY TEMPLATE ============
+const birthdayTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Birthday party venue selection",
+    icon: "PartyPopper",
+    filters: [
+      {
+        name: "Venue Type",
+        slug: "venue_type",
+        filterType: "multi_select",
+        icon: "Building",
+        options: [
+          { label: "Restaurant/Private Room", value: "restaurant" },
+          { label: "Bar/Lounge", value: "bar" },
+          { label: "Event Space", value: "event_space" },
+          { label: "Outdoor Venue", value: "outdoor" },
+          { label: "Home/Backyard", value: "home" },
+          { label: "Rooftop", value: "rooftop" },
+          { label: "Club/Nightlife", value: "club" },
+        ]
+      },
+      {
+        name: "Guest Count",
+        slug: "guest_count",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Small (5-15)", value: "5-15" },
+          { label: "Medium (15-30)", value: "15-30" },
+          { label: "Large (30-60)", value: "30-60" },
+          { label: "Big Bash (60+)", value: "60+" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Birthday party entertainment and activities",
+    icon: "Gamepad2",
+    filters: [
+      {
+        name: "Activity Type",
+        slug: "activity_type",
+        filterType: "multi_select",
+        icon: "Star",
+        options: [
+          { label: "Karaoke", value: "karaoke" },
+          { label: "Bowling", value: "bowling" },
+          { label: "Escape Room", value: "escape_room" },
+          { label: "Game Night", value: "game_night" },
+          { label: "Paint Party", value: "paint_party" },
+          { label: "Spa Day", value: "spa" },
+          { label: "Adventure Activity", value: "adventure" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Birthday dinner and catering options",
+    icon: "Cake",
+    filters: [
+      {
+        name: "Dining Style",
+        slug: "dining_style",
+        filterType: "multi_select",
+        icon: "UtensilsCrossed",
+        options: [
+          { label: "Sit-Down Dinner", value: "sit_down" },
+          { label: "Buffet/Family Style", value: "buffet" },
+          { label: "Cocktail Reception", value: "cocktail" },
+          { label: "Food Trucks", value: "food_trucks" },
+          { label: "Catered at Venue", value: "catered" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Music, performers, and entertainment",
+    icon: "Music",
+    filters: [
+      {
+        name: "Entertainment Type",
+        slug: "entertainment_type",
+        filterType: "multi_select",
+        icon: "Mic",
+        options: [
+          { label: "DJ", value: "dj" },
+          { label: "Live Band", value: "band" },
+          { label: "Photo Booth", value: "photo_booth" },
+          { label: "Magician/Performer", value: "performer" },
+          { label: "Trivia Host", value: "trivia" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Decorations, cake, and party services",
+    icon: "Gift",
+    filters: [
+      {
+        name: "Service Type",
+        slug: "service_type",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Decorations", value: "decorations" },
+          { label: "Custom Cake", value: "cake" },
+          { label: "Party Favors", value: "favors" },
+          { label: "Event Planner", value: "planner" },
+          { label: "Bartender", value: "bartender" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Overnight stays for birthday trips",
+    icon: "Bed",
+    filters: [
+      {
+        name: "Stay Type",
+        slug: "stay_type",
+        filterType: "multi_select",
+        icon: "Home",
+        options: [
+          { label: "Hotel", value: "hotel" },
+          { label: "Vacation Rental", value: "rental" },
+          { label: "Resort", value: "resort" },
+          { label: "Unique Stay", value: "unique" },
+        ]
+      },
+    ]
+  },
+];
+
+// ============ CORPORATE EVENTS TEMPLATE ============
+const corporateTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Corporate event and meeting venues",
+    icon: "Building2",
+    filters: [
+      {
+        name: "Venue Type",
+        slug: "venue_type",
+        filterType: "multi_select",
+        icon: "Building",
+        options: [
+          { label: "Conference Center", value: "conference" },
+          { label: "Hotel Meeting Rooms", value: "hotel" },
+          { label: "Unique/Creative Space", value: "unique" },
+          { label: "Restaurant Private Dining", value: "restaurant" },
+          { label: "Outdoor/Retreat Center", value: "outdoor" },
+          { label: "Coworking Event Space", value: "coworking" },
+        ]
+      },
+      {
+        name: "Capacity",
+        slug: "capacity",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Small Team (5-20)", value: "5-20" },
+          { label: "Department (20-50)", value: "20-50" },
+          { label: "Division (50-150)", value: "50-150" },
+          { label: "Company-wide (150-500)", value: "150-500" },
+          { label: "Large Conference (500+)", value: "500+" },
+        ]
+      },
+      {
+        name: "AV/Tech",
+        slug: "av_tech",
+        filterType: "multi_select",
+        icon: "Monitor",
+        options: [
+          { label: "Projector/Screen", value: "projector" },
+          { label: "Video Conferencing", value: "video_conf" },
+          { label: "Stage/PA System", value: "stage" },
+          { label: "Breakout Rooms", value: "breakout" },
+          { label: "Livestream Capable", value: "livestream" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Team Activities",
+    slug: "team-activities",
+    description: "Team building and group activities",
+    icon: "Users",
+    filters: [
+      {
+        name: "Activity Type",
+        slug: "activity_type",
+        filterType: "multi_select",
+        icon: "Puzzle",
+        options: [
+          { label: "Team Building Games", value: "team_games" },
+          { label: "Escape Room", value: "escape_room" },
+          { label: "Cooking Challenge", value: "cooking" },
+          { label: "Outdoor Adventure", value: "outdoor" },
+          { label: "Volunteering/CSR", value: "csr" },
+          { label: "Workshop/Training", value: "workshop" },
+          { label: "Scavenger Hunt", value: "scavenger" },
+          { label: "Sports/Recreation", value: "sports" },
+        ]
+      },
+      {
+        name: "Team Size",
+        slug: "team_size",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Small (5-15)", value: "5-15" },
+          { label: "Medium (15-40)", value: "15-40" },
+          { label: "Large (40-100)", value: "40-100" },
+          { label: "Extra Large (100+)", value: "100+" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Catering, A/V, and event services",
+    icon: "Briefcase",
+    filters: [
+      {
+        name: "Service Type",
+        slug: "service_type",
+        filterType: "multi_select",
+        icon: "Settings",
+        options: [
+          { label: "Full Catering", value: "catering" },
+          { label: "A/V Support", value: "av" },
+          { label: "Event Planner", value: "planner" },
+          { label: "Photographer", value: "photographer" },
+          { label: "MC/Speaker", value: "mc" },
+          { label: "Swag/Gifts", value: "swag" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Corporate meals and catering",
+    icon: "UtensilsCrossed",
+    filters: [
+      {
+        name: "Meal Type",
+        slug: "meal_type",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Working Lunch", value: "working_lunch" },
+          { label: "Cocktail Reception", value: "cocktail" },
+          { label: "Sit-Down Dinner", value: "dinner" },
+          { label: "Awards Gala", value: "gala" },
+          { label: "Coffee/Snack Breaks", value: "breaks" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Group transportation and logistics",
+    icon: "Bus",
+    filters: [
+      {
+        name: "Transport Type",
+        slug: "transport_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Charter Bus", value: "charter_bus" },
+          { label: "Shuttle Service", value: "shuttle" },
+          { label: "Car Service", value: "car_service" },
+          { label: "Airport Transfers", value: "airport" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Hotel blocks for multi-day events",
+    icon: "Hotel",
+    filters: [
+      {
+        name: "Hotel Tier",
+        slug: "hotel_tier",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Budget-Friendly", value: "budget" },
+          { label: "Mid-Range", value: "midrange" },
+          { label: "Upscale", value: "upscale" },
+          { label: "Luxury", value: "luxury" },
+        ]
+      },
+    ]
+  },
+];
+
+// ============ RETREATS TEMPLATE ============
+const retreatsTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Retreat centers and lodging",
+    icon: "Trees",
+    filters: [
+      {
+        name: "Venue Type",
+        slug: "venue_type",
+        filterType: "multi_select",
+        icon: "Home",
+        options: [
+          { label: "Wellness Retreat Center", value: "wellness_center" },
+          { label: "Mountain Lodge", value: "mountain_lodge" },
+          { label: "Beach Resort", value: "beach_resort" },
+          { label: "Private Estate", value: "estate" },
+          { label: "Eco-Lodge", value: "eco_lodge" },
+          { label: "Monastery/Spiritual Center", value: "spiritual" },
+          { label: "Hot Springs Resort", value: "hot_springs" },
+        ]
+      },
+      {
+        name: "Setting",
+        slug: "setting",
+        filterType: "multi_select",
+        icon: "Mountain",
+        options: [
+          { label: "Mountains", value: "mountains" },
+          { label: "Beach/Ocean", value: "beach" },
+          { label: "Forest", value: "forest" },
+          { label: "Desert", value: "desert" },
+          { label: "Countryside", value: "countryside" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Retreat programs and activities",
+    icon: "Leaf",
+    filters: [
+      {
+        name: "Activity Type",
+        slug: "activity_type",
+        filterType: "multi_select",
+        icon: "Activity",
+        options: [
+          { label: "Yoga", value: "yoga" },
+          { label: "Meditation", value: "meditation" },
+          { label: "Hiking/Nature Walks", value: "hiking" },
+          { label: "Wellness Workshops", value: "workshops" },
+          { label: "Creative/Art", value: "creative" },
+          { label: "Journaling/Writing", value: "writing" },
+          { label: "Breathwork", value: "breathwork" },
+          { label: "Sound Healing", value: "sound_healing" },
+        ]
+      },
+      {
+        name: "Intensity",
+        slug: "intensity",
+        filterType: "single_select",
+        icon: "Zap",
+        options: [
+          { label: "Gentle/Restorative", value: "gentle" },
+          { label: "Moderate", value: "moderate" },
+          { label: "Active", value: "active" },
+          { label: "Intensive", value: "intensive" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Spa, healing, and wellness services",
+    icon: "Sparkles",
+    filters: [
+      {
+        name: "Service Type",
+        slug: "service_type",
+        filterType: "multi_select",
+        icon: "Heart",
+        options: [
+          { label: "Massage", value: "massage" },
+          { label: "Facials/Skincare", value: "skincare" },
+          { label: "Energy Healing", value: "energy_healing" },
+          { label: "Acupuncture", value: "acupuncture" },
+          { label: "Nutrition Counseling", value: "nutrition" },
+          { label: "Life Coaching", value: "coaching" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Retreat meals and nutrition",
+    icon: "Apple",
+    filters: [
+      {
+        name: "Dietary Focus",
+        slug: "dietary_focus",
+        filterType: "multi_select",
+        icon: "Leaf",
+        options: [
+          { label: "Plant-Based", value: "plant_based" },
+          { label: "Organic", value: "organic" },
+          { label: "Detox/Cleanse", value: "detox" },
+          { label: "Ayurvedic", value: "ayurvedic" },
+          { label: "Raw Food", value: "raw" },
+          { label: "Farm-to-Table", value: "farm_to_table" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Room types and lodging options",
+    icon: "Bed",
+    filters: [
+      {
+        name: "Room Type",
+        slug: "room_type",
+        filterType: "multi_select",
+        icon: "Home",
+        options: [
+          { label: "Private Room", value: "private" },
+          { label: "Shared Room", value: "shared" },
+          { label: "Suite/Upgrade", value: "suite" },
+          { label: "Cabin/Cottage", value: "cabin" },
+          { label: "Glamping/Tent", value: "glamping" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Wellness",
+    slug: "wellness",
+    description: "Wellness amenities and facilities",
+    icon: "Heart",
+    filters: [
+      {
+        name: "Wellness Amenities",
+        slug: "wellness_amenities",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Spa/Treatment Center", value: "spa" },
+          { label: "Yoga Studio", value: "yoga_studio" },
+          { label: "Meditation Garden", value: "meditation_garden" },
+          { label: "Sauna/Steam Room", value: "sauna" },
+          { label: "Pool", value: "pool" },
+          { label: "Fitness Center", value: "fitness" },
+          { label: "Nature Trails", value: "trails" },
+        ]
+      },
+    ]
+  },
+];
+
+// Standard universal filters for all templates
+const standardUniversalFilters: UniversalFilterDef[] = [
+  {
+    name: "Price Range",
+    slug: "price_range",
+    filterType: "range",
+    icon: "DollarSign",
+    options: [
+      { label: "Budget", value: "budget", minValue: 0, maxValue: 100 },
+      { label: "Mid-Range", value: "midrange", minValue: 100, maxValue: 300 },
+      { label: "Premium", value: "premium", minValue: 300, maxValue: 500 },
+      { label: "Luxury", value: "luxury", minValue: 500 },
+    ]
+  },
+  {
+    name: "Minimum Rating",
+    slug: "min_rating",
+    filterType: "single_select",
+    icon: "Star",
+    options: [
+      { label: "All", value: "all" },
+      { label: "3+", value: "3" },
+      { label: "3.5+", value: "3.5" },
+      { label: "4+", value: "4" },
+      { label: "4.5+", value: "4.5" },
+    ]
+  },
+  {
+    name: "Sort By",
+    slug: "sort_by",
+    filterType: "single_select",
+    icon: "ArrowUpDown",
+    options: [
+      { label: "Most Popular", value: "popular" },
+      { label: "Price: Low to High", value: "price_low" },
+      { label: "Price: High to Low", value: "price_high" },
+      { label: "Highest Rated", value: "rating" },
+    ]
+  },
+];
+
 export async function seedExperienceTemplateTabs() {
   console.log("Seeding experience template tabs and filters...");
 
@@ -2069,6 +2935,56 @@ export async function seedExperienceTemplateTabs() {
   }
   await seedUniversalFilters(travelId, travelUniversalFilters);
   console.log("Travel template seeded.");
+
+  // Seed Wedding template
+  const weddingId = await getOrCreateExperienceType("wedding", "Wedding");
+  console.log(`Wedding experience type ID: ${weddingId}`);
+  
+  for (let i = 0; i < weddingTabs.length; i++) {
+    await seedTabWithFilters(weddingId, weddingTabs[i], i);
+  }
+  await seedUniversalFilters(weddingId, standardUniversalFilters);
+  console.log("Wedding template seeded.");
+
+  // Seed Date Night template
+  const dateNightId = await getOrCreateExperienceType("date-night", "Date Night");
+  console.log(`Date Night experience type ID: ${dateNightId}`);
+  
+  for (let i = 0; i < dateNightTabs.length; i++) {
+    await seedTabWithFilters(dateNightId, dateNightTabs[i], i);
+  }
+  await seedUniversalFilters(dateNightId, standardUniversalFilters);
+  console.log("Date Night template seeded.");
+
+  // Seed Birthday template
+  const birthdayId = await getOrCreateExperienceType("birthday", "Birthday");
+  console.log(`Birthday experience type ID: ${birthdayId}`);
+  
+  for (let i = 0; i < birthdayTabs.length; i++) {
+    await seedTabWithFilters(birthdayId, birthdayTabs[i], i);
+  }
+  await seedUniversalFilters(birthdayId, standardUniversalFilters);
+  console.log("Birthday template seeded.");
+
+  // Seed Corporate Events template
+  const corporateId = await getOrCreateExperienceType("corporate-events", "Corporate Events");
+  console.log(`Corporate Events experience type ID: ${corporateId}`);
+  
+  for (let i = 0; i < corporateTabs.length; i++) {
+    await seedTabWithFilters(corporateId, corporateTabs[i], i);
+  }
+  await seedUniversalFilters(corporateId, standardUniversalFilters);
+  console.log("Corporate Events template seeded.");
+
+  // Seed Retreats template
+  const retreatsId = await getOrCreateExperienceType("retreats", "Retreats");
+  console.log(`Retreats experience type ID: ${retreatsId}`);
+  
+  for (let i = 0; i < retreatsTabs.length; i++) {
+    await seedTabWithFilters(retreatsId, retreatsTabs[i], i);
+  }
+  await seedUniversalFilters(retreatsId, standardUniversalFilters);
+  console.log("Retreats template seeded.");
 
   console.log("Experience template tabs and filters seeding complete.");
 }

@@ -36,6 +36,7 @@ import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
 import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
 import { emergencyService } from "./services/emergency.service";
+import { experienceCatalogService } from "./services/experience-catalog.service";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import { 
   insertTripParticipantSchema, 
@@ -936,6 +937,85 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     } catch (error) {
       console.error("Error fetching universal filters:", error);
       res.status(500).json({ message: "Failed to fetch universal filters" });
+    }
+  });
+
+  // === Experience Catalog API ===
+
+  // Search unified experience catalog across all providers
+  app.get("/api/catalog/search", async (req, res) => {
+    try {
+      const { 
+        destination, 
+        query, 
+        priceMin, 
+        priceMax, 
+        rating, 
+        sortBy, 
+        limit, 
+        offset,
+        providers,
+        experienceTypeSlug,
+        tabSlug
+      } = req.query;
+
+      const result = await experienceCatalogService.searchCatalog({
+        destination: destination as string | undefined,
+        query: query as string | undefined,
+        priceMin: priceMin ? parseFloat(priceMin as string) : undefined,
+        priceMax: priceMax ? parseFloat(priceMax as string) : undefined,
+        rating: rating ? parseFloat(rating as string) : undefined,
+        sortBy: sortBy as "popular" | "price_low" | "price_high" | "rating" | undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined,
+        providers: providers ? (providers as string).split(",") : undefined,
+        experienceTypeSlug: experienceTypeSlug as string | undefined,
+        tabSlug: tabSlug as string | undefined,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Catalog search error:", error);
+      res.status(500).json({ message: "Failed to search catalog" });
+    }
+  });
+
+  // Get experience type with all tabs and filters
+  app.get("/api/catalog/templates/:slug", async (req, res) => {
+    try {
+      const result = await experienceCatalogService.getExperienceTypeWithTabs(req.params.slug);
+      if (!result.experienceType) {
+        return res.status(404).json({ message: "Experience type not found" });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching template:", error);
+      res.status(500).json({ message: "Failed to fetch template" });
+    }
+  });
+
+  // Get single catalog item by ID and type
+  app.get("/api/catalog/items/:type/:id", async (req, res) => {
+    try {
+      const item = await experienceCatalogService.getCatalogItem(req.params.id, req.params.type);
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      console.error("Error fetching catalog item:", error);
+      res.status(500).json({ message: "Failed to fetch catalog item" });
+    }
+  });
+
+  // Get available destinations from all providers
+  app.get("/api/catalog/destinations", async (req, res) => {
+    try {
+      const destinations = await experienceCatalogService.getDestinations();
+      res.json(destinations);
+    } catch (error) {
+      console.error("Error fetching destinations:", error);
+      res.status(500).json({ message: "Failed to fetch destinations" });
     }
   });
 
