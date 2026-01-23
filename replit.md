@@ -37,15 +37,28 @@ The application features a modern, responsive design built with Tailwind CSS and
     - Universal rating filter: All | 3+ | 3.5+ | 4+ | 4.5+
     - TemplateFiltersPanel component renders filters dynamically for template-driven experience types
   - **Complete Tab & Filter Specifications**: Standardized across all 22 experience templates:
-    - **Travel**: Activities | Hotels | Services | Dining | Flights | Transportation (with Activity Type, Duration, Group Size, Physical Level, Cuisine Type filters)
-    - **Wedding**: Dual-mode support with Planning Mode (Venues, Vendors, Services, Guest Accommodations, Transportation, Rehearsal) and Guest Activities Mode (Activities, Dining, Services, Welcome Events, Transportation, Local Experiences)
-    - **Proposal**: Locations | Services | Celebration Dining | Post-Proposal Activities | Accommodations
-    - **Date Night**: Dining | Activities | Entertainment | Services | Transportation
-    - **Birthday**: Venues | Activities | Dining | Entertainment | Services | Accommodations
-    - **Corporate Events**: Venues | Team Activities | Services | Dining | Transportation | Accommodations
-    - **Reunions**: Venues | Activities | Services | Dining | Accommodations | Transportation
-    - **Retreats**: Venues | Activities | Services | Dining | Accommodations | Wellness
-  - Seeded templates for Bachelor/Bachelorette Parties (8 tabs with logistics-focused filters: group size, budget tiers, venue capacity, energy level) and Anniversary Trips (8 tabs with romance-focused filters: intimacy level, privacy, ambiance, special services).
+    - **Travel**: Activities | Hotels | Services | Dining | Flights | Transportation (6 tabs)
+    - **Wedding**: Venues | Vendors | Services | Guest Accommodations | Transportation | Rehearsal (6 tabs)
+    - **Proposal**: Locations | Services | Celebration Dining | Accommodations (4 tabs with privacy/setting filters)
+    - **Date Night**: Dining | Activities | Entertainment | Services | Transportation (5 tabs)
+    - **Birthday**: Venues | Activities | Dining | Entertainment | Services | Accommodations (6 tabs)
+    - **Corporate Events**: Venues | Team Activities | Services | Dining | Transportation | Accommodations (6 tabs)
+    - **Reunions**: Venues | Activities | Catering | Accommodations | Transportation (5 tabs with capacity filters)
+    - **Retreats**: Venues | Activities | Services | Dining | Accommodations | Wellness (6 tabs)
+    - **Bachelor/Bachelorette**: Destinations | Accommodations | Daytime Activities | Nightlife | Dining | Transportation | Party Services | Activities (8 tabs)
+    - **Anniversary Trip**: Destinations | Romantic Accommodations | Couple Experiences | Romantic Dining | Spa | Special Touches | Transportation | Activities (8 tabs)
+    - **Wedding Anniversaries**: Venues | Catering | Entertainment | Decor | Photography (5 tabs with milestone filters)
+    - **Boys Trip**: Activities | Nightlife | Accommodations | Dining | Transportation (5 tabs with energy level filters)
+    - **Girls Trip**: Activities | Nightlife | Spa & Wellness | Accommodations | Dining (5 tabs)
+    - **Baby Shower**: Venues | Catering | Decor & Supplies | Entertainment (4 tabs with theme filters)
+    - **Graduation Party**: Venues | Catering | Entertainment | Decor (4 tabs)
+    - **Engagement Party**: Venues | Catering | Entertainment | Photography (4 tabs)
+    - **Housewarming Party**: Catering | Decor & Setup | Entertainment | Services (4 tabs)
+    - **Retirement Party**: Venues | Catering | Entertainment | Gifts & Keepsakes (4 tabs)
+    - **Career Achievement Party**: Venues | Catering | Entertainment (3 tabs)
+    - **Farewell Party**: Venues | Catering | Entertainment | Keepsakes (4 tabs)
+    - **Holiday Party**: Venues | Catering | Decor | Entertainment | Services (5 tabs with holiday-specific filters)
+    - **Sports Event**: Tickets | Accommodations | Pre-Game | Dining | Transportation | VIP Experiences (6 tabs with sport type filters)
 - **Reviews & Notifications**: System for user reviews and timely updates.
 - **Role-Based Dashboards**: Comprehensive dashboards for Service Providers, Administrators, and Executive Assistants.
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
