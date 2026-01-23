@@ -2903,6 +2903,845 @@ const standardUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
+// ============ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ============
+const weddingAnniversariesTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Anniversary celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Heart", options: [
+        { label: "Restaurant Private Room", value: "restaurant" }, { label: "Event Hall", value: "hall" },
+        { label: "Rooftop/Terrace", value: "rooftop" }, { label: "Winery/Vineyard", value: "winery" },
+        { label: "Garden/Outdoor", value: "garden" }, { label: "Country Club", value: "country_club" }
+      ]},
+      { name: "Milestone", slug: "milestone", filterType: "single_select", icon: "Award", options: [
+        { label: "Silver (25th)", value: "silver" }, { label: "Pearl (30th)", value: "pearl" },
+        { label: "Ruby (40th)", value: "ruby" }, { label: "Gold (50th)", value: "gold" },
+        { label: "Diamond (60th)", value: "diamond" }, { label: "Other", value: "other" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Celebration dining",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Seated Dinner", value: "dinner" }, { label: "Cocktail Reception", value: "cocktail" },
+        { label: "Buffet", value: "buffet" }, { label: "Brunch", value: "brunch" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Celebration entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Live Band", value: "band" }, { label: "DJ", value: "dj" },
+        { label: "Photo/Video Montage", value: "montage" }, { label: "Photo Booth", value: "photo_booth" },
+        { label: "Vow Renewal Ceremony", value: "vow_renewal" }
+      ]}
+    ]
+  },
+  {
+    name: "Decor",
+    slug: "decor",
+    description: "Party decorations",
+    icon: "Sparkles",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "Palette", options: [
+        { label: "Elegant/Formal", value: "elegant" }, { label: "Romantic", value: "romantic" },
+        { label: "Vintage/Nostalgic", value: "vintage" }, { label: "Modern", value: "modern" }
+      ]}
+    ]
+  },
+  {
+    name: "Photography",
+    slug: "photography",
+    description: "Capture memories",
+    icon: "Camera",
+    filters: [
+      { name: "Service Type", slug: "service_type", filterType: "multi_select", icon: "Image", options: [
+        { label: "Event Photographer", value: "photographer" }, { label: "Videographer", value: "videographer" },
+        { label: "Photo/Video Package", value: "package" }
+      ]}
+    ]
+  }
+];
+
+// ============ PROPOSAL TEMPLATE ============
+const proposalTabs: TabDef[] = [
+  {
+    name: "Locations",
+    slug: "locations",
+    description: "Find the perfect proposal spot",
+    icon: "MapPin",
+    filters: [
+      { name: "Setting", slug: "setting", filterType: "multi_select", icon: "Sparkles", options: [
+        { label: "Beach/Waterfront", value: "beach" }, { label: "Mountain/Scenic", value: "mountain" },
+        { label: "City/Rooftop", value: "city" }, { label: "Garden/Park", value: "garden" },
+        { label: "Restaurant", value: "restaurant" }, { label: "Historic/Castle", value: "historic" }
+      ]},
+      { name: "Privacy Level", slug: "privacy", filterType: "single_select", icon: "Eye", options: [
+        { label: "Very Private", value: "very_private" }, { label: "Semi-Private", value: "semi_private" },
+        { label: "Public (Romantic)", value: "public" }
+      ]}
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Proposal planning services",
+    icon: "Heart",
+    filters: [
+      { name: "Service Type", slug: "service_type", filterType: "multi_select", icon: "Star", options: [
+        { label: "Photography", value: "photography" }, { label: "Videography", value: "videography" },
+        { label: "Floral Design", value: "floral" }, { label: "Musicians", value: "musicians" },
+        { label: "Proposal Planner", value: "planner" }
+      ]}
+    ]
+  },
+  {
+    name: "Celebration Dining",
+    slug: "dining",
+    description: "Post-proposal celebration",
+    icon: "Utensils",
+    filters: [
+      { name: "Cuisine", slug: "cuisine", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Fine Dining", value: "fine_dining" }, { label: "French", value: "french" },
+        { label: "Italian", value: "italian" }, { label: "Japanese", value: "japanese" }
+      ]}
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Romantic stays",
+    icon: "Building2",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Bed", options: [
+        { label: "Luxury Hotel", value: "luxury_hotel" }, { label: "Boutique Hotel", value: "boutique" },
+        { label: "Resort", value: "resort" }, { label: "Villa", value: "villa" }
+      ]}
+    ]
+  }
+];
+
+// ============ BOYS TRIP TEMPLATE ============
+const boysTripTabs: TabDef[] = [
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Adventure and entertainment",
+    icon: "Zap",
+    filters: [
+      { name: "Activity Type", slug: "activity_type", filterType: "multi_select", icon: "Activity", options: [
+        { label: "Sports/Golf", value: "sports" }, { label: "Adventure", value: "adventure" },
+        { label: "Gaming", value: "gaming" }, { label: "Fishing/Hunting", value: "outdoor" },
+        { label: "Motorsports", value: "motorsports" }
+      ]},
+      { name: "Energy Level", slug: "energy", filterType: "single_select", icon: "Flame", options: [
+        { label: "Chill", value: "chill" }, { label: "Moderate", value: "moderate" }, { label: "High Energy", value: "high" }
+      ]}
+    ]
+  },
+  {
+    name: "Nightlife",
+    slug: "nightlife",
+    description: "Evening entertainment",
+    icon: "Moon",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Music", options: [
+        { label: "Sports Bar", value: "sports_bar" }, { label: "Clubs", value: "clubs" },
+        { label: "Lounge", value: "lounge" }, { label: "Casino", value: "casino" }
+      ]}
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Group-friendly stays",
+    icon: "Building2",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Bed", options: [
+        { label: "House/Villa Rental", value: "rental" }, { label: "Hotel Suite", value: "suite" },
+        { label: "Resort", value: "resort" }, { label: "Cabin", value: "cabin" }
+      ]}
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Group dining options",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Steakhouse", value: "steakhouse" }, { label: "BBQ", value: "bbq" },
+        { label: "Brewpub", value: "brewpub" }, { label: "Sports Themed", value: "sports" }
+      ]}
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Group transport",
+    icon: "Car",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Bus", options: [
+        { label: "Party Bus", value: "party_bus" }, { label: "SUV Rental", value: "suv" },
+        { label: "Limo", value: "limo" }
+      ]}
+    ]
+  }
+];
+
+// ============ GIRLS TRIP TEMPLATE ============
+const girlsTripTabs: TabDef[] = [
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Fun group experiences",
+    icon: "Sparkles",
+    filters: [
+      { name: "Activity Type", slug: "activity_type", filterType: "multi_select", icon: "Activity", options: [
+        { label: "Spa/Wellness", value: "spa" }, { label: "Shopping", value: "shopping" },
+        { label: "Wine/Food Tours", value: "food_tours" }, { label: "Beach/Pool", value: "beach" },
+        { label: "Classes/Workshops", value: "classes" }
+      ]}
+    ]
+  },
+  {
+    name: "Nightlife",
+    slug: "nightlife",
+    description: "Evening entertainment",
+    icon: "Moon",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Music", options: [
+        { label: "Dance Clubs", value: "clubs" }, { label: "Rooftop Bars", value: "rooftop" },
+        { label: "Wine Bars", value: "wine_bar" }, { label: "Karaoke", value: "karaoke" }
+      ]}
+    ]
+  },
+  {
+    name: "Spa & Wellness",
+    slug: "spa",
+    description: "Relaxation and pampering",
+    icon: "Flower2",
+    filters: [
+      { name: "Service Type", slug: "service_type", filterType: "multi_select", icon: "Heart", options: [
+        { label: "Full Spa Day", value: "spa_day" }, { label: "Massage", value: "massage" },
+        { label: "Facial", value: "facial" }, { label: "Mani/Pedi", value: "nails" }
+      ]}
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Group-friendly stays",
+    icon: "Building2",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Bed", options: [
+        { label: "Boutique Hotel", value: "boutique" }, { label: "Beach Resort", value: "resort" },
+        { label: "Villa Rental", value: "villa" }, { label: "Spa Resort", value: "spa_resort" }
+      ]}
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Group dining experiences",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Brunch Spots", value: "brunch" }, { label: "Trendy/Instagram", value: "trendy" },
+        { label: "Wine Dining", value: "wine" }, { label: "Healthy/Organic", value: "healthy" }
+      ]}
+    ]
+  }
+];
+
+// ============ REUNIONS TEMPLATE ============
+const reunionsTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Reunion gathering spaces",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Home", options: [
+        { label: "Resort/Hotel", value: "resort" }, { label: "Event Hall", value: "hall" },
+        { label: "Vacation Rental", value: "rental" }, { label: "Park/Outdoor", value: "outdoor" },
+        { label: "Restaurant Private Room", value: "restaurant" }
+      ]},
+      { name: "Capacity", slug: "capacity", filterType: "single_select", icon: "Users", options: [
+        { label: "Small (10-25)", value: "small" }, { label: "Medium (25-50)", value: "medium" },
+        { label: "Large (50-100)", value: "large" }, { label: "Very Large (100+)", value: "very_large" }
+      ]}
+    ]
+  },
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Group activities for all ages",
+    icon: "Users",
+    filters: [
+      { name: "Activity Type", slug: "activity_type", filterType: "multi_select", icon: "Activity", options: [
+        { label: "Games/Sports", value: "games" }, { label: "Tours", value: "tours" },
+        { label: "Photo Sessions", value: "photos" }, { label: "Entertainment", value: "entertainment" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food for large groups",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Buffet", value: "buffet" }, { label: "BBQ/Cookout", value: "bbq" },
+        { label: "Plated Service", value: "plated" }, { label: "Food Trucks", value: "food_trucks" }
+      ]}
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Group lodging",
+    icon: "Bed",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Building", options: [
+        { label: "Hotel Block", value: "hotel_block" }, { label: "Large Rental Property", value: "rental" },
+        { label: "Campground/Cabins", value: "camping" }, { label: "Resort", value: "resort" }
+      ]}
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Group transport",
+    icon: "Bus",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Car", options: [
+        { label: "Charter Bus", value: "charter" }, { label: "Shuttle Service", value: "shuttle" },
+        { label: "Van Rentals", value: "van" }
+      ]}
+    ]
+  }
+];
+
+// ============ BABY SHOWER TEMPLATE ============
+const babyShowerTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Baby shower venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Home", options: [
+        { label: "Restaurant Private Room", value: "restaurant" }, { label: "Event Space", value: "event_space" },
+        { label: "Garden/Outdoor", value: "garden" }, { label: "Hotel Suite", value: "hotel" },
+        { label: "Community Center", value: "community" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food and refreshments",
+    icon: "Cake",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Brunch", value: "brunch" }, { label: "Afternoon Tea", value: "tea" },
+        { label: "Appetizers/Finger Food", value: "appetizers" }, { label: "Full Meal", value: "full_meal" }
+      ]}
+    ]
+  },
+  {
+    name: "Decor & Supplies",
+    slug: "decor",
+    description: "Decorations and party supplies",
+    icon: "Gift",
+    filters: [
+      { name: "Theme", slug: "theme", filterType: "multi_select", icon: "Palette", options: [
+        { label: "Gender Reveal", value: "gender_reveal" }, { label: "Classic", value: "classic" },
+        { label: "Modern/Minimalist", value: "modern" }, { label: "Themed (Animals/Characters)", value: "themed" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Games and activities",
+    icon: "Gamepad2",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Games", value: "games" }, { label: "Photo Booth", value: "photo_booth" },
+        { label: "Live Music", value: "music" }, { label: "Crafts/DIY", value: "crafts" }
+      ]}
+    ]
+  }
+];
+
+// ============ GRADUATION PARTY TEMPLATE ============
+const graduationTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Home", options: [
+        { label: "Restaurant", value: "restaurant" }, { label: "Event Hall", value: "hall" },
+        { label: "Backyard/Outdoor", value: "outdoor" }, { label: "Rooftop", value: "rooftop" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food and drinks",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Buffet", value: "buffet" }, { label: "BBQ", value: "bbq" },
+        { label: "Finger Foods", value: "finger_foods" }, { label: "Plated Dinner", value: "plated" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Party entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "DJ", value: "dj" }, { label: "Photo Booth", value: "photo_booth" },
+        { label: "Games", value: "games" }, { label: "Live Band", value: "band" }
+      ]}
+    ]
+  },
+  {
+    name: "Decor",
+    slug: "decor",
+    description: "Decorations and displays",
+    icon: "Sparkles",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "Palette", options: [
+        { label: "School Colors", value: "school_colors" }, { label: "Elegant", value: "elegant" },
+        { label: "Fun/Casual", value: "casual" }, { label: "Photo Display", value: "photos" }
+      ]}
+    ]
+  }
+];
+
+// ============ ENGAGEMENT PARTY TEMPLATE ============
+const engagementTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Heart", options: [
+        { label: "Restaurant", value: "restaurant" }, { label: "Rooftop/Terrace", value: "rooftop" },
+        { label: "Winery/Vineyard", value: "winery" }, { label: "Private Event Space", value: "event_space" },
+        { label: "Garden/Outdoor", value: "garden" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food and drinks",
+    icon: "Champagne",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Cocktail Party", value: "cocktail" }, { label: "Dinner Party", value: "dinner" },
+        { label: "Brunch", value: "brunch" }, { label: "Dessert Reception", value: "dessert" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Party entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Live Music", value: "live_music" }, { label: "DJ", value: "dj" },
+        { label: "Photo Booth", value: "photo_booth" }
+      ]}
+    ]
+  },
+  {
+    name: "Photography",
+    slug: "photography",
+    description: "Capture the moments",
+    icon: "Camera",
+    filters: [
+      { name: "Service Type", slug: "service_type", filterType: "multi_select", icon: "Image", options: [
+        { label: "Event Photographer", value: "photographer" }, { label: "Videographer", value: "videographer" },
+        { label: "Photo/Video Package", value: "package" }
+      ]}
+    ]
+  }
+];
+
+// ============ HOUSEWARMING PARTY TEMPLATE ============
+const housewarmingTabs: TabDef[] = [
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food and drinks",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Appetizers/Finger Food", value: "appetizers" }, { label: "BBQ/Cookout", value: "bbq" },
+        { label: "Potluck Style", value: "potluck" }, { label: "Catered Meal", value: "catered" }
+      ]}
+    ]
+  },
+  {
+    name: "Decor & Setup",
+    slug: "decor",
+    description: "Party decorations",
+    icon: "Home",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "Palette", options: [
+        { label: "Casual/Relaxed", value: "casual" }, { label: "Elegant", value: "elegant" },
+        { label: "Themed", value: "themed" }, { label: "Seasonal", value: "seasonal" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Party activities",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Background Music", value: "music" }, { label: "Games", value: "games" },
+        { label: "House Tour Activities", value: "tour" }
+      ]}
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Additional services",
+    icon: "Wrench",
+    filters: [
+      { name: "Service Type", slug: "service_type", filterType: "multi_select", icon: "Users", options: [
+        { label: "Bartender", value: "bartender" }, { label: "Cleaning Service", value: "cleaning" },
+        { label: "Valet Parking", value: "valet" }
+      ]}
+    ]
+  }
+];
+
+// ============ RETIREMENT PARTY TEMPLATE ============
+const retirementTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Home", options: [
+        { label: "Restaurant Private Room", value: "restaurant" }, { label: "Country Club", value: "country_club" },
+        { label: "Event Hall", value: "hall" }, { label: "Hotel Ballroom", value: "hotel" },
+        { label: "Office/Workplace", value: "office" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food and refreshments",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Luncheon", value: "luncheon" }, { label: "Dinner Party", value: "dinner" },
+        { label: "Cocktail Reception", value: "cocktail" }, { label: "Dessert Reception", value: "dessert" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Party entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Live Music", value: "live_music" }, { label: "DJ", value: "dj" },
+        { label: "Speeches/Tributes", value: "speeches" }, { label: "Photo Slideshow", value: "slideshow" }
+      ]}
+    ]
+  },
+  {
+    name: "Gifts & Keepsakes",
+    slug: "gifts",
+    description: "Retirement gifts and memorabilia",
+    icon: "Gift",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Award", options: [
+        { label: "Custom Awards", value: "awards" }, { label: "Memory Books", value: "memory_book" },
+        { label: "Personalized Gifts", value: "personalized" }, { label: "Travel Vouchers", value: "travel" }
+      ]}
+    ]
+  }
+];
+
+// ============ CAREER ACHIEVEMENT PARTY TEMPLATE ============
+const careerAchievementTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Award", options: [
+        { label: "Upscale Restaurant", value: "restaurant" }, { label: "Rooftop Venue", value: "rooftop" },
+        { label: "Hotel Ballroom", value: "hotel" }, { label: "Private Club", value: "club" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Premium dining",
+    icon: "Champagne",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Cocktail Reception", value: "cocktail" }, { label: "Seated Dinner", value: "dinner" },
+        { label: "Champagne Toast", value: "champagne" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Celebration entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Live Jazz", value: "jazz" }, { label: "String Quartet", value: "strings" },
+        { label: "Awards Ceremony", value: "awards" }, { label: "Video Tribute", value: "video" }
+      ]}
+    ]
+  }
+];
+
+// ============ FAREWELL PARTY TEMPLATE ============
+const farewellTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Send-off celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "Home", options: [
+        { label: "Restaurant", value: "restaurant" }, { label: "Bar/Pub", value: "bar" },
+        { label: "Home/Backyard", value: "home" }, { label: "Event Space", value: "event_space" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Food and drinks",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Casual Buffet", value: "buffet" }, { label: "Cocktail Party", value: "cocktail" },
+        { label: "BBQ", value: "bbq" }, { label: "Potluck", value: "potluck" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Party entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Playlist/Music", value: "music" }, { label: "Karaoke", value: "karaoke" },
+        { label: "Memory Sharing", value: "memories" }, { label: "Games", value: "games" }
+      ]}
+    ]
+  },
+  {
+    name: "Keepsakes",
+    slug: "keepsakes",
+    description: "Memory items",
+    icon: "Gift",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Heart", options: [
+        { label: "Photo Album", value: "album" }, { label: "Guest Book", value: "guestbook" },
+        { label: "Video Messages", value: "video" }, { label: "Gift Card Collection", value: "gift_cards" }
+      ]}
+    ]
+  }
+];
+
+// ============ HOLIDAY PARTY TEMPLATE ============
+const holidayPartyTabs: TabDef[] = [
+  {
+    name: "Venues",
+    slug: "venues",
+    description: "Holiday celebration venues",
+    icon: "Building2",
+    filters: [
+      { name: "Venue Type", slug: "venue_type", filterType: "multi_select", icon: "TreePine", options: [
+        { label: "Restaurant", value: "restaurant" }, { label: "Event Hall", value: "hall" },
+        { label: "Hotel Ballroom", value: "hotel" }, { label: "Office Space", value: "office" },
+        { label: "Home/Residence", value: "home" }
+      ]},
+      { name: "Holiday", slug: "holiday", filterType: "single_select", icon: "Calendar", options: [
+        { label: "Christmas", value: "christmas" }, { label: "New Year's", value: "new_years" },
+        { label: "Thanksgiving", value: "thanksgiving" }, { label: "Halloween", value: "halloween" },
+        { label: "Easter", value: "easter" }, { label: "4th of July", value: "july_4th" }
+      ]}
+    ]
+  },
+  {
+    name: "Catering",
+    slug: "catering",
+    description: "Holiday food and drinks",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Traditional Holiday Dinner", value: "traditional" }, { label: "Buffet", value: "buffet" },
+        { label: "Cocktail Party", value: "cocktail" }, { label: "Dessert Table", value: "dessert" }
+      ]}
+    ]
+  },
+  {
+    name: "Decor",
+    slug: "decor",
+    description: "Holiday decorations",
+    icon: "Sparkles",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "Palette", options: [
+        { label: "Traditional", value: "traditional" }, { label: "Modern/Minimal", value: "modern" },
+        { label: "Rustic", value: "rustic" }, { label: "Glamorous", value: "glam" }
+      ]}
+    ]
+  },
+  {
+    name: "Entertainment",
+    slug: "entertainment",
+    description: "Party entertainment",
+    icon: "Music",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "PartyPopper", options: [
+        { label: "Live Music/Carolers", value: "music" }, { label: "DJ", value: "dj" },
+        { label: "Games/Activities", value: "games" }, { label: "Photo Booth", value: "photo_booth" },
+        { label: "Gift Exchange", value: "gift_exchange" }
+      ]}
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Additional services",
+    icon: "Users",
+    filters: [
+      { name: "Service Type", slug: "service_type", filterType: "multi_select", icon: "Star", options: [
+        { label: "Santa/Character Visit", value: "character" }, { label: "Event Staff", value: "staff" },
+        { label: "Valet Parking", value: "valet" }, { label: "Coat Check", value: "coat_check" }
+      ]}
+    ]
+  }
+];
+
+// ============ SPORTS EVENT TEMPLATE ============
+const sportsEventTabs: TabDef[] = [
+  {
+    name: "Tickets",
+    slug: "tickets",
+    description: "Game and event tickets",
+    icon: "Ticket",
+    filters: [
+      { name: "Sport Type", slug: "sport_type", filterType: "multi_select", icon: "Trophy", options: [
+        { label: "Football", value: "football" }, { label: "Basketball", value: "basketball" },
+        { label: "Baseball", value: "baseball" }, { label: "Soccer", value: "soccer" },
+        { label: "Hockey", value: "hockey" }, { label: "Tennis", value: "tennis" },
+        { label: "Golf", value: "golf" }, { label: "Racing", value: "racing" }
+      ]},
+      { name: "Seating", slug: "seating", filterType: "single_select", icon: "Armchair", options: [
+        { label: "General Admission", value: "general" }, { label: "Premium", value: "premium" },
+        { label: "VIP/Suite", value: "vip" }, { label: "Field/Court Level", value: "field" }
+      ]}
+    ]
+  },
+  {
+    name: "Accommodations",
+    slug: "accommodations",
+    description: "Nearby stays",
+    icon: "Building2",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Bed", options: [
+        { label: "Hotel near Stadium", value: "near_stadium" }, { label: "Downtown Hotel", value: "downtown" },
+        { label: "Airport Hotel", value: "airport" }, { label: "Vacation Rental", value: "rental" }
+      ]}
+    ]
+  },
+  {
+    name: "Pre-Game",
+    slug: "pregame",
+    description: "Pre-game activities",
+    icon: "PartyPopper",
+    filters: [
+      { name: "Activity Type", slug: "activity_type", filterType: "multi_select", icon: "Users", options: [
+        { label: "Tailgate Party", value: "tailgate" }, { label: "Sports Bar", value: "sports_bar" },
+        { label: "Fan Zone", value: "fan_zone" }, { label: "Stadium Tour", value: "tour" }
+      ]}
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Food and drinks",
+    icon: "Utensils",
+    filters: [
+      { name: "Style", slug: "style", filterType: "multi_select", icon: "ChefHat", options: [
+        { label: "Sports Bar", value: "sports_bar" }, { label: "Steakhouse", value: "steakhouse" },
+        { label: "Casual Dining", value: "casual" }, { label: "Stadium Food", value: "stadium" }
+      ]}
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Getting to the game",
+    icon: "Car",
+    filters: [
+      { name: "Type", slug: "type", filterType: "multi_select", icon: "Bus", options: [
+        { label: "Shuttle Service", value: "shuttle" }, { label: "Rideshare", value: "rideshare" },
+        { label: "Parking Pass", value: "parking" }, { label: "Public Transit", value: "transit" }
+      ]}
+    ]
+  },
+  {
+    name: "VIP Experiences",
+    slug: "vip",
+    description: "Premium experiences",
+    icon: "Crown",
+    filters: [
+      { name: "Experience Type", slug: "experience_type", filterType: "multi_select", icon: "Star", options: [
+        { label: "Meet & Greet", value: "meet_greet" }, { label: "Locker Room Tour", value: "locker_room" },
+        { label: "Premium Lounge", value: "lounge" }, { label: "Post-Game Access", value: "postgame" }
+      ]}
+    ]
+  }
+];
+
 export async function seedExperienceTemplateTabs() {
   console.log("Seeding experience template tabs and filters...");
 
@@ -2985,6 +3824,132 @@ export async function seedExperienceTemplateTabs() {
   }
   await seedUniversalFilters(retreatsId, standardUniversalFilters);
   console.log("Retreats template seeded.");
+
+  // Seed Wedding Anniversaries template (party-focused)
+  const weddingAnniversariesId = await getOrCreateExperienceType("wedding-anniversaries", "Wedding Anniversaries");
+  console.log(`Wedding Anniversaries experience type ID: ${weddingAnniversariesId}`);
+  for (let i = 0; i < weddingAnniversariesTabs.length; i++) {
+    await seedTabWithFilters(weddingAnniversariesId, weddingAnniversariesTabs[i], i);
+  }
+  await seedUniversalFilters(weddingAnniversariesId, standardUniversalFilters);
+  console.log("Wedding Anniversaries template seeded.");
+
+  // Seed Proposal template
+  const proposalId = await getOrCreateExperienceType("proposal", "Proposal");
+  console.log(`Proposal experience type ID: ${proposalId}`);
+  for (let i = 0; i < proposalTabs.length; i++) {
+    await seedTabWithFilters(proposalId, proposalTabs[i], i);
+  }
+  await seedUniversalFilters(proposalId, standardUniversalFilters);
+  console.log("Proposal template seeded.");
+
+  // Seed Boys Trip template
+  const boysTripId = await getOrCreateExperienceType("boys-trip", "Boys Trip");
+  console.log(`Boys Trip experience type ID: ${boysTripId}`);
+  for (let i = 0; i < boysTripTabs.length; i++) {
+    await seedTabWithFilters(boysTripId, boysTripTabs[i], i);
+  }
+  await seedUniversalFilters(boysTripId, standardUniversalFilters);
+  console.log("Boys Trip template seeded.");
+
+  // Seed Girls Trip template
+  const girlsTripId = await getOrCreateExperienceType("girls-trip", "Girls Trip");
+  console.log(`Girls Trip experience type ID: ${girlsTripId}`);
+  for (let i = 0; i < girlsTripTabs.length; i++) {
+    await seedTabWithFilters(girlsTripId, girlsTripTabs[i], i);
+  }
+  await seedUniversalFilters(girlsTripId, standardUniversalFilters);
+  console.log("Girls Trip template seeded.");
+
+  // Seed Reunions template
+  const reunionsId = await getOrCreateExperienceType("reunions", "Reunions");
+  console.log(`Reunions experience type ID: ${reunionsId}`);
+  for (let i = 0; i < reunionsTabs.length; i++) {
+    await seedTabWithFilters(reunionsId, reunionsTabs[i], i);
+  }
+  await seedUniversalFilters(reunionsId, standardUniversalFilters);
+  console.log("Reunions template seeded.");
+
+  // Seed Baby Shower template
+  const babyShowerId = await getOrCreateExperienceType("baby-shower", "Baby Shower");
+  console.log(`Baby Shower experience type ID: ${babyShowerId}`);
+  for (let i = 0; i < babyShowerTabs.length; i++) {
+    await seedTabWithFilters(babyShowerId, babyShowerTabs[i], i);
+  }
+  await seedUniversalFilters(babyShowerId, standardUniversalFilters);
+  console.log("Baby Shower template seeded.");
+
+  // Seed Graduation Party template
+  const graduationId = await getOrCreateExperienceType("graduation-party", "Graduation Party");
+  console.log(`Graduation Party experience type ID: ${graduationId}`);
+  for (let i = 0; i < graduationTabs.length; i++) {
+    await seedTabWithFilters(graduationId, graduationTabs[i], i);
+  }
+  await seedUniversalFilters(graduationId, standardUniversalFilters);
+  console.log("Graduation Party template seeded.");
+
+  // Seed Engagement Party template
+  const engagementId = await getOrCreateExperienceType("engagement-party", "Engagement Party");
+  console.log(`Engagement Party experience type ID: ${engagementId}`);
+  for (let i = 0; i < engagementTabs.length; i++) {
+    await seedTabWithFilters(engagementId, engagementTabs[i], i);
+  }
+  await seedUniversalFilters(engagementId, standardUniversalFilters);
+  console.log("Engagement Party template seeded.");
+
+  // Seed Housewarming Party template
+  const housewarmingId = await getOrCreateExperienceType("housewarming-party", "Housewarming Party");
+  console.log(`Housewarming Party experience type ID: ${housewarmingId}`);
+  for (let i = 0; i < housewarmingTabs.length; i++) {
+    await seedTabWithFilters(housewarmingId, housewarmingTabs[i], i);
+  }
+  await seedUniversalFilters(housewarmingId, standardUniversalFilters);
+  console.log("Housewarming Party template seeded.");
+
+  // Seed Retirement Party template
+  const retirementId = await getOrCreateExperienceType("retirement-party", "Retirement Party");
+  console.log(`Retirement Party experience type ID: ${retirementId}`);
+  for (let i = 0; i < retirementTabs.length; i++) {
+    await seedTabWithFilters(retirementId, retirementTabs[i], i);
+  }
+  await seedUniversalFilters(retirementId, standardUniversalFilters);
+  console.log("Retirement Party template seeded.");
+
+  // Seed Career Achievement Party template
+  const careerAchievementId = await getOrCreateExperienceType("career-achievement-party", "Career Achievement Party");
+  console.log(`Career Achievement Party experience type ID: ${careerAchievementId}`);
+  for (let i = 0; i < careerAchievementTabs.length; i++) {
+    await seedTabWithFilters(careerAchievementId, careerAchievementTabs[i], i);
+  }
+  await seedUniversalFilters(careerAchievementId, standardUniversalFilters);
+  console.log("Career Achievement Party template seeded.");
+
+  // Seed Farewell Party template
+  const farewellId = await getOrCreateExperienceType("farewell-party", "Farewell Party");
+  console.log(`Farewell Party experience type ID: ${farewellId}`);
+  for (let i = 0; i < farewellTabs.length; i++) {
+    await seedTabWithFilters(farewellId, farewellTabs[i], i);
+  }
+  await seedUniversalFilters(farewellId, standardUniversalFilters);
+  console.log("Farewell Party template seeded.");
+
+  // Seed Holiday Party template
+  const holidayPartyId = await getOrCreateExperienceType("holiday-party", "Holiday Party");
+  console.log(`Holiday Party experience type ID: ${holidayPartyId}`);
+  for (let i = 0; i < holidayPartyTabs.length; i++) {
+    await seedTabWithFilters(holidayPartyId, holidayPartyTabs[i], i);
+  }
+  await seedUniversalFilters(holidayPartyId, standardUniversalFilters);
+  console.log("Holiday Party template seeded.");
+
+  // Seed Sports Event template
+  const sportsEventId = await getOrCreateExperienceType("sports-event", "Sports Event");
+  console.log(`Sports Event experience type ID: ${sportsEventId}`);
+  for (let i = 0; i < sportsEventTabs.length; i++) {
+    await seedTabWithFilters(sportsEventId, sportsEventTabs[i], i);
+  }
+  await seedUniversalFilters(sportsEventId, standardUniversalFilters);
+  console.log("Sports Event template seeded.");
 
   console.log("Experience template tabs and filters seeding complete.");
 }
