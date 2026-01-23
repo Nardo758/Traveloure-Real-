@@ -792,30 +792,6 @@ const bachelorTabs: TabDef[] = [
       },
     ]
   },
-  {
-    name: "Planning Tools",
-    slug: "planning-tools",
-    description: "Group coordination, payment tracking, itinerary sharing",
-    icon: "ClipboardList",
-    filters: [
-      {
-        name: "Tool Type",
-        slug: "tool_type",
-        filterType: "multi_select",
-        icon: "Wrench",
-        options: [
-          { label: "RSVP Tracker", value: "rsvp" },
-          { label: "Expense Calculator", value: "expense" },
-          { label: "Itinerary Builder", value: "itinerary" },
-          { label: "Group Chat", value: "chat" },
-          { label: "Packing List", value: "packing" },
-          { label: "Emergency Contacts", value: "emergency" },
-          { label: "Voting/Polls", value: "voting" },
-          { label: "Budget Tracker", value: "budget" },
-        ]
-      },
-    ]
-  },
 ];
 
 // Universal filters for Bachelor/Bachelorette
@@ -1463,25 +1439,6 @@ const anniversaryTabs: TabDef[] = [
           { label: "Premium", value: "premium" },
           { label: "Luxury", value: "luxury" },
           { label: "Ultra-Luxury", value: "ultra_luxury" },
-        ]
-      },
-    ]
-  },
-  {
-    name: "Itinerary Builder",
-    slug: "itinerary-builder",
-    description: "Day-by-day planning, seamless experience sequencing",
-    icon: "CalendarDays",
-    filters: [
-      {
-        name: "Planning Style",
-        slug: "planning_style",
-        filterType: "single_select",
-        icon: "Layout",
-        options: [
-          { label: "Fully Planned", value: "fully_planned" },
-          { label: "Flexible Framework", value: "flexible" },
-          { label: "Spontaneous", value: "spontaneous" },
         ]
       },
     ]
