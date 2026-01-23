@@ -105,8 +105,16 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
     - `GET /api/fever/cities/:cityCode/dates?startDate=&endDate=` - Events by date range
     - `GET /api/fever/cities` - List all supported cities
     - `GET /api/travelpulse/fever-events/:cityName` - Merged Fever + TravelPulse events for calendar
-  - Mock data available for development (when API not configured)
   - Uses Impact.com Partner API with HTTP Basic Auth
+  - **Fever Event Caching** (`server/services/fever-cache.service.ts`):
+    - Database table: `fever_event_cache` stores events with 24-hour expiry
+    - Auto-refresh via cache scheduler when data is stale (>20 hours old)
+    - Reduces API calls to stay within Impact.com rate limits (~100 requests/hour)
+    - Cache endpoints:
+      - `GET /api/fever/cache/status` - Cache statistics and health
+      - `GET /api/fever/cache/events/:cityCode` - Get cached events (auto-refreshes if stale)
+      - `POST /api/fever/cache/refresh/:cityCode` - Manual city refresh (admin only)
+      - `POST /api/fever/cache/refresh-all` - Batch refresh all cities (admin only)
   - Environment variables: `IMPACT_ACCOUNT_SID`, `IMPACT_AUTH_TOKEN`
 - **External API Caching System** (`server/services/cache.service.ts`):
   - Hotels: `/api/cache/hotels` - 24-hour cache with `hotelCache` and `hotelOfferCache` tables.

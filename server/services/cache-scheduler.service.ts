@@ -2,6 +2,7 @@ import { db } from "../db";
 import { hotelCache, activityCache, flightCache, hotelOfferCache } from "@shared/schema";
 import { sql, eq, gte, lte, and, desc } from "drizzle-orm";
 import { cacheService } from "./cache.service";
+import { feverCacheService } from "./fever-cache.service";
 
 // Configuration
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -13,6 +14,7 @@ interface CacheRefreshStats {
   hotelsRefreshed: number;
   activitiesRefreshed: number;
   flightsRefreshed: number;
+  feverEventsRefreshed: number;
   errors: string[];
   lastRefreshTime: Date;
 }
@@ -94,10 +96,16 @@ class CacheSchedulerService {
       stats.flightsRefreshed = flightsResult.refreshed;
       stats.errors.push(...flightsResult.errors);
 
+      // Refresh Fever events
+      const feverResult = await this.refreshStaleFeverEvents();
+      stats.feverEventsRefreshed = feverResult.refreshed;
+      stats.errors.push(...feverResult.errors);
+
       // Clean up expired cache entries
       await cacheService.cleanupExpiredCache();
+      await feverCacheService.cleanupExpiredCache();
 
-      console.log(`[CacheScheduler] Refresh complete - Hotels: ${stats.hotelsRefreshed}, Activities: ${stats.activitiesRefreshed}, Flights: ${stats.flightsRefreshed}`);
+      console.log(`[CacheScheduler] Refresh complete - Hotels: ${stats.hotelsRefreshed}, Activities: ${stats.activitiesRefreshed}, Flights: ${stats.flightsRefreshed}, Fever: ${stats.feverEventsRefreshed}`);
     } catch (error: any) {
       console.error("[CacheScheduler] Refresh error:", error);
       stats.errors.push(`General error: ${error.message}`);
@@ -114,9 +122,23 @@ class CacheSchedulerService {
       hotelsRefreshed: 0,
       activitiesRefreshed: 0,
       flightsRefreshed: 0,
+      feverEventsRefreshed: 0,
       errors: [],
       lastRefreshTime: new Date(),
     };
+  }
+
+  // Refresh stale Fever event data
+  private async refreshStaleFeverEvents(): Promise<{ refreshed: number; errors: string[] }> {
+    try {
+      console.log("[CacheScheduler] Checking Fever events for refresh...");
+      const result = await feverCacheService.refreshAllCities();
+      console.log(`[CacheScheduler] Fever refresh complete: ${result.totalRefreshed} events refreshed`);
+      return { refreshed: result.totalRefreshed, errors: result.errors };
+    } catch (error: any) {
+      console.error("[CacheScheduler] Fever refresh error:", error);
+      return { refreshed: 0, errors: [`Fever refresh error: ${error.message}`] };
+    }
   }
 
   // Refresh stale hotel data
