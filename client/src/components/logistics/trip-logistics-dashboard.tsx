@@ -35,23 +35,22 @@ interface ParticipantStats {
   confirmed: number;
   pending: number;
   declined: number;
-  rsvpProgress: number;
+  maybe: number;
+  responseRate: number;
 }
 
 interface PaymentStats {
-  totalParticipants: number;
-  totalExpected: number;
-  totalCollected: number;
-  fullyPaid: number;
-  partiallyPaid: number;
-  unpaid: number;
-  collectionProgress: number;
+  totalOwed: number;
+  totalPaid: number;
+  totalOutstanding: number;
+  paidCount: number;
+  unpaidCount: number;
+  collectionRate: number;
 }
 
 interface DietaryRequirements {
-  restrictions: string[];
-  accessibilityNeeds: string[];
-  specialNotes: string[];
+  restrictions: { name: string; count: number }[];
+  accessibilityNeeds: { name: string; count: number }[];
 }
 
 interface ContractStats {
@@ -74,8 +73,9 @@ interface BudgetSummary {
 
 interface CategoryBreakdown {
   category: string;
-  total: number;
+  amount: number;
   percentage: number;
+  transactionCount: number;
 }
 
 interface AlertSummary {
@@ -130,7 +130,13 @@ export function TripLogisticsDashboard({
   });
 
   const refreshAll = () => {
-    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/participants/stats`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/participants/payment-stats`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/contracts/stats`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/budget/summary?budget=${budget}`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/budget/categories`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/participants/dietary`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/alerts/summary`] });
   };
 
   const isLoading = loadingParticipants || loadingPayments || loadingContracts || loadingBudget || loadingAlerts;
@@ -186,10 +192,10 @@ export function TripLogisticsDashboard({
                 </div>
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span>RSVP Progress</span>
-                    <span>{participantStats.rsvpProgress}%</span>
+                    <span>Response Rate</span>
+                    <span>{participantStats.responseRate}%</span>
                   </div>
-                  <Progress value={participantStats.rsvpProgress} className="h-2" />
+                  <Progress value={participantStats.responseRate} className="h-2" />
                 </div>
               </div>
             ) : (
@@ -212,18 +218,18 @@ export function TripLogisticsDashboard({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-3xl font-bold">
-                    ${paymentStats.totalCollected.toLocaleString()}
+                    ${paymentStats.totalPaid.toLocaleString()}
                   </span>
                   <div className="text-right text-sm text-muted-foreground">
-                    of ${paymentStats.totalExpected.toLocaleString()}
+                    of ${paymentStats.totalOwed.toLocaleString()}
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span>Collection Progress</span>
-                    <span>{paymentStats.collectionProgress}%</span>
+                    <span>Collection Rate</span>
+                    <span>{paymentStats.collectionRate}%</span>
                   </div>
-                  <Progress value={paymentStats.collectionProgress} className="h-2" />
+                  <Progress value={paymentStats.collectionRate} className="h-2" />
                 </div>
               </div>
             ) : (
@@ -360,7 +366,7 @@ export function TripLogisticsDashboard({
                       <div key={cat.category} className="flex items-center justify-between text-sm">
                         <span className="capitalize">{cat.category.replace('_', ' ')}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">${cat.total.toLocaleString()}</span>
+                          <span className="text-muted-foreground">${cat.amount.toLocaleString()}</span>
                           <Badge variant="outline" className="text-xs">
                             {cat.percentage}%
                           </Badge>
@@ -395,7 +401,7 @@ export function TripLogisticsDashboard({
                     <div className="flex flex-wrap gap-2">
                       {dietaryReqs.restrictions.map((restriction, idx) => (
                         <Badge key={idx} variant="secondary">
-                          {restriction}
+                          {restriction.name} ({restriction.count})
                         </Badge>
                       ))}
                     </div>
@@ -407,7 +413,7 @@ export function TripLogisticsDashboard({
                     <div className="flex flex-wrap gap-2">
                       {dietaryReqs.accessibilityNeeds.map((need, idx) => (
                         <Badge key={idx} variant="outline" className="border-blue-500 text-blue-600">
-                          {need}
+                          {need.name} ({need.count})
                         </Badge>
                       ))}
                     </div>
