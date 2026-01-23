@@ -29,6 +29,7 @@ import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from 
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
+import { feverCacheService } from "./services/fever-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents } from "@shared/schema";
 
 // Helper function to map Fever categories to TravelPulse event types
@@ -5753,6 +5754,83 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error) {
       console.error("[TravelPulse] Fever events merge error:", error);
       res.status(500).json({ error: "Failed to get merged Fever events" });
+    }
+  });
+
+  // ============ FEVER CACHE ENDPOINTS ============
+
+  // Get Fever cache status
+  app.get("/api/fever/cache/status", async (_req, res) => {
+    try {
+      const status = await feverCacheService.getCacheStatus();
+      res.json({
+        ...status,
+        supportedCities: feverService.getSupportedCities().length,
+        cacheEnabled: true,
+        cacheDurationHours: 24,
+      });
+    } catch (error) {
+      console.error("[FeverCache] Status error:", error);
+      res.status(500).json({ error: "Failed to get cache status" });
+    }
+  });
+
+  // Get cached events for a city (uses cache, refreshes if stale)
+  app.get("/api/fever/cache/events/:cityCode", async (req, res) => {
+    try {
+      const { cityCode } = req.params;
+      const events = await feverCacheService.getEventsOrRefresh(cityCode);
+      
+      res.json({
+        events,
+        count: events.length,
+        fromCache: true,
+        cityCode: cityCode.toUpperCase(),
+      });
+    } catch (error) {
+      console.error("[FeverCache] Get events error:", error);
+      res.status(500).json({ error: "Failed to get cached events" });
+    }
+  });
+
+  // Manually refresh cache for a city (admin only)
+  app.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { cityCode } = req.params;
+      const result = await feverCacheService.refreshCityCache(cityCode);
+      
+      res.json({
+        message: `Refreshed ${result.refreshed} events for ${cityCode}`,
+        ...result,
+      });
+    } catch (error) {
+      console.error("[FeverCache] Refresh error:", error);
+      res.status(500).json({ error: "Failed to refresh cache" });
+    }
+  });
+
+  // Manually refresh all cities (admin only)
+  app.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const result = await feverCacheService.refreshAllCities();
+      
+      res.json({
+        message: `Refreshed ${result.totalRefreshed} events across all cities`,
+        ...result,
+      });
+    } catch (error) {
+      console.error("[FeverCache] Refresh all error:", error);
+      res.status(500).json({ error: "Failed to refresh all caches" });
     }
   });
 

@@ -1398,6 +1398,49 @@ export const locationCache = pgTable("location_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+// ============ FEVER EVENT CACHE TABLE ============
+// Caches Fever events from Impact.com to reduce API calls and improve performance
+
+export const feverEventCache = pgTable("fever_event_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  eventId: varchar("event_id", { length: 100 }).notNull(),
+  title: varchar("title", { length: 500 }).notNull(),
+  slug: varchar("slug", { length: 500 }),
+  description: text("description"),
+  shortDescription: text("short_description"),
+  imageUrl: text("image_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  category: varchar("category", { length: 100 }).notNull(),
+  subcategory: varchar("subcategory", { length: 100 }),
+  city: varchar("city", { length: 255 }).notNull(),
+  cityCode: varchar("city_code", { length: 10 }).notNull(),
+  country: varchar("country", { length: 100 }).notNull(),
+  countryCode: varchar("country_code", { length: 10 }),
+  venueName: varchar("venue_name", { length: 255 }),
+  venueAddress: text("venue_address"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  sessions: jsonb("sessions").default([]),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  minPrice: decimal("min_price", { precision: 10, scale: 2 }),
+  maxPrice: decimal("max_price", { precision: 10, scale: 2 }),
+  priceRange: varchar("price_range", { length: 100 }),
+  isFree: boolean("is_free").default(false),
+  isSoldOut: boolean("is_sold_out").default(false),
+  rating: decimal("rating", { precision: 3, scale: 2 }),
+  reviewCount: integer("review_count").default(0),
+  bookingUrl: text("booking_url").notNull(),
+  affiliateUrl: text("affiliate_url"),
+  tags: jsonb("tags").default([]),
+  highlights: jsonb("highlights").default([]),
+  provider: varchar("provider", { length: 100 }).default("fever"),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // ============ USER FILTER PREFERENCES TABLE ============
 // Stores user's persistent filter and sorting preferences per item type
 
@@ -1434,6 +1477,7 @@ export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).o
 export const insertActivityCacheSchema = createInsertSchema(activityCache).omit({ id: true, lastUpdated: true });
 export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
 export const insertLocationCacheSchema = createInsertSchema(locationCache).omit({ id: true, lastUpdated: true });
+export const insertFeverEventCacheSchema = createInsertSchema(feverEventCache).omit({ id: true, lastUpdated: true });
 export const insertUserFilterPreferencesSchema = createInsertSchema(userFilterPreferences).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HotelCache = typeof hotelCache.$inferSelect;
@@ -1446,6 +1490,8 @@ export type FlightCache = typeof flightCache.$inferSelect;
 export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
 export type LocationCache = typeof locationCache.$inferSelect;
 export type InsertLocationCache = z.infer<typeof insertLocationCacheSchema>;
+export type FeverEventCache = typeof feverEventCache.$inferSelect;
+export type InsertFeverEventCache = z.infer<typeof insertFeverEventCacheSchema>;
 export type UserFilterPreferences = typeof userFilterPreferences.$inferSelect;
 export type InsertUserFilterPreferences = z.infer<typeof insertUserFilterPreferencesSchema>;
 
