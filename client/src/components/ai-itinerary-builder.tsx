@@ -61,6 +61,7 @@ interface AIItineraryBuilderProps {
   travelers: number;
   experienceType?: string;
   onClose?: () => void;
+  onSave?: (tripId: string) => void;
 }
 
 interface DayActivity {
@@ -175,6 +176,7 @@ export function AIItineraryBuilder({
   travelers,
   experienceType,
   onClose,
+  onSave,
 }: AIItineraryBuilderProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [interests, setInterests] = useState<string[]>([]);
@@ -256,6 +258,55 @@ export function AIItineraryBuilder({
       setCurrentStep(3);
     },
   });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!optimizationResult) throw new Error("No itinerary to save");
+      
+      const selectedItinerary = optimizationResult.variations[selectedVariation];
+      
+      const tripResponse = await apiRequest("POST", "/api/trips", {
+        title: selectedItinerary.title || `${destination} Trip`,
+        destination,
+        startDate: startDate ? format(startDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+        endDate: endDate ? format(endDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
+        numberOfTravelers: travelers,
+        budget: budget || undefined,
+        eventType: experienceType || "vacation",
+        status: "planning",
+        preferences: {
+          interests,
+          pacePreference,
+          mustSeeAttractions: mustSeeAttractions.split(",").map(s => s.trim()).filter(Boolean),
+          dietaryRestrictions,
+          mobilityConsiderations,
+        },
+      });
+      
+      const trip = await tripResponse.json();
+      
+      await apiRequest("POST", "/api/generated-itineraries", {
+        tripId: trip.id,
+        itineraryData: {
+          ...selectedItinerary,
+          realTimeIntelligence: optimizationResult.realTimeIntelligence,
+          generatedAt: optimizationResult.generatedAt,
+        },
+        status: "generated",
+      });
+      
+      return trip;
+    },
+    onSuccess: (trip) => {
+      if (onSave) {
+        onSave(trip.id);
+      }
+    },
+  });
+
+  const handleSaveItinerary = () => {
+    saveMutation.mutate();
+  };
 
   const toggleInterest = (interest: string) => {
     setInterests(prev => 
@@ -965,10 +1016,21 @@ export function AIItineraryBuilder({
           </Button>
           <Button
             className="flex-1 bg-[#FF385C]"
+            onClick={handleSaveItinerary}
+            disabled={saveMutation.isPending}
             data-testid="button-use-itinerary"
           >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            Use This Itinerary
+            {saveMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Use This Itinerary
+              </>
+            )}
           </Button>
         </div>
       )}

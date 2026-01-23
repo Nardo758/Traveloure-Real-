@@ -146,3 +146,16 @@ export function useGenerateItinerary() {
     },
   });
 }
+
+export function useGeneratedItinerary(tripId: string) {
+  return useQuery({
+    queryKey: ["/api/generated-itineraries", tripId],
+    queryFn: async () => {
+      const res = await fetch(`/api/generated-itineraries/${tripId}`, { credentials: "include" });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error("Failed to fetch generated itinerary");
+      return res.json() as Promise<GeneratedItinerary>;
+    },
+    enabled: !!tripId,
+  });
+}
