@@ -196,6 +196,46 @@ export async function registerRoutes(
     }
   });
 
+  // Request expert booking assistance
+  const expertBookingRequestSchema = z.object({
+    tripId: z.string().min(1, "tripId is required"),
+    notes: z.string().optional().default("")
+  });
+
+  app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
+    try {
+      const validation = expertBookingRequestSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: validation.error.errors[0]?.message || "Invalid request body" 
+        });
+      }
+      
+      const { tripId, notes } = validation.data;
+      const userId = (req.user as any).claims.sub;
+      
+      // Check if this is a real trip vs demo/mock trip
+      const trip = await storage.getTrip(tripId);
+      if (trip && trip.userId !== userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // TODO: In production, this would create a record in expertBookingRequests table
+      // and notify experts. For now, we just acknowledge the request.
+      console.log(`[Expert Booking] Request received for trip ${tripId} from user ${userId}`, { notes, isDemo: !trip });
+      
+      res.status(201).json({ 
+        success: true, 
+        message: "Expert booking request submitted successfully",
+        tripId,
+        requestedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error creating expert booking request:", err);
+      res.status(500).json({ message: "Failed to submit expert booking request" });
+    }
+  });
+
   // Get generated itinerary for a trip
   app.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, res) => {
     try {
