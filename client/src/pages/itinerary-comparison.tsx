@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sparkles,
@@ -24,12 +27,20 @@ import {
   Zap,
   ShoppingCart,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calendar,
   Loader2,
   Award,
   Target,
   RefreshCw,
   AlertCircle,
+  ExternalLink,
+  Train,
+  Ticket,
+  Users,
+  Maximize2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +115,54 @@ export default function ItineraryComparisonPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
+  const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null);
+  const [showExpertDialog, setShowExpertDialog] = useState(false);
+  const [expertNotes, setExpertNotes] = useState("");
+
+  const getBookingType = (serviceType: string): "inApp" | "partner" => {
+    const partnerTypes = ["transport", "ground_transport", "train", "bus", "ferry", "event", "entertainment", "concert", "show"];
+    return partnerTypes.some(t => serviceType?.toLowerCase().includes(t)) ? "partner" : "inApp";
+  };
+
+  const getPartnerUrl = (item: VariantItem): string | null => {
+    if (getBookingType(item.serviceType) !== "partner") return null;
+    const twelveGoAffiliateId = "13805109";
+    const impactCatalogId = "15532";
+    if (["transport", "ground_transport", "train", "bus", "ferry"].some(t => item.serviceType?.toLowerCase().includes(t))) {
+      return `https://12go.co/en/travel?affiliate_id=${twelveGoAffiliateId}`;
+    }
+    if (["event", "entertainment", "concert", "show"].some(t => item.serviceType?.toLowerCase().includes(t))) {
+      return `https://feverup.com/en?utm_source=impact&utm_medium=affiliate&utm_campaign=${impactCatalogId}`;
+    }
+    return null;
+  };
+
+  const expertBookingMutation = useMutation({
+    mutationFn: async (data: { tripId: string; notes: string }) => {
+      return apiRequest("POST", "/api/expert-booking-requests", data);
+    },
+    onSuccess: () => {
+      setShowExpertDialog(false);
+      setExpertNotes("");
+      toast({
+        title: "Request Sent",
+        description: "An expert will review your itinerary and handle all bookings.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Request Failed",
+        description: "Unable to submit your request. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleExpertBookingRequest = () => {
+    if (id) {
+      expertBookingMutation.mutate({ tripId: id, notes: expertNotes });
+    }
+  };
 
   const { data, isLoading, refetch } = useQuery<ComparisonData>({
     queryKey: ["/api/itinerary-comparisons", id],
@@ -116,6 +175,43 @@ export default function ItineraryComparisonPage() {
       return false;
     },
   });
+
+  const destination = data?.comparison?.destination;
+  
+  const { data: travelPulseData, isLoading: travelPulseLoading, isError: travelPulseError } = useQuery<{
+    city?: {
+      name: string;
+      country: string;
+      pulseScore?: number;
+      trendingScore?: number;
+      crowdLevel?: string;
+      weatherScore?: number;
+      aiSeasonalHighlights?: string;
+      aiUpcomingEvents?: string;
+      aiTravelTips?: string;
+      aiLocalInsights?: string;
+      aiBudgetEstimate?: string;
+      aiMustSeeAttractions?: string;
+    };
+  }>({
+    queryKey: ["/api/travelpulse/cities", destination],
+    enabled: !!destination,
+  });
+
+  const { data: trendingData, isLoading: trendingLoading } = useQuery<{
+    experiences?: Array<{
+      id: string;
+      name: string;
+      type: string;
+      trendingScore: number;
+      reason?: string;
+    }>;
+  }>({
+    queryKey: ["/api/travelpulse/trending", destination],
+    enabled: !!destination,
+  });
+
+  const travelPulseIntelligenceLoading = travelPulseLoading || trendingLoading;
 
   const retryMutation = useMutation({
     mutationFn: async () => {
@@ -304,6 +400,151 @@ export default function ItineraryComparisonPage() {
 
         {hasVariants && (
           <>
+            {destination && (
+              <Card className="mb-6 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20 dark:border-purple-800">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                      {travelPulseIntelligenceLoading ? (
+                        <Loader2 className="h-4 w-4 text-purple-600 dark:text-purple-400 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                      )}
+                    </div>
+                    <div>
+                      <CardTitle className="text-base text-purple-800 dark:text-purple-200">
+                        AI-Powered Destination Intelligence
+                      </CardTitle>
+                      <CardDescription className="text-purple-600 dark:text-purple-400">
+                        Real-time insights for {destination} powered by xAI Grok
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {travelPulseIntelligenceLoading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3 animate-pulse">
+                          <div className="h-4 w-20 bg-purple-200/50 dark:bg-purple-800/30 rounded mb-2" />
+                          <div className="h-6 w-12 bg-purple-200/50 dark:bg-purple-800/30 rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {travelPulseError && !travelPulseLoading && (
+                    <div className="text-sm text-muted-foreground text-center py-4">
+                      Unable to load destination intelligence. Comparison data is still available below.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {travelPulseData?.city?.pulseScore && (
+                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Zap className="h-4 w-4 text-amber-500" />
+                          <span className="text-xs font-medium text-muted-foreground">Pulse Score</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                            {travelPulseData.city.pulseScore}
+                          </span>
+                          <span className="text-xs text-muted-foreground">/100</span>
+                        </div>
+                      </div>
+                    )}
+                    {travelPulseData?.city?.trendingScore && (
+                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <TrendingUp className="h-4 w-4 text-green-500" />
+                          <span className="text-xs font-medium text-muted-foreground">Trending</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-2xl font-bold text-green-600 dark:text-green-400">
+                            {travelPulseData.city.trendingScore}
+                          </span>
+                          <span className="text-xs text-muted-foreground">/100</span>
+                        </div>
+                      </div>
+                    )}
+                    {travelPulseData?.city?.crowdLevel && (
+                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Users className="h-4 w-4 text-blue-500" />
+                          <span className="text-xs font-medium text-muted-foreground">Crowd Level</span>
+                        </div>
+                        <span className="text-lg font-semibold capitalize text-blue-600 dark:text-blue-400">
+                          {travelPulseData.city.crowdLevel}
+                        </span>
+                      </div>
+                    )}
+                    {travelPulseData?.city?.aiBudgetEstimate && (
+                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <DollarSign className="h-4 w-4 text-emerald-500" />
+                          <span className="text-xs font-medium text-muted-foreground">Budget Estimate</span>
+                        </div>
+                        <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 line-clamp-2">
+                          {travelPulseData.city.aiBudgetEstimate}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {(travelPulseData?.city?.aiTravelTips || travelPulseData?.city?.aiLocalInsights) && (
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {travelPulseData?.city?.aiTravelTips && (
+                        <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                          <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
+                            <Sparkles className="h-3 w-3" /> Travel Tips
+                          </h4>
+                          <p className="text-xs text-muted-foreground line-clamp-3">
+                            {travelPulseData.city.aiTravelTips}
+                          </p>
+                        </div>
+                      )}
+                      {travelPulseData?.city?.aiLocalInsights && (
+                        <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                          <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
+                            <MapPin className="h-3 w-3" /> Local Insights
+                          </h4>
+                          <p className="text-xs text-muted-foreground line-clamp-3">
+                            {travelPulseData.city.aiLocalInsights}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {trendingData?.experiences && trendingData.experiences.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3" /> Trending Experiences
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {trendingData.experiences.slice(0, 5).map((exp) => (
+                          <Badge key={exp.id} variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
+                            {exp.name}
+                            {exp.trendingScore > 80 && <Zap className="h-3 w-3 ml-1 text-amber-500" />}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {travelPulseData?.city?.aiMustSeeAttractions && (
+                    <div className="mt-4 bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
+                      <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
+                        <Star className="h-3 w-3" /> Must-See Attractions
+                      </h4>
+                      <p className="text-xs text-muted-foreground">
+                        {travelPulseData.city.aiMustSeeAttractions}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
               {userVariant && (
                 <Card
@@ -333,25 +574,79 @@ export default function ItineraryComparisonPage() {
                         </span>
                       </div>
                       <Separator />
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium">Items ({userVariant.items.length})</h4>
-                        <ScrollArea className="h-40">
-                          {userVariant.items.map((item, idx) => (
-                            <div key={item.id || idx} className="flex items-center justify-between py-2 text-sm">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
-                                  Day {item.dayNumber}
-                                </Badge>
-                                <span className="truncate max-w-32">{item.name}</span>
-                              </div>
-                              <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
-                            </div>
-                          ))}
-                        </ScrollArea>
-                      </div>
+                      <Collapsible 
+                        open={expandedVariantId === userVariant.id}
+                        onOpenChange={() => setExpandedVariantId(expandedVariantId === userVariant.id ? null : userVariant.id)}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium">Items ({userVariant.items.length})</h4>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 px-2" data-testid={`button-expand-${userVariant.id}`}>
+                                {expandedVariantId === userVariant.id ? (
+                                  <>Collapse <ChevronUp className="h-3 w-3 ml-1" /></>
+                                ) : (
+                                  <>Expand <ChevronDown className="h-3 w-3 ml-1" /></>
+                                )}
+                              </Button>
+                            </CollapsibleTrigger>
+                          </div>
+                          <ScrollArea className={cn(expandedVariantId === userVariant.id ? "h-auto max-h-96" : "h-40")}>
+                            {userVariant.items.map((item, idx) => {
+                              const bookingType = getBookingType(item.serviceType);
+                              const partnerUrl = getPartnerUrl(item);
+                              return (
+                                <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <Badge variant="outline" className="text-xs shrink-0">
+                                        Day {item.dayNumber}
+                                      </Badge>
+                                      <span className={cn(expandedVariantId === userVariant.id ? "" : "truncate max-w-32")}>
+                                        {item.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {bookingType === "partner" ? (
+                                        <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                          {item.serviceType?.toLowerCase().includes("transport") ? (
+                                            <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                          ) : (
+                                            <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                          )}
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                          <Check className="h-2.5 w-2.5 mr-1" />In-App
+                                        </Badge>
+                                      )}
+                                      <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                    </div>
+                                  </div>
+                                  <CollapsibleContent>
+                                    {expandedVariantId === userVariant.id && (
+                                      <div className="mt-2 pl-4 text-xs text-muted-foreground space-y-1">
+                                        {item.description && <p>{item.description}</p>}
+                                        {item.location && <p className="flex items-center gap-1"><MapPin className="h-3 w-3" />{item.location}</p>}
+                                        {item.duration > 0 && <p className="flex items-center gap-1"><Clock className="h-3 w-3" />{item.duration} mins</p>}
+                                        {item.rating && <p className="flex items-center gap-1"><Star className="h-3 w-3" />{item.rating}</p>}
+                                        {partnerUrl && (
+                                          <a href={partnerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                            Book on Partner Site <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                        )}
+                                      </div>
+                                    )}
+                                  </CollapsibleContent>
+                                </div>
+                              );
+                            })}
+                          </ScrollArea>
+                        </div>
+                      </Collapsible>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex-col gap-2">
                     <Button
                       variant={selectedVariantId === userVariant.id ? "default" : "outline"}
                       className="w-full"
@@ -437,27 +732,82 @@ export default function ItineraryComparisonPage() {
                       )}
 
                       <Separator />
-                      <div className="space-y-2">
-                        <h4 className="text-sm font-medium">Items ({variant.items.length})</h4>
-                        <ScrollArea className="h-32">
-                          {variant.items.map((item, idx) => (
-                            <div key={item.id || idx} className="flex items-center justify-between py-2 text-sm">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
-                                  Day {item.dayNumber}
-                                </Badge>
-                                <span className="truncate max-w-32">{item.name}</span>
-                                {item.isReplacement && (
-                                  <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
-                                    New
-                                  </Badge>
+                      <Collapsible 
+                        open={expandedVariantId === variant.id}
+                        onOpenChange={() => setExpandedVariantId(expandedVariantId === variant.id ? null : variant.id)}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-medium">Items ({variant.items.length})</h4>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-7 px-2" data-testid={`button-expand-${variant.id}`}>
+                                {expandedVariantId === variant.id ? (
+                                  <>Collapse <ChevronUp className="h-3 w-3 ml-1" /></>
+                                ) : (
+                                  <>Expand <ChevronDown className="h-3 w-3 ml-1" /></>
                                 )}
-                              </div>
-                              <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
-                            </div>
-                          ))}
-                        </ScrollArea>
-                      </div>
+                              </Button>
+                            </CollapsibleTrigger>
+                          </div>
+                          <ScrollArea className={cn(expandedVariantId === variant.id ? "h-auto max-h-96" : "h-32")}>
+                            {variant.items.map((item, idx) => {
+                              const bookingType = getBookingType(item.serviceType);
+                              const partnerUrl = getPartnerUrl(item);
+                              return (
+                                <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <Badge variant="outline" className="text-xs shrink-0">
+                                        Day {item.dayNumber}
+                                      </Badge>
+                                      <span className={cn(expandedVariantId === variant.id ? "" : "truncate max-w-32")}>
+                                        {item.name}
+                                      </span>
+                                      {item.isReplacement && (
+                                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 shrink-0">
+                                          New
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {bookingType === "partner" ? (
+                                        <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                          {item.serviceType?.toLowerCase().includes("transport") ? (
+                                            <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                          ) : (
+                                            <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                          )}
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                          <Check className="h-2.5 w-2.5 mr-1" />In-App
+                                        </Badge>
+                                      )}
+                                      <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                    </div>
+                                  </div>
+                                  <CollapsibleContent>
+                                    {expandedVariantId === variant.id && (
+                                      <div className="mt-2 pl-4 text-xs text-muted-foreground space-y-1">
+                                        {item.description && <p>{item.description}</p>}
+                                        {item.location && <p className="flex items-center gap-1"><MapPin className="h-3 w-3" />{item.location}</p>}
+                                        {item.duration > 0 && <p className="flex items-center gap-1"><Clock className="h-3 w-3" />{item.duration} mins</p>}
+                                        {item.rating && <p className="flex items-center gap-1"><Star className="h-3 w-3" />{item.rating}</p>}
+                                        {item.replacementReason && <p className="text-green-600">{item.replacementReason}</p>}
+                                        {partnerUrl && (
+                                          <a href={partnerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
+                                            Book on Partner Site <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                        )}
+                                      </div>
+                                    )}
+                                  </CollapsibleContent>
+                                </div>
+                              );
+                            })}
+                          </ScrollArea>
+                        </div>
+                      </Collapsible>
                     </div>
                   </CardContent>
                   <CardFooter>
@@ -510,8 +860,92 @@ export default function ItineraryComparisonPage() {
               </Card>
             )}
 
+            <Card className="mt-6 border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+              <CardContent className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
+                    <Users className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-1">
+                      Let an Expert Book Everything
+                    </h3>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+                      Our travel experts can handle all bookings for your selected plan - hotels, activities, 
+                      ground transport, and event tickets. They'll coordinate everything and confirm details with you.
+                    </p>
+                    <Button 
+                      variant="outline"
+                      className="border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/50"
+                      onClick={() => setShowExpertDialog(true)}
+                      data-testid="button-expert-booking"
+                    >
+                      <Users className="mr-2 h-4 w-4" />
+                      Request Expert Booking
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
           </>
         )}
+
+        <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-amber-600" />
+                Request Expert Booking Assistance
+              </DialogTitle>
+              <DialogDescription>
+                Let our travel experts handle all bookings for your itinerary. They'll coordinate 
+                both on-site and partner bookings, ensuring everything is confirmed before your trip.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="bg-amber-50 dark:bg-amber-950/20 rounded-lg p-4">
+                <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-2">What's included:</h4>
+                <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />All hotel and accommodation bookings</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Tour and activity reservations</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Ground transportation (trains, buses, ferries via 12Go)</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Event and show tickets (via Fever)</li>
+                  <li className="flex items-center gap-2"><Check className="h-3 w-3" />Restaurant reservations</li>
+                </ul>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Special requests or notes (optional)</label>
+                <Textarea
+                  value={expertNotes}
+                  onChange={(e) => setExpertNotes(e.target.value)}
+                  placeholder="Any specific preferences, dietary requirements, or special requests..."
+                  className="min-h-20"
+                  data-testid="input-expert-notes"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                An expert will contact you within 24 hours to confirm details and payment.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowExpertDialog(false)}>Cancel</Button>
+              <Button 
+                onClick={handleExpertBookingRequest}
+                disabled={expertBookingMutation.isPending}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+                data-testid="button-confirm-expert-booking"
+              >
+                {expertBookingMutation.isPending ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting...</>
+                ) : (
+                  <><Users className="mr-2 h-4 w-4" />Submit Request</>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );
