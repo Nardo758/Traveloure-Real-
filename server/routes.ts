@@ -31,6 +31,25 @@ import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents } from "@shared/schema";
+import { coordinationService } from "./services/coordination.service";
+import { vendorManagementService } from "./services/vendor-management.service";
+import { budgetService } from "./services/budget.service";
+import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
+import { emergencyService } from "./services/emergency.service";
+import { 
+  insertTripParticipantSchema, 
+  insertVendorContractSchema, 
+  insertTripTransactionSchema,
+  insertItineraryItemSchema,
+  insertTripEmergencyContactSchema,
+  insertTripAlertSchema
+} from "@shared/schema";
+
+// Helper function to verify trip ownership
+async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
+  const trip = await storage.getTrip(tripId);
+  return trip?.userId === userId;
+}
 
 // Helper function to map Fever categories to TravelPulse event types
 function mapFeverCategoryToEventType(category: string): string {
@@ -6030,6 +6049,623 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   // Start the scheduler when routes are registered
   travelPulseScheduler.start();
+
+  // === Logistics Intelligence Layer Routes ===
+
+  // --- Coordination / Participants Routes ---
+  app.get("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const participants = await coordinationService.getParticipants(req.params.tripId);
+      res.json(participants);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch participants" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/participants/stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const stats = await coordinationService.getParticipantStats(req.params.tripId);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch participant stats" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const stats = await coordinationService.getPaymentStats(req.params.tripId);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch payment stats" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/participants/dietary", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const dietary = await coordinationService.getDietaryRequirements(req.params.tripId);
+      res.json(dietary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch dietary requirements" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const validatedData = insertTripParticipantSchema.parse({
+        ...req.body,
+        tripId: req.params.tripId,
+      });
+      const participant = await coordinationService.createParticipant(validatedData);
+      res.status(201).json(participant);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create participant" });
+    }
+  });
+
+  app.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
+    try {
+      const participant = await coordinationService.updateParticipant(req.params.id, req.body);
+      if (!participant) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      res.json(participant);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update participant" });
+    }
+  });
+
+  app.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
+    try {
+      const { status, notes } = req.body;
+      const participant = await coordinationService.updateRSVP(req.params.id, status, notes);
+      if (!participant) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      res.json(participant);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update RSVP" });
+    }
+  });
+
+  app.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, method, notes } = req.body;
+      const participant = await coordinationService.updatePayment(req.params.id, amount, method, notes);
+      if (!participant) {
+        return res.status(404).json({ message: "Participant not found" });
+      }
+      res.json(participant);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to record payment" });
+    }
+  });
+
+  app.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
+    try {
+      await coordinationService.deleteParticipant(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete participant" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
+    try {
+      const { emails } = req.body;
+      const participants = await coordinationService.bulkInvite(req.params.tripId, emails);
+      res.status(201).json(participants);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to send invites" });
+    }
+  });
+
+  // --- Vendor Contracts Routes ---
+  app.get("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
+    try {
+      const contracts = await vendorManagementService.getContracts(req.params.tripId);
+      res.json(contracts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contracts" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/contracts/stats", isAuthenticated, async (req, res) => {
+    try {
+      const stats = await vendorManagementService.getContractStats(req.params.tripId);
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contract stats" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/contracts/upcoming-payments", isAuthenticated, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const payments = await vendorManagementService.getUpcomingPayments(req.params.tripId, days);
+      res.json(payments);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch upcoming payments" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, res) => {
+    try {
+      const overdue = await vendorManagementService.getOverduePayments(req.params.tripId);
+      res.json(overdue);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch overdue payments" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
+    try {
+      const contract = await vendorManagementService.createContract({
+        ...req.body,
+        tripId: req.params.tripId,
+      });
+      res.status(201).json(contract);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create contract" });
+    }
+  });
+
+  app.patch("/api/contracts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const contract = await vendorManagementService.updateContract(req.params.id, req.body);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      res.json(contract);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update contract" });
+    }
+  });
+
+  app.post("/api/contracts/:id/payment", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, milestoneName } = req.body;
+      const contract = await vendorManagementService.recordPayment(req.params.id, amount, milestoneName);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      res.json(contract);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to record payment" });
+    }
+  });
+
+  app.post("/api/contracts/:id/milestone", isAuthenticated, async (req, res) => {
+    try {
+      const contract = await vendorManagementService.addPaymentMilestone(req.params.id, req.body);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      res.json(contract);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to add milestone" });
+    }
+  });
+
+  app.post("/api/contracts/:id/communication", isAuthenticated, async (req, res) => {
+    try {
+      const contract = await vendorManagementService.logCommunication(req.params.id, req.body);
+      if (!contract) {
+        return res.status(404).json({ message: "Contract not found" });
+      }
+      res.json(contract);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to log communication" });
+    }
+  });
+
+  app.delete("/api/contracts/:id", isAuthenticated, async (req, res) => {
+    try {
+      await vendorManagementService.deleteContract(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete contract" });
+    }
+  });
+
+  // --- Budget / Transactions Routes ---
+  app.get("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const transactions = await budgetService.getTransactions(req.params.tripId);
+      res.json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch transactions" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/budget/summary", isAuthenticated, async (req, res) => {
+    try {
+      const budget = parseFloat(req.query.budget as string) || 0;
+      const summary = await budgetService.getBudgetSummary(req.params.tripId, budget);
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch budget summary" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/budget/categories", isAuthenticated, async (req, res) => {
+    try {
+      const breakdown = await budgetService.getCategoryBreakdown(req.params.tripId);
+      res.json(breakdown);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch category breakdown" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, res) => {
+    try {
+      const settleUp = await budgetService.getSettleUpSummary(req.params.tripId);
+      res.json(settleUp);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to calculate settle up" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const transaction = await budgetService.createTransaction({
+        ...req.body,
+        tripId: req.params.tripId,
+      });
+      res.status(201).json(transaction);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create transaction" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/transactions/split", isAuthenticated, async (req, res) => {
+    try {
+      const { totalAmount, category, description, paidByParticipantId, splits } = req.body;
+      const transactions = await budgetService.createSplitTransaction(
+        req.params.tripId,
+        totalAmount,
+        category,
+        description,
+        paidByParticipantId,
+        splits
+      );
+      res.status(201).json(transactions);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create split transaction" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async (req, res) => {
+    try {
+      const { totalAmount, method, customSplits } = req.body;
+      const splits = await budgetService.calculateSplit(req.params.tripId, totalAmount, method, customSplits);
+      res.json(splits);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to calculate split" });
+    }
+  });
+
+  app.post("/api/budget/convert-currency", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, fromCurrency, toCurrency } = req.body;
+      const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
+      res.json(conversion);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to convert currency" });
+    }
+  });
+
+  app.post("/api/budget/calculate-tip", isAuthenticated, async (req, res) => {
+    try {
+      const { amount, countryCode, serviceType } = req.body;
+      const tip = budgetService.calculateTip(amount, countryCode, serviceType);
+      res.json(tip);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to calculate tip" });
+    }
+  });
+
+  app.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
+    try {
+      const transaction = await budgetService.updateTransaction(req.params.id, req.body);
+      if (!transaction) {
+        return res.status(404).json({ message: "Transaction not found" });
+      }
+      res.json(transaction);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update transaction" });
+    }
+  });
+
+  app.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
+    try {
+      await budgetService.deleteTransaction(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete transaction" });
+    }
+  });
+
+  // --- Itinerary Intelligence Routes ---
+  app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
+    try {
+      const items = await itineraryIntelligenceService.getItems(req.params.tripId);
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch itinerary items" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req, res) => {
+    try {
+      const schedules = await itineraryIntelligenceService.getDaySchedules(req.params.tripId);
+      res.json(schedules);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch day schedules" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, res) => {
+    try {
+      const analysis = await itineraryIntelligenceService.analyzeItinerary(req.params.tripId);
+      res.json(analysis);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to analyze itinerary" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, async (req, res) => {
+    try {
+      const destination = req.query.destination as string || "destination";
+      const recommendations = await itineraryIntelligenceService.getAIRecommendations(req.params.tripId, destination);
+      res.json(recommendations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get recommendations" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
+    try {
+      const item = await itineraryIntelligenceService.createItem({
+        ...req.body,
+        tripId: req.params.tripId,
+      });
+      res.status(201).json(item);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create itinerary item" });
+    }
+  });
+
+  app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
+    try {
+      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
+      if (!item) {
+        return res.status(404).json({ message: "Itinerary item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update itinerary item" });
+    }
+  });
+
+  app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
+    try {
+      const { backupItemId } = req.body;
+      const item = await itineraryIntelligenceService.setBackupPlan(req.params.id, backupItemId);
+      if (!item) {
+        return res.status(404).json({ message: "Itinerary item not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to set backup plan" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const { dayNumber, itemIds } = req.body;
+      const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
+      res.json(items);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reorder items" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
+    try {
+      const { dayNumber } = req.body;
+      const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
+      res.json({ optimizedOrder });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to optimize order" });
+    }
+  });
+
+  app.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) => {
+    try {
+      const { fromLat, fromLng, toLat, toLng, mode } = req.body;
+      const estimate = itineraryIntelligenceService.estimateTravelTime(fromLat, fromLng, toLat, toLng, mode);
+      res.json(estimate);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to estimate travel time" });
+    }
+  });
+
+  app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
+    try {
+      await itineraryIntelligenceService.deleteItem(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete itinerary item" });
+    }
+  });
+
+  // --- Emergency Routes ---
+  app.get("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
+    try {
+      const contacts = await emergencyService.getContacts(req.params.tripId);
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch emergency contacts" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, async (req, res) => {
+    try {
+      const contacts = await emergencyService.getContactsByType(req.params.tripId);
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch emergency contacts" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
+    try {
+      const contact = await emergencyService.createContact({
+        ...req.body,
+        tripId: req.params.tripId,
+      });
+      res.status(201).json(contact);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create emergency contact" });
+    }
+  });
+
+  app.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const contact = await emergencyService.updateContact(req.params.id, req.body);
+      if (!contact) {
+        return res.status(404).json({ message: "Emergency contact not found" });
+      }
+      res.json(contact);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update emergency contact" });
+    }
+  });
+
+  app.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
+    try {
+      await emergencyService.deleteContact(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete emergency contact" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (req, res) => {
+    try {
+      const { countryCode } = req.body;
+      const result = await emergencyService.initializeTripEmergencyInfo(req.params.tripId, countryCode);
+      res.status(201).json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to initialize emergency info" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
+    try {
+      const alerts = await emergencyService.getActiveAlerts(req.params.tripId);
+      res.json(alerts);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch alerts" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res) => {
+    try {
+      const summary = await emergencyService.getAlertSummary(req.params.tripId);
+      res.json(summary);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch alert summary" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
+    try {
+      const alert = await emergencyService.createAlert({
+        ...req.body,
+        tripId: req.params.tripId,
+      });
+      res.status(201).json(alert);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create alert" });
+    }
+  });
+
+  app.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const alert = await emergencyService.acknowledgeAlert(req.params.id, userId);
+      if (!alert) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+      res.json(alert);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to acknowledge alert" });
+    }
+  });
+
+  app.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
+    try {
+      const alert = await emergencyService.dismissAlert(req.params.id);
+      if (!alert) {
+        return res.status(404).json({ message: "Alert not found" });
+      }
+      res.json(alert);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to dismiss alert" });
+    }
+  });
+
+  app.get("/api/emergency/numbers/:countryCode", async (req, res) => {
+    try {
+      const numbers = emergencyService.getEmergencyNumbers(req.params.countryCode);
+      res.json(numbers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch emergency numbers" });
+    }
+  });
+
+  app.get("/api/emergency/embassy/:countryCode", async (req, res) => {
+    try {
+      const embassy = emergencyService.getEmbassyInfo(req.params.countryCode);
+      res.json(embassy);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch embassy info" });
+    }
+  });
+
+  app.get("/api/emergency/rebooking-options/:itemType", isAuthenticated, async (req, res) => {
+    try {
+      const tripId = req.query.tripId as string;
+      const options = await emergencyService.getRebookingOptions(tripId, req.params.itemType);
+      res.json(options);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch rebooking options" });
+    }
+  });
 
   return httpServer;
 }
