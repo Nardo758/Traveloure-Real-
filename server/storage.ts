@@ -10,6 +10,8 @@ import {
   vendorAvailabilitySlots, coordinationStates, coordinationBookings,
   expertServiceCategories, expertServiceOfferings, expertSelectedServices, expertSpecializations,
   expertCustomServices, destinationEvents, destinationSeasons, locationCache,
+  experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
+  experienceUniversalFilters, experienceUniversalFilterOptions,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -184,6 +186,11 @@ export interface IStorage {
   getExperienceType(id: string): Promise<ExperienceType | undefined>;
   getExperienceTypeBySlug(slug: string): Promise<ExperienceType | undefined>;
   getExperienceTemplateSteps(experienceTypeId: string): Promise<ExperienceTemplateStep[]>;
+  
+  // Experience Template Tabs & Filters
+  getExperienceTemplateTabs(experienceTypeId: string): Promise<any[]>;
+  getExperienceTemplateFilters(tabId: string): Promise<any[]>;
+  getExperienceUniversalFilters(experienceTypeId: string): Promise<any[]>;
   
   // User Experiences
   getUserExperiences(userId: string): Promise<UserExperience[]>;
@@ -1058,6 +1065,65 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(experienceTemplateSteps)
       .where(eq(experienceTemplateSteps.experienceTypeId, experienceTypeId))
       .orderBy(experienceTemplateSteps.stepNumber);
+  }
+
+  // Experience Template Tabs & Filters Methods
+  async getExperienceTemplateTabs(experienceTypeId: string): Promise<any[]> {
+    const tabs = await db.select().from(experienceTemplateTabs)
+      .where(and(
+        eq(experienceTemplateTabs.experienceTypeId, experienceTypeId),
+        eq(experienceTemplateTabs.isActive, true)
+      ))
+      .orderBy(experienceTemplateTabs.sortOrder);
+    
+    const tabsWithFilters = await Promise.all(tabs.map(async (tab) => {
+      const filters = await this.getExperienceTemplateFilters(tab.id);
+      return { ...tab, filters };
+    }));
+    
+    return tabsWithFilters;
+  }
+
+  async getExperienceTemplateFilters(tabId: string): Promise<any[]> {
+    const filters = await db.select().from(experienceTemplateFilters)
+      .where(and(
+        eq(experienceTemplateFilters.tabId, tabId),
+        eq(experienceTemplateFilters.isActive, true)
+      ))
+      .orderBy(experienceTemplateFilters.sortOrder);
+    
+    const filtersWithOptions = await Promise.all(filters.map(async (filter) => {
+      const options = await db.select().from(experienceTemplateFilterOptions)
+        .where(and(
+          eq(experienceTemplateFilterOptions.filterId, filter.id),
+          eq(experienceTemplateFilterOptions.isActive, true)
+        ))
+        .orderBy(experienceTemplateFilterOptions.sortOrder);
+      return { ...filter, options };
+    }));
+    
+    return filtersWithOptions;
+  }
+
+  async getExperienceUniversalFilters(experienceTypeId: string): Promise<any[]> {
+    const filters = await db.select().from(experienceUniversalFilters)
+      .where(and(
+        eq(experienceUniversalFilters.experienceTypeId, experienceTypeId),
+        eq(experienceUniversalFilters.isActive, true)
+      ))
+      .orderBy(experienceUniversalFilters.sortOrder);
+    
+    const filtersWithOptions = await Promise.all(filters.map(async (filter) => {
+      const options = await db.select().from(experienceUniversalFilterOptions)
+        .where(and(
+          eq(experienceUniversalFilterOptions.filterId, filter.id),
+          eq(experienceUniversalFilterOptions.isActive, true)
+        ))
+        .orderBy(experienceUniversalFilterOptions.sortOrder);
+      return { ...filter, options };
+    }));
+    
+    return filtersWithOptions;
   }
 
   // User Experiences Methods

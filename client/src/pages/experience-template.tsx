@@ -84,6 +84,7 @@ import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
+import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 
 interface CartItem {
   id: string;
@@ -379,6 +380,38 @@ const experienceConfigs: Record<string, {
     filters: ["Christmas", "New Year", "Thanksgiving", "Easter", "Halloween", "July 4th", "Corporate", "Family"],
     locationLabel: "Party Location:",
     dateLabel: "Party Date:",
+  },
+  "bachelor-bachelorette": {
+    heroImage: "https://images.unsplash.com/photo-1529543544277-7f15a4b8a8e8?w=1600&q=80",
+    tabs: [
+      { id: "destinations", label: "Destinations", icon: MapPin, category: "destinations" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "daytime-activities", label: "Daytime Activities", icon: Palmtree, category: "activities" },
+      { id: "nightlife", label: "Nightlife", icon: Moon, category: "nightlife" },
+      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "party-services", label: "Party Services", icon: PartyPopper, category: "party-services" },
+      { id: "planning-tools", label: "Planning Tools", icon: Wrench, category: "planning" },
+    ],
+    filters: ["Beach Party", "City Nightlife", "Adventure", "Wellness", "Vegas-Style", "International"],
+    locationLabel: "Party Destination:",
+    dateLabel: "Party Dates:",
+  },
+  "anniversary-trip": {
+    heroImage: "https://images.unsplash.com/photo-1522673607200-164d1b6ce486?w=1600&q=80",
+    tabs: [
+      { id: "destinations", label: "Destinations", icon: Heart, category: "destinations" },
+      { id: "accommodations", label: "Romantic Stays", icon: Hotel, category: "accommodations" },
+      { id: "experiences", label: "Couple Experiences", icon: Users, category: "experiences" },
+      { id: "dining", label: "Romantic Dining", icon: Utensils, category: "dining" },
+      { id: "spa-wellness", label: "Spa & Wellness", icon: Flower2, category: "spa" },
+      { id: "special-touches", label: "Special Touches", icon: Gift, category: "special" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "itinerary-builder", label: "Itinerary Builder", icon: Wrench, category: "planning" },
+    ],
+    filters: ["Ultra Romantic", "Beach Paradise", "European City", "Wine Country", "Island Escape", "Mountain Retreat"],
+    locationLabel: "Anniversary Destination:",
+    dateLabel: "Anniversary Dates:",
   },
 };
 
@@ -751,6 +784,10 @@ export default function ExperienceTemplatePage() {
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [travelers, setTravelers] = useState(initialSettings?.travelers ?? 2);
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
+  
+  // Template-based filters (for experience types with database-driven tabs)
+  const templateFilters = useTemplateFilters();
+  const hasTemplateTabs = slug === "bachelor-bachelorette" || slug === "anniversary-trip";
   
   // Track whether we've done initial hydration
   const hasHydratedRef = useRef(false);
@@ -2038,6 +2075,18 @@ export default function ExperienceTemplatePage() {
               </Card>
             </CollapsibleContent>
           </Collapsible>
+
+          {hasTemplateTabs && experienceType?.id && (
+            <div className="mb-6">
+              <TemplateFiltersPanel
+                experienceTypeId={experienceType.id}
+                activeTab={activeTab}
+                selectedFilters={templateFilters.selectedFilters}
+                onFilterChange={templateFilters.onFilterChange}
+                onClearFilters={templateFilters.onClearFilters}
+              />
+            </div>
+          )}
 
           {activeTab === "flights" && !detailsSubmitted && (
             <Card className="border-2 border-dashed mb-6">

@@ -6,6 +6,7 @@ import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
+import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 
@@ -88,6 +89,13 @@ app.use((req, res, next) => {
     }
   } catch (err) {
     console.error("Failed to seed experience types:", err);
+  }
+
+  // Seed experience template tabs and filters
+  try {
+    await seedExperienceTemplateTabs();
+  } catch (err) {
+    console.error("Failed to seed experience template tabs:", err);
   }
 
   // Seed expert service categories on startup
