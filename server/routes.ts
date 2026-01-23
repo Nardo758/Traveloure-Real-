@@ -897,6 +897,28 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json(steps);
   });
 
+  // Get template tabs with filters for an experience type
+  app.get("/api/experience-types/:id/tabs", async (req, res) => {
+    try {
+      const tabs = await storage.getExperienceTemplateTabs(req.params.id);
+      res.json(tabs);
+    } catch (error) {
+      console.error("Error fetching template tabs:", error);
+      res.status(500).json({ message: "Failed to fetch template tabs" });
+    }
+  });
+
+  // Get universal filters for an experience type
+  app.get("/api/experience-types/:id/universal-filters", async (req, res) => {
+    try {
+      const filters = await storage.getExperienceUniversalFilters(req.params.id);
+      res.json(filters);
+    } catch (error) {
+      console.error("Error fetching universal filters:", error);
+      res.status(500).json({ message: "Failed to fetch universal filters" });
+    }
+  });
+
   // === User Experiences Routes ===
 
   // Get user's experiences

@@ -2146,3 +2146,92 @@ export type TravelPulseHappeningNow = typeof travelPulseHappeningNow.$inferSelec
 export type InsertTravelPulseHappeningNow = z.infer<typeof insertTravelPulseHappeningNowSchema>;
 export type CityMediaCache = typeof cityMediaCache.$inferSelect;
 export type InsertCityMediaCache = z.infer<typeof insertCityMediaCacheSchema>;
+
+// === Experience Template Tabs & Filters System ===
+
+export const experienceTemplateTabs = pgTable("experience_template_tabs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(), // "Destinations", "Accommodations"
+  slug: varchar("slug", { length: 50 }).notNull(), // "destinations", "accommodations"
+  description: text("description"), // Logistics role description
+  icon: varchar("icon", { length: 50 }), // Lucide icon name
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const experienceTemplateFilters = pgTable("experience_template_filters", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tabId: varchar("tab_id").notNull().references(() => experienceTemplateTabs.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(), // "Distance from Origin", "Vibe"
+  slug: varchar("slug", { length: 50 }).notNull(), // "distance", "vibe"
+  description: text("description"),
+  filterType: varchar("filter_type", { length: 30 }).default("multi_select"), // single_select, multi_select, range, toggle
+  icon: varchar("icon", { length: 50 }),
+  sortOrder: integer("sort_order").default(0),
+  isRequired: boolean("is_required").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const experienceTemplateFilterOptions = pgTable("experience_template_filter_options", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  filterId: varchar("filter_id").notNull().references(() => experienceTemplateFilters.id, { onDelete: "cascade" }),
+  label: varchar("label", { length: 100 }).notNull(), // "Drivable", "Short Flight 0-3hrs"
+  value: varchar("value", { length: 100 }).notNull(), // "drivable", "short_flight"
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }),
+  minValue: decimal("min_value", { precision: 10, scale: 2 }), // For range filters
+  maxValue: decimal("max_value", { precision: 10, scale: 2 }), // For range filters
+  sortOrder: integer("sort_order").default(0),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Universal filters that apply to all tabs within an experience type
+export const experienceUniversalFilters = pgTable("experience_universal_filters", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 50 }).notNull(),
+  description: text("description"),
+  filterType: varchar("filter_type", { length: 30 }).default("multi_select"),
+  icon: varchar("icon", { length: 50 }),
+  sortOrder: integer("sort_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const experienceUniversalFilterOptions = pgTable("experience_universal_filter_options", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  filterId: varchar("filter_id").notNull().references(() => experienceUniversalFilters.id, { onDelete: "cascade" }),
+  label: varchar("label", { length: 100 }).notNull(),
+  value: varchar("value", { length: 100 }).notNull(),
+  description: text("description"),
+  icon: varchar("icon", { length: 50 }),
+  minValue: decimal("min_value", { precision: 10, scale: 2 }),
+  maxValue: decimal("max_value", { precision: 10, scale: 2 }),
+  sortOrder: integer("sort_order").default(0),
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertExperienceTemplateTabSchema = createInsertSchema(experienceTemplateTabs).omit({ id: true, createdAt: true });
+export const insertExperienceTemplateFilterSchema = createInsertSchema(experienceTemplateFilters).omit({ id: true, createdAt: true });
+export const insertExperienceTemplateFilterOptionSchema = createInsertSchema(experienceTemplateFilterOptions).omit({ id: true, createdAt: true });
+export const insertExperienceUniversalFilterSchema = createInsertSchema(experienceUniversalFilters).omit({ id: true, createdAt: true });
+export const insertExperienceUniversalFilterOptionSchema = createInsertSchema(experienceUniversalFilterOptions).omit({ id: true, createdAt: true });
+
+export type ExperienceTemplateTab = typeof experienceTemplateTabs.$inferSelect;
+export type InsertExperienceTemplateTab = z.infer<typeof insertExperienceTemplateTabSchema>;
+export type ExperienceTemplateFilter = typeof experienceTemplateFilters.$inferSelect;
+export type InsertExperienceTemplateFilter = z.infer<typeof insertExperienceTemplateFilterSchema>;
+export type ExperienceTemplateFilterOption = typeof experienceTemplateFilterOptions.$inferSelect;
+export type InsertExperienceTemplateFilterOption = z.infer<typeof insertExperienceTemplateFilterOptionSchema>;
+export type ExperienceUniversalFilter = typeof experienceUniversalFilters.$inferSelect;
+export type InsertExperienceUniversalFilter = z.infer<typeof insertExperienceUniversalFilterSchema>;
+export type ExperienceUniversalFilterOption = typeof experienceUniversalFilterOptions.$inferSelect;
+export type InsertExperienceUniversalFilterOption = z.infer<typeof insertExperienceUniversalFilterOptionSchema>;
