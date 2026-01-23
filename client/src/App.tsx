@@ -97,6 +97,7 @@ import ServiceDetailPage from "@/pages/service-detail";
 import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
+import SpontaneousPage from "@/pages/spontaneous";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -199,6 +200,9 @@ function Router() {
       </Route>
       <Route path="/deals">
         <Layout><DealsPage /></Layout>
+      </Route>
+      <Route path="/spontaneous">
+        <SpontaneousPage />
       </Route>
       <Route path="/payment">
         <PaymentPage />
