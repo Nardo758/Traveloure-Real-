@@ -1,4 +1,5 @@
-import express, { type Request, Response, NextFunction } from "express";
+import express, { type Request, Response, NextFunction, RequestHandler } from "express";
+import crypto from "crypto";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
@@ -9,6 +10,16 @@ import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
+import {
+  logger,
+  createHealthRouter,
+  createMetricsRouter,
+  metricsMiddleware,
+  globalErrorHandler,
+  generalRateLimiter,
+  aiRateLimiter,
+  searchRateLimiter,
+} from "./infrastructure";
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,129 +32,103 @@ declare module "http" {
   }
 }
 
-app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
-app.use(express.urlencoded({ extended: false }));
-
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
+declare module "express-serve-static-core" {
+  interface Request {
+    id?: string;
+  }
 }
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
-    }
-  });
-
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  req.id = (req.headers["x-request-id"] as string) || crypto.randomUUID();
   next();
 });
+
+app.use(createHealthRouter());
+app.use(createMetricsRouter());
+
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (req: any, _res: any, buf: Buffer) => {
+      req.rawBody = buf;
+    },
+  }) as RequestHandler,
+);
+
+app.use(express.urlencoded({ extended: false }) as RequestHandler);
+
+app.use(metricsMiddleware() as RequestHandler);
+
+app.use("/api", generalRateLimiter as RequestHandler);
+app.use("/api/ai", aiRateLimiter as RequestHandler);
+app.use("/api/search", searchRateLimiter as RequestHandler);
+app.use("/api/hotels", searchRateLimiter as RequestHandler);
+app.use("/api/flights", searchRateLimiter as RequestHandler);
+app.use("/api/activities", searchRateLimiter as RequestHandler);
+
+export function log(message: string, source = "express") {
+  logger.info({ source }, message);
+}
 
 (async () => {
   await registerRoutes(httpServer, app);
   
-  // Seed core service categories on startup
   try {
     const result = await seedCategories();
     if (result.created > 0) {
-      log(`Seeded ${result.created} new service categories`);
+      logger.info({ count: result.created }, "Seeded new service categories");
     }
   } catch (err) {
-    console.error("Failed to seed categories:", err);
+    logger.error({ err }, "Failed to seed categories");
   }
 
-  // Seed experience types on startup
   try {
     const expResult = await seedExperienceTypes();
     if (expResult.created > 0) {
-      log(`Seeded ${expResult.created} new experience types`);
+      logger.info({ count: expResult.created }, "Seeded new experience types");
     }
   } catch (err) {
-    console.error("Failed to seed experience types:", err);
+    logger.error({ err }, "Failed to seed experience types");
   }
 
-  // Seed experience template tabs and filters
   try {
     await seedExperienceTemplateTabs();
   } catch (err) {
-    console.error("Failed to seed experience template tabs:", err);
+    logger.error({ err }, "Failed to seed experience template tabs");
   }
 
-  // Seed expert service categories on startup
   try {
     await seedExpertServices();
   } catch (err) {
-    console.error("Failed to seed expert services:", err);
+    logger.error({ err }, "Failed to seed expert services");
   }
 
-  // Seed custom services mock data for testing
   try {
     await seedCustomServices();
   } catch (err) {
-    console.error("Failed to seed custom services:", err);
+    logger.error({ err }, "Failed to seed custom services");
   }
 
-  // Seed mock experts for testing
   try {
     await seedMockExperts();
   } catch (err) {
-    console.error("Failed to seed mock experts:", err);
+    logger.error({ err }, "Failed to seed mock experts");
   }
 
-  // Seed provider services for Services tab
   try {
     await seedProviderServices();
   } catch (err) {
-    console.error("Failed to seed provider services:", err);
+    logger.error({ err }, "Failed to seed provider services");
   }
 
-  // Seed destination calendar data
   try {
     await seedDestinationCalendar();
   } catch (err) {
-    console.error("Failed to seed destination calendar:", err);
+    logger.error({ err }, "Failed to seed destination calendar");
   }
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    
-    console.error("Error:", err);
-    res.status(status).json({ message });
-  });
+  app.use(globalErrorHandler);
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
   } else {
@@ -151,10 +136,6 @@ app.use((req, res, next) => {
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
   httpServer.listen(
     {
@@ -163,11 +144,10 @@ app.use((req, res, next) => {
       reusePort: true,
     },
     () => {
-      log(`serving on port ${port}`);
+      logger.info({ port }, "Server started");
       
-      // Start the background cache scheduler
       cacheSchedulerService.start();
-      log("Cache scheduler started");
+      logger.info("Cache scheduler started");
     },
   );
 })();
