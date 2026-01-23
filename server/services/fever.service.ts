@@ -1,15 +1,16 @@
 /**
- * Fever Partner API Service
+ * Fever Partner API Service via Impact.com
  * Integrates with Fever (feverup.com) for event discovery and ticketing
+ * through the Impact.com partner platform
  * 
- * API Documentation: https://business.feverup.com/
- * Partner Portal: https://app.impact.com (after partner approval)
+ * API Documentation: https://integrations.impact.com/impact-publisher/reference/overview
+ * Partner Portal: https://app.impact.com
  * 
  * This service provides:
- * - Event discovery by city/destination
+ * - Event discovery by city/destination from Fever's product catalog
  * - Event search by keyword
  * - Event details for booking integration
- * - Affiliate tracking for commission
+ * - Affiliate tracking for commission via Impact.com
  */
 
 export interface FeverEvent {
@@ -87,15 +88,45 @@ export interface FeverSearchResponse {
   city: FeverCity;
 }
 
-interface FeverApiConfig {
-  apiKey?: string;
-  partnerId?: string;
+interface ImpactCatalog {
+  Id: string;
+  Name: string;
+  AdvertiserName: string;
+  CampaignId: string;
+  CampaignName: string;
+  NumberOfItems: number;
+  DateLastUpdated: string;
+  ItemsUri: string;
+}
+
+interface ImpactCatalogItem {
+  CatalogItemId: string;
+  Name: string;
+  Description: string;
+  Manufacturer?: string;
+  CurrentPrice: number;
+  OriginalPrice?: number;
+  Currency: string;
+  Url: string;
+  ImageUrl?: string;
+  AdditionalImageUrls?: string[];
+  StockAvailability?: string;
+  LaunchDate?: string;
+  ExpirationDate?: string;
+  Category?: string;
+  Labels?: string[];
+}
+
+interface ImpactApiConfig {
+  accountSid: string;
+  authToken: string;
   baseUrl: string;
 }
 
 class FeverService {
-  private config: FeverApiConfig;
+  private config: ImpactApiConfig;
   private isConfigured: boolean = false;
+  private feverCatalogId: string | null = null;
 
   // Fever operates in these cities (launch markets)
   private static readonly SUPPORTED_CITIES: FeverCity[] = [
@@ -148,16 +179,46 @@ class FeverService {
 
   constructor() {
     this.config = {
-      apiKey: process.env.FEVER_API_KEY,
-      partnerId: process.env.FEVER_PARTNER_ID,
-      baseUrl: 'https://api.feverup.com/v1', // Official partner API base URL
+      accountSid: process.env.IMPACT_ACCOUNT_SID || '',
+      authToken: process.env.IMPACT_AUTH_TOKEN || '',
+      baseUrl: 'https://api.impact.com',
     };
 
-    this.isConfigured = !!(this.config.apiKey && this.config.partnerId);
+    this.isConfigured = !!(this.config.accountSid && this.config.authToken);
 
     if (!this.isConfigured) {
-      console.warn('[Fever] API not configured - FEVER_API_KEY and FEVER_PARTNER_ID required');
-      console.warn('[Fever] Complete partner signup at https://app.impact.com to get credentials');
+      console.warn('[Fever/Impact] API not configured - IMPACT_ACCOUNT_SID and IMPACT_AUTH_TOKEN required');
+      console.warn('[Fever/Impact] Get credentials from https://app.impact.com/secure/mediapartner/account-settings-flow.ihtml');
+    } else {
+      console.log('[Fever/Impact] API configured with Account SID:', this.config.accountSid.substring(0, 10) + '...');
+      // Initialize by finding Fever catalog
+      this.initializeFeverCatalog();
+    }
+  }
+
+  /**
+   * Initialize by finding the Fever catalog in Impact.com
+   */
+  private async initializeFeverCatalog(): Promise<void> {
+    try {
+      const catalogs = await this.listCatalogs();
+      if (catalogs) {
+        // Look for Fever catalog (case-insensitive search)
+        const feverCatalog = catalogs.find(c => 
+          c.Name.toLowerCase().includes('fever') || 
+          c.AdvertiserName.toLowerCase().includes('fever')
+        );
+        
+        if (feverCatalog) {
+          this.feverCatalogId = feverCatalog.Id;
+          console.log(`[Fever/Impact] Found Fever catalog: ${feverCatalog.Name} (ID: ${feverCatalog.Id})`);
+        } else {
+          console.warn('[Fever/Impact] Fever catalog not found. Available catalogs:', 
+            catalogs.map(c => c.Name).join(', '));
+        }
+      }
+    } catch (error) {
+      console.error('[Fever/Impact] Failed to initialize Fever catalog:', error);
     }
   }
 
@@ -199,107 +260,208 @@ class FeverService {
    * Build affiliate tracking URL for an event
    */
   public buildAffiliateUrl(eventUrl: string): string {
-    if (!this.config.partnerId) {
+    if (!this.config.accountSid) {
       return eventUrl;
     }
     
     // Impact.com tracking URL format
-    const trackingUrl = new URL('https://feverup.sjv.io/c/' + this.config.partnerId);
+    const trackingUrl = new URL('https://feverup.sjv.io/c/' + this.config.accountSid);
     trackingUrl.searchParams.set('u', eventUrl);
     return trackingUrl.toString();
   }
 
   /**
-   * Make authenticated API request
+   * Create Basic Auth header
    */
-  private async makeRequest<T>(
-    endpoint: string, 
-    params?: Record<string, string | number | boolean>
-  ): Promise<T | null> {
+  private getAuthHeader(): string {
+    const credentials = Buffer.from(`${this.config.accountSid}:${this.config.authToken}`).toString('base64');
+    return `Basic ${credentials}`;
+  }
+
+  /**
+   * Make authenticated API request to Impact.com
+   */
+  private async makeRequest<T>(endpoint: string): Promise<T | null> {
     if (!this.isConfigured) {
-      console.warn('[Fever] Cannot make request - API not configured');
+      console.warn('[Fever/Impact] Cannot make request - API not configured');
       return null;
     }
 
     try {
-      const url = new URL(`${this.config.baseUrl}${endpoint}`);
+      const url = `${this.config.baseUrl}${endpoint}`;
       
-      if (params) {
-        Object.entries(params).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            url.searchParams.set(key, String(value));
-          }
-        });
-      }
-
-      const response = await fetch(url.toString(), {
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'X-Partner-ID': this.config.partnerId!,
-          'Content-Type': 'application/json',
+          'Authorization': this.getAuthHeader(),
           'Accept': 'application/json',
         },
       });
 
       if (!response.ok) {
-        console.error(`[Fever] API error: ${response.status} ${response.statusText}`);
+        console.error(`[Fever/Impact] API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`[Fever/Impact] Error details:`, errorText);
         return null;
       }
 
       return await response.json() as T;
     } catch (error) {
-      console.error('[Fever] Request failed:', error);
+      console.error('[Fever/Impact] Request failed:', error);
       return null;
     }
+  }
+
+  /**
+   * List all available catalogs from Impact.com
+   */
+  public async listCatalogs(): Promise<ImpactCatalog[] | null> {
+    const response = await this.makeRequest<{ Catalogs: ImpactCatalog[] }>(
+      `/Mediapartners/${this.config.accountSid}/Catalogs`
+    );
+    return response?.Catalogs || null;
+  }
+
+  /**
+   * Get catalog items from Impact.com
+   */
+  public async getCatalogItems(
+    catalogId: string, 
+    options?: { keyword?: string; category?: string; page?: number; pageSize?: number }
+  ): Promise<ImpactCatalogItem[] | null> {
+    let endpoint = `/Mediapartners/${this.config.accountSid}/Catalogs/${catalogId}/Items`;
+    
+    const params = new URLSearchParams();
+    if (options?.keyword) params.set('Keyword', options.keyword);
+    if (options?.category) params.set('Category', options.category);
+    if (options?.page) params.set('Page', String(options.page));
+    if (options?.pageSize) params.set('PageSize', String(options.pageSize));
+    
+    if (params.toString()) {
+      endpoint += `?${params.toString()}`;
+    }
+
+    const response = await this.makeRequest<{ Items: ImpactCatalogItem[] }>(endpoint);
+    return response?.Items || null;
+  }
+
+  /**
+   * Transform Impact.com catalog item to FeverEvent
+   */
+  private transformCatalogItemToEvent(item: ImpactCatalogItem, city: FeverCity): FeverEvent {
+    // Parse category from Labels or Category field
+    const category = this.inferCategory(item.Category, item.Labels);
+    
+    return {
+      id: item.CatalogItemId,
+      title: item.Name,
+      slug: item.Name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
+      description: item.Description,
+      shortDescription: item.Description?.substring(0, 200),
+      imageUrl: item.ImageUrl,
+      thumbnailUrl: item.ImageUrl,
+      category,
+      city: city.name,
+      cityCode: city.code,
+      country: city.country,
+      dates: {
+        startDate: item.LaunchDate || new Date().toISOString(),
+        endDate: item.ExpirationDate,
+      },
+      pricing: {
+        currency: item.Currency || 'USD',
+        minPrice: item.CurrentPrice,
+        maxPrice: item.OriginalPrice,
+        priceRange: item.OriginalPrice && item.OriginalPrice !== item.CurrentPrice
+          ? `$${item.CurrentPrice} - $${item.OriginalPrice}`
+          : `$${item.CurrentPrice}`,
+      },
+      isFree: item.CurrentPrice === 0,
+      isSoldOut: item.StockAvailability === 'OutOfStock',
+      bookingUrl: item.Url,
+      affiliateUrl: this.buildAffiliateUrl(item.Url),
+      tags: item.Labels || [],
+    };
+  }
+
+  /**
+   * Infer event category from catalog data
+   */
+  private inferCategory(category?: string, labels?: string[]): string {
+    const text = [category, ...(labels || [])].join(' ').toLowerCase();
+    
+    if (text.includes('concert') || text.includes('music') || text.includes('live')) return 'concerts';
+    if (text.includes('theater') || text.includes('theatre') || text.includes('comedy')) return 'theater';
+    if (text.includes('exhibition') || text.includes('museum') || text.includes('art')) return 'exhibitions';
+    if (text.includes('festival')) return 'festivals';
+    if (text.includes('nightlife') || text.includes('club') || text.includes('party')) return 'nightlife';
+    if (text.includes('food') || text.includes('drink') || text.includes('dining') || text.includes('wine')) return 'food-drink';
+    if (text.includes('sport')) return 'sports';
+    if (text.includes('wellness') || text.includes('spa') || text.includes('yoga')) return 'wellness';
+    if (text.includes('tour') || text.includes('walk')) return 'tours';
+    if (text.includes('class') || text.includes('workshop')) return 'classes';
+    if (text.includes('family') || text.includes('kids') || text.includes('children')) return 'family';
+    
+    return 'experiences';
   }
 
   /**
    * Search events by city and optional filters
    */
   public async searchEvents(params: FeverSearchParams): Promise<FeverSearchResponse | null> {
-    if (!this.isConfigured) {
-      console.warn('[Fever] Returning mock data - API not configured');
-      return this.getMockSearchResponse(params);
-    }
-
     const city = this.findCity(params.city);
     if (!city) {
-      console.warn(`[Fever] City not found: ${params.city}`);
+      console.warn(`[Fever/Impact] City not found: ${params.city}`);
       return null;
     }
 
-    const response = await this.makeRequest<any>('/events/search', {
-      city: city.code,
-      q: params.query || '',
-      category: params.category || '',
-      start_date: params.startDate || '',
-      end_date: params.endDate || '',
-      min_price: params.minPrice || 0,
-      max_price: params.maxPrice || 0,
-      free: params.isFree || false,
-      page: params.page || 1,
-      limit: params.limit || 20,
-      sort: params.sortBy || 'popularity',
+    // If not configured or no Fever catalog found, return mock data
+    if (!this.isConfigured || !this.feverCatalogId) {
+      console.warn('[Fever/Impact] Returning mock data - API not configured or Fever catalog not found');
+      return this.getMockSearchResponse(params);
+    }
+
+    // Search for events in the city
+    const keyword = [city.name, params.query].filter(Boolean).join(' ');
+    const items = await this.getCatalogItems(this.feverCatalogId, {
+      keyword,
+      category: params.category,
+      page: params.page,
+      pageSize: params.limit || 20,
     });
 
-    if (!response) return null;
+    if (!items) {
+      return this.getMockSearchResponse(params);
+    }
 
-    return this.transformSearchResponse(response, city);
+    const events = items.map(item => this.transformCatalogItemToEvent(item, city));
+
+    return {
+      events,
+      total: events.length,
+      page: params.page || 1,
+      totalPages: 1,
+      city,
+    };
   }
 
   /**
    * Get event details by ID
    */
   public async getEventById(eventId: string): Promise<FeverEvent | null> {
-    if (!this.isConfigured) {
+    if (!this.isConfigured || !this.feverCatalogId) {
       return this.getMockEvent(eventId);
     }
 
-    const response = await this.makeRequest<any>(`/events/${eventId}`);
-    if (!response) return null;
+    const response = await this.makeRequest<ImpactCatalogItem>(
+      `/Mediapartners/${this.config.accountSid}/Catalogs/${this.feverCatalogId}/Items/${eventId}`
+    );
+    
+    if (!response) return this.getMockEvent(eventId);
 
-    return this.transformEvent(response);
+    // Use a default city for single event lookups
+    const defaultCity = FeverService.SUPPORTED_CITIES[0];
+    return this.transformCatalogItemToEvent(response, defaultCity);
   }
 
   /**
@@ -356,76 +518,6 @@ class FeverService {
   }
 
   /**
-   * Transform API response to our event format
-   */
-  private transformEvent(apiEvent: any): FeverEvent {
-    const baseUrl = `https://feverup.com/m/${apiEvent.slug || apiEvent.id}`;
-    
-    return {
-      id: String(apiEvent.id),
-      title: apiEvent.name || apiEvent.title,
-      slug: apiEvent.slug || '',
-      description: apiEvent.description,
-      shortDescription: apiEvent.short_description || apiEvent.description?.substring(0, 200),
-      imageUrl: apiEvent.image_url || apiEvent.cover_image,
-      thumbnailUrl: apiEvent.thumbnail_url || apiEvent.image_url,
-      category: apiEvent.category || 'experiences',
-      subcategory: apiEvent.subcategory,
-      city: apiEvent.city_name || apiEvent.city,
-      cityCode: apiEvent.city_code || '',
-      country: apiEvent.country || '',
-      venue: apiEvent.venue ? {
-        name: apiEvent.venue.name,
-        address: apiEvent.venue.address,
-        coordinates: apiEvent.venue.coordinates ? {
-          lat: apiEvent.venue.coordinates.latitude,
-          lng: apiEvent.venue.coordinates.longitude,
-        } : undefined,
-      } : undefined,
-      dates: {
-        startDate: apiEvent.start_date || apiEvent.date,
-        endDate: apiEvent.end_date,
-        sessions: apiEvent.sessions?.map((s: any) => ({
-          id: String(s.id),
-          datetime: s.datetime || s.date,
-          available: s.available !== false,
-        })),
-      },
-      pricing: {
-        currency: apiEvent.currency || 'USD',
-        minPrice: apiEvent.min_price || apiEvent.price,
-        maxPrice: apiEvent.max_price,
-        priceRange: apiEvent.price_range,
-      },
-      rating: apiEvent.rating,
-      reviewCount: apiEvent.review_count || apiEvent.reviews,
-      isFree: apiEvent.is_free || apiEvent.price === 0,
-      isSoldOut: apiEvent.is_sold_out || false,
-      bookingUrl: baseUrl,
-      affiliateUrl: this.buildAffiliateUrl(baseUrl),
-      tags: apiEvent.tags || [],
-      highlights: apiEvent.highlights || [],
-    };
-  }
-
-  /**
-   * Transform search response
-   */
-  private transformSearchResponse(response: any, city: FeverCity): FeverSearchResponse {
-    const events = (response.results || response.events || []).map((e: any) => 
-      this.transformEvent(e)
-    );
-
-    return {
-      events,
-      total: response.total || events.length,
-      page: response.page || 1,
-      totalPages: response.total_pages || Math.ceil((response.total || events.length) / 20),
-      city,
-    };
-  }
-
-  /**
    * Generate mock search response for development
    */
   private getMockSearchResponse(params: FeverSearchParams): FeverSearchResponse {
@@ -456,7 +548,7 @@ class FeverService {
       id: eventId,
       title: 'Sample Fever Experience',
       slug: 'sample-experience',
-      description: 'This is a placeholder event. Connect your Fever Partner API to see real events.',
+      description: 'This is a placeholder event. Connect your Impact.com credentials (IMPACT_ACCOUNT_SID and IMPACT_AUTH_TOKEN) to see real Fever events.',
       shortDescription: 'Placeholder event for development',
       imageUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800',
       thumbnailUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400',

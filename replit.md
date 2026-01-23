@@ -106,7 +106,8 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
     - `GET /api/fever/cities` - List all supported cities
     - `GET /api/travelpulse/fever-events/:cityName` - Merged Fever + TravelPulse events for calendar
   - Mock data available for development (when API not configured)
-  - Environment variables: `FEVER_API_KEY`, `FEVER_PARTNER_ID`
+  - Uses Impact.com Partner API with HTTP Basic Auth
+  - Environment variables: `IMPACT_ACCOUNT_SID`, `IMPACT_AUTH_TOKEN`
 - **External API Caching System** (`server/services/cache.service.ts`):
   - Hotels: `/api/cache/hotels` - 24-hour cache with `hotelCache` and `hotelOfferCache` tables.
   - Flights: `/api/cache/flights` - 24-hour cache with `flightCache` table.
@@ -154,5 +155,5 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
 - `VIATOR_API_KEY`: Viator API key.
 - `ANTHROPIC_API_KEY`: Anthropic Claude API key.
 - `XAI_API_KEY`: xAI Grok API key.
-- `FEVER_API_KEY`: Fever Partner API key (from impact.com after approval).
-- `FEVER_PARTNER_ID`: Fever Partner ID for affiliate tracking.
+- `IMPACT_ACCOUNT_SID`: Impact.com Account SID for Fever integration (from impact.com partner settings).
+- `IMPACT_AUTH_TOKEN`: Impact.com Auth Token for API access (from impact.com partner settings).
