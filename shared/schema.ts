@@ -2244,3 +2244,324 @@ export type ExperienceUniversalFilter = typeof experienceUniversalFilters.$infer
 export type InsertExperienceUniversalFilter = z.infer<typeof insertExperienceUniversalFilterSchema>;
 export type ExperienceUniversalFilterOption = typeof experienceUniversalFilterOptions.$inferSelect;
 export type InsertExperienceUniversalFilterOption = z.infer<typeof insertExperienceUniversalFilterOptionSchema>;
+
+// === Logistics Intelligence Layer ===
+
+// Enums for logistics
+export const participantStatusEnum = ["invited", "pending", "confirmed", "declined", "maybe", "cancelled"] as const;
+export const paymentStatusEnum = ["unpaid", "partial", "paid", "refunded", "overdue"] as const;
+export const contractStatusEnum = ["draft", "sent", "negotiating", "signed", "active", "completed", "cancelled", "disputed"] as const;
+export const transactionTypeEnum = ["deposit", "payment", "refund", "split_contribution", "expense", "fee", "tip"] as const;
+export const itineraryItemTypeEnum = ["activity", "meal", "transport", "accommodation", "free_time", "meeting", "checkpoint"] as const;
+export const itineraryItemStatusEnum = ["planned", "booked", "confirmed", "in_progress", "completed", "cancelled", "skipped"] as const;
+export const alertSeverityEnum = ["info", "low", "medium", "high", "critical"] as const;
+
+// Trip Participants - RSVP tracking and group coordination
+export const tripParticipants = pgTable("trip_participants", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }), // null for non-registered guests
+  
+  // Basic info
+  name: varchar("name", { length: 200 }).notNull(),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  role: varchar("role", { length: 50 }).default("guest"), // organizer, co-organizer, guest, vendor_contact
+  
+  // RSVP tracking
+  status: varchar("status", { length: 20 }).default("invited"), // participantStatusEnum
+  invitedAt: timestamp("invited_at").defaultNow(),
+  respondedAt: timestamp("responded_at"),
+  rsvpNotes: text("rsvp_notes"),
+  
+  // Dietary and accessibility
+  dietaryRestrictions: jsonb("dietary_restrictions").default([]), // ["vegetarian", "gluten-free", "nut-allergy"]
+  accessibilityNeeds: jsonb("accessibility_needs").default([]), // ["wheelchair", "hearing-impaired"]
+  specialRequests: text("special_requests"),
+  
+  // Payment tracking
+  paymentStatus: varchar("payment_status", { length: 20 }).default("unpaid"), // paymentStatusEnum
+  amountOwed: decimal("amount_owed", { precision: 10, scale: 2 }).default("0"),
+  amountPaid: decimal("amount_paid", { precision: 10, scale: 2 }).default("0"),
+  paymentMethod: varchar("payment_method", { length: 50 }), // venmo, paypal, bank_transfer, cash, card
+  paymentNotes: text("payment_notes"),
+  
+  // Emergency contact for this participant
+  emergencyContactName: varchar("emergency_contact_name", { length: 200 }),
+  emergencyContactPhone: varchar("emergency_contact_phone", { length: 50 }),
+  emergencyContactRelation: varchar("emergency_contact_relation", { length: 50 }),
+  
+  // Metadata
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Vendor Contracts - Contract tracking and payment schedules
+export const vendorContracts = pgTable("vendor_contracts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  vendorId: varchar("vendor_id").references(() => vendors.id, { onDelete: "set null" }), // Link to existing vendor if applicable
+  
+  // Vendor info (stored in case vendor record changes/deleted)
+  vendorName: varchar("vendor_name", { length: 255 }).notNull(),
+  vendorCategory: varchar("vendor_category", { length: 100 }), // venue, catering, photography, entertainment, etc.
+  vendorEmail: varchar("vendor_email", { length: 255 }),
+  vendorPhone: varchar("vendor_phone", { length: 50 }),
+  vendorAddress: text("vendor_address"),
+  
+  // Contract details
+  contractStatus: varchar("contract_status", { length: 20 }).default("draft"), // contractStatusEnum
+  contractNumber: varchar("contract_number", { length: 100 }),
+  serviceDescription: text("service_description"),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  
+  // Financial
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  paidAmount: decimal("paid_amount", { precision: 10, scale: 2 }).default("0"),
+  remainingBalance: decimal("remaining_balance", { precision: 10, scale: 2 }),
+  
+  // Payment schedule (array of payment milestones)
+  paymentSchedule: jsonb("payment_schedule").default([]), // [{name, amount, dueDate, status, paidDate}]
+  
+  // Documents
+  contractDocumentUrl: text("contract_document_url"),
+  signedDocumentUrl: text("signed_document_url"),
+  attachments: jsonb("attachments").default([]), // [{name, url, type}]
+  
+  // Terms
+  cancellationPolicy: text("cancellation_policy"),
+  specialTerms: text("special_terms"),
+  notes: text("notes"),
+  
+  // Communication log
+  communicationLog: jsonb("communication_log").default([]), // [{date, type, subject, summary, attachments}]
+  lastContactDate: timestamp("last_contact_date"),
+  nextFollowUpDate: timestamp("next_follow_up_date"),
+  
+  // Assignment to participant (if vendor is assigned to specific person)
+  assignedToParticipantId: varchar("assigned_to_participant_id").references(() => tripParticipants.id, { onDelete: "set null" }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Trip Transactions - Budget tracking and payment splitting
+export const tripTransactions = pgTable("trip_transactions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  
+  // Transaction type and status
+  transactionType: varchar("transaction_type", { length: 30 }).notNull(), // transactionTypeEnum
+  status: varchar("status", { length: 20 }).default("unpaid"), // paymentStatusEnum
+  
+  // Who paid / who owes
+  paidByParticipantId: varchar("paid_by_participant_id").references(() => tripParticipants.id, { onDelete: "set null" }),
+  paidToVendorContractId: varchar("paid_to_vendor_contract_id").references(() => vendorContracts.id, { onDelete: "set null" }),
+  
+  // For split payments - who this split is assigned to
+  assignedToParticipantId: varchar("assigned_to_participant_id").references(() => tripParticipants.id, { onDelete: "set null" }),
+  
+  // Amount details
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  originalAmount: decimal("original_amount", { precision: 10, scale: 2 }), // If currency conversion applied
+  originalCurrency: varchar("original_currency", { length: 3 }),
+  exchangeRate: decimal("exchange_rate", { precision: 10, scale: 6 }),
+  
+  // Category for budgeting
+  category: varchar("category", { length: 50 }), // accommodation, food, transport, activities, tips, fees, other
+  subcategory: varchar("subcategory", { length: 50 }),
+  description: text("description"),
+  
+  // Payment details
+  paymentMethod: varchar("payment_method", { length: 50 }), // card, cash, venmo, paypal, bank_transfer
+  paymentReference: varchar("payment_reference", { length: 255 }), // transaction ID, check number, etc.
+  receiptUrl: text("receipt_url"),
+  
+  // Dates
+  transactionDate: timestamp("transaction_date").defaultNow(),
+  dueDate: timestamp("due_date"),
+  paidDate: timestamp("paid_date"),
+  
+  // Tip calculation (for service transactions)
+  tipAmount: decimal("tip_amount", { precision: 10, scale: 2 }),
+  tipPercentage: decimal("tip_percentage", { precision: 5, scale: 2 }),
+  
+  // Split details
+  splitMethod: varchar("split_method", { length: 20 }), // equal, percentage, custom
+  splitDetails: jsonb("split_details").default([]), // [{participantId, amount, percentage, paid}]
+  
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Itinerary Items - Scheduling and optimization
+export const itineraryItems = pgTable("itinerary_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  
+  // Basic info
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  itemType: varchar("item_type", { length: 30 }).default("activity"), // itineraryItemTypeEnum
+  status: varchar("status", { length: 20 }).default("planned"), // itineraryItemStatusEnum
+  
+  // Timing
+  dayNumber: integer("day_number").notNull(), // 1, 2, 3, etc.
+  startTime: varchar("start_time", { length: 10 }), // "09:00"
+  endTime: varchar("end_time", { length: 10 }), // "11:00"
+  durationMinutes: integer("duration_minutes"),
+  isFlexible: boolean("is_flexible").default(false), // Can timing be adjusted?
+  
+  // Location
+  locationName: varchar("location_name", { length: 255 }),
+  locationAddress: text("location_address"),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  googlePlaceId: varchar("google_place_id", { length: 255 }),
+  
+  // Travel to this item
+  travelFromPrevious: jsonb("travel_from_previous").default({}), // {mode, duration, distance, instructions}
+  
+  // Booking info
+  vendorContractId: varchar("vendor_contract_id").references(() => vendorContracts.id, { onDelete: "set null" }),
+  bookingReference: varchar("booking_reference", { length: 255 }),
+  bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
+  confirmationNumber: varchar("confirmation_number", { length: 255 }),
+  
+  // Cost
+  estimatedCost: decimal("estimated_cost", { precision: 10, scale: 2 }),
+  actualCost: decimal("actual_cost", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  costPerPerson: boolean("cost_per_person").default(false),
+  
+  // Energy level for optimization
+  energyLevel: varchar("energy_level", { length: 20 }), // low, medium, high, very_high
+  isOutdoor: boolean("is_outdoor").default(false),
+  weatherDependent: boolean("weather_dependent").default(false),
+  
+  // Weather backup (self-reference stored as plain varchar to avoid circular dependency)
+  backupPlanId: varchar("backup_plan_id", { length: 255 }), // References another itinerary item
+  isBackupPlan: boolean("is_backup_plan").default(false),
+  weatherConditions: jsonb("weather_conditions").default({}), // {requiredConditions, triggers}
+  
+  // Participants (subset of trip participants for this item)
+  participantIds: jsonb("participant_ids").default([]), // IDs of participants attending
+  minParticipants: integer("min_participants"),
+  maxParticipants: integer("max_participants"),
+  
+  // Notes and attachments
+  notes: text("notes"),
+  privateNotes: text("private_notes"), // Organizer-only notes
+  attachments: jsonb("attachments").default([]), // [{name, url, type}]
+  
+  // Ordering
+  sortOrder: integer("sort_order").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Emergency Contacts - Per-trip emergency information
+export const tripEmergencyContacts = pgTable("trip_emergency_contacts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  
+  // Contact type
+  contactType: varchar("contact_type", { length: 50 }).notNull(), // local_expert, embassy, hospital, police, hotel, airline, insurance, custom
+  
+  // Contact details
+  name: varchar("name", { length: 255 }).notNull(),
+  organization: varchar("organization", { length: 255 }),
+  phone: varchar("phone", { length: 100 }),
+  alternatePhone: varchar("alternate_phone", { length: 100 }),
+  email: varchar("email", { length: 255 }),
+  address: text("address"),
+  website: text("website"),
+  
+  // Location
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  
+  // Availability
+  available24Hours: boolean("available_24_hours").default(false),
+  operatingHours: jsonb("operating_hours").default({}), // {mon: "9-5", tue: "9-5", ...}
+  languages: jsonb("languages").default(["English"]),
+  
+  // Priority and notes
+  priority: integer("priority").default(0), // Higher = more important
+  notes: text("notes"),
+  specialInstructions: text("special_instructions"),
+  
+  // Verification
+  isVerified: boolean("is_verified").default(false),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Trip Alerts - Active alerts for trips
+export const tripAlerts = pgTable("trip_alerts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  
+  // Alert details
+  alertType: varchar("alert_type", { length: 50 }).notNull(), // weather, safety, health, travel_advisory, vendor, deadline, custom
+  severity: varchar("severity", { length: 20 }).default("info"), // alertSeverityEnum
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  
+  // Source
+  source: varchar("source", { length: 100 }), // weather_api, government_advisory, system, manual
+  sourceUrl: text("source_url"),
+  
+  // Timing
+  effectiveFrom: timestamp("effective_from"),
+  effectiveUntil: timestamp("effective_until"),
+  
+  // Status
+  isActive: boolean("is_active").default(true),
+  isRead: boolean("is_read").default(false),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedByUserId: varchar("acknowledged_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Actions
+  suggestedActions: jsonb("suggested_actions").default([]), // [{action, url, priority}]
+  actionTaken: text("action_taken"),
+  
+  // Affected items
+  affectedItineraryItemIds: jsonb("affected_itinerary_item_ids").default([]),
+  affectedVendorContractIds: jsonb("affected_vendor_contract_ids").default([]),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert schemas
+export const insertTripParticipantSchema = createInsertSchema(tripParticipants).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertVendorContractSchema = createInsertSchema(vendorContracts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTripTransactionSchema = createInsertSchema(tripTransactions).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Types
+export type TripParticipant = typeof tripParticipants.$inferSelect;
+export type InsertTripParticipant = z.infer<typeof insertTripParticipantSchema>;
+export type VendorContract = typeof vendorContracts.$inferSelect;
+export type InsertVendorContract = z.infer<typeof insertVendorContractSchema>;
+export type TripTransaction = typeof tripTransactions.$inferSelect;
+export type InsertTripTransaction = z.infer<typeof insertTripTransactionSchema>;
+export type ItineraryItem = typeof itineraryItems.$inferSelect;
+export type InsertItineraryItem = z.infer<typeof insertItineraryItemSchema>;
+export type TripEmergencyContact = typeof tripEmergencyContacts.$inferSelect;
+export type InsertTripEmergencyContact = z.infer<typeof insertTripEmergencyContactSchema>;
+export type TripAlert = typeof tripAlerts.$inferSelect;
+export type InsertTripAlert = z.infer<typeof insertTripAlertSchema>;
