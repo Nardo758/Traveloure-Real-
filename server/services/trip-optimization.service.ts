@@ -1,4 +1,5 @@
-import { grokService, RealTimeIntelligenceResult, AutonomousItineraryResult } from "./grok.service";
+import { grokService, RealTimeIntelligenceResult, AutonomousItineraryResult, TravelPulseContext } from "./grok.service";
+import { travelPulseService } from "./travelpulse.service";
 
 export interface CartItem {
   id: string;
@@ -55,7 +56,9 @@ class TripOptimizationService {
     request: TripOptimizationRequest
   ): Promise<TripOptimizationResult> {
     let realTimeData: RealTimeIntelligenceResult | null = null;
+    let travelPulseContext: TravelPulseContext | undefined = undefined;
     
+    // Fetch real-time intelligence from Grok
     try {
       const intelligenceResult = await grokService.getRealTimeIntelligence({
         destination: request.destination,
@@ -67,6 +70,37 @@ class TripOptimizationService {
       console.error("Failed to fetch real-time intelligence:", error);
     }
 
+    // Fetch TravelPulse city intelligence for AI context
+    try {
+      const cityIntelligence = await travelPulseService.getCityIntelligence(request.destination);
+      if (cityIntelligence?.city) {
+        const city = cityIntelligence.city;
+        travelPulseContext = {
+          pulseScore: typeof city.pulseScore === 'number' ? city.pulseScore : undefined,
+          trendingScore: typeof city.trendingScore === 'number' ? city.trendingScore : undefined,
+          crowdLevel: typeof city.crowdLevel === 'string' ? city.crowdLevel : undefined,
+          aiBudgetEstimate: typeof city.aiBudgetEstimate === 'string' ? city.aiBudgetEstimate : undefined,
+          aiTravelTips: typeof city.aiTravelTips === 'string' ? city.aiTravelTips : undefined,
+          aiLocalInsights: typeof city.aiLocalInsights === 'string' ? city.aiLocalInsights : undefined,
+          aiMustSeeAttractions: typeof city.aiMustSeeAttractions === 'string' ? city.aiMustSeeAttractions : undefined,
+          aiSeasonalHighlights: typeof city.aiSeasonalHighlights === 'string' ? city.aiSeasonalHighlights : undefined,
+          aiUpcomingEvents: typeof city.aiUpcomingEvents === 'string' ? city.aiUpcomingEvents : undefined,
+          hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map(g => ({
+            name: g.placeName,
+            description: g.description ?? "",
+            gemScore: g.gemScore ?? 0,
+          })),
+          happeningNow: cityIntelligence.happeningNow?.slice(0, 5).map(e => ({
+            name: e.title,
+            type: e.eventType ?? "event",
+          })),
+        };
+        console.log(`[TripOptimization] TravelPulse context loaded for ${request.destination}`);
+      }
+    } catch (error) {
+      console.error("Failed to fetch TravelPulse intelligence:", error);
+    }
+
     const variations: OptimizedItinerary[] = [];
 
     // Extract cart item names to include as must-see attractions
@@ -76,7 +110,7 @@ class TripOptimizationService {
       ...cartItemNames,
     ].slice(0, 15); // Limit to prevent prompt overload
 
-    // Include cart items context in the base request
+    // Include cart items context and TravelPulse intelligence in the base request
     const baseItineraryResult = await grokService.generateAutonomousItinerary({
       destination: request.destination,
       dates: request.dates,
@@ -88,6 +122,7 @@ class TripOptimizationService {
       mustSeeAttractions: combinedAttractions,
       dietaryRestrictions: request.dietaryRestrictions,
       mobilityConsiderations: request.mobilityConsiderations,
+      travelPulseContext,
     });
 
     const cartItemsInsight = cartItemNames.length > 0 
@@ -104,6 +139,7 @@ class TripOptimizationService {
         `Pace: ${request.pacePreference || 'moderate'}`,
         ...(cartItemsInsight ? [cartItemsInsight] : []),
         `Interests: ${request.interests.slice(0, 3).join(', ') || 'General exploration'}`,
+        ...(travelPulseContext ? ["Enhanced with TravelPulse AI destination insights"] : []),
       ],
       realTimeFactors: {
         weatherUsed: false,
@@ -116,19 +152,22 @@ class TripOptimizationService {
     if (realTimeData) {
       const weatherOptimizedResult = await this.generateWeatherOptimizedItinerary(
         request,
-        realTimeData
+        realTimeData,
+        travelPulseContext
       );
       variations.push(weatherOptimizedResult);
 
       const bestValueResult = await this.generateBestValueItinerary(
         request,
-        realTimeData
+        realTimeData,
+        travelPulseContext
       );
       variations.push(bestValueResult);
     } else {
       const alternativeResult = await grokService.generateAutonomousItinerary({
         ...request,
         pacePreference: request.pacePreference === "packed" ? "moderate" : "packed",
+        travelPulseContext,
       });
       
       variations.push({
@@ -140,6 +179,7 @@ class TripOptimizationService {
           "Maximized activities per day",
           "Efficient route planning",
           "Early starts for popular attractions",
+          ...(travelPulseContext ? ["Enhanced with TravelPulse AI insights"] : []),
         ],
         realTimeFactors: {
           weatherUsed: false,
@@ -152,6 +192,7 @@ class TripOptimizationService {
       const relaxedResult = await grokService.generateAutonomousItinerary({
         ...request,
         pacePreference: "relaxed",
+        travelPulseContext,
       });
       
       variations.push({
@@ -163,6 +204,7 @@ class TripOptimizationService {
           "Extended time at each location",
           "Built-in rest periods",
           "Flexible dining options",
+          ...(travelPulseContext ? ["Enhanced with TravelPulse AI insights"] : []),
         ],
         realTimeFactors: {
           weatherUsed: false,
@@ -184,7 +226,8 @@ class TripOptimizationService {
 
   private async generateWeatherOptimizedItinerary(
     request: TripOptimizationRequest,
-    realTimeData: RealTimeIntelligenceResult
+    realTimeData: RealTimeIntelligenceResult,
+    travelPulseContext?: TravelPulseContext
   ): Promise<OptimizedItinerary> {
     const weatherContext = realTimeData.weatherForecast
       ? `Weather forecast: ${realTimeData.weatherForecast.summary}, ${realTimeData.weatherForecast.conditions}, High: ${realTimeData.weatherForecast.temperature.high}°F, Low: ${realTimeData.weatherForecast.temperature.low}°F`
@@ -209,6 +252,7 @@ class TripOptimizationService {
     const result = await grokService.generateAutonomousItinerary({
       ...request,
       mustSeeAttractions: enhancedAttractions.slice(0, 12),
+      travelPulseContext,
     });
 
     const insights: string[] = [];
@@ -243,7 +287,8 @@ class TripOptimizationService {
 
   private async generateBestValueItinerary(
     request: TripOptimizationRequest,
-    realTimeData: RealTimeIntelligenceResult
+    realTimeData: RealTimeIntelligenceResult,
+    travelPulseContext?: TravelPulseContext
   ): Promise<OptimizedItinerary> {
     const dealsContext = realTimeData.deals?.length
       ? realTimeData.deals.map(d => `${d.title}: ${d.discount}`).join(", ")
@@ -267,6 +312,7 @@ class TripOptimizationService {
         ...cartItemNames,
         ...(realTimeData.trendingExperiences?.slice(0, 3).map(t => t.name) || []),
       ].slice(0, 12),
+      travelPulseContext,
     });
 
     const insights: string[] = [];

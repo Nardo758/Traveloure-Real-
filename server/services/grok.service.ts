@@ -119,6 +119,20 @@ export interface RealTimeIntelligenceResult {
   }>;
 }
 
+export interface TravelPulseContext {
+  pulseScore?: number;
+  trendingScore?: number;
+  crowdLevel?: string;
+  aiBudgetEstimate?: string;
+  aiTravelTips?: string;
+  aiLocalInsights?: string;
+  aiMustSeeAttractions?: string;
+  aiSeasonalHighlights?: string;
+  aiUpcomingEvents?: string;
+  hiddenGems?: Array<{ name: string; description: string; gemScore: number }>;
+  happeningNow?: Array<{ name: string; type: string }>;
+}
+
 export interface AutonomousItineraryRequest {
   destination: string;
   dates: { start: string; end: string };
@@ -130,6 +144,7 @@ export interface AutonomousItineraryRequest {
   mustSeeAttractions?: string[];
   dietaryRestrictions?: string[];
   mobilityConsiderations?: string[];
+  travelPulseContext?: TravelPulseContext;
 }
 
 export interface AutonomousItineraryResult {
@@ -477,6 +492,59 @@ Return JSON with this structure:
   "estimatedSavingsWithExpert": <USD - how much an expert could save them>
 }`;
 
+    // Build TravelPulse intelligence context if available
+    const tpCtx = request.travelPulseContext;
+    let travelPulseSection = "";
+    
+    if (tpCtx) {
+      const tpParts: string[] = [];
+      
+      if (tpCtx.pulseScore) {
+        tpParts.push(`- City Pulse Score: ${tpCtx.pulseScore}/100 (activity level)`);
+      }
+      if (tpCtx.trendingScore) {
+        tpParts.push(`- Trending Score: ${tpCtx.trendingScore}/100 (current popularity)`);
+      }
+      if (tpCtx.crowdLevel) {
+        tpParts.push(`- Current Crowd Level: ${tpCtx.crowdLevel}`);
+      }
+      if (tpCtx.aiBudgetEstimate) {
+        tpParts.push(`- Local Budget Insight: ${tpCtx.aiBudgetEstimate}`);
+      }
+      if (tpCtx.aiSeasonalHighlights) {
+        tpParts.push(`- Seasonal Highlights: ${tpCtx.aiSeasonalHighlights}`);
+      }
+      if (tpCtx.aiMustSeeAttractions) {
+        tpParts.push(`- Top Attractions (prioritize these): ${tpCtx.aiMustSeeAttractions}`);
+      }
+      if (tpCtx.aiLocalInsights) {
+        tpParts.push(`- Local Insights: ${tpCtx.aiLocalInsights}`);
+      }
+      if (tpCtx.aiTravelTips) {
+        tpParts.push(`- Travel Tips: ${tpCtx.aiTravelTips}`);
+      }
+      if (tpCtx.hiddenGems && tpCtx.hiddenGems.length > 0) {
+        const gemNames = tpCtx.hiddenGems.slice(0, 5).map(g => g.name).join(", ");
+        tpParts.push(`- Hidden Gems to Consider: ${gemNames}`);
+      }
+      if (tpCtx.happeningNow && tpCtx.happeningNow.length > 0) {
+        const eventNames = tpCtx.happeningNow.slice(0, 3).map(e => `${e.name} (${e.type})`).join(", ");
+        tpParts.push(`- Events Happening Now: ${eventNames}`);
+      }
+      if (tpCtx.aiUpcomingEvents) {
+        tpParts.push(`- Upcoming Events: ${tpCtx.aiUpcomingEvents}`);
+      }
+      
+      if (tpParts.length > 0) {
+        travelPulseSection = `
+
+**Real-Time Destination Intelligence (TravelPulse AI):**
+${tpParts.join("\n")}
+
+IMPORTANT: Incorporate this real-time intelligence into your recommendations. Prioritize trending experiences and must-see attractions. Factor in crowd levels when scheduling. Include hidden gems where they fit the traveler's interests.`;
+      }
+    }
+
     const userPrompt = `Create a complete travel itinerary:
 
 **Trip Details:**
@@ -490,8 +558,9 @@ Return JSON with this structure:
 ${request.mustSeeAttractions?.length ? `- Must-See: ${request.mustSeeAttractions.join(", ")}` : ""}
 ${request.dietaryRestrictions?.length ? `- Dietary: ${request.dietaryRestrictions.join(", ")}` : ""}
 ${request.mobilityConsiderations?.length ? `- Mobility: ${request.mobilityConsiderations.join(", ")}` : ""}
+${travelPulseSection}
 
-Create a detailed, actionable itinerary.`;
+Create a detailed, actionable itinerary that incorporates the real-time destination intelligence above.`;
 
     try {
       const response = await getGrokClient().chat.completions.create({
