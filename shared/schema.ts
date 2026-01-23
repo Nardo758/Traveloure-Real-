@@ -2544,6 +2544,122 @@ export const tripAlerts = pgTable("trip_alerts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// ============ SPONTANEOUS ACTIVITIES & LIVE INTEL ENGINE ============
+
+// Spontaneous opportunity types
+export const spontaneousOpportunityTypeEnum = ["last_minute", "trending", "local_event", "flash_deal"] as const;
+export const signalSourceEnum = ["provider_cache", "fever", "viator", "amadeus", "manual"] as const;
+
+// Spontaneous Opportunities - Live opportunities for instant booking
+export const spontaneousOpportunities = pgTable("spontaneous_opportunities", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  // Location
+  city: varchar("city", { length: 100 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  
+  // Type and source
+  type: varchar("type", { length: 50 }).notNull(), // spontaneousOpportunityTypeEnum
+  source: varchar("source", { length: 50 }).notNull(), // signalSourceEnum
+  externalId: varchar("external_id", { length: 255 }), // ID from source provider
+  
+  // Content
+  title: varchar("title", { length: 200 }).notNull(),
+  description: text("description"),
+  imageUrl: text("image_url"),
+  affiliateUrl: text("affiliate_url"),
+  
+  // Pricing
+  originalPrice: decimal("original_price", { precision: 10, scale: 2 }),
+  currentPrice: decimal("current_price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  discountPercent: integer("discount_percent"),
+  
+  // Timing
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  expirationTime: timestamp("expiration_time"), // When this opportunity expires
+  
+  // Availability
+  capacity: integer("capacity"),
+  remainingSpots: integer("remaining_spots"),
+  
+  // Scoring
+  urgencyScore: integer("urgency_score").default(0), // 0-100
+  actionabilityScore: integer("actionability_score").default(0), // 0-100
+  trendingScore: decimal("trending_score", { precision: 5, scale: 2 }).default("0.0"),
+  
+  // Category and tags
+  category: varchar("category", { length: 100 }),
+  tags: jsonb("tags").default([]),
+  
+  // Metadata
+  metadata: jsonb("metadata").default({}),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Real-time Signals - Tracking trending and popularity signals
+export const realtimeSignals = pgTable("realtime_signals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  
+  // Source identification
+  source: varchar("source", { length: 50 }).notNull(), // signalSourceEnum
+  keyword: varchar("keyword", { length: 100 }).notNull(),
+  location: varchar("location", { length: 100 }),
+  
+  // Signal strength metrics
+  signalStrength: integer("signal_strength").notNull(), // 1-100
+  volume: integer("volume"), // Number of mentions/bookings
+  sentiment: decimal("sentiment", { precision: 3, scale: 2 }), // -1 to 1
+  
+  // Related opportunity
+  opportunityId: varchar("opportunity_id").references(() => spontaneousOpportunities.id, { onDelete: "cascade" }),
+  
+  // Timing
+  detectedAt: timestamp("detected_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  
+  // Metadata
+  metadata: jsonb("metadata").default({}),
+});
+
+// User Spontaneity Preferences - Personalization settings
+export const userSpontaneityPreferences = pgTable("user_spontaneity_preferences", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  // Spontaneity level (0 = very planned, 100 = very spontaneous)
+  spontaneityLevel: integer("spontaneity_level").default(50),
+  
+  // Location preferences
+  notificationRadius: integer("notification_radius").default(10), // km
+  preferredCities: jsonb("preferred_cities").default([]),
+  
+  // Content preferences
+  preferredCategories: jsonb("preferred_categories").default([]),
+  blacklistedTypes: jsonb("blacklisted_types").default([]),
+  
+  // Price sensitivity (0 = price conscious, 100 = price insensitive)
+  priceSensitivity: integer("price_sensitivity").default(50),
+  maxBudgetPerActivity: decimal("max_budget_per_activity", { precision: 10, scale: 2 }),
+  
+  // Time preferences
+  timeWindows: jsonb("time_windows").default([
+    { day: "weekend", hours: ["18:00", "22:00"] },
+    { day: "weekday", hours: ["19:00", "23:00"] }
+  ]),
+  
+  // Notification settings
+  enableNotifications: boolean("enable_notifications").default(true),
+  lastNotifiedAt: timestamp("last_notified_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas
 export const insertTripParticipantSchema = createInsertSchema(tripParticipants).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorContractSchema = createInsertSchema(vendorContracts).omit({ id: true, createdAt: true, updatedAt: true });
@@ -2551,6 +2667,11 @@ export const insertTripTransactionSchema = createInsertSchema(tripTransactions).
 export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
+
+// Spontaneous Activity schemas
+export const insertSpontaneousOpportunitySchema = createInsertSchema(spontaneousOpportunities).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertRealtimeSignalSchema = createInsertSchema(realtimeSignals).omit({ id: true });
+export const insertUserSpontaneityPreferencesSchema = createInsertSchema(userSpontaneityPreferences).omit({ id: true, createdAt: true, updatedAt: true });
 
 // Types
 export type TripParticipant = typeof tripParticipants.$inferSelect;
@@ -2565,3 +2686,11 @@ export type TripEmergencyContact = typeof tripEmergencyContacts.$inferSelect;
 export type InsertTripEmergencyContact = z.infer<typeof insertTripEmergencyContactSchema>;
 export type TripAlert = typeof tripAlerts.$inferSelect;
 export type InsertTripAlert = z.infer<typeof insertTripAlertSchema>;
+
+// Spontaneous Activity types
+export type SpontaneousOpportunity = typeof spontaneousOpportunities.$inferSelect;
+export type InsertSpontaneousOpportunity = z.infer<typeof insertSpontaneousOpportunitySchema>;
+export type RealtimeSignal = typeof realtimeSignals.$inferSelect;
+export type InsertRealtimeSignal = z.infer<typeof insertRealtimeSignalSchema>;
+export type UserSpontaneityPreferences = typeof userSpontaneityPreferences.$inferSelect;
+export type InsertUserSpontaneityPreferences = z.infer<typeof insertUserSpontaneityPreferencesSchema>;
