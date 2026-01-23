@@ -37,6 +37,7 @@ import { budgetService } from "./services/budget.service";
 import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
 import { emergencyService } from "./services/emergency.service";
 import { experienceCatalogService } from "./services/experience-catalog.service";
+import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import { 
   insertTripParticipantSchema, 
@@ -6833,6 +6834,139 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.json(options);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch rebooking options" });
+    }
+  });
+
+  // ============ SPONTANEOUS ACTIVITIES & LIVE INTEL ENGINE ============
+  
+  // GET /api/spontaneous/opportunities - Get spontaneous opportunities based on location
+  app.get("/api/spontaneous/opportunities", async (req, res) => {
+    try {
+      const schema = z.object({
+        lat: z.coerce.number().min(-90).max(90).optional(),
+        lng: z.coerce.number().min(-180).max(180).optional(),
+        city: z.string().optional(),
+        radius: z.coerce.number().min(1).max(100).default(10),
+        limit: z.coerce.number().min(1).max(50).default(20),
+        types: z.string().optional(), // comma-separated types
+        categories: z.string().optional(), // comma-separated categories
+        maxPrice: z.coerce.number().optional(),
+        timeWindow: z.enum(["tonight", "tomorrow", "weekend", "week", "surprise_me"]).optional(),
+      });
+      
+      const params = schema.parse(req.query);
+      const userId = (req.user as any)?.claims?.sub || null;
+      
+      const opportunities = await opportunityEngineService.getOpportunities(userId, {
+        lat: params.lat,
+        lng: params.lng,
+        city: params.city,
+        radius: params.radius,
+        limit: params.limit,
+        types: params.types?.split(","),
+        categories: params.categories?.split(","),
+        maxPrice: params.maxPrice,
+        timeWindow: params.timeWindow,
+      });
+      
+      res.json({
+        opportunities,
+        total: opportunities.length,
+        refreshedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Error fetching spontaneous opportunities:", error);
+      res.status(500).json({ message: "Failed to fetch opportunities" });
+    }
+  });
+
+  // GET /api/spontaneous/preferences - Get user spontaneity preferences
+  app.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const preferences = await opportunityEngineService.getUserPreferences(userId);
+      res.json(preferences || {});
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch preferences" });
+    }
+  });
+
+  // POST /api/spontaneous/preferences - Save user spontaneity preferences
+  app.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      const schema = z.object({
+        spontaneityLevel: z.number().min(0).max(100).optional(),
+        notificationRadius: z.number().min(1).max(100).optional(),
+        preferredCities: z.array(z.string()).optional(),
+        preferredCategories: z.array(z.string()).optional(),
+        blacklistedTypes: z.array(z.string()).optional(),
+        priceSensitivity: z.number().min(0).max(100).optional(),
+        maxBudgetPerActivity: z.number().optional(),
+        timeWindows: z.array(z.object({
+          day: z.enum(["weekday", "weekend", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]),
+          hours: z.array(z.string()),
+        })).optional(),
+        enableNotifications: z.boolean().optional(),
+      });
+      
+      const preferences = schema.parse(req.body);
+      const saved = await opportunityEngineService.saveUserPreferences(userId, {
+        ...preferences,
+        maxBudgetPerActivity: preferences.maxBudgetPerActivity?.toString(),
+      });
+      
+      res.json(saved);
+    } catch (error) {
+      console.error("Error saving spontaneous preferences:", error);
+      res.status(500).json({ message: "Failed to save preferences" });
+    }
+  });
+
+  // POST /api/spontaneous/:id/book - Book a spontaneous opportunity
+  app.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const opportunityId = req.params.id;
+      
+      const result = await opportunityEngineService.bookOpportunity(userId, opportunityId);
+      
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(404).json(result);
+      }
+    } catch (error) {
+      res.status(500).json({ message: "Failed to process booking" });
+    }
+  });
+
+  // GET /api/spontaneous/quick-search/:window - Quick search for opportunities
+  app.get("/api/spontaneous/quick-search/:window", async (req, res) => {
+    try {
+      const window = req.params.window as "tonight" | "tomorrow" | "weekend" | "surprise_me";
+      const city = req.query.city as string | undefined;
+      const lat = req.query.lat ? parseFloat(req.query.lat as string) : undefined;
+      const lng = req.query.lng ? parseFloat(req.query.lng as string) : undefined;
+      
+      const userId = (req.user as any)?.claims?.sub || null;
+      
+      const opportunities = await opportunityEngineService.getOpportunities(userId, {
+        lat,
+        lng,
+        city,
+        timeWindow: window,
+        limit: 12,
+      });
+      
+      res.json({
+        opportunities,
+        timeWindow: window,
+        total: opportunities.length,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch opportunities" });
     }
   });
 
