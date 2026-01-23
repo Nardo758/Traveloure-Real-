@@ -5358,6 +5358,9 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           city: e.city,
           country: e.country,
           description: e.description,
+          specificDate: e.specificDate,
+          startMonth: e.startMonth,
+          endMonth: e.endMonth,
         })),
       });
     } catch (error: any) {
