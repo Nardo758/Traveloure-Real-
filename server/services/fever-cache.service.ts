@@ -209,9 +209,16 @@ class FeverCacheService {
 
   async cleanupExpiredCache(): Promise<number> {
     const now = new Date();
-    const result = await db.delete(feverEventCache)
+    const expiredEvents = await db.select({ id: feverEventCache.id })
+      .from(feverEventCache)
       .where(lte(feverEventCache.expiresAt, now));
-    return 0;
+    
+    if (expiredEvents.length > 0) {
+      await db.delete(feverEventCache)
+        .where(lte(feverEventCache.expiresAt, now));
+    }
+    
+    return expiredEvents.length;
   }
 
   private cacheToEvent(cached: typeof feverEventCache.$inferSelect): FeverEvent {
