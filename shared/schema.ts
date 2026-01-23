@@ -738,6 +738,15 @@ export const experienceTypes = pgTable("experience_types", {
   imageUrl: text("image_url"),
   isActive: boolean("is_active").default(true),
   sortOrder: integer("sort_order").default(0),
+  // Logistics Intelligence Fields
+  paymentFlowType: varchar("payment_flow_type", { length: 50 }), // group_split, joint, single_payer, multi_stakeholder, individual_with_discount
+  paymentComplexity: varchar("payment_complexity", { length: 20 }), // low, medium, high, very_high
+  timingComplexity: varchar("timing_complexity", { length: 20 }), // low, medium, high, very_high, extreme
+  contingencyLevel: varchar("contingency_level", { length: 20 }), // flexible, important, critical
+  typicalGroupSizeMin: integer("typical_group_size_min"),
+  typicalGroupSizeMax: integer("typical_group_size_max"),
+  typicalDurationMinDays: integer("typical_duration_min_days"),
+  typicalDurationMaxDays: integer("typical_duration_max_days"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
