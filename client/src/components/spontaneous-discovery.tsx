@@ -94,10 +94,10 @@ const timeWindowConfig: Record<TimeWindow, { label: string; icon: typeof Moon; d
 };
 
 const typeColors: Record<string, string> = {
-  last_minute: "bg-orange-500/10 text-orange-600 border-orange-200",
-  trending: "bg-blue-500/10 text-blue-600 border-blue-200",
-  local_event: "bg-purple-500/10 text-purple-600 border-purple-200",
-  flash_deal: "bg-green-500/10 text-green-600 border-green-200",
+  last_minute: "bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-800",
+  trending: "bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+  local_event: "bg-purple-500/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800",
+  flash_deal: "bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800",
 };
 
 const sourceIcons: Record<string, typeof Activity> = {
@@ -187,10 +187,10 @@ export function SpontaneousDiscovery({
   };
 
   const getUrgencyLabel = (score: number): { label: string; color: string } => {
-    if (score >= 80) return { label: "Act Now!", color: "text-red-500" };
-    if (score >= 60) return { label: "Limited Time", color: "text-orange-500" };
-    if (score >= 40) return { label: "Good Deal", color: "text-yellow-500" };
-    return { label: "Available", color: "text-green-500" };
+    if (score >= 80) return { label: "Act Now!", color: "text-red-500 dark:text-red-400" };
+    if (score >= 60) return { label: "Limited Time", color: "text-orange-500 dark:text-orange-400" };
+    if (score >= 40) return { label: "Good Deal", color: "text-yellow-500 dark:text-yellow-400" };
+    return { label: "Available", color: "text-green-500 dark:text-green-400" };
   };
 
   return (
@@ -386,15 +386,15 @@ export function SpontaneousDiscovery({
                             
                             {opportunity.trendingOn && opportunity.trendingOn.length > 0 && (
                               <div className="flex items-center gap-1.5 text-xs">
-                                <TrendingUp className="h-3 w-3 text-blue-500" />
-                                <span className="text-blue-600">
+                                <TrendingUp className="h-3 w-3 text-blue-500 dark:text-blue-400" />
+                                <span className="text-blue-600 dark:text-blue-400">
                                   Trending on {opportunity.trendingOn.join(", ")}
                                 </span>
                               </div>
                             )}
                             
                             {opportunity.remainingSpots !== null && opportunity.remainingSpots > 0 && opportunity.remainingSpots < 10 && (
-                              <div className="flex items-center gap-1.5 text-xs text-red-600">
+                              <div className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400">
                                 <Clock className="h-3 w-3" />
                                 <span>Only {opportunity.remainingSpots} spots left!</span>
                               </div>
@@ -409,7 +409,7 @@ export function SpontaneousDiscovery({
                                     {formatPrice(opportunity.currentPrice, opportunity.currency)}
                                   </span>
                                   {opportunity.discountPercent && opportunity.discountPercent > 0 && (
-                                    <Badge variant="secondary" className="bg-green-500/10 text-green-600 text-xs">
+                                    <Badge variant="secondary" className="bg-green-500/10 dark:bg-green-500/20 text-green-600 dark:text-green-400 text-xs">
                                       {opportunity.discountPercent}% off
                                     </Badge>
                                   )}
