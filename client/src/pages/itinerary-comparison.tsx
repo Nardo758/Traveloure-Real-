@@ -12,7 +12,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import {
   Sparkles,
@@ -27,8 +26,6 @@ import {
   Zap,
   ShoppingCart,
   ChevronRight,
-  ChevronDown,
-  ChevronUp,
   Calendar,
   Loader2,
   Award,
@@ -40,7 +37,6 @@ import {
   Ticket,
   Users,
   Maximize2,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -115,7 +111,7 @@ export default function ItineraryComparisonPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
-  const [expandedVariantId, setExpandedVariantId] = useState<string | null>(null);
+  const [modalVariant, setModalVariant] = useState<Variant | null>(null);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
 
@@ -574,76 +570,63 @@ export default function ItineraryComparisonPage() {
                         </span>
                       </div>
                       <Separator />
-                      <Collapsible 
-                        open={expandedVariantId === userVariant.id}
-                        onOpenChange={() => setExpandedVariantId(expandedVariantId === userVariant.id ? null : userVariant.id)}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-medium">Items ({userVariant.items.length})</h4>
-                            <CollapsibleTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 px-2" data-testid={`button-expand-${userVariant.id}`}>
-                                {expandedVariantId === userVariant.id ? (
-                                  <>Collapse <ChevronUp className="h-3 w-3 ml-1" /></>
-                                ) : (
-                                  <>Expand <ChevronDown className="h-3 w-3 ml-1" /></>
-                                )}
-                              </Button>
-                            </CollapsibleTrigger>
-                          </div>
-                          <ScrollArea className={cn(expandedVariantId === userVariant.id ? "h-auto max-h-96" : "h-40")}>
-                            {userVariant.items.map((item, idx) => {
-                              const bookingType = getBookingType(item.serviceType);
-                              const partnerUrl = getPartnerUrl(item);
-                              return (
-                                <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                      <Badge variant="outline" className="text-xs shrink-0">
-                                        Day {item.dayNumber}
-                                      </Badge>
-                                      <span className={cn(expandedVariantId === userVariant.id ? "" : "truncate max-w-32")}>
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {bookingType === "partner" ? (
-                                        <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
-                                          {item.serviceType?.toLowerCase().includes("transport") ? (
-                                            <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
-                                          ) : (
-                                            <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
-                                          )}
-                                        </Badge>
-                                      ) : (
-                                        <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
-                                          <Check className="h-2.5 w-2.5 mr-1" />In-App
-                                        </Badge>
-                                      )}
-                                      <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
-                                    </div>
-                                  </div>
-                                  <CollapsibleContent>
-                                    {expandedVariantId === userVariant.id && (
-                                      <div className="mt-2 pl-4 text-xs text-muted-foreground space-y-1">
-                                        {item.description && <p>{item.description}</p>}
-                                        {item.location && <p className="flex items-center gap-1"><MapPin className="h-3 w-3" />{item.location}</p>}
-                                        {item.duration > 0 && <p className="flex items-center gap-1"><Clock className="h-3 w-3" />{item.duration} mins</p>}
-                                        {item.rating && <p className="flex items-center gap-1"><Star className="h-3 w-3" />{item.rating}</p>}
-                                        {partnerUrl && (
-                                          <a href={partnerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
-                                            Book on Partner Site <ExternalLink className="h-3 w-3" />
-                                          </a>
-                                        )}
-                                      </div>
-                                    )}
-                                  </CollapsibleContent>
-                                </div>
-                              );
-                            })}
-                          </ScrollArea>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium">Items ({userVariant.items.length})</h4>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalVariant(userVariant);
+                            }}
+                            data-testid={`button-view-plan-${userVariant.id}`}
+                          >
+                            <Maximize2 className="h-3 w-3 mr-1" />
+                            View Full Plan
+                          </Button>
                         </div>
-                      </Collapsible>
+                        <ScrollArea className="h-32">
+                          {userVariant.items.slice(0, 4).map((item, idx) => {
+                            const bookingType = getBookingType(item.serviceType);
+                            return (
+                              <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Badge variant="outline" className="text-xs shrink-0">
+                                      Day {item.dayNumber}
+                                    </Badge>
+                                    <span className="truncate max-w-32">
+                                      {item.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {bookingType === "partner" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                        {item.serviceType?.toLowerCase().includes("transport") ? (
+                                          <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                        ) : (
+                                          <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                        )}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                        <Check className="h-2.5 w-2.5 mr-1" />In-App
+                                      </Badge>
+                                    )}
+                                    <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {userVariant.items.length > 4 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                              +{userVariant.items.length - 4} more activities...
+                            </p>
+                          )}
+                        </ScrollArea>
+                      </div>
                     </div>
                   </CardContent>
                   <CardFooter className="flex-col gap-2">
@@ -676,7 +659,7 @@ export default function ItineraryComparisonPage() {
                 >
                   {index === 0 && (
                     <div className="absolute -top-3 left-4">
-                      <Badge className="bg-green-600 hover:bg-green-700">
+                      <Badge className="bg-green-600">
                         <Award className="h-3 w-3 mr-1" />
                         Recommended
                       </Badge>
@@ -684,7 +667,7 @@ export default function ItineraryComparisonPage() {
                   )}
                   <CardHeader className="pt-6">
                     <div className="flex items-center justify-between">
-                      <Badge variant="default" className="bg-primary/10 text-primary hover:bg-primary/20">
+                      <Badge variant="default" className="bg-primary/10 text-primary">
                         <Sparkles className="h-3 w-3 mr-1" />
                         AI Optimized
                       </Badge>
@@ -732,82 +715,68 @@ export default function ItineraryComparisonPage() {
                       )}
 
                       <Separator />
-                      <Collapsible 
-                        open={expandedVariantId === variant.id}
-                        onOpenChange={() => setExpandedVariantId(expandedVariantId === variant.id ? null : variant.id)}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <h4 className="text-sm font-medium">Items ({variant.items.length})</h4>
-                            <CollapsibleTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 px-2" data-testid={`button-expand-${variant.id}`}>
-                                {expandedVariantId === variant.id ? (
-                                  <>Collapse <ChevronUp className="h-3 w-3 ml-1" /></>
-                                ) : (
-                                  <>Expand <ChevronDown className="h-3 w-3 ml-1" /></>
-                                )}
-                              </Button>
-                            </CollapsibleTrigger>
-                          </div>
-                          <ScrollArea className={cn(expandedVariantId === variant.id ? "h-auto max-h-96" : "h-32")}>
-                            {variant.items.map((item, idx) => {
-                              const bookingType = getBookingType(item.serviceType);
-                              const partnerUrl = getPartnerUrl(item);
-                              return (
-                                <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
-                                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                      <Badge variant="outline" className="text-xs shrink-0">
-                                        Day {item.dayNumber}
-                                      </Badge>
-                                      <span className={cn(expandedVariantId === variant.id ? "" : "truncate max-w-32")}>
-                                        {item.name}
-                                      </span>
-                                      {item.isReplacement && (
-                                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 shrink-0">
-                                          New
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      {bookingType === "partner" ? (
-                                        <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
-                                          {item.serviceType?.toLowerCase().includes("transport") ? (
-                                            <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
-                                          ) : (
-                                            <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
-                                          )}
-                                        </Badge>
-                                      ) : (
-                                        <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
-                                          <Check className="h-2.5 w-2.5 mr-1" />In-App
-                                        </Badge>
-                                      )}
-                                      <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
-                                    </div>
-                                  </div>
-                                  <CollapsibleContent>
-                                    {expandedVariantId === variant.id && (
-                                      <div className="mt-2 pl-4 text-xs text-muted-foreground space-y-1">
-                                        {item.description && <p>{item.description}</p>}
-                                        {item.location && <p className="flex items-center gap-1"><MapPin className="h-3 w-3" />{item.location}</p>}
-                                        {item.duration > 0 && <p className="flex items-center gap-1"><Clock className="h-3 w-3" />{item.duration} mins</p>}
-                                        {item.rating && <p className="flex items-center gap-1"><Star className="h-3 w-3" />{item.rating}</p>}
-                                        {item.replacementReason && <p className="text-green-600">{item.replacementReason}</p>}
-                                        {partnerUrl && (
-                                          <a href={partnerUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center gap-1">
-                                            Book on Partner Site <ExternalLink className="h-3 w-3" />
-                                          </a>
-                                        )}
-                                      </div>
-                                    )}
-                                  </CollapsibleContent>
-                                </div>
-                              );
-                            })}
-                          </ScrollArea>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium">Items ({variant.items.length})</h4>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalVariant(variant);
+                            }}
+                            data-testid={`button-view-plan-${variant.id}`}
+                          >
+                            <Maximize2 className="h-3 w-3 mr-1" />
+                            View Full Plan
+                          </Button>
                         </div>
-                      </Collapsible>
+                        <ScrollArea className="h-32">
+                          {variant.items.slice(0, 4).map((item, idx) => {
+                            const bookingType = getBookingType(item.serviceType);
+                            return (
+                              <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <Badge variant="outline" className="text-xs shrink-0">
+                                      Day {item.dayNumber}
+                                    </Badge>
+                                    <span className="truncate max-w-32">
+                                      {item.name}
+                                    </span>
+                                    {item.isReplacement && (
+                                      <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 shrink-0">
+                                        New
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {bookingType === "partner" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 text-xs shrink-0">
+                                        {item.serviceType?.toLowerCase().includes("transport") ? (
+                                          <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                        ) : (
+                                          <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                        )}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-700 text-xs shrink-0">
+                                        <Check className="h-2.5 w-2.5 mr-1" />In-App
+                                      </Badge>
+                                    )}
+                                    <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {variant.items.length > 4 && (
+                            <p className="text-xs text-muted-foreground text-center py-2">
+                              +{variant.items.length - 4} more activities...
+                            </p>
+                          )}
+                        </ScrollArea>
+                      </div>
                     </div>
                   </CardContent>
                   <CardFooter>
@@ -890,6 +859,184 @@ export default function ItineraryComparisonPage() {
 
           </>
         )}
+
+        {/* Full-Page Itinerary Modal */}
+        <Dialog open={!!modalVariant} onOpenChange={() => setModalVariant(null)}>
+          <DialogContent className="max-w-4xl h-[90vh] flex flex-col p-0">
+            <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <DialogTitle className="text-xl flex items-center gap-2">
+                    {modalVariant?.source === "ai" && (
+                      <Badge variant="default" className="bg-primary/10 text-primary">
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        AI Optimized
+                      </Badge>
+                    )}
+                    {modalVariant?.name}
+                  </DialogTitle>
+                  <DialogDescription className="mt-1">
+                    {modalVariant?.description}
+                  </DialogDescription>
+                </div>
+                <div className="text-right shrink-0 ml-4">
+                  <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    ${parseFloat(modalVariant?.totalCost || "0").toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {modalVariant?.items?.length} activities
+                  </p>
+                </div>
+              </div>
+            </DialogHeader>
+            
+            <ScrollArea className="flex-1 px-6">
+              <div className="py-4 space-y-6">
+                {/* Group items by day */}
+                {modalVariant && (() => {
+                  const dayGroups = modalVariant.items.reduce((acc, item) => {
+                    const day = item.dayNumber;
+                    if (!acc[day]) acc[day] = [];
+                    acc[day].push(item);
+                    return acc;
+                  }, {} as Record<number, VariantItem[]>);
+                  
+                  const sortedDays = Object.keys(dayGroups)
+                    .map(Number)
+                    .sort((a, b) => a - b);
+                  
+                  return sortedDays.map((dayNum) => (
+                    <div key={dayNum} className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-sm font-semibold">
+                          <Calendar className="h-3.5 w-3.5 mr-1" />
+                          Day {dayNum}
+                        </Badge>
+                        <Separator className="flex-1" />
+                      </div>
+                      
+                      <div className="space-y-3 pl-4">
+                        {dayGroups[dayNum]
+                          .sort((a, b) => (a.startTime || a.timeSlot || "").localeCompare(b.startTime || b.timeSlot || ""))
+                          .map((item, idx) => {
+                            const bookingType = getBookingType(item.serviceType);
+                            const partnerUrl = getPartnerUrl(item);
+                            return (
+                              <div 
+                                key={item.id || idx} 
+                                className="bg-muted/30 rounded-lg p-4 space-y-2"
+                              >
+                                <div className="flex items-start justify-between gap-3 flex-wrap">
+                                  <div className="space-y-1 flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="font-medium">{item.name}</h4>
+                                      {item.isReplacement && (
+                                        <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
+                                          New
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {item.description && (
+                                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1 shrink-0">
+                                    <span className="font-semibold">${parseFloat(item.price || "0")}</span>
+                                    {bookingType === "partner" ? (
+                                      <Badge className="bg-blue-100 text-blue-700 text-xs">
+                                        {item.serviceType?.toLowerCase().includes("transport") ? (
+                                          <><Train className="h-2.5 w-2.5 mr-1" />12Go</>
+                                        ) : (
+                                          <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
+                                        )}
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-green-100 text-green-700 text-xs">
+                                        <Check className="h-2.5 w-2.5 mr-1" />Book on Traveloure
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="h-3.5 w-3.5" />
+                                    {item.startTime} - {item.endTime}
+                                  </span>
+                                  {item.duration > 0 && (
+                                    <span>({item.duration} mins)</span>
+                                  )}
+                                  {item.location && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="h-3.5 w-3.5" />
+                                      {item.location}
+                                    </span>
+                                  )}
+                                  {item.rating && (
+                                    <span className="flex items-center gap-1">
+                                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                                      {item.rating}
+                                    </span>
+                                  )}
+                                </div>
+                                
+                                {item.replacementReason && (
+                                  <p className="text-sm text-green-600 dark:text-green-400 italic">
+                                    {item.replacementReason}
+                                  </p>
+                                )}
+                                
+                                {partnerUrl && (
+                                  <a 
+                                    href={partnerUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                                  >
+                                    Book on Partner Site <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ));
+                })()}
+                
+                {/* AI Reasoning */}
+                {modalVariant?.aiReasoning && (
+                  <div className="bg-primary/5 rounded-lg p-4">
+                    <h4 className="font-medium mb-2 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      AI Recommendation
+                    </h4>
+                    <p className="text-sm text-muted-foreground italic">
+                      "{modalVariant.aiReasoning}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+            
+            <DialogFooter className="px-6 py-4 border-t shrink-0">
+              <Button variant="outline" onClick={() => setModalVariant(null)}>
+                Close
+              </Button>
+              <Button 
+                onClick={() => {
+                  if (modalVariant) {
+                    selectMutation.mutate(modalVariant.id);
+                    setModalVariant(null);
+                  }
+                }}
+                disabled={selectMutation.isPending}
+              >
+                {selectedVariantId === modalVariant?.id ? "Selected" : "Select This Plan"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
           <DialogContent className="sm:max-w-lg">
