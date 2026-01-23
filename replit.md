@@ -72,6 +72,15 @@ The application features a modern, responsive design built with Tailwind CSS and
   - **Emergency Service** (`server/services/emergency.service.ts`): Emergency contacts, alerts with severity levels, embassy info, emergency numbers, rebooking assistance
   - **Database Tables**: trip_participants, vendor_contracts, trip_transactions, itinerary_items, trip_emergency_contacts, trip_alerts
   - **Frontend Component**: TripLogisticsDashboard (`client/src/components/logistics/trip-logistics-dashboard.tsx`) displays real-time logistics data
+- **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities from cached provider data:
+  - **OpportunityEngineService** (`server/services/opportunity-engine.service.ts`): Generates scored opportunities from Viator activities, Fever events, and Amadeus hotels
+  - **Scoring System**: Urgency, actionability, and trending scores based on popularity, booking availability, time-to-start, and review counts
+  - **Quick Search Time Windows**: Tonight, Tomorrow, This Weekend, Surprise Me - with smart filtering
+  - **User Preferences**: Spontaneity level, notification radius, preferred categories, budget limits, blacklisted types
+  - **Database Tables**: spontaneous_opportunities, realtime_signals, user_spontaneity_preferences
+  - **API Endpoints**: `/api/spontaneous/opportunities`, `/api/spontaneous/preferences`, `/api/spontaneous/quick-search/:window`, `/api/spontaneous/:id/book`
+  - **Frontend Component**: SpontaneousDiscovery (`client/src/components/spontaneous-discovery.tsx`) with tabbed time window UI, city search, and opportunity cards
+  - **Page Route**: `/spontaneous` - Live Intel Engine discovery page
 
 ### System Design Choices
 - **Modularity**: Codebase organized into `pages`-based frontend, and `server`/`shared` directories.
