@@ -30,8 +30,11 @@ The application features a modern, responsive design built with Tailwind CSS and
 - **Experience Planning System**: Template-based planning for various experience types (e.g., Travel, Wedding, Corporate).
   - Category-specific provider browsing with filtering and an interactive Map View (Google Maps).
   - AI Optimization tab for itinerary analysis, efficiency scoring, and recommendations using Anthropic Claude.
-  - Dynamic Template System with database-driven tabs, filters (`single_select`, `multi_select`, `range`, `toggle`), and universal filters (date range, budget, booking status, cancellation policy, expert verified).
-  - Seeded templates for Bachelor/Bachelorette Parties and Anniversary Trips with specific logistics and romance-focused filters.
+  - **Dynamic Template System**: Database-driven tabs and multi-level filtering via 5 schema tables (experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions, experienceUniversalFilters, experienceUniversalFilterOptions).
+    - Filter types: `single_select`, `multi_select`, `range`, `toggle`
+    - Universal filters: date range, budget, booking status, cancellation policy, expert verified
+    - TemplateFiltersPanel component renders filters dynamically for template-driven experience types
+  - Seeded templates for Bachelor/Bachelorette Parties (8 tabs with logistics-focused filters: group size, budget tiers, venue capacity, energy level) and Anniversary Trips (8 tabs with romance-focused filters: intimacy level, privacy, ambiance, special services).
 - **Reviews & Notifications**: System for user reviews and timely updates.
 - **Role-Based Dashboards**: Comprehensive dashboards for Service Providers, Administrators, and Executive Assistants.
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
