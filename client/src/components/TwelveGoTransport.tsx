@@ -7,13 +7,12 @@ interface TwelveGoTransportProps {
   origin?: string;
   destination?: string;
   departureDate?: string;
-  returnDate?: string;
   passengers?: number;
   className?: string;
   variant?: "full" | "compact" | "button";
 }
 
-const AFFILIATE_ID = "13805109";
+const AFFILIATE_ID = import.meta.env.VITE_TWELVEGO_AFFILIATE_ID || "13805109";
 
 function formatDateForUrl(dateStr: string): string {
   const date = new Date(dateStr);
@@ -24,7 +23,6 @@ function generateDeepLink(
   origin: string,
   destination: string,
   departureDate?: string,
-  returnDate?: string,
   passengers: number = 1
 ): string {
   const baseUrl = "https://12go.co/en/travel";
@@ -64,7 +62,6 @@ export function TwelveGoTransport({
   origin,
   destination,
   departureDate,
-  returnDate,
   passengers = 1,
   className = "",
   variant = "full"
@@ -72,7 +69,7 @@ export function TwelveGoTransport({
   
   const hasRoute = origin && destination;
   const bookingUrl = hasRoute 
-    ? generateDeepLink(origin, destination, departureDate, returnDate, passengers)
+    ? generateDeepLink(origin, destination, departureDate, passengers)
     : generateSearchLink(destination);
 
   const handleBookClick = () => {
@@ -148,12 +145,6 @@ export function TwelveGoTransport({
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Calendar className="w-4 h-4 text-gray-400" />
                 <span>{new Date(departureDate).toLocaleDateString()}</span>
-                {returnDate && (
-                  <>
-                    <span>-</span>
-                    <span>{new Date(returnDate).toLocaleDateString()}</span>
-                  </>
-                )}
               </div>
             )}
             {passengers > 1 && (

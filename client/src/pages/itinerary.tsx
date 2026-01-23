@@ -477,11 +477,11 @@ export default function ItineraryPage() {
             </Card>
             
             <TwelveGoTransport
+              origin="London"
               destination={itinerary.destination.split(',')[0]}
               departureDate={itinerary.startDate.toISOString()}
-              returnDate={itinerary.endDate.toISOString()}
               passengers={itinerary.travelers}
-              variant="compact"
+              variant="full"
               className="mt-4"
             />
           </div>
