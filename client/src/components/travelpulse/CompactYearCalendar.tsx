@@ -201,22 +201,23 @@ function WeekZoomView({
   const weekDays = weeks[week - 1] || [];
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   
+  const weekHighlights = highlights.filter(h => weekDays.includes(h.day));
+  
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" data-testid="week-zoom-view">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onBack}>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onBack} data-testid="button-week-back">
           <ChevronLeft className="h-3 w-3" />
         </Button>
-        <span className="text-xs font-medium">
+        <span className="text-xs font-medium" data-testid="text-week-title">
           {monthAbbr[month - 1]} Week {week}
         </span>
       </div>
       
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-1" data-testid="week-days-grid">
         {weekDays.map((day, idx) => {
           const hasEvent = day !== null && eventDays.includes(day);
           const isSelected = day === selectedDay;
-          const eventForDay = highlights.find(h => h.day === day);
           
           return (
             <div
@@ -228,6 +229,7 @@ function WeekZoomView({
                 isSelected && "bg-primary text-primary-foreground"
               )}
               onClick={() => day && onDayClick(day)}
+              data-testid={day ? `week-day-${day}` : `week-day-empty-${idx}`}
             >
               <span className="text-[8px] text-muted-foreground">{dayNames[idx]}</span>
               <span className={cn("text-sm font-medium", isSelected && "text-primary-foreground")}>
@@ -237,18 +239,18 @@ function WeekZoomView({
                 <div className={cn(
                   "w-1 h-1 rounded-full mt-0.5",
                   isSelected ? "bg-primary-foreground" : "bg-primary"
-                )} />
+                )} data-testid={`event-dot-${day}`} />
               )}
             </div>
           );
         })}
       </div>
       
-      {highlights.filter(h => weekDays.includes(h.day)).length > 0 && (
-        <div className="space-y-1 pt-1 border-t">
+      {weekHighlights.length > 0 && (
+        <div className="space-y-1 pt-1 border-t" data-testid="week-highlights-section">
           <span className="text-[9px] text-muted-foreground font-medium">This week:</span>
-          {highlights.filter(h => weekDays.includes(h.day)).slice(0, 3).map((h, i) => (
-            <div key={i} className="text-[9px] flex gap-1">
+          {weekHighlights.slice(0, 3).map((h, i) => (
+            <div key={i} className="text-[9px] flex gap-1" data-testid={`week-highlight-${i}`}>
               <span className="text-primary font-medium">{h.day}:</span>
               <span className="truncate">{h.name}</span>
             </div>
@@ -281,34 +283,34 @@ function DayZoomView({
   const eventsForDay = highlights.filter(h => h.day === day);
   
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="day-zoom-view">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onBack}>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onBack} data-testid="button-day-back">
           <ChevronLeft className="h-3 w-3" />
         </Button>
         <div className="text-center">
-          <div className="text-lg font-bold">{day}</div>
-          <div className="text-[10px] text-muted-foreground">{dayName}</div>
+          <div className="text-lg font-bold" data-testid="text-day-number">{day}</div>
+          <div className="text-[10px] text-muted-foreground" data-testid="text-day-name">{dayName}</div>
         </div>
         <div className="flex gap-1">
-          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={onPrevDay}>
+          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={onPrevDay} data-testid="button-day-prev">
             <ChevronLeft className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={onNextDay}>
+          <Button variant="ghost" size="icon" className="h-5 w-5" onClick={onNextDay} data-testid="button-day-next">
             <ChevronRight className="h-3 w-3" />
           </Button>
         </div>
       </div>
       
-      <div className="text-xs text-center text-muted-foreground">
+      <div className="text-xs text-center text-muted-foreground" data-testid="text-full-date">
         {monthAbbr[month - 1]} {day}, {year}
       </div>
       
       {eventsForDay.length > 0 ? (
-        <div className="space-y-2">
+        <div className="space-y-2" data-testid="day-events-section">
           <span className="text-[10px] font-medium text-muted-foreground">Events:</span>
           {eventsForDay.map((event, i) => (
-            <Card key={i} className="p-2">
+            <Card key={i} className="p-2" data-testid={`day-event-card-${i}`}>
               <div className="text-xs font-medium">{event.name}</div>
               {event.city && (
                 <div className="text-[10px] text-muted-foreground">{event.city}</div>
@@ -317,7 +319,7 @@ function DayZoomView({
           ))}
         </div>
       ) : (
-        <div className="text-center py-4 text-xs text-muted-foreground">
+        <div className="text-center py-4 text-xs text-muted-foreground" data-testid="day-no-events">
           No specific events on this day
         </div>
       )}
