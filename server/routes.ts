@@ -5814,6 +5814,34 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Get location summary for admin panel
+  app.get("/api/admin/data/location-summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Get event counts grouped by city from cache
+      const { feverEventCache } = await import("@shared/schema");
+      const { sql } = await import("drizzle-orm");
+      
+      const cityData = await db.select({
+        cityCode: feverEventCache.cityCode,
+        city: feverEventCache.city,
+        eventCount: sql<number>`count(*)::int`,
+        lastUpdated: sql<string>`max(${feverEventCache.lastUpdated})`,
+      })
+      .from(feverEventCache)
+      .groupBy(feverEventCache.cityCode, feverEventCache.city);
+
+      res.json(cityData);
+    } catch (error) {
+      console.error("[Admin] Location summary error:", error);
+      res.status(500).json({ error: "Failed to get location summary" });
+    }
+  });
+
   // Manually refresh all cities (admin only)
   app.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) => {
     try {
