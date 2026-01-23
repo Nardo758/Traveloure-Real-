@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation, Link } from "wouter";
 import { motion } from "framer-motion";
 import { Layout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -9,9 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Search, Filter, MapPin, Star, Clock, DollarSign, 
-  Building2, Calendar, Ticket, Plane, X, Sparkles
+  Building2, Calendar, Ticket, Plane, X, Sparkles, ExternalLink, Plus, ChevronRight
 } from "lucide-react";
 
 interface CatalogItem {
@@ -67,7 +69,16 @@ const providerLabels: Record<string, string> = {
   amadeus: "Amadeus",
 };
 
+const typeToTemplateSlug: Record<string, string> = {
+  activity: "travel",
+  hotel: "travel",
+  event: "date-night",
+  flight: "travel",
+};
+
 export default function ExperienceDiscovery() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [searchInput, setSearchInput] = useState("");
   const [query, setQuery] = useState("");
   const [destination, setDestination] = useState<string>("");
@@ -76,6 +87,15 @@ export default function ExperienceDiscovery() {
   const [rating, setRating] = useState<number>(0);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  
+  const handleStartPlanning = (item: CatalogItem) => {
+    const slug = typeToTemplateSlug[item.type] || "travel";
+    toast({
+      title: "Starting your trip",
+      description: `Adding "${item.title}" to your planning...`,
+    });
+    setLocation(`/experiences/${slug}/new`);
+  };
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -145,9 +165,13 @@ export default function ExperienceDiscovery() {
               <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-4" data-testid="text-page-title">
                 Explore Activities, Events & Hotels
               </h1>
-              <p className="text-muted-foreground mb-6" data-testid="text-page-description">
+              <p className="text-muted-foreground mb-4" data-testid="text-page-description">
                 Browse our curated catalog of experiences from top providers worldwide.
               </p>
+              <Link href="/experiences" className="text-sm text-primary hover:underline inline-flex items-center gap-1 mb-6" data-testid="link-experience-types">
+                Or explore by experience type
+                <ChevronRight className="h-3 w-3" />
+              </Link>
 
               <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
                 <div className="relative flex-1">
@@ -411,6 +435,31 @@ export default function ExperienceDiscovery() {
                                   <DollarSign className="h-4 w-4" />
                                   {item.price.toFixed(0)}
                                 </div>
+                              )}
+                            </div>
+
+                            <div className="flex gap-2 mt-3">
+                              <Button
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => handleStartPlanning(item)}
+                                data-testid={`button-plan-${item.id}`}
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Plan Trip
+                              </Button>
+                              {item.bookingUrl && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(item.bookingUrl!, "_blank");
+                                  }}
+                                  data-testid={`button-book-${item.id}`}
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                </Button>
                               )}
                             </div>
                           </div>
