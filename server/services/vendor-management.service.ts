@@ -5,6 +5,7 @@ import {
   type InsertVendorContract 
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface PaymentMilestone {
   name: string;
@@ -30,11 +31,16 @@ export interface CommunicationEntry {
   attachments?: { name: string; url: string }[];
 }
 
+const logger = createChildLogger("vendor-management-service");
+
 export class VendorManagementService {
   async getContracts(tripId: string): Promise<VendorContract[]> {
-    return db.select().from(vendorContracts)
+    const start = Date.now();
+    const result = await db.select().from(vendorContracts)
       .where(eq(vendorContracts.tripId, tripId))
       .orderBy(desc(vendorContracts.createdAt));
+    databaseQueryDuration.labels("select", "vendor_contracts").observe((Date.now() - start) / 1000);
+    return result;
   }
 
   async getContract(id: string): Promise<VendorContract | undefined> {

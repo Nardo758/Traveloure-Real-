@@ -5,6 +5,7 @@ import {
   type InsertTripParticipant 
 } from "@shared/schema";
 import { eq, and, count, sql } from "drizzle-orm";
+import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface ParticipantStats {
   total: number;
@@ -29,9 +30,14 @@ export interface DietaryRequirements {
   accessibilityNeeds: { name: string; count: number }[];
 }
 
+const logger = createChildLogger("coordination-service");
+
 export class CoordinationService {
   async getParticipants(tripId: string): Promise<TripParticipant[]> {
-    return db.select().from(tripParticipants).where(eq(tripParticipants.tripId, tripId));
+    const start = Date.now();
+    const result = await db.select().from(tripParticipants).where(eq(tripParticipants.tripId, tripId));
+    databaseQueryDuration.labels("select", "trip_participants").observe((Date.now() - start) / 1000);
+    return result;
   }
 
   async getParticipant(id: string): Promise<TripParticipant | undefined> {

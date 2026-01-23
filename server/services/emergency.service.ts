@@ -8,6 +8,7 @@ import {
   type InsertTripAlert
 } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
+import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface EmergencyContactsByType {
   local_expert: TripEmergencyContact[];
@@ -53,11 +54,16 @@ const EMERGENCY_NUMBERS: Record<string, { police: string; ambulance: string; fir
   "DEFAULT": { police: "112", ambulance: "112", fire: "112" },
 };
 
+const logger = createChildLogger("emergency-service");
+
 export class EmergencyService {
   async getContacts(tripId: string): Promise<TripEmergencyContact[]> {
-    return db.select().from(tripEmergencyContacts)
+    const start = Date.now();
+    const result = await db.select().from(tripEmergencyContacts)
       .where(eq(tripEmergencyContacts.tripId, tripId))
       .orderBy(desc(tripEmergencyContacts.priority));
+    databaseQueryDuration.labels("select", "trip_emergency_contacts").observe((Date.now() - start) / 1000);
+    return result;
   }
 
   async getContact(id: string): Promise<TripEmergencyContact | undefined> {
