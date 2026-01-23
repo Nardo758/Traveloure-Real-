@@ -204,12 +204,12 @@ export default function ExperienceDiscovery() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium" data-testid="label-destination">Destination</label>
-                    <Select value={destination} onValueChange={setDestination}>
+                    <Select value={destination || "_all"} onValueChange={(val) => setDestination(val === "_all" ? "" : val)}>
                       <SelectTrigger data-testid="select-destination">
                         <SelectValue placeholder="All destinations" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="" data-testid="select-item-destination-all">All destinations</SelectItem>
+                        <SelectItem value="_all" data-testid="select-item-destination-all">All destinations</SelectItem>
                         {destinations?.slice(0, 20).map((d) => (
                           <SelectItem key={d} value={d} data-testid={`select-item-destination-${d}`}>{d}</SelectItem>
                         ))}
