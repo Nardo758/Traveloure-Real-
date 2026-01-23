@@ -1,0 +1,870 @@
+COMPLETE TAB & FILTER SPECIFICATIONS FOR ALL TEMPLATES
+TEMPLATE STRUCTURE PRINCIPLE
+Universal Tab Architecture:
+Every template follows this pattern:
+
+Discovery/Booking Tabs (template-specific experiences)
+Services Tab (universal) - supporting service providers
+Planning Tools Tab (universal) - coordination features
+
+
+1. TRAVEL
+TABS: Activities | Hotels | Services | Dining | Flights | Transportation
+ACTIVITIES Tab
+Filters & Sort:
+
+Search: "Search by name, provider, or description..."
+Price Range: $0 - $500+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating | Duration
+
+Preferences:
+
+Duration: Half Day | Full Day | Multi-Day | 1-2 Hours
+Activity Type: Adventure | Culture & History | Nature & Outdoors | Food & Dining | Wellness & Spa | Nightlife | Shopping | Water Activities | City Tours | Art & Museums
+Group Size: Solo-Friendly | Couples | Small Groups (3-6) | Large Groups (7+)
+Physical Level: Easy | Moderate | Challenging | Extreme
+Age Range: Kid-Friendly | Teen-Friendly | Adult Only | Senior-Friendly
+Time of Day: Morning | Afternoon | Evening | Night | Flexible
+Weather: Indoor | Outdoor | Covered/Flexible
+
+HOTELS Tab
+Filters & Sort:
+
+Search: "Search by hotel name, location..."
+Price Range: $0 - $1000+ per night
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating | Distance
+
+Preferences:
+
+Hotel Type: Luxury | Boutique | Budget | Resort | Apartment/Rental | Hostel | Bed & Breakfast | Unique Stays
+Amenities: Pool | Spa | Gym | Restaurant | Bar | Room Service | Free Wi-Fi | Parking | Beach Access | Business Center
+Room Type: Single | Double | Suite | Family Room | Connecting Rooms
+Neighborhood: City Center | Beach | Airport | Historic District | Shopping District | Quiet/Residential
+Star Rating: 3-Star | 4-Star | 5-Star | Unrated
+Meal Plans: Room Only | Breakfast Included | Half Board | Full Board | All-Inclusive
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Search: "Search service providers..."
+Price Range: $0 - $1000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating
+
+Preferences:
+
+Service Type: Photography | Videography | Tour Guides | Private Drivers | Translators/Interpreters | Travel Concierge | Luggage Services | Travel Insurance | SIM Cards/WiFi | Local Expert Consultation
+Language Support: English | Spanish | Mandarin | French | Arabic | Japanese | German | Other
+Availability: Instant Booking | Request to Book | 24/7 Available
+Experience Level: Beginner-Friendly | Expert | Professional
+
+DINING Tab
+Filters & Sort:
+
+Search: "Search restaurants, cuisine..."
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating
+
+Preferences:
+
+Cuisine Type: Local/Regional | Italian | French | Asian | Seafood | Steakhouse | Mexican | Mediterranean | Fusion | Vegetarian/Vegan | Street Food
+Meal Type: Breakfast | Brunch | Lunch | Dinner | Late Night | Food Tour
+Ambiance: Casual | Fine Dining | Romantic | Family-Friendly | Lively/Loud | Quiet/Intimate | Outdoor Seating | Views
+Dietary Options: Vegetarian | Vegan | Gluten-Free | Halal | Kosher | Allergy-Friendly
+Reservation: Walk-in Friendly | Reservation Recommended | Reservation Required
+Group Size: Couples | Small Groups (3-6) | Large Groups (7-15) | XL Groups (15+)
+
+FLIGHTS Tab
+Filters & Sort:
+
+Search: "Search by airline, route..."
+Price Range: $0 - $5000+
+Sort By: Price: Low to High | Duration | Departure Time | Arrival Time
+
+Preferences:
+
+Flight Type: Nonstop | 1 Stop | 2+ Stops
+Cabin Class: Economy | Premium Economy | Business | First Class
+Airlines: All | Specific Carriers (dynamic based on route)
+Departure Time: Early Morning | Morning | Afternoon | Evening | Night | Red Eye
+Baggage: Carry-on Only | 1 Checked Bag | 2+ Checked Bags
+Flexibility: Flexible Dates | Exact Dates
+
+TRANSPORTATION Tab
+Filters & Sort:
+
+Search: "Search transportation options..."
+Price Range: $0 - $500+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating
+
+Preferences:
+
+Transport Type: Airport Transfer | Car Rental | Private Driver | Public Transit Pass | Train Tickets | Ferry/Boat | Scooter/Bike Rental | Rideshare
+Vehicle Type: Economy | Standard | SUV | Luxury | Van/Minibus | Bus
+Service Level: Shared | Private | Premium
+Capacity: 1-2 Passengers | 3-4 | 5-7 | 8-15 | 15+
+
+
+2. WEDDING (Planning Mode)
+TABS: Venues | Vendors | Services | Guest Accommodations | Transportation | Rehearsal
+VENUES Tab
+Filters & Sort:
+
+Price Range: $0 - $50,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating | Capacity
+
+Preferences:
+
+Venue Type: Outdoor | Indoor | Barn/Rustic | Ballroom | Garden | Beach | Historic | Winery | Restaurant | Hotel | Unique Venue
+Capacity: Intimate (<50) | Small (50-100) | Medium (100-200) | Large (200-400) | XL (400+)
+Style: Traditional | Modern | Rustic | Elegant | Bohemian | Minimalist | Vintage | Destination
+Season: Year-Round | Spring | Summer | Fall | Winter
+Included Services: Catering | Tables/Chairs | Bar Service | Coordinator | Decorations | Overnight Rooms
+Ceremony & Reception: Same Location | Separate | Flexible
+
+VENDORS Tab
+Filters & Sort:
+
+Price Range: $0 - $20,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating
+
+Preferences:
+
+Vendor Type: Catering | Photography | Videography | Florals | Cake | DJ/Music | Band | Entertainment | Hair & Makeup | Decorations/Rentals | Officiant
+Package Options: À la carte | Package Deal | Customizable
+Experience: Established (10+ years) | Mid-Level (5-10 years) | Emerging (1-5 years)
+Style Match: Classic | Modern | Romantic | Rustic | Bohemian | Minimalist | Luxury
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $10,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating
+
+Preferences:
+
+Service Type: Wedding Planner/Coordinator | Day-of Coordinator | Invitation Design/Printing | Lighting Design | Photo Booth | Transportation Coordinator | Valet Parking | Security | Childcare | Wedding Website | Gift Registry Management
+Service Level: Full Service | Partial Service | Day-of Only | Consultation Only
+Planning Stage: Early Planning | Mid-Planning | Final Month | Week-of
+
+GUEST ACCOMMODATIONS Tab
+Filters & Sort:
+
+Price Range: $0 - $500+ per night
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Distance to Venue | Price: Low to High | Rating
+
+Preferences:
+
+Hotel Type: Luxury | Mid-Range | Budget | Apartment/Home Rental
+Distance: Walking Distance | <5 miles | 5-10 miles | 10-20 miles
+Room Block: Available | Not Available
+Amenities: Shuttle Service | Restaurant/Bar | Pool | Gym | Parking
+Group Rate: Yes | No
+
+TRANSPORTATION Tab
+Filters & Sort:
+
+Price Range: $0 - $5,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High
+
+Preferences:
+
+Service Type: Guest Shuttles | Airport Transfers | Valet Service | Classic Cars | Limo/Luxury | Party Bus
+Capacity: VIP Only (2-4) | Wedding Party (8-15) | Guest Transport (20-40) | Full Guest Transport (40+)
+Style: Classic | Modern | Vintage | Luxury
+
+REHEARSAL Tab
+Filters & Sort:
+
+Price Range: $0 - $5,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High
+
+Preferences:
+
+Venue Type: Restaurant | Private Dining | Outdoor BBQ | Casual Gathering | Home-Hosted
+Guest Count: Immediate Family (<15) | Wedding Party (15-30) | Extended Family (30-50)
+Meal Style: Sit-Down Dinner | Buffet | Family Style | Cocktails & Appetizers
+
+
+3. WEDDING (Guest Activities Mode)
+TABS: Activities | Dining | Services | Welcome Events | Transportation | Local Experiences
+ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $300+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Family-Friendly
+
+Preferences:
+
+Activity Type: Sightseeing | Cultural | Outdoor/Nature | Food & Wine | Wellness/Spa | Entertainment | Shopping | Beach/Water | Nightlife
+Group Size: Solo-Friendly | Couples | Small Groups | Large Groups (15+)
+Family-Friendly: Yes | Adults Only
+Duration: 1-2 Hours | Half Day | Full Day
+Distance: Near Venue (<5 miles) | 5-15 miles | 15+ miles
+Wedding Schedule: Pre-Wedding | Post-Wedding | Flexible
+
+DINING Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Distance | Rating
+
+Preferences:
+
+Cuisine Type: Local | Italian | American | Seafood | Steakhouse | Asian | Mexican | Vegetarian-Friendly
+Meal Type: Breakfast | Brunch | Lunch | Dinner
+Group Friendly: Small Groups | Large Groups (10+) | Private Room Available
+Ambiance: Casual | Upscale Casual | Fine Dining | Family-Friendly
+Distance: Walking Distance | <5 miles | 5-15 miles
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $1,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High
+
+Preferences:
+
+Service Type: Babysitting/Childcare | Transportation | Photography (guest photos) | Tour Guides | Spa Services | Hair/Makeup (guest services) | Shopping Assistance | Concierge
+Availability: Pre-Wedding | During Wedding | Post-Wedding | All Weekend
+
+WELCOME EVENTS Tab
+Filters & Sort:
+
+Price Range: $0 - $5,000+
+Sort By: Most Popular | Price: Low to High
+
+Preferences:
+
+Event Type: Cocktail Reception | Casual BBQ | Pool Party | Wine & Cheese | Meet & Greet | Welcome Dinner | Cultural Experience
+Guest Count: Intimate (<30) | Medium (30-75) | Large (75+)
+Formality: Casual | Semi-Formal | Formal
+
+TRANSPORTATION Tab
+Filters & Sort:
+
+Price Range: $0 - $1,000+
+Sort By: Price: Low to High | Availability
+
+Preferences:
+
+Service Type: Airport Shuttle | Venue Shuttle | Tour Bus | Car Rental | Rideshare Credits | Private Driver
+Schedule: One-Way | Round-Trip | Multi-Day | On-Demand
+
+LOCAL EXPERIENCES Tab
+Filters & Sort:
+
+Price Range: $0 - $500+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Distance
+
+Preferences:
+
+Experience Type: City Tours | Historical Sites | Wine Tasting | Outdoor Adventures | Cultural Immersion | Food Tours | Relaxation/Spa
+Family-Friendly: Yes | Adults Only
+Duration: 1-2 Hours | Half Day | Full Day
+
+
+4. BACHELOR/BACHELORETTE PARTY
+TABS: Destinations | Accommodations | Daytime Activities | Nightlife | Dining | Services | Transportation
+(Already detailed in previous response - keeping for completeness)
+Services Tab ⭐
+Preferences:
+
+Service Type: Photography/Video | Decorations/Setup | Custom Apparel | Party Favors | Games/Entertainment | Private Chef | Bartender Service | Party Planner | Surprise Coordination
+Timing: Pre-Party | During Event | Full Weekend
+
+
+5. PROPOSAL
+TABS: Locations | Services | Celebration Dining | Post-Proposal Activities | Accommodations
+LOCATIONS Tab
+Filters & Sort:
+
+Price Range: $0 - $5,000+ (for exclusive access/setup)
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Romantic | Most Popular | Price
+
+Preferences:
+
+Location Type: Beach | Mountain/Nature | City Rooftop | Restaurant | Historical Site | Private Estate | Boat/Water | Home/Personal | Hotel Suite | Adventure Location
+Privacy Level: Completely Private | Semi-Private | Public but Scenic
+Romance Level: Ultra Romantic | Very Romantic | Unique/Adventurous
+Time of Day: Sunrise | Morning | Afternoon | Sunset (Most Popular) | Evening | Night
+Season: Year-Round | Spring | Summer | Fall | Winter
+Weather Dependency: Indoor | Outdoor (needs backup) | Covered/Flexible
+Setup Needed: Minimal | Moderate | Elaborate
+Crowd Level: Secluded | Quiet | Moderate | Popular (timing crucial)
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $10,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price: Low to High | Rating
+
+Preferences:
+
+Service Type: Photographer | Videographer | Proposal Planner | Musician/Singer | Setup/Decorations | Private Space Rental | Surprise Coordinator | Ring Consultant/Concierge
+Package Type: Photo Only | Photo + Video | Full Production | Consultation | DIY Support
+Delivery Timeline: Next-Day Preview | Same-Week | Full Gallery (2-3 weeks)
+Style: Candid/Documentary | Cinematic | Classic Romantic | Adventure/Lifestyle
+Surprise Coordination: Yes (Hidden photographer) | No (Known photographer)
+
+CELEBRATION DINING Tab
+Filters & Sort:
+
+Price Range: $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Romantic | Price: Low to High | Distance
+
+Preferences:
+
+Venue Type: Fine Dining | Rooftop | Beachfront | Wine Tasting Room | Private Chef Experience | Michelin-Starred
+Ambiance: Intimate & Quiet | Celebration-Worthy | With a View | Garden/Outdoor
+Seating: Best Table | Secluded Corner | Private Room | Chef's Table
+Special Services: Champagne Included | Celebration Dessert | Private Server | Custom Menu | Special Announcement
+Timing: Immediately After | Later Evening | Next Day
+Distance from Proposal: Same Location | Nearby (< 15 min) | Separate Destination
+
+POST-PROPOSAL ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $2,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Most Romantic
+
+Preferences:
+
+Activity Type: Couples Spa | Sunset Cruise | Champagne Toast | Celebration Activity | Photo Session (additional) | Couples Experience | Return to Hotel (setup waiting)
+Timing: Immediately After | Evening | Next Day
+Energy Level: Relaxing (wind down) | Celebratory (keep going) | Romantic (extend moment)
+Duration: 1-2 Hours | Half Day | Full Day
+
+ACCOMMODATIONS Tab
+Filters & Sort:
+
+Price Range: $200 - $2,000+ per night
+Minimum Rating: All | 4+ | 4.5+ | 5-star only
+Sort By: Most Romantic | Price: Low to High
+
+Preferences:
+
+Property Type: Luxury Hotel | Boutique | Private Villa | Resort | Unique/Iconic Stay
+Romantic Features: Champagne Setup | Rose Petals | Couples Massage In-Room | Private Pool | Soaking Tub | Fireplace | Stunning View
+Package Options: Proposal Package | Romance Package | Standard Booking
+Proximity: At Proposal Location | Nearby (< 30 min) | Separate Destination
+Duration: One Night | Weekend | Extended Stay
+
+
+6. DATE NIGHT
+TABS: Dining | Activities | Entertainment | Services | Transportation
+DINING Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Romantic | Most Popular | Price
+
+Preferences:
+
+Cuisine Type: Italian | French | Japanese | Steakhouse | Seafood | Modern American | Mexican | Asian Fusion | Mediterranean | Local/Farm-to-Table
+Ambiance: Intimate & Quiet | Romantic | Lively/Fun | Upscale Casual | Fine Dining | Cozy | With a View
+Date Type: First Date Safe | Anniversary-Worthy | Celebration | Casual Catch-up | Impress-Factor High
+Seating: Indoor | Outdoor Patio | Rooftop | Bar Seating | Private Booth
+Dress Code: Casual | Smart Casual | Upscale | Formal
+Reservation: Walk-in OK | Reservation Recommended | Reservation Required
+Time: Early Dinner | Prime Time | Late Night
+
+ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $200+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Most Romantic | Price
+
+Preferences:
+
+Activity Type: Movie Theater | Live Theater/Show | Comedy Club | Concert/Music | Art Gallery/Museum | Bowling/Games | Escape Room | Wine Tasting | Cooking Class | Scenic Walk | Couples Massage | Arcade/Entertainment | Ice Skating | Mini Golf
+Vibe: Relaxed | Fun/Playful | Romantic | Cultural | Active | Adventurous
+Duration: 1-2 Hours | 2-4 Hours | Half Day
+Date Stage: First Date Appropriate | Established Couple | Long-term Relationship
+Conversation Friendly: High (lots of talk time) | Medium | Low (focus on activity)
+Indoor/Outdoor: Indoor | Outdoor | Either
+
+ENTERTAINMENT Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Tonight | This Week | Most Popular
+
+Preferences:
+
+Show Type: Live Music | DJ/Dancing | Comedy Show | Theater | Opera/Symphony | Jazz Club | Drag Show | Magic Show | Improv | Trivia Night
+Vibe: High Energy | Laid Back | Romantic | Fun/Playful | Sophisticated
+Venue Size: Intimate | Mid-Size | Large Venue
+Dress Code: Casual | Smart Casual | Upscale
+Timing: Early Evening | Prime Time | Late Night
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $500+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price
+
+Preferences:
+
+Service Type: Photographer (date photos) | Surprise Planning | Flower Delivery | Special Setup | Car Service | Personal Stylist | Gift Service | Reservation Concierge
+Timing: Pre-Date | During Date | Post-Date
+
+TRANSPORTATION Tab
+Filters & Sort:
+
+Price Range: $0 - $200+
+Sort By: Price: Low to High | Arrival Time
+
+Preferences:
+
+Transport Type: Rideshare | Taxi | Private Car | Limo | Valet Parking | Public Transit | Walking Route
+Service Level: Standard | Premium | Luxury
+Timing: One-Way | Round-Trip | Multiple Stops
+
+
+7. BIRTHDAY
+TABS: Venues | Activities | Dining | Entertainment | Services | Accommodations
+VENUES Tab
+Filters & Sort:
+
+Price Range: $0 - $10,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price | Capacity
+
+Preferences:
+
+Venue Type: Restaurant Private Room | Banquet Hall | Outdoor Venue | Home/Backyard | Park/Picnic Area | Entertainment Venue | Bar/Lounge | Unique Venue (arcade, bowling, etc.)
+Age Group: Kids (1-12) | Teens (13-17) | Young Adult (18-29) | Adult (30-49) | Milestone (50+)
+Party Size: Intimate (<15) | Small (15-30) | Medium (30-60) | Large (60-100) | XL (100+)
+Theme Friendly: Yes | No
+Included Services: Catering | Decorations | Entertainment | Setup/Cleanup | Cake Included
+Indoor/Outdoor: Indoor | Outdoor | Covered | Either
+
+ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $500+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Age Appropriate | Price
+
+Preferences:
+
+Activity Type: Arcade/Games | Bowling | Karaoke | Escape Room | Laser Tag | Trampoline Park | Paint & Sip | Cooking Class | Wine Tasting | Brewery Tour | Spa Day | Adventure Activity | Sports | Dance Class | Movie Theater Rental
+Age Appropriate: Kids | Teens | Adults | All Ages
+Group Size: Small (5-15) | Medium (15-30) | Large (30+)
+Energy Level: Low Key | Moderate | High Energy
+Duration: 1-2 Hours | 2-4 Hours | Half Day | Full Day
+Supervision: Adult Supervised | Teen Independent | Adult Only
+
+DINING Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Group-Friendly | Price
+
+Preferences:
+
+Venue Type: Restaurant | Private Dining | Catered at Venue | Food Truck | Picnic/Outdoor | Home Catering
+Cuisine Type: American | Pizza | Mexican | Italian | BBQ | Seafood | Asian | Breakfast/Brunch | Dessert-Focused
+Service Style: Buffet | Family Style | Plated | Food Stations | Cocktail Style
+Group Capacity: Small (10-20) | Medium (20-40) | Large (40-75) | XL (75+)
+Age Group: Kid-Friendly | Teen-Appropriate | Adult Party | All Ages
+Special Services: Birthday Cake Included | Singing/Announcement | Private Room | BYOB Allowed
+Dietary Options: Allergy-Friendly | Vegetarian/Vegan | Gluten-Free
+
+ENTERTAINMENT Tab
+Filters & Sort:
+
+Price Range: $0 - $5,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Age Appropriate | Price
+
+Preferences:
+
+Entertainment Type: DJ | Live Band | Magician | Face Painter | Balloon Artist | Caricature Artist | Photo Booth | Game Master | Clown | Character Appearance | Karaoke Host | Comedian
+Age Group: Kids | Teens | Adults | All Ages
+Duration: 1 Hour | 2 Hours | 3+ Hours | Full Event
+Performance Style: Interactive | Show/Performance | Background | Roaming
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $3,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price
+
+Preferences:
+
+Service Type: Party Planner | Decorations | Photography | Videography | Cake/Desserts | Invitations | Party Favors | Setup/Cleanup | Rentals (tables, chairs, tents) | Bartender | Security (for large events)
+Customization: Pre-Packaged | Semi-Custom | Fully Custom
+Theme Support: Yes | No
+
+ACCOMMODATIONS Tab (for destination birthdays)
+Filters & Sort:
+
+Price Range: $0 - $1,000+ per night
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Group-Friendly | Price | Rating
+
+Preferences:
+
+Property Type: Hotel Block | Group Rental Home | Resort | Unique Venue
+Group Capacity: Small (5-10) | Medium (10-20) | Large (20-40)
+Amenities: Pool | Game Room | Large Kitchen | Entertainment Area | Outdoor Space
+
+
+8. CORPORATE EVENTS
+TABS: Venues | Team Activities | Services | Dining | Transportation | Accommodations
+VENUES Tab
+Filters & Sort:
+
+Price Range: $0 - $50,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Capacity | Price
+
+Preferences:
+
+Venue Type: Conference Center | Hotel Ballroom | Meeting Space | Outdoor Venue | Unique Venue | Restaurant Private Dining | Coworking Space | Retreat Center
+Event Type: Conference | Team Building | Holiday Party | Client Entertainment | Quarterly Meeting | Award Ceremony | Product Launch | Training Session
+Capacity: Small (10-30) | Medium (30-75) | Large (75-200) | XL (200-500) | XXL (500+)
+Setup Style: Theater | Classroom | Banquet | Cocktail | U-Shape | Boardroom | Flexible
+AV/Tech: Basic AV | Full AV Package | Presentation Tech | Video Conferencing | Hybrid Capability | Live Streaming
+Amenities: Catering Kitchen | Breakout Rooms | Outdoor Space | Parking | Wi-Fi | Accessibility | Natural Light
+Location: Downtown | Airport Area | Suburban | Resort/Retreat
+
+TEAM ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $500+ per person
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Team Building Focus | Price
+
+Preferences:
+
+Activity Type: Team Building Workshop | Outdoor Adventure | Escape Room | Cooking Challenge | Sports Activity | Creative Workshop | Service Project | Problem-Solving Challenge | Icebreakers | Scavenger Hunt
+Group Size: Small Teams (5-15) | Medium (15-40) | Large (40-100) | XL (100+)
+Focus: Communication | Leadership | Collaboration | Trust Building | Creative Thinking | Problem Solving | Bonding/Fun
+Physical Level: Sedentary | Light | Moderate | Active
+Duration: 1-2 Hours | Half Day | Full Day | Multi-Day
+Location: Indoor | Outdoor | Off-Site | On-Site | Virtual Option
+Professional Tone: Casual/Fun | Balanced | Formal/Professional
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $50,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price
+
+Preferences:
+
+Service Type: Event Planner | AV/Tech Services | Photography/Video | Registration Management | Name Tags/Materials | Interpreters/Translation | Security | IT Support | Event App/Tech | Swag/Gifts | Printing Services | Event Staffing
+Package Level: Basic | Standard | Premium | Custom
+Setup Requirements: Minimal | Moderate | Full Production
+
+DINING Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Group-Friendly | Price | Rating
+
+Preferences:
+
+Service Type: Breakfast | Coffee Breaks | Lunch | Dinner | Cocktail Reception | Full Catering | Boxed Meals
+Service Style: Buffet | Plated | Food Stations | Cocktail Style | Family Style | Boxed
+Capacity: Small (10-30) | Medium (30-75) | Large (75-200) | XL (200+)
+Dietary Accommodations: Vegetarian/Vegan | Gluten-Free | Halal | Kosher | Allergy-Friendly | Customizable
+Budget Per Person: $15-30 | $30-60 | $60-100 | $100+
+Alcohol Options: None | Beer/Wine | Full Bar | Cash Bar | Open Bar
+Venue: On-Site Catering | Off-Site Restaurant | Hybrid
+
+TRANSPORTATION Tab
+Filters & Sort:
+
+Price Range: $0 - $10,000+
+Sort By: Price | Capacity
+
+Preferences:
+
+Service Type: Airport Shuttle | Group Bus | Van Fleet | Car Service | Rideshare Credits | Parking Validation
+Capacity: Executive (1-5) | Small Group (6-15) | Medium Group (15-40) | Large Group (40-100)
+Service Duration: Single Transfer | Full Day | Multi-Day
+
+ACCOMMODATIONS Tab
+Filters & Sort:
+
+Price Range: $0 - $500+ per night
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Group Rate | Distance | Rating
+
+Preferences:
+
+Hotel Type: Business Hotel | Resort | Conference Hotel | Boutique
+Room Block: Available | Not Available
+Group Size: Small (5-15 rooms) | Medium (15-40 rooms) | Large (40-100 rooms) | XL (100+ rooms)
+Business Amenities: Meeting Rooms | Business Center | High-Speed Wi-Fi | Breakfast Included
+Distance: On-Site | Walking Distance | <5 miles | 5-15 miles
+
+
+9. REUNIONS
+TABS: Venues | Activities | Services | Dining | Accommodations | Transportation
+VENUES Tab
+Filters & Sort:
+
+Price Range: $0 - $20,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Capacity | Price | Accessibility
+
+Preferences:
+
+Venue Type: Hotel Ballroom | Community Center | Park/Pavilion | Restaurant Private Room | Reunion Resort | Cruise Ship | Banquet Hall | Historical Venue
+Capacity: Small (20-50) | Medium (50-100) | Large (100-200) | XL (200+)
+Event Duration: Single Day | Weekend | Week-Long
+Accessibility: Wheelchair Accessible | Senior-Friendly | All Ages Accessible
+Included Amenities: Tables/Chairs | Catering Kitchen | AV Equipment | Parking | Outdoor Space | Climate Control
+Distance from Origin: Local (within 50 miles) | Regional (50-200 miles) | National | International
+
+ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $300+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Family-Friendly | Age-Inclusive | Price
+
+Preferences:
+
+Activity Type: Group Photos | Memory Book Creation | Slideshow/Tribute | Games/Sports | Tours (historical, city, etc.) | Talent Show | Dance | Karaoke | Golf Tournament | Picnic | Museum Visit
+Age Range: All Ages | Adults Only | Senior-Friendly | Kids Activities Included
+Group Size: Small Groups (10-30) | Medium (30-75) | Large (75-200) | XL (200+)
+Physical Level: Accessible to All | Light Activity | Moderate | Active
+Duration: 1-2 Hours | Half Day | Full Day
+Timing: During Main Event | Side Activity | Optional Add-On
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $5,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price
+
+Preferences:
+
+Service Type: Reunion Planner | Photography/Video | Memory Book Design | Nametags/Materials | Decorations | DJ/Entertainment | Registration Management | Website/Communication Tool | T-Shirts/Swag | Family Tree Research
+Customization: Template/Standard | Semi-Custom | Fully Personalized
+Delivery Timeline: Rush (< 2 weeks) | Standard (2-6 weeks) | Advance Planning (6+ weeks)
+
+DINING Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Group Capacity | Price | Family-Friendly
+
+Preferences:
+
+Service Type: Formal Dinner | Casual BBQ | Buffet | Picnic Style | Food Trucks | Breakfast | Lunch | Dinner
+Capacity: Small (20-50) | Medium (50-100) | Large (100-200) | XL (200+)
+Dietary Accommodations: Vegetarian/Vegan | Gluten-Free | Kid Menu | Senior-Friendly | Allergy Accommodations
+Age Appropriateness: Kid-Friendly | All Ages | Adult-Focused
+Service Style: Served | Buffet | Family Style | Stations
+Budget Per Person: $15-30 | $30-60 | $60-100 | $100+
+
+ACCOMMODATIONS Tab
+Filters & Sort:
+
+Price Range: $0 - $300+ per night
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Group Rate | Distance to Venue | Family-Friendly
+
+Preferences:
+
+Property Type: Hotel | Resort | Vacation Rentals | Campground | Mix of Options
+Group Rate: Available | Not Available
+Room Types: Standard | Suites | Connecting Rooms | Multi-Bedroom Units
+Amenities: Pool | Kitchen (for rentals) | Meeting Space | Breakfast | Parking
+Family-Friendly: Kids Stay Free | Cribs Available | Kid Activities
+Distance: On-Site/Same Property | Walking Distance | <5 miles | 5-15 miles
+
+TRANSPORTATION Tab
+Filters & Sort:
+
+Price Range: $0 - $5,000+
+Sort By: Capacity | Price
+
+Preferences:
+
+Service Type: Airport Shuttle | Group Bus | Van Rental | Car Rental Discounts | Rideshare Coordination | Parking Validation
+Capacity: Small (5-15) | Medium (15-40) | Large (40-100) | XL (100+)
+Schedule: One-Time Transfer | Daily Shuttles | On-Demand
+
+
+10. RETREATS
+TABS: Venues | Activities | Services | Dining | Accommodations | Wellness
+VENUES Tab
+Filters & Sort:
+
+Price Range: $0 - $100,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Retreat-Optimized | Price | Capacity
+
+Preferences:
+
+Venue Type: Wellness Retreat Center | Corporate Retreat | Mountain Lodge | Beach Resort | Monastery/Spiritual Center | Ranch | Eco-Lodge | Conference Resort
+Retreat Type: Wellness | Corporate | Creative | Spiritual | Educational | Team Building | Leadership
+Capacity: Intimate (5-15) | Small (15-30) | Medium (30-60) | Large (60-150)
+Setting: Mountains | Beach/Ocean | Forest/Woods | Desert | Countryside | Island
+Amenities: Yoga/Meditation Space | Meeting Rooms | Outdoor Activities | Spa | Healthy Dining | Tech-Free Zones | Wi-Fi | Technology
+Accommodation Style: Shared Rooms | Private Rooms | Mix | Glamping | Cabins
+Duration: Weekend | 3-5 Days | Week | Custom
+
+ACTIVITIES Tab
+Filters & Sort:
+
+Price Range: $0 - $500+ per person
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Retreat-Aligned | Most Popular | Price
+
+Preferences:
+
+Activity Type: Yoga | Meditation | Hiking | Team Building | Workshops | Creative Sessions | Nature Activities | Water Activities | Cultural Experiences | Reflection Time | Group Discussions | Silent Periods
+Focus: Physical Wellness | Mental Wellness | Spiritual Growth | Team Bonding | Creativity | Leadership | Skill Building
+Group vs Individual: Group Activity | Individual Practice | Choice/Flexible
+Energy Level: Restorative | Gentle | Moderate | Vigorous
+Duration: 1 Hour | 2 Hours | Half Day | Full Day
+Indoor/Outdoor: Indoor | Outdoor | Nature-Based | Flexible
+
+SERVICES Tab ⭐
+Filters & Sort:
+
+Price Range: $0 - $20,000+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price
+
+Preferences:
+
+Service Type: Retreat Facilitator | Yoga Instructor | Meditation Guide | Workshop Leader | Team Building Facilitator | Life Coach | Nutritionist | Massage Therapist | Sound Healing | Energy Work | Spiritual Guide | Corporate Trainer
+Expertise Level: Certified | Experienced (5+ years) | Expert (10+ years) | Master Level
+Group Size: Small Group (<15) | Medium (15-30) | Large (30+)
+Retreat Type Match: Wellness | Corporate | Creative | Spiritual
+
+DINING Tab
+Filters & Sort:
+
+Price Range: $ | $$ | $$$ | $$$$
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Wellness-Aligned | Price
+
+Preferences:
+
+Dining Style: All-Inclusive | Meal Package | À la Carte | Self-Catering
+Cuisine Focus: Wellness-Focused | Organic | Vegan/Vegetarian | Farm-to-Table | Local/Seasonal | Cleanse/Detox | Flexible/Standard
+Service Style: Buffet | Family Style | Plated | Communal Dining | Private
+Meal Plan: All Meals | Breakfast + Dinner | Breakfast Only | Custom
+Dietary Accommodations: Vegan | Vegetarian | Gluten-Free | Keto | Paleo | Allergy-Friendly | Fully Customizable
+
+ACCOMMODATIONS Tab
+Filters & Sort:
+
+Price Range: $0 - $1,000+ per night per person
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Retreat-Optimized | Price | Luxury Level
+
+Preferences:
+
+Room Type: Shared Dormitory | Shared Room (2-4) | Private Room | Private Suite | Cabin | Tent/Glamping
+Luxury Level: Basic/Rustic | Comfortable | Upscale | Luxury | Ultra-Luxury
+Privacy: Shared Space | Semi-Private | Private
+Amenities: En-Suite Bathroom | Shared Bathroom | Outdoor Shower | Nature Views | Simple/Minimal | Tech-Free Room
+
+WELLNESS Tab
+Filters & Sort:
+
+Price Range: $0 - $500+
+Minimum Rating: All | 3+ | 3.5+ | 4+ | 4.5+
+Sort By: Most Popular | Price
+
+Preferences:
+
+Wellness Type: Spa Treatments | Massage | Yoga | Meditation | Sound Healing | Energy Work | Breathwork | Cold Plunge | Sauna | Float Therapy | Acupuncture
+Session Type: Individual | Couples | Small Group | Large Group
+Duration: 30 min | 60 min | 90 min | 2+ hours
+Focus: Relaxation | Therapeutic | Spiritual | Detox | Recovery
+
+
+REMAINING TEMPLATES (Condensed)
+11. WEDDING ANNIVERSARIES - Same as Anniversary Trip (detailed earlier)
+12. BABY SHOWER
+TABS: Venues | Services | Catering | Activities | Decorations
+
+Services Tab includes: Photography, Games/Activities, Decorations, Setup/Cleanup, Invitations, Party Favors
+
+13. GRADUATION PARTY
+TABS: Venues | Services | Catering | Entertainment | Decorations
+
+Services Tab includes: Photography, Decorations, Setup/Cleanup, Entertainment Booking, Invitations
+
+14. ENGAGEMENT PARTY
+TABS: Venues | Services | Catering | Entertainment | Decorations
+
+Services Tab includes: Photography, Decorations, Event Coordinator, Invitations
+
+15. HOUSEWARMING PARTY
+TABS: Services | Catering | Entertainment | Activities
+
+Services Tab includes: House Cleaning, Setup, Photography, Catering Staff, Neighborhood Guide
+
+16-20. RETIREMENT, CAREER ACHIEVEMENT, FAREWELL, HOLIDAY PARTY
+TABS: Venues | Services | Catering | Entertainment | Decorations
+
+All similar to Birthday template structure adapted for formality level
+
+
+UNIVERSAL ELEMENTS ACROSS ALL TEMPLATES
+Every Services Tab Should Include:
+
+Search Bar
+Price Range Slider
+Minimum Rating Filter
+Sort By Options
+Service Type Preferences (template-specific)
+Availability Filters
+Provider Verification Badges
+
+Common Sort Options:
+
+Most Popular
+Price: Low to High
+Price: High to Low
+Highest Rated
+Most Reviewed
+Distance (where applicable)
+Availability (soonest first)
+
+Standard Rating System:
+
+All | 3+ | 3.5+ | 4+ | 4.5+
+Include review count alongside rating
