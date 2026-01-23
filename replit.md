@@ -116,6 +116,13 @@ The application utilizes a modern, responsive design with Tailwind CSS and shadc
       - `POST /api/fever/cache/refresh/:cityCode` - Manual city refresh (admin only)
       - `POST /api/fever/cache/refresh-all` - Batch refresh all cities (admin only)
   - Environment variables: `IMPACT_ACCOUNT_SID`, `IMPACT_AUTH_TOKEN`
+- **12Go Transportation Booking** (`client/src/components/TwelveGoTransport.tsx`):
+  - Affiliate widget for ground transportation bookings (trains, buses, ferries)
+  - Deep linking with pre-filled trip data (origin, destination, date, passengers)
+  - Three variants: `full` (card with details), `compact` (minimal card), `button` (just a button)
+  - Generates URLs: `https://12go.co/en/travel/{origin}/{destination}?affiliate_id={id}&date=YYYY-MM-DD&people=N`
+  - Integrated into itinerary page sidebar for seamless transportation booking
+  - Environment variable: `VITE_TWELVEGO_AFFILIATE_ID` (affiliate ID: 13805109)
 - **External API Caching System** (`server/services/cache.service.ts`):
   - Hotels: `/api/cache/hotels` - 24-hour cache with `hotelCache` and `hotelOfferCache` tables.
   - Flights: `/api/cache/flights` - 24-hour cache with `flightCache` table.
