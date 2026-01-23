@@ -40,6 +40,14 @@ The application features a modern, responsive design built with Tailwind CSS and
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
 - **Coordination Hub**: Tracks the full planning lifecycle, including vendor availability, state management, and bookings.
 - **Transportation Analysis & Map Integration**: Multi-modal transit analysis and route visualization using Google Maps and AI.
+- **Logistics Intelligence Layer**: Comprehensive backend services providing shared functionality across all experience templates:
+  - **Coordination Service** (`server/services/coordination.service.ts`): Multi-person RSVP tracking, dietary/accessibility management, payment collection, group communication
+  - **Vendor Management Service** (`server/services/vendor-management.service.ts`): Contract tracking, deposit schedules, payment milestones, communication logging
+  - **Budget Service** (`server/services/budget.service.ts`): Transaction logging, cost splitting (equal/percentage/custom), currency conversion (12 currencies), tip calculation (11 countries)
+  - **Itinerary Intelligence Service** (`server/services/itinerary-intelligence.service.ts`): AI-powered scheduling optimization, travel time estimation, day schedule organization
+  - **Emergency Service** (`server/services/emergency.service.ts`): Emergency contacts, alerts with severity levels, embassy info, emergency numbers, rebooking assistance
+  - **Database Tables**: trip_participants, vendor_contracts, trip_transactions, itinerary_items, trip_emergency_contacts, trip_alerts
+  - **Frontend Component**: TripLogisticsDashboard (`client/src/components/logistics/trip-logistics-dashboard.tsx`) displays real-time logistics data
 
 ### System Design Choices
 - **Modularity**: Codebase organized into `pages`-based frontend, and `server`/`shared` directories.
