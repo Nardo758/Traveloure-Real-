@@ -125,13 +125,31 @@ interface CartItem {
   };
 }
 
-const experienceConfigs: Record<string, {
+interface TabConfig {
+  id: string;
+  label: string;
+  icon: any;
+  category: string | null;
+}
+
+interface ExperienceMode {
+  label: string;
+  tabs: TabConfig[];
+}
+
+interface ExperienceConfig {
   heroImage: string;
-  tabs: { id: string; label: string; icon: any; category: string | null }[];
+  tabs: TabConfig[];
   filters: string[];
   locationLabel: string;
   dateLabel: string;
-}> = {
+  modes?: {
+    planning?: ExperienceMode;
+    guest?: ExperienceMode;
+  };
+}
+
+const experienceConfigs: Record<string, ExperienceConfig> = {
   travel: {
     heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
     tabs: [
@@ -149,25 +167,49 @@ const experienceConfigs: Record<string, {
   wedding: {
     heroImage: "https://images.unsplash.com/photo-1519741497674-611481863552?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "photography", label: "Photography", icon: Camera, category: "photography" },
-      { id: "florist", label: "Florist", icon: Flower2, category: "florist" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
+      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
+      { id: "vendors", label: "Vendors", icon: Users, category: "vendors" },
       { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
+      { id: "guest-accommodations", label: "Guest Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "rehearsal", label: "Rehearsal", icon: Utensils, category: "rehearsal" },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
     locationLabel: "Wedding Location:",
     dateLabel: "Wedding Date:",
+    modes: {
+      planning: {
+        label: "Planning Mode",
+        tabs: [
+          { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
+          { id: "vendors", label: "Vendors", icon: Users, category: "vendors" },
+          { id: "services", label: "Services", icon: Wrench, category: "services-wedding" },
+          { id: "guest-accommodations", label: "Guest Accommodations", icon: Hotel, category: "accommodations" },
+          { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+          { id: "rehearsal", label: "Rehearsal", icon: Utensils, category: "rehearsal" },
+        ],
+      },
+      guest: {
+        label: "Guest Activities Mode",
+        tabs: [
+          { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
+          { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+          { id: "services", label: "Services", icon: Wrench, category: "services-guest" },
+          { id: "welcome-events", label: "Welcome Events", icon: PartyPopper, category: "welcome" },
+          { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+          { id: "local-experiences", label: "Local Experiences", icon: MapPin, category: "experiences" },
+        ],
+      },
+    },
   },
   proposal: {
     heroImage: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "photography", label: "Photography", icon: Camera, category: "photography" },
-      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "decorations", label: "Decorations", icon: Flower2, category: "decorations" },
+      { id: "locations", label: "Locations", icon: MapPin, category: "venue" },
       { id: "services", label: "Services", icon: Wrench, category: "services-proposal" },
+      { id: "celebration-dining", label: "Celebration Dining", icon: Utensils, category: "dining" },
+      { id: "post-proposal", label: "Post-Proposal Activities", icon: Heart, category: "activities" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
     locationLabel: "Proposal Location:",
@@ -176,11 +218,12 @@ const experienceConfigs: Record<string, {
   birthday: {
     heroImage: "https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Cake, category: "catering" },
+      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
+      { id: "activities", label: "Activities", icon: PartyPopper, category: "activities" },
+      { id: "dining", label: "Dining", icon: Cake, category: "dining" },
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
-      { id: "decorations", label: "Decorations", icon: PartyPopper, category: "decorations" },
       { id: "services", label: "Services", icon: Wrench, category: "services-birthday" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
     ],
     filters: ["Kids", "Teens", "Adults", "Milestone", "Outdoor", "Indoor", "Theme Party", "Elegant"],
     locationLabel: "Party Location:",
@@ -216,10 +259,10 @@ const experienceConfigs: Record<string, {
     heroImage: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1600&q=80",
     tabs: [
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "activities", label: "Activities", icon: Heart, category: "activities" },
-      { id: "spa", label: "Spa & Wellness", icon: Heart, category: "spa" },
+      { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "services", label: "Services", icon: Wrench, category: "services-romance" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
     ],
     filters: ["Romantic", "Casual", "Upscale", "Adventure", "Foodie", "First Date", "Anniversary"],
     locationLabel: "Location:",
@@ -228,11 +271,12 @@ const experienceConfigs: Record<string, {
   "corporate-events": {
     heroImage: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
-      { id: "av", label: "A/V Equipment", icon: Briefcase, category: "av-equipment" },
-      { id: "team", label: "Team Activities", icon: Users, category: "team-building" },
+      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
+      { id: "team-activities", label: "Team Activities", icon: Users, category: "team-building" },
       { id: "services", label: "Services", icon: Wrench, category: "services-corporate" },
+      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
     ],
     filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking"],
     locationLabel: "Event Location:",
@@ -241,11 +285,12 @@ const experienceConfigs: Record<string, {
   "reunions": {
     heroImage: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=1600&q=80",
     tabs: [
-      { id: "venue", label: "Venues", icon: Landmark, category: "venue" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
+      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "activities", label: "Activities", icon: Users, category: "activities" },
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
       { id: "services", label: "Services", icon: Wrench, category: "services-event" },
+      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
     ],
     filters: ["Family", "School", "Friends", "Outdoor", "Indoor", "Casual", "Formal", "Weekend"],
     locationLabel: "Reunion Location:",
@@ -267,11 +312,12 @@ const experienceConfigs: Record<string, {
   "retreats": {
     heroImage: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=1600&q=80",
     tabs: [
-      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
-      { id: "wellness", label: "Wellness Programs", icon: Heart, category: "wellness" },
+      { id: "venues", label: "Venues", icon: Landmark, category: "venue" },
       { id: "activities", label: "Activities", icon: TreePine, category: "activities" },
-      { id: "catering", label: "Catering", icon: Utensils, category: "catering" },
       { id: "services", label: "Services", icon: Wrench, category: "services-retreat" },
+      { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
+      { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "wellness", label: "Wellness", icon: Heart, category: "wellness" },
     ],
     filters: ["Wellness", "Yoga", "Meditation", "Nature", "Spiritual", "Detox", "Corporate", "Silent"],
     locationLabel: "Retreat Location:",
@@ -777,6 +823,18 @@ export default function ExperienceTemplatePage() {
   // Template-based filters (for experience types with database-driven tabs)
   const templateFilters = useTemplateFilters();
   const hasTemplateTabs = slug === "bachelor-bachelorette" || slug === "anniversary-trip";
+  
+  // Wedding mode state (planning vs guest activities)
+  const [weddingMode, setWeddingMode] = useState<"planning" | "guest">("planning");
+  
+  // Get effective tabs based on mode for templates with dual modes
+  const effectiveTabs = useMemo(() => {
+    if (config.modes && slug === "wedding") {
+      const modeConfig = weddingMode === "planning" ? config.modes.planning : config.modes.guest;
+      return modeConfig?.tabs || config.tabs;
+    }
+    return config.tabs;
+  }, [config, slug, weddingMode]);
   
   // Track whether we've done initial hydration
   const hasHydratedRef = useRef(false);
@@ -1691,10 +1749,39 @@ export default function ExperienceTemplatePage() {
 
         <div className="sticky top-0 z-40 bg-white dark:bg-gray-800 border-b">
           <div className="container mx-auto px-4">
+            {/* Wedding Mode Toggle */}
+            {slug === "wedding" && config.modes && (
+              <div className="flex items-center justify-center gap-2 py-2 border-b border-gray-100 dark:border-gray-700">
+                <Button
+                  variant={weddingMode === "planning" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setWeddingMode("planning");
+                    setActiveTab(config.modes?.planning?.tabs[0]?.id || "venues");
+                  }}
+                  className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
+                  data-testid="button-wedding-mode-planning"
+                >
+                  Planning Mode
+                </Button>
+                <Button
+                  variant={weddingMode === "guest" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => {
+                    setWeddingMode("guest");
+                    setActiveTab(config.modes?.guest?.tabs[0]?.id || "activities");
+                  }}
+                  className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
+                  data-testid="button-wedding-mode-guest"
+                >
+                  Guest Activities
+                </Button>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="h-auto bg-transparent p-0 gap-0">
-                  {config.tabs.map((tab) => (
+                  {effectiveTabs.map((tab) => (
                     <TabsTrigger
                       key={tab.id}
                       value={tab.id}
@@ -2765,11 +2852,39 @@ export default function ExperienceTemplatePage() {
             </CardContent>
           </Card>
 
+          {/* Mobile Mode Toggle for Wedding */}
+          {slug === "wedding" && config.modes && (
+            <div className="flex items-center justify-center gap-2 py-2 border-b bg-white dark:bg-gray-800">
+              <Button
+                variant={weddingMode === "planning" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setWeddingMode("planning");
+                  setActiveTab(config.modes?.planning?.tabs[0]?.id || "venues");
+                }}
+                className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
+              >
+                Planning
+              </Button>
+              <Button
+                variant={weddingMode === "guest" ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setWeddingMode("guest");
+                  setActiveTab(config.modes?.guest?.tabs[0]?.id || "activities");
+                }}
+                className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
+              >
+                Guest Activities
+              </Button>
+            </div>
+          )}
+
           {/* Mobile Tabs */}
           <div className="bg-white dark:bg-gray-800 border-b mt-4 px-2 overflow-x-auto">
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="h-auto bg-transparent p-0 gap-0 flex-nowrap">
-                {config.tabs.map((tab) => (
+                {effectiveTabs.map((tab) => (
                   <TabsTrigger
                     key={tab.id}
                     value={tab.id}

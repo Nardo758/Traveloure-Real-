@@ -1503,6 +1503,540 @@ const anniversaryUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
+// ============ TRAVEL TEMPLATE ============
+const travelTabs: TabDef[] = [
+  {
+    name: "Activities",
+    slug: "activities",
+    description: "Tours, experiences, and things to do at your destination",
+    icon: "Palmtree",
+    filters: [
+      {
+        name: "Duration",
+        slug: "duration",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Half Day", value: "half_day" },
+          { label: "Full Day", value: "full_day" },
+          { label: "Multi-Day", value: "multi_day" },
+          { label: "1-2 Hours", value: "1-2_hours" },
+        ]
+      },
+      {
+        name: "Activity Type",
+        slug: "activity_type",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Adventure", value: "adventure" },
+          { label: "Culture & History", value: "culture_history" },
+          { label: "Nature & Outdoors", value: "nature_outdoors" },
+          { label: "Food & Dining", value: "food_dining" },
+          { label: "Wellness & Spa", value: "wellness_spa" },
+          { label: "Nightlife", value: "nightlife" },
+          { label: "Shopping", value: "shopping" },
+          { label: "Water Activities", value: "water_activities" },
+          { label: "City Tours", value: "city_tours" },
+          { label: "Art & Museums", value: "art_museums" },
+        ]
+      },
+      {
+        name: "Group Size",
+        slug: "group_size",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Solo-Friendly", value: "solo" },
+          { label: "Couples", value: "couples" },
+          { label: "Small Groups (3-6)", value: "small_3-6" },
+          { label: "Large Groups (7+)", value: "large_7+" },
+        ]
+      },
+      {
+        name: "Physical Level",
+        slug: "physical_level",
+        filterType: "single_select",
+        icon: "Dumbbell",
+        options: [
+          { label: "Easy", value: "easy" },
+          { label: "Moderate", value: "moderate" },
+          { label: "Challenging", value: "challenging" },
+          { label: "Extreme", value: "extreme" },
+        ]
+      },
+      {
+        name: "Age Range",
+        slug: "age_range",
+        filterType: "multi_select",
+        icon: "Users",
+        options: [
+          { label: "Kid-Friendly", value: "kid_friendly" },
+          { label: "Teen-Friendly", value: "teen_friendly" },
+          { label: "Adult Only", value: "adult_only" },
+          { label: "Senior-Friendly", value: "senior_friendly" },
+        ]
+      },
+      {
+        name: "Time of Day",
+        slug: "time_of_day",
+        filterType: "multi_select",
+        icon: "Sun",
+        options: [
+          { label: "Morning", value: "morning" },
+          { label: "Afternoon", value: "afternoon" },
+          { label: "Evening", value: "evening" },
+          { label: "Night", value: "night" },
+          { label: "Flexible", value: "flexible" },
+        ]
+      },
+      {
+        name: "Weather",
+        slug: "weather",
+        filterType: "single_select",
+        icon: "Cloud",
+        options: [
+          { label: "Indoor", value: "indoor" },
+          { label: "Outdoor", value: "outdoor" },
+          { label: "Covered/Flexible", value: "covered" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Hotels",
+    slug: "hotels",
+    description: "Accommodations for your stay",
+    icon: "Hotel",
+    filters: [
+      {
+        name: "Hotel Type",
+        slug: "hotel_type",
+        filterType: "multi_select",
+        icon: "Building",
+        options: [
+          { label: "Luxury", value: "luxury" },
+          { label: "Boutique", value: "boutique" },
+          { label: "Budget", value: "budget" },
+          { label: "Resort", value: "resort" },
+          { label: "Apartment/Rental", value: "apartment" },
+          { label: "Hostel", value: "hostel" },
+          { label: "Bed & Breakfast", value: "bb" },
+          { label: "Unique Stays", value: "unique" },
+        ]
+      },
+      {
+        name: "Amenities",
+        slug: "amenities",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Pool", value: "pool" },
+          { label: "Spa", value: "spa" },
+          { label: "Gym", value: "gym" },
+          { label: "Restaurant", value: "restaurant" },
+          { label: "Bar", value: "bar" },
+          { label: "Room Service", value: "room_service" },
+          { label: "Free Wi-Fi", value: "wifi" },
+          { label: "Parking", value: "parking" },
+          { label: "Beach Access", value: "beach_access" },
+          { label: "Business Center", value: "business_center" },
+        ]
+      },
+      {
+        name: "Room Type",
+        slug: "room_type",
+        filterType: "single_select",
+        icon: "Bed",
+        options: [
+          { label: "Single", value: "single" },
+          { label: "Double", value: "double" },
+          { label: "Suite", value: "suite" },
+          { label: "Family Room", value: "family" },
+          { label: "Connecting Rooms", value: "connecting" },
+        ]
+      },
+      {
+        name: "Neighborhood",
+        slug: "neighborhood",
+        filterType: "single_select",
+        icon: "MapPin",
+        options: [
+          { label: "City Center", value: "city_center" },
+          { label: "Beach", value: "beach" },
+          { label: "Airport", value: "airport" },
+          { label: "Historic District", value: "historic" },
+          { label: "Shopping District", value: "shopping" },
+          { label: "Quiet/Residential", value: "residential" },
+        ]
+      },
+      {
+        name: "Star Rating",
+        slug: "star_rating",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "3-Star", value: "3_star" },
+          { label: "4-Star", value: "4_star" },
+          { label: "5-Star", value: "5_star" },
+          { label: "Unrated", value: "unrated" },
+        ]
+      },
+      {
+        name: "Meal Plans",
+        slug: "meal_plans",
+        filterType: "single_select",
+        icon: "Utensils",
+        options: [
+          { label: "Room Only", value: "room_only" },
+          { label: "Breakfast Included", value: "breakfast" },
+          { label: "Half Board", value: "half_board" },
+          { label: "Full Board", value: "full_board" },
+          { label: "All-Inclusive", value: "all_inclusive" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Services",
+    slug: "services",
+    description: "Supporting service providers for your trip",
+    icon: "Wrench",
+    filters: [
+      {
+        name: "Service Type",
+        slug: "service_type",
+        filterType: "multi_select",
+        icon: "Briefcase",
+        options: [
+          { label: "Photography", value: "photography" },
+          { label: "Videography", value: "videography" },
+          { label: "Tour Guides", value: "tour_guides" },
+          { label: "Private Drivers", value: "private_drivers" },
+          { label: "Translators/Interpreters", value: "translators" },
+          { label: "Travel Concierge", value: "concierge" },
+          { label: "Luggage Services", value: "luggage" },
+          { label: "Travel Insurance", value: "insurance" },
+          { label: "SIM Cards/WiFi", value: "connectivity" },
+          { label: "Local Expert Consultation", value: "local_expert" },
+        ]
+      },
+      {
+        name: "Language Support",
+        slug: "language_support",
+        filterType: "multi_select",
+        icon: "Languages",
+        options: [
+          { label: "English", value: "english" },
+          { label: "Spanish", value: "spanish" },
+          { label: "Mandarin", value: "mandarin" },
+          { label: "French", value: "french" },
+          { label: "Arabic", value: "arabic" },
+          { label: "Japanese", value: "japanese" },
+          { label: "German", value: "german" },
+          { label: "Other", value: "other" },
+        ]
+      },
+      {
+        name: "Availability",
+        slug: "availability",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Instant Booking", value: "instant" },
+          { label: "Request to Book", value: "request" },
+          { label: "24/7 Available", value: "24_7" },
+        ]
+      },
+      {
+        name: "Experience Level",
+        slug: "experience_level",
+        filterType: "single_select",
+        icon: "Award",
+        options: [
+          { label: "Beginner-Friendly", value: "beginner" },
+          { label: "Expert", value: "expert" },
+          { label: "Professional", value: "professional" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Dining",
+    slug: "dining",
+    description: "Restaurants and food experiences",
+    icon: "Utensils",
+    filters: [
+      {
+        name: "Cuisine Type",
+        slug: "cuisine_type",
+        filterType: "multi_select",
+        icon: "ChefHat",
+        options: [
+          { label: "Local/Regional", value: "local" },
+          { label: "Italian", value: "italian" },
+          { label: "French", value: "french" },
+          { label: "Asian", value: "asian" },
+          { label: "Seafood", value: "seafood" },
+          { label: "Steakhouse", value: "steakhouse" },
+          { label: "Mexican", value: "mexican" },
+          { label: "Mediterranean", value: "mediterranean" },
+          { label: "Fusion", value: "fusion" },
+          { label: "Vegetarian/Vegan", value: "vegetarian_vegan" },
+          { label: "Street Food", value: "street_food" },
+        ]
+      },
+      {
+        name: "Meal Type",
+        slug: "meal_type",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Breakfast", value: "breakfast" },
+          { label: "Brunch", value: "brunch" },
+          { label: "Lunch", value: "lunch" },
+          { label: "Dinner", value: "dinner" },
+          { label: "Late Night", value: "late_night" },
+          { label: "Food Tour", value: "food_tour" },
+        ]
+      },
+      {
+        name: "Ambiance",
+        slug: "ambiance",
+        filterType: "multi_select",
+        icon: "Sparkles",
+        options: [
+          { label: "Casual", value: "casual" },
+          { label: "Fine Dining", value: "fine_dining" },
+          { label: "Romantic", value: "romantic" },
+          { label: "Family-Friendly", value: "family_friendly" },
+          { label: "Lively/Loud", value: "lively" },
+          { label: "Quiet/Intimate", value: "quiet" },
+          { label: "Outdoor Seating", value: "outdoor" },
+          { label: "Views", value: "views" },
+        ]
+      },
+      {
+        name: "Dietary Options",
+        slug: "dietary_options",
+        filterType: "multi_select",
+        icon: "Leaf",
+        options: [
+          { label: "Vegetarian", value: "vegetarian" },
+          { label: "Vegan", value: "vegan" },
+          { label: "Gluten-Free", value: "gluten_free" },
+          { label: "Halal", value: "halal" },
+          { label: "Kosher", value: "kosher" },
+          { label: "Allergy-Friendly", value: "allergy_friendly" },
+        ]
+      },
+      {
+        name: "Reservation",
+        slug: "reservation",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Walk-in Friendly", value: "walk_in" },
+          { label: "Reservation Recommended", value: "recommended" },
+          { label: "Reservation Required", value: "required" },
+        ]
+      },
+      {
+        name: "Group Size",
+        slug: "group_size",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "Couples", value: "couples" },
+          { label: "Small Groups (3-6)", value: "small_3-6" },
+          { label: "Large Groups (7-15)", value: "large_7-15" },
+          { label: "XL Groups (15+)", value: "xl_15+" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Flights",
+    slug: "flights",
+    description: "Flight options for your journey",
+    icon: "Plane",
+    filters: [
+      {
+        name: "Flight Type",
+        slug: "flight_type",
+        filterType: "single_select",
+        icon: "Route",
+        options: [
+          { label: "Nonstop", value: "nonstop" },
+          { label: "1 Stop", value: "1_stop" },
+          { label: "2+ Stops", value: "2+_stops" },
+        ]
+      },
+      {
+        name: "Cabin Class",
+        slug: "cabin_class",
+        filterType: "single_select",
+        icon: "Armchair",
+        options: [
+          { label: "Economy", value: "economy" },
+          { label: "Premium Economy", value: "premium_economy" },
+          { label: "Business", value: "business" },
+          { label: "First Class", value: "first_class" },
+        ]
+      },
+      {
+        name: "Departure Time",
+        slug: "departure_time",
+        filterType: "multi_select",
+        icon: "Clock",
+        options: [
+          { label: "Early Morning", value: "early_morning" },
+          { label: "Morning", value: "morning" },
+          { label: "Afternoon", value: "afternoon" },
+          { label: "Evening", value: "evening" },
+          { label: "Night", value: "night" },
+          { label: "Red Eye", value: "red_eye" },
+        ]
+      },
+      {
+        name: "Baggage",
+        slug: "baggage",
+        filterType: "single_select",
+        icon: "Luggage",
+        options: [
+          { label: "Carry-on Only", value: "carry_on" },
+          { label: "1 Checked Bag", value: "1_checked" },
+          { label: "2+ Checked Bags", value: "2+_checked" },
+        ]
+      },
+      {
+        name: "Flexibility",
+        slug: "flexibility",
+        filterType: "single_select",
+        icon: "Calendar",
+        options: [
+          { label: "Flexible Dates", value: "flexible" },
+          { label: "Exact Dates", value: "exact" },
+        ]
+      },
+    ]
+  },
+  {
+    name: "Transportation",
+    slug: "transportation",
+    description: "Ground transportation at your destination",
+    icon: "Car",
+    filters: [
+      {
+        name: "Transport Type",
+        slug: "transport_type",
+        filterType: "multi_select",
+        icon: "Route",
+        options: [
+          { label: "Airport Transfer", value: "airport_transfer" },
+          { label: "Car Rental", value: "car_rental" },
+          { label: "Private Driver", value: "private_driver" },
+          { label: "Public Transit Pass", value: "transit_pass" },
+          { label: "Train Tickets", value: "train" },
+          { label: "Ferry/Boat", value: "ferry" },
+          { label: "Scooter/Bike Rental", value: "scooter_bike" },
+          { label: "Rideshare", value: "rideshare" },
+        ]
+      },
+      {
+        name: "Vehicle Type",
+        slug: "vehicle_type",
+        filterType: "single_select",
+        icon: "Car",
+        options: [
+          { label: "Economy", value: "economy" },
+          { label: "Standard", value: "standard" },
+          { label: "SUV", value: "suv" },
+          { label: "Luxury", value: "luxury" },
+          { label: "Van/Minibus", value: "van" },
+          { label: "Bus", value: "bus" },
+        ]
+      },
+      {
+        name: "Service Level",
+        slug: "service_level",
+        filterType: "single_select",
+        icon: "Star",
+        options: [
+          { label: "Shared", value: "shared" },
+          { label: "Private", value: "private" },
+          { label: "Premium", value: "premium" },
+        ]
+      },
+      {
+        name: "Capacity",
+        slug: "capacity",
+        filterType: "single_select",
+        icon: "Users",
+        options: [
+          { label: "1-2 Passengers", value: "1-2" },
+          { label: "3-4 Passengers", value: "3-4" },
+          { label: "5-7 Passengers", value: "5-7" },
+          { label: "8-15 Passengers", value: "8-15" },
+          { label: "15+ Passengers", value: "15+" },
+        ]
+      },
+    ]
+  },
+];
+
+// Universal filters for Travel
+const travelUniversalFilters: UniversalFilterDef[] = [
+  {
+    name: "Price Range",
+    slug: "price_range",
+    filterType: "range",
+    icon: "DollarSign",
+    options: [
+      { label: "Budget", value: "budget", minValue: 0, maxValue: 100 },
+      { label: "Mid-Range", value: "midrange", minValue: 100, maxValue: 300 },
+      { label: "Premium", value: "premium", minValue: 300, maxValue: 500 },
+      { label: "Luxury", value: "luxury", minValue: 500 },
+    ]
+  },
+  {
+    name: "Minimum Rating",
+    slug: "min_rating",
+    filterType: "single_select",
+    icon: "Star",
+    options: [
+      { label: "All", value: "all" },
+      { label: "3+", value: "3" },
+      { label: "3.5+", value: "3.5" },
+      { label: "4+", value: "4" },
+      { label: "4.5+", value: "4.5" },
+    ]
+  },
+  {
+    name: "Sort By",
+    slug: "sort_by",
+    filterType: "single_select",
+    icon: "ArrowUpDown",
+    options: [
+      { label: "Most Popular", value: "popular" },
+      { label: "Price: Low to High", value: "price_low" },
+      { label: "Price: High to Low", value: "price_high" },
+      { label: "Rating", value: "rating" },
+      { label: "Duration", value: "duration" },
+    ]
+  },
+  {
+    name: "Booking Status",
+    slug: "booking_status",
+    filterType: "multi_select",
+    icon: "CheckCircle",
+    options: [
+      { label: "Available Now", value: "available" },
+      { label: "Request to Book", value: "request" },
+    ]
+  },
+];
+
 export async function seedExperienceTemplateTabs() {
   console.log("Seeding experience template tabs and filters...");
 
@@ -1525,6 +2059,16 @@ export async function seedExperienceTemplateTabs() {
   }
   await seedUniversalFilters(anniversaryId, anniversaryUniversalFilters);
   console.log("Anniversary Trip template seeded.");
+
+  // Seed Travel template
+  const travelId = await getOrCreateExperienceType("travel", "Travel");
+  console.log(`Travel experience type ID: ${travelId}`);
+  
+  for (let i = 0; i < travelTabs.length; i++) {
+    await seedTabWithFilters(travelId, travelTabs[i], i);
+  }
+  await seedUniversalFilters(travelId, travelUniversalFilters);
+  console.log("Travel template seeded.");
 
   console.log("Experience template tabs and filters seeding complete.");
 }
