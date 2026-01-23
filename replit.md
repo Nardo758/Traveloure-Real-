@@ -33,7 +33,18 @@ The application features a modern, responsive design built with Tailwind CSS and
   - **Dynamic Template System**: Database-driven tabs and multi-level filtering via 5 schema tables (experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions, experienceUniversalFilters, experienceUniversalFilterOptions).
     - Filter types: `single_select`, `multi_select`, `range`, `toggle`
     - Universal filters: date range, budget, booking status, cancellation policy, expert verified
+    - Universal sort options: Most Popular | Price: Low to High | Price: High to Low | Highest Rated
+    - Universal rating filter: All | 3+ | 3.5+ | 4+ | 4.5+
     - TemplateFiltersPanel component renders filters dynamically for template-driven experience types
+  - **Complete Tab & Filter Specifications**: Standardized across all 22 experience templates:
+    - **Travel**: Activities | Hotels | Services | Dining | Flights | Transportation (with Activity Type, Duration, Group Size, Physical Level, Cuisine Type filters)
+    - **Wedding**: Dual-mode support with Planning Mode (Venues, Vendors, Services, Guest Accommodations, Transportation, Rehearsal) and Guest Activities Mode (Activities, Dining, Services, Welcome Events, Transportation, Local Experiences)
+    - **Proposal**: Locations | Services | Celebration Dining | Post-Proposal Activities | Accommodations
+    - **Date Night**: Dining | Activities | Entertainment | Services | Transportation
+    - **Birthday**: Venues | Activities | Dining | Entertainment | Services | Accommodations
+    - **Corporate Events**: Venues | Team Activities | Services | Dining | Transportation | Accommodations
+    - **Reunions**: Venues | Activities | Services | Dining | Accommodations | Transportation
+    - **Retreats**: Venues | Activities | Services | Dining | Accommodations | Wellness
   - Seeded templates for Bachelor/Bachelorette Parties (8 tabs with logistics-focused filters: group size, budget tiers, venue capacity, energy level) and Anniversary Trips (8 tabs with romance-focused filters: intimacy level, privacy, ambiance, special services).
 - **Reviews & Notifications**: System for user reviews and timely updates.
 - **Role-Based Dashboards**: Comprehensive dashboards for Service Providers, Administrators, and Executive Assistants.
