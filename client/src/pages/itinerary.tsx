@@ -35,6 +35,7 @@ import {
   Gauge,
   Timer,
 } from "lucide-react";
+import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { format, addDays } from "date-fns";
 
 const itineraryData = {
@@ -474,6 +475,15 @@ export default function ItineraryPage() {
                 </ScrollArea>
               </CardContent>
             </Card>
+            
+            <TwelveGoTransport
+              destination={itinerary.destination.split(',')[0]}
+              departureDate={itinerary.startDate.toISOString()}
+              returnDate={itinerary.endDate.toISOString()}
+              passengers={itinerary.travelers}
+              variant="compact"
+              className="mt-4"
+            />
           </div>
 
           <div className="flex-1">
