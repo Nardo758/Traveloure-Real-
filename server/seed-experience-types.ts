@@ -9,7 +9,16 @@ const coreExperienceTypes = [
     description: "Plan your perfect trip with activities, accommodations, and services",
     icon: "Plane",
     color: "#3B82F6",
-    sortOrder: 1 
+    sortOrder: 1,
+    // Logistics Intelligence
+    paymentFlowType: "joint",
+    paymentComplexity: "low",
+    timingComplexity: "medium",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 1,
+    typicalGroupSizeMax: 10,
+    typicalDurationMinDays: 2,
+    typicalDurationMaxDays: 14
   },
   { 
     name: "Wedding", 
@@ -17,7 +26,16 @@ const coreExperienceTypes = [
     description: "Create your dream wedding with venue, catering, photography, and more",
     icon: "Heart",
     color: "#EC4899",
-    sortOrder: 2 
+    sortOrder: 2,
+    // Logistics Intelligence - Very High complexity
+    paymentFlowType: "multi_stakeholder",
+    paymentComplexity: "very_high",
+    timingComplexity: "very_high",
+    contingencyLevel: "critical",
+    typicalGroupSizeMin: 50,
+    typicalGroupSizeMax: 300,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 7
   },
   { 
     name: "Proposal", 
@@ -25,7 +43,16 @@ const coreExperienceTypes = [
     description: "Plan the perfect proposal with the right setting and ambiance",
     icon: "Diamond",
     color: "#8B5CF6",
-    sortOrder: 3 
+    sortOrder: 3,
+    // Logistics Intelligence - Critical but simple
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "critical",
+    typicalGroupSizeMin: 1,
+    typicalGroupSizeMax: 2,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Romance", 
@@ -33,7 +60,15 @@ const coreExperienceTypes = [
     description: "Plan a romantic getaway or special date experience",
     icon: "HeartHandshake",
     color: "#F43F5E",
-    sortOrder: 4 
+    sortOrder: 4,
+    paymentFlowType: "joint",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 2,
+    typicalGroupSizeMax: 2,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 5
   },
   { 
     name: "Birthday", 
@@ -41,7 +76,15 @@ const coreExperienceTypes = [
     description: "Celebrate in style with venue, entertainment, and catering",
     icon: "Cake",
     color: "#F59E0B",
-    sortOrder: 5 
+    sortOrder: 5,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 5,
+    typicalGroupSizeMax: 50,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Corporate", 
@@ -49,7 +92,15 @@ const coreExperienceTypes = [
     description: "Professional events, conferences, and team building",
     icon: "Briefcase",
     color: "#6366F1",
-    sortOrder: 6 
+    sortOrder: 6,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "medium",
+    timingComplexity: "extreme",
+    contingencyLevel: "critical",
+    typicalGroupSizeMin: 20,
+    typicalGroupSizeMax: 500,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 5
   },
   { 
     name: "Boys Trip", 
@@ -57,7 +108,15 @@ const coreExperienceTypes = [
     description: "Epic adventures, sports, and nightlife for the guys",
     icon: "Users",
     color: "#10B981",
-    sortOrder: 7 
+    sortOrder: 7,
+    paymentFlowType: "group_split",
+    paymentComplexity: "high",
+    timingComplexity: "high",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 4,
+    typicalGroupSizeMax: 15,
+    typicalDurationMinDays: 2,
+    typicalDurationMaxDays: 5
   },
   { 
     name: "Girls Trip", 
@@ -65,7 +124,15 @@ const coreExperienceTypes = [
     description: "Spa, shopping, dining, and unforgettable experiences",
     icon: "Sparkles",
     color: "#EC4899",
-    sortOrder: 8 
+    sortOrder: 8,
+    paymentFlowType: "group_split",
+    paymentComplexity: "high",
+    timingComplexity: "high",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 4,
+    typicalGroupSizeMax: 15,
+    typicalDurationMinDays: 2,
+    typicalDurationMaxDays: 5
   },
   { 
     name: "Date Night", 
@@ -73,7 +140,16 @@ const coreExperienceTypes = [
     description: "Plan a romantic evening with dining and entertainment",
     icon: "Heart",
     color: "#F43F5E",
-    sortOrder: 9 
+    sortOrder: 9,
+    // LOW complexity
+    paymentFlowType: "joint",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 2,
+    typicalGroupSizeMax: 2,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Corporate Events", 
@@ -81,7 +157,16 @@ const coreExperienceTypes = [
     description: "Professional events, conferences, and team building",
     icon: "Briefcase",
     color: "#475569",
-    sortOrder: 10 
+    sortOrder: 10,
+    // EXTREME complexity
+    paymentFlowType: "single_payer",
+    paymentComplexity: "high",
+    timingComplexity: "extreme",
+    contingencyLevel: "critical",
+    typicalGroupSizeMin: 20,
+    typicalGroupSizeMax: 500,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 5
   },
   { 
     name: "Reunions", 
@@ -89,7 +174,15 @@ const coreExperienceTypes = [
     description: "Bring family, friends, or classmates together",
     icon: "Users",
     color: "#6366F1",
-    sortOrder: 11 
+    sortOrder: 11,
+    paymentFlowType: "group_split",
+    paymentComplexity: "medium",
+    timingComplexity: "medium",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 10,
+    typicalGroupSizeMax: 100,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 3
   },
   { 
     name: "Wedding Anniversaries", 
@@ -97,7 +190,15 @@ const coreExperienceTypes = [
     description: "Celebrate your love with a memorable anniversary",
     icon: "Heart",
     color: "#F43F5E",
-    sortOrder: 12 
+    sortOrder: 12,
+    paymentFlowType: "joint",
+    paymentComplexity: "low",
+    timingComplexity: "medium",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 2,
+    typicalGroupSizeMax: 2,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 7
   },
   { 
     name: "Retreats", 
@@ -105,7 +206,15 @@ const coreExperienceTypes = [
     description: "Wellness, yoga, meditation, and rejuvenation",
     icon: "Mountain",
     color: "#10B981",
-    sortOrder: 13 
+    sortOrder: 13,
+    paymentFlowType: "individual_with_discount",
+    paymentComplexity: "medium",
+    timingComplexity: "high",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 10,
+    typicalGroupSizeMax: 50,
+    typicalDurationMinDays: 2,
+    typicalDurationMaxDays: 7
   },
   { 
     name: "Baby Shower", 
@@ -113,7 +222,15 @@ const coreExperienceTypes = [
     description: "Celebrate the upcoming arrival with style",
     icon: "Baby",
     color: "#38BDF8",
-    sortOrder: 14 
+    sortOrder: 14,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 10,
+    typicalGroupSizeMax: 40,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Graduation Party", 
@@ -121,7 +238,15 @@ const coreExperienceTypes = [
     description: "Honor academic achievements with a celebration",
     icon: "GraduationCap",
     color: "#F59E0B",
-    sortOrder: 15 
+    sortOrder: 15,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 15,
+    typicalGroupSizeMax: 75,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Engagement Party", 
@@ -129,7 +254,15 @@ const coreExperienceTypes = [
     description: "Celebrate the happy couple's engagement",
     icon: "Diamond",
     color: "#D946EF",
-    sortOrder: 16 
+    sortOrder: 16,
+    paymentFlowType: "multi_stakeholder",
+    paymentComplexity: "medium",
+    timingComplexity: "low",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 20,
+    typicalGroupSizeMax: 100,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Housewarming Party", 
@@ -137,7 +270,15 @@ const coreExperienceTypes = [
     description: "Welcome friends and family to your new home",
     icon: "Home",
     color: "#14B8A6",
-    sortOrder: 17 
+    sortOrder: 17,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 10,
+    typicalGroupSizeMax: 50,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Retirement Party", 
@@ -145,7 +286,15 @@ const coreExperienceTypes = [
     description: "Honor a career well-lived with a celebration",
     icon: "PartyPopper",
     color: "#8B5CF6",
-    sortOrder: 18 
+    sortOrder: 18,
+    paymentFlowType: "group_split",
+    paymentComplexity: "medium",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 20,
+    typicalGroupSizeMax: 100,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Career Achievement Party", 
@@ -153,7 +302,15 @@ const coreExperienceTypes = [
     description: "Celebrate promotions, milestones, and achievements",
     icon: "Trophy",
     color: "#EAB308",
-    sortOrder: 19 
+    sortOrder: 19,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 10,
+    typicalGroupSizeMax: 50,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Farewell Party", 
@@ -161,7 +318,15 @@ const coreExperienceTypes = [
     description: "Say goodbye in style with a memorable sendoff",
     icon: "HandHeart",
     color: "#06B6D4",
-    sortOrder: 20 
+    sortOrder: 20,
+    paymentFlowType: "group_split",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 10,
+    typicalGroupSizeMax: 50,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
   },
   { 
     name: "Holiday Party", 
@@ -169,7 +334,50 @@ const coreExperienceTypes = [
     description: "Celebrate the season with festive gatherings",
     icon: "TreePine",
     color: "#16A34A",
-    sortOrder: 21 
+    sortOrder: 21,
+    paymentFlowType: "single_payer",
+    paymentComplexity: "low",
+    timingComplexity: "low",
+    contingencyLevel: "flexible",
+    typicalGroupSizeMin: 15,
+    typicalGroupSizeMax: 100,
+    typicalDurationMinDays: 1,
+    typicalDurationMaxDays: 1
+  },
+  // New template-driven experience types with full logistics intelligence
+  { 
+    name: "Bachelor/Bachelorette Party", 
+    slug: "bachelor-bachelorette", 
+    description: "Epic pre-wedding celebration with friends",
+    icon: "PartyPopper",
+    color: "#EC4899",
+    sortOrder: 22,
+    // HIGH complexity - Group splits, many people, multiple activities
+    paymentFlowType: "group_split",
+    paymentComplexity: "high",
+    timingComplexity: "high",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 8,
+    typicalGroupSizeMax: 20,
+    typicalDurationMinDays: 2,
+    typicalDurationMaxDays: 4
+  },
+  { 
+    name: "Anniversary Trip", 
+    slug: "anniversary-trip", 
+    description: "Romantic getaway to celebrate your love",
+    icon: "HeartHandshake",
+    color: "#F43F5E",
+    sortOrder: 23,
+    // MEDIUM complexity - Couple, unified budget, multiple vendors
+    paymentFlowType: "joint",
+    paymentComplexity: "low",
+    timingComplexity: "medium",
+    contingencyLevel: "important",
+    typicalGroupSizeMin: 2,
+    typicalGroupSizeMax: 2,
+    typicalDurationMinDays: 2,
+    typicalDurationMaxDays: 7
   },
 ];
 
@@ -359,9 +567,10 @@ const templateSteps: Record<string, Array<{ stepNumber: number; name: string; de
   ],
 };
 
-export async function seedExperienceTypes(): Promise<{ created: number; existing: number }> {
+export async function seedExperienceTypes(): Promise<{ created: number; existing: number; updated: number }> {
   let created = 0;
   let existing = 0;
+  let updated = 0;
 
   for (const expType of coreExperienceTypes) {
     const exists = await db.select().from(experienceTypes)
@@ -376,6 +585,14 @@ export async function seedExperienceTypes(): Promise<{ created: number; existing
         icon: expType.icon,
         color: expType.color,
         sortOrder: expType.sortOrder,
+        paymentFlowType: expType.paymentFlowType,
+        paymentComplexity: expType.paymentComplexity,
+        timingComplexity: expType.timingComplexity,
+        contingencyLevel: expType.contingencyLevel,
+        typicalGroupSizeMin: expType.typicalGroupSizeMin,
+        typicalGroupSizeMax: expType.typicalGroupSizeMax,
+        typicalDurationMinDays: expType.typicalDurationMinDays,
+        typicalDurationMaxDays: expType.typicalDurationMaxDays,
       }).returning();
       
       const steps = templateSteps[expType.slug];
@@ -395,10 +612,27 @@ export async function seedExperienceTypes(): Promise<{ created: number; existing
       created++;
       console.log(`Created experience type: ${expType.name} with ${steps?.length || 0} steps`);
     } else {
+      // Update existing records with logistics intelligence data if not set
+      if (!exists.paymentFlowType || !exists.timingComplexity) {
+        await db.update(experienceTypes)
+          .set({
+            paymentFlowType: expType.paymentFlowType,
+            paymentComplexity: expType.paymentComplexity,
+            timingComplexity: expType.timingComplexity,
+            contingencyLevel: expType.contingencyLevel,
+            typicalGroupSizeMin: expType.typicalGroupSizeMin,
+            typicalGroupSizeMax: expType.typicalGroupSizeMax,
+            typicalDurationMinDays: expType.typicalDurationMinDays,
+            typicalDurationMaxDays: expType.typicalDurationMaxDays,
+          })
+          .where(eq(experienceTypes.id, exists.id));
+        updated++;
+        console.log(`Updated logistics for: ${expType.name}`);
+      }
       existing++;
     }
   }
 
-  console.log(`Experience types seed complete: ${created} created, ${existing} already existed`);
-  return { created, existing };
+  console.log(`Experience types seed complete: ${created} created, ${updated} updated with logistics, ${existing} already existed`);
+  return { created, existing, updated };
 }
