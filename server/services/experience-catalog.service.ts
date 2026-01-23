@@ -94,30 +94,39 @@ class ExperienceCatalogService {
 
     const items: CatalogItem[] = [];
     const providers = params.providers || ["viator", "fever", "amadeus"];
+    
+    // Fetch larger batch from each provider to allow proper sorting across all providers
+    const batchSize = 100;
 
     if (providers.includes("viator")) {
-      const activities = await this.searchActivities(params, limit, offset);
+      const activities = await this.searchActivities(params, batchSize, 0);
       items.push(...activities);
     }
 
     if (providers.includes("fever")) {
-      const events = await this.searchEvents(params, limit, offset);
+      const events = await this.searchEvents(params, batchSize, 0);
       items.push(...events);
     }
 
     if (providers.includes("amadeus")) {
-      const hotels = await this.searchHotels(params, limit, offset);
+      const hotels = await this.searchHotels(params, batchSize, 0);
       items.push(...hotels);
     }
 
-    let sortedItems = items;
+    // Sort all combined items first, then paginate
+    let sortedItems = [...items];
     if (params.sortBy === "price_low") {
-      sortedItems = items.sort((a, b) => (a.price || 0) - (b.price || 0));
+      sortedItems.sort((a, b) => (a.price || 0) - (b.price || 0));
     } else if (params.sortBy === "price_high") {
-      sortedItems = items.sort((a, b) => (b.price || 0) - (a.price || 0));
+      sortedItems.sort((a, b) => (b.price || 0) - (a.price || 0));
     } else if (params.sortBy === "rating") {
-      sortedItems = items.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+      sortedItems.sort((a, b) => (b.rating || 0) - (a.rating || 0));
     }
+
+    const totalCount = sortedItems.length;
+    
+    // Apply pagination after sorting
+    const paginatedItems = sortedItems.slice(offset, offset + limit);
 
     const destinationSet = new Set<string>();
     items.forEach(i => { if (i.destination) destinationSet.add(i.destination); });
@@ -132,14 +141,15 @@ class ExperienceCatalogService {
     databaseQueryDuration.labels("catalog_search", "read").observe(duration);
     
     this.catalogLogger.info({ 
-      resultCount: sortedItems.length, 
+      resultCount: paginatedItems.length,
+      totalCount,
       duration,
       providers 
     }, "Catalog search completed");
 
     return {
-      items: sortedItems.slice(0, limit),
-      total: sortedItems.length,
+      items: paginatedItems,
+      total: totalCount,
       page: Math.floor(offset / limit) + 1,
       pageSize: limit,
       filters: {
