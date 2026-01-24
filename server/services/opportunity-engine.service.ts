@@ -177,7 +177,7 @@ class OpportunityEngineService {
 
       const activities = conditions.length > 0 
         ? await query.where(and(...conditions)).limit(50)
-        : await query.limit(50);
+        : await query.orderBy(sql`RANDOM()`).limit(50);
 
       return activities.map(activity => {
         const price = parseFloat(activity.price || "0");
@@ -255,7 +255,7 @@ class OpportunityEngineService {
 
       const events = conditions.length > 0
         ? await query.where(and(...conditions)).limit(50)
-        : await query.limit(50);
+        : await query.orderBy(sql`RANDOM()`).limit(50);
 
       return events.map(event => {
         const price = parseFloat(event.minPrice || "0");
@@ -323,7 +323,7 @@ class OpportunityEngineService {
 
       const hotels = conditions.length > 0
         ? await query.where(and(...conditions)).limit(30)
-        : await query.limit(30);
+        : await query.orderBy(sql`RANDOM()`).limit(30);
 
       return hotels
         .filter(hotel => {
