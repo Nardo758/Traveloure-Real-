@@ -7132,6 +7132,9 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Register AI Discovery routes
+  await registerDiscoveryRoutes(app);
+
   return httpServer;
 }
 
@@ -7192,19 +7195,136 @@ export async function seedDatabase() {
     const [search] = await db.insert(touristPlacesSearches).values({
       search: "Tokyo"
     }).returning();
-
-    await db.insert(touristPlaceResults).values([
-      {
-        searchId: search.id,
-        country: "Japan",
-        city: "Tokyo",
-        place: "Senso-ji",
-        description: "Ancient Buddhist temple.",
-        activities: ["Praying", "Shopping"],
-        festivals: ["Sanja Matsuri"],
-        category: "Temple",
-        bestMonths: "Spring, Autumn"
-      }
-    ]).catch(err => console.log("Seeding tourist places failed:", err.message));
   }
+}
+
+// ============================================
+// AI DISCOVERY (HIDDEN GEMS) ROUTES
+// Grok-powered discovery of local secrets
+// ============================================
+
+export async function registerDiscoveryRoutes(app: Express) {
+  const { grokDiscoveryService } = await import("./services/grok-discovery.service");
+
+  // Trigger discovery for a destination
+  app.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
+    try {
+      const { destination, categories } = req.body;
+
+      if (!destination || typeof destination !== "string") {
+        return res.status(400).json({ message: "destination is required" });
+      }
+
+      const validCategories = categories?.filter((c: string) => 
+        ["local_food_secrets", "hidden_viewpoints", "off_tourist_path", "seasonal_events", 
+         "cultural_experiences", "secret_beaches", "street_art", "local_markets", 
+         "sunset_spots", "historic_gems", "nature_escapes", "nightlife_secrets"].includes(c)
+      );
+
+      const result = await grokDiscoveryService.discoverGemsForDestination(
+        destination,
+        validCategories?.length > 0 ? validCategories : undefined
+      );
+
+      res.json({
+        success: true,
+        jobId: result.jobId,
+        totalGems: result.totalGems,
+        message: `Discovered ${result.totalGems} hidden gems in ${destination}`
+      });
+    } catch (error: any) {
+      console.error("Discovery scan error:", error);
+      res.status(500).json({ message: "Discovery failed", error: error.message });
+    }
+  });
+
+  // Get available categories
+  app.get("/api/discovery/categories", async (_req, res) => {
+    try {
+      const { grokDiscoveryService } = await import("./services/grok-discovery.service");
+      const categories = await grokDiscoveryService.getAvailableCategories();
+      res.json({ categories });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get categories", error: error.message });
+    }
+  });
+
+  // Get gems for a destination
+  app.get("/api/discovery/gems", async (req, res) => {
+    try {
+      const { destination, category, limit, offset } = req.query;
+
+      if (destination) {
+        const result = await grokDiscoveryService.getGemsForDestination(
+          destination as string,
+          {
+            category: category as any,
+            limit: limit ? parseInt(limit as string) : undefined,
+            offset: offset ? parseInt(offset as string) : undefined
+          }
+        );
+        return res.json(result);
+      }
+
+      const result = await grokDiscoveryService.getAllGems({
+        category: category as any,
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error("Get gems error:", error);
+      res.status(500).json({ message: "Failed to get gems", error: error.message });
+    }
+  });
+
+  // Get a specific gem and increment view
+  app.get("/api/discovery/gems/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { aiDiscoveredGems } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+
+      const [gem] = await db.select()
+        .from(aiDiscoveredGems)
+        .where(eq(aiDiscoveredGems.id, id))
+        .limit(1);
+
+      if (!gem) {
+        return res.status(404).json({ message: "Gem not found" });
+      }
+
+      await grokDiscoveryService.incrementViewCount(id);
+
+      res.json({ gem });
+    } catch (error: any) {
+      console.error("Get gem error:", error);
+      res.status(500).json({ message: "Failed to get gem", error: error.message });
+    }
+  });
+
+  // Get destinations with gems
+  app.get("/api/discovery/destinations", async (_req, res) => {
+    try {
+      const destinations = await grokDiscoveryService.getDestinationsWithGems();
+      res.json({ destinations });
+    } catch (error: any) {
+      console.error("Get destinations error:", error);
+      res.status(500).json({ message: "Failed to get destinations", error: error.message });
+    }
+  });
+
+  // Get discovery job history
+  app.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const jobs = await grokDiscoveryService.getDiscoveryJobs(
+        limit ? parseInt(limit as string) : undefined
+      );
+      res.json({ jobs });
+    } catch (error: any) {
+      console.error("Get jobs error:", error);
+      res.status(500).json({ message: "Failed to get jobs", error: error.message });
+    }
+  });
 }

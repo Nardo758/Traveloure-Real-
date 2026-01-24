@@ -2829,3 +2829,100 @@ export type SerpProviderTracking = typeof serpProviderTracking.$inferSelect;
 export type InsertSerpProviderTracking = z.infer<typeof insertSerpProviderTrackingSchema>;
 export type SerpInquiry = typeof serpInquiries.$inferSelect;
 export type InsertSerpInquiry = z.infer<typeof insertSerpInquirySchema>;
+
+// === AI Discovery System ===
+
+export const discoveryCategories = [
+  "local_food_secrets",
+  "hidden_viewpoints",
+  "off_tourist_path",
+  "seasonal_events",
+  "cultural_experiences",
+  "secret_beaches",
+  "street_art",
+  "local_markets",
+  "sunset_spots",
+  "historic_gems",
+  "nature_escapes",
+  "nightlife_secrets"
+] as const;
+
+export type DiscoveryCategory = typeof discoveryCategories[number];
+
+export const aiDiscoveredGems = pgTable("ai_discovered_gems", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 200 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  category: varchar("category", { length: 100 }).notNull(),
+  name: varchar("name", { length: 300 }).notNull(),
+  description: text("description").notNull(),
+  whySpecial: text("why_special"),
+  bestTimeToVisit: varchar("best_time_to_visit", { length: 200 }),
+  insiderTip: text("insider_tip"),
+  approximateLocation: varchar("approximate_location", { length: 300 }),
+  coordinates: jsonb("coordinates").$type<{ lat: number; lng: number }>(),
+  priceRange: varchar("price_range", { length: 50 }),
+  difficultyLevel: varchar("difficulty_level", { length: 50 }),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  imageSearchTerms: jsonb("image_search_terms").$type<string[]>().default([]),
+  relatedExperiences: jsonb("related_experiences").$type<string[]>().default([]),
+  sourceModel: varchar("source_model", { length: 50 }).default("grok"),
+  confidenceScore: decimal("confidence_score", { precision: 3, scale: 2 }),
+  verifiedByUser: boolean("verified_by_user").default(false),
+  verifiedByExpert: boolean("verified_by_expert").default(false),
+  viewCount: integer("view_count").default(0),
+  saveCount: integer("save_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  lastRefreshedAt: timestamp("last_refreshed_at"),
+});
+
+export const discoveryJobs = pgTable("discovery_jobs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 200 }).notNull(),
+  categories: jsonb("categories").$type<DiscoveryCategory[]>().notNull(),
+  status: varchar("status", { length: 50 }).default("pending"),
+  gemsDiscovered: integer("gems_discovered").default(0),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const userSavedGems = pgTable("user_saved_gems", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull(),
+  gemId: varchar("gem_id").notNull().references(() => aiDiscoveredGems.id, { onDelete: "cascade" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas
+export const insertAiDiscoveredGemSchema = createInsertSchema(aiDiscoveredGems).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true,
+  viewCount: true,
+  saveCount: true 
+});
+
+export const insertDiscoveryJobSchema = createInsertSchema(discoveryJobs).omit({
+  id: true,
+  createdAt: true,
+  status: true,
+  gemsDiscovered: true
+});
+
+export const insertUserSavedGemSchema = createInsertSchema(userSavedGems).omit({
+  id: true,
+  createdAt: true
+});
+
+// Types
+export type AiDiscoveredGem = typeof aiDiscoveredGems.$inferSelect;
+export type InsertAiDiscoveredGem = z.infer<typeof insertAiDiscoveredGemSchema>;
+export type DiscoveryJob = typeof discoveryJobs.$inferSelect;
+export type InsertDiscoveryJob = z.infer<typeof insertDiscoveryJobSchema>;
+export type UserSavedGem = typeof userSavedGems.$inferSelect;
+export type InsertUserSavedGem = z.infer<typeof insertUserSavedGemSchema>;
