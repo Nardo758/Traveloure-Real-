@@ -98,6 +98,7 @@ import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
 import SpontaneousPage from "@/pages/spontaneous";
+import HiddenGemsPage from "@/pages/hidden-gems";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -203,6 +204,9 @@ function Router() {
       </Route>
       <Route path="/spontaneous">
         <SpontaneousPage />
+      </Route>
+      <Route path="/hidden-gems">
+        <Layout><HiddenGemsPage /></Layout>
       </Route>
       <Route path="/payment">
         <PaymentPage />
