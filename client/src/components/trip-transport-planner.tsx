@@ -39,6 +39,13 @@ interface CartItem {
     airportCode?: string;
     includesAirportTransfer?: boolean;
     travelers?: number;
+    rawData?: {
+      hotel?: {
+        latitude: number;
+        longitude: number;
+        name?: string;
+      };
+    };
   };
 }
 
@@ -98,29 +105,30 @@ export function TripTransportPlanner({
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
     
-    const flights = cart.filter(item => item.type === 'flight');
-    const hotels = cart.filter(item => item.type === 'accommodation');
+    const flights = cart.filter(item => item.type === 'flights' || item.type === 'flight');
+    const hotels = cart.filter(item => 
+      item.type === 'hotels' || item.type === 'hotel' || item.type === 'accommodations' || item.type === 'accommodation'
+    );
     const activities = cart.filter(item => 
-      item.type === 'activity' || item.type === 'tour'
+      item.type === 'activity' || item.type === 'activities' || item.type === 'tour' || item.type === 'tours'
     ).sort((a, b) => {
-      const dateA = a.date || a.metadata?.checkInDate || '';
-      const dateB = b.date || b.metadata?.checkInDate || '';
+      const dateA = a.date || '';
+      const dateB = b.date || '';
       return dateA.localeCompare(dateB);
     });
 
-    const arrivalFlight = flights.find(f => 
-      f.name.toLowerCase().includes(destination.toLowerCase()) ||
-      f.details?.toLowerCase().includes(destination.toLowerCase())
-    );
-    
-    const departureFlight = flights.find(f => 
-      f !== arrivalFlight && 
-      (f.name.toLowerCase().includes(destination.toLowerCase()) ||
-       f.details?.toLowerCase().includes(destination.toLowerCase()))
-    );
+    const sortedFlights = [...flights].sort((a, b) => {
+      const dateA = a.metadata?.departureTime || a.date || '';
+      const dateB = b.metadata?.departureTime || b.date || '';
+      return dateA.localeCompare(dateB);
+    });
+    const arrivalFlight = sortedFlights.length > 0 ? sortedFlights[0] : undefined;
+    const departureFlight = sortedFlights.length > 1 ? sortedFlights[sortedFlights.length - 1] : undefined;
 
     const hotel = hotels[0];
-    const hotelIncludesTransfer = hotel?.metadata?.includesAirportTransfer;
+    const hotelRawData = hotel?.metadata?.rawData?.hotel;
+    const hotelCoords = hotelRawData ? { lat: hotelRawData.latitude, lng: hotelRawData.longitude } : undefined;
+    const hotelIncludesTransfer = hotel?.metadata?.includesAirportTransfer === true;
 
     if (arrivalFlight && hotel) {
       result.push({
@@ -134,7 +142,7 @@ export function TripTransportPlanner({
         to: {
           name: hotel.name,
           type: 'hotel',
-          coordinates: hotel.metadata?.hotelCoordinates
+          coordinates: hotelCoords
         },
         date: arrivalFlight.date || startDate?.toISOString().split('T')[0] || '',
         status: hotelIncludesTransfer ? 'covered' : 'needs_transport',
@@ -152,7 +160,7 @@ export function TripTransportPlanner({
         to: {
           name: hotel.name,
           type: 'hotel',
-          coordinates: hotel.metadata?.hotelCoordinates
+          coordinates: hotelCoords
         },
         date: startDate.toISOString().split('T')[0],
         status: hotelIncludesTransfer ? 'covered' : 'needs_transport',
@@ -164,6 +172,7 @@ export function TripTransportPlanner({
     activities.forEach((activity, index) => {
       const activityDate = activity.date || '';
       const fromLocation = index === 0 ? hotel : activities[index - 1];
+      const fromCoords = index === 0 ? hotelCoords : activities[index - 1]?.metadata?.meetingPointCoordinates;
       
       if (fromLocation) {
         result.push({
@@ -172,7 +181,7 @@ export function TripTransportPlanner({
           from: {
             name: fromLocation.name,
             type: index === 0 ? 'hotel' : 'activity',
-            coordinates: fromLocation.metadata?.meetingPointCoordinates || fromLocation.metadata?.hotelCoordinates
+            coordinates: fromCoords
           },
           to: {
             name: activity.name,
@@ -194,7 +203,7 @@ export function TripTransportPlanner({
         from: {
           name: hotel.name,
           type: 'hotel',
-          coordinates: hotel.metadata?.hotelCoordinates
+          coordinates: hotelCoords
         },
         to: {
           name: arrivalAirport || `${destination} Airport`,
@@ -424,35 +433,33 @@ function generateTransportOptions(
   options.push({
     type: 'google_transit',
     name: 'Public Transit',
-    provider: 'Google Maps',
-    description: 'Bus, metro, or train options',
-    duration: 'Varies'
+    provider: 'Via Google Maps',
+    description: 'Check local bus, metro, or train options'
   });
 
   if (segmentType === 'airport_to_hotel' || segmentType === 'hotel_to_airport') {
     options.push({
       type: 'amadeus_transfer',
-      name: 'Private Airport Transfer',
-      provider: 'Amadeus',
-      description: 'Door-to-door service',
-      price: Math.round(25 + (travelers * 5))
+      name: 'Private Transfer',
+      provider: 'Book via Amadeus',
+      description: 'Door-to-door pickup service'
     });
   }
 
   options.push({
     type: 'taxi',
-    name: 'Local Taxi / Ride-share',
+    name: 'Taxi / Ride-share',
     provider: 'Grab, Uber, or local taxi',
-    description: 'On-demand pickup'
+    description: 'On-demand pickup available locally'
   });
 
   if (segmentType === 'airport_to_hotel' || segmentType === 'hotel_to_airport') {
     options.push({
       type: '12go',
-      name: 'Shared Shuttle',
+      name: 'Shared Shuttle or Bus',
       provider: '12Go Asia',
       actionUrl: `https://12go.asia/en?z=13805109&curr=USD&departcity=${encodeURIComponent(destination)}`,
-      price: Math.round(10 + (travelers * 3))
+      description: 'Book shared transport online'
     });
   }
 
