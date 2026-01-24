@@ -82,10 +82,10 @@ export default function HiddenGemsPage() {
   if (searchDestination) gemsQueryParams.append("destination", searchDestination);
   if (selectedCategory !== "all") gemsQueryParams.append("category", selectedCategory);
   gemsQueryParams.append("limit", "50");
-  const gemsQueryString = `/api/discovery/gems?${gemsQueryParams.toString()}`;
+  const gemsQueryUrl = `/api/discovery/gems?${gemsQueryParams.toString()}`;
 
   const { data: gemsData, isLoading: gemsLoading, error: gemsError } = useQuery<{ gems: DiscoveredGem[]; total: number }>({
-    queryKey: [gemsQueryString],
+    queryKey: [gemsQueryUrl],
   });
 
   const { data: destinationsData } = useQuery<{ destinations: { destination: string; gemCount: number }[] }>({
@@ -101,7 +101,12 @@ export default function HiddenGemsPage() {
         title: "Discovery Complete",
         description: data.message || `Discovered ${data.totalGems} hidden gems!`,
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/discovery/gems"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => {
+          const key = query.queryKey[0];
+          return typeof key === "string" && key.startsWith("/api/discovery/gems");
+        }
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/discovery/destinations"] });
       setDiscoverDestination("");
     },
@@ -217,7 +222,7 @@ export default function HiddenGemsPage() {
               >
                 <MapPin className="h-3 w-3 mr-1" />
                 {d.destination}
-                <Badge variant="secondary" className="ml-2">{d.gemCount}</Badge>
+                <Badge variant="secondary" className="ml-2" data-testid={`badge-gem-count-${d.destination}`}>{d.gemCount}</Badge>
               </Button>
             ))}
           </div>
@@ -231,7 +236,7 @@ export default function HiddenGemsPage() {
             All
           </TabsTrigger>
           {categoriesLoading ? (
-            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-8 w-32" data-testid="skeleton-categories" />
           ) : (
             categories.map((cat) => (
               <TabsTrigger key={cat.value} value={cat.value} data-testid={`tab-${cat.value}`}>
@@ -244,10 +249,10 @@ export default function HiddenGemsPage() {
 
         <TabsContent value={selectedCategory} className="mt-6">
           {gemsError ? (
-            <Card>
+            <Card data-testid="card-gems-error">
               <CardContent className="py-12 text-center">
-                <div className="text-destructive mb-4">Failed to load hidden gems</div>
-                <p className="text-muted-foreground">Please try again later</p>
+                <div className="text-destructive mb-4" data-testid="text-error-title">Failed to load hidden gems</div>
+                <p className="text-muted-foreground" data-testid="text-error-message">Please try again later</p>
               </CardContent>
             </Card>
           ) : gemsLoading ? (
@@ -263,11 +268,11 @@ export default function HiddenGemsPage() {
               ))}
             </div>
           ) : gems.length === 0 ? (
-            <Card>
+            <Card data-testid="card-gems-empty">
               <CardContent className="py-12 text-center">
                 <Gem className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No hidden gems yet</h3>
-                <p className="text-muted-foreground mb-4">
+                <h3 className="text-lg font-medium mb-2" data-testid="text-empty-title">No hidden gems yet</h3>
+                <p className="text-muted-foreground mb-4" data-testid="text-empty-message">
                   {searchDestination 
                     ? `No gems found for ${searchDestination}. Try discovering new ones!`
                     : "Start by discovering gems for a destination above"}
@@ -324,29 +329,29 @@ export default function HiddenGemsPage() {
                     )}
                     
                     {gem.bestTimeToVisit && (
-                      <div className="flex items-center gap-2 text-sm">
+                      <div className="flex items-center gap-2 text-sm" data-testid={`section-best-time-${gem.id}`}>
                         <Clock className="h-4 w-4 text-muted-foreground" />
                         <span className="text-muted-foreground">Best time:</span>
-                        <span>{gem.bestTimeToVisit}</span>
+                        <span data-testid={`text-best-time-${gem.id}`}>{gem.bestTimeToVisit}</span>
                       </div>
                     )}
                     
                     {gem.tags && gem.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1" data-testid={`section-tags-${gem.id}`}>
                         {gem.tags.map((tag, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">
+                          <Badge key={i} variant="outline" className="text-xs" data-testid={`badge-tag-${gem.id}-${i}`}>
                             {tag}
                           </Badge>
                         ))}
                       </div>
                     )}
                     
-                    <div className="flex items-center gap-4 pt-2 text-xs text-muted-foreground border-t">
-                      <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-4 pt-2 text-xs text-muted-foreground border-t" data-testid={`section-stats-${gem.id}`}>
+                      <div className="flex items-center gap-1" data-testid={`text-views-${gem.id}`}>
                         <Eye className="h-3 w-3" />
                         {gem.viewCount || 0} views
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1" data-testid={`text-saves-${gem.id}`}>
                         <Bookmark className="h-3 w-3" />
                         {gem.saveCount || 0} saves
                       </div>
