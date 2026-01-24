@@ -97,6 +97,7 @@ const navItems = [
   },
   { name: "Experts", href: "/experts" },
   { name: "Help Me Decide", href: "/help-me-decide" },
+  { name: "Live Intel", href: "/spontaneous" },
   { name: "Deals", href: "/deals" },
   { name: "Contact", href: "/contact" },
 ];

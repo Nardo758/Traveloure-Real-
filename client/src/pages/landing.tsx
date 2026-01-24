@@ -32,7 +32,8 @@ import {
   Bot,
   UserCheck,
   Wine,
-  HeartHandshake
+  HeartHandshake,
+  Zap
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
@@ -305,6 +306,17 @@ export default function LandingPage() {
                 data-testid="button-help-me-decide"
               >
                 Help Me Decide
+              </Button>
+            </Link>
+            <Link href="/spontaneous">
+              <Button
+                size="lg"
+                variant="outline"
+                className="bg-amber-500/20 backdrop-blur-sm border-amber-400/50 text-white font-medium px-6"
+                data-testid="button-live-intel"
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                Live Intel
               </Button>
             </Link>
           </motion.div>
