@@ -2776,21 +2776,33 @@ export const serpInquiryBodySchema = z.object({
   template: z.string().optional().default("")
 });
 
+const safeParseFloat = (val: string | undefined): number | undefined => {
+  if (!val) return undefined;
+  const parsed = parseFloat(val);
+  return isNaN(parsed) ? undefined : parsed;
+};
+
+const safeParseInt = (val: string | undefined): number | undefined => {
+  if (!val) return undefined;
+  const parsed = parseInt(val, 10);
+  return isNaN(parsed) ? undefined : parsed;
+};
+
 export const hybridCatalogSearchQuerySchema = z.object({
   destination: z.string().optional(),
   query: z.string().optional(),
-  priceMin: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
-  priceMax: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
-  rating: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
+  priceMin: z.string().optional().transform(safeParseFloat),
+  priceMax: z.string().optional().transform(safeParseFloat),
+  rating: z.string().optional().transform(safeParseFloat),
   sortBy: z.enum(["popular", "price_low", "price_high", "rating"]).optional(),
-  limit: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined),
-  offset: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined),
+  limit: z.string().optional().transform(safeParseInt),
+  offset: z.string().optional().transform(safeParseInt),
   providers: z.string().optional().transform(val => val ? val.split(",") : undefined),
   experienceTypeSlug: z.string().optional(),
   tabSlug: z.string().optional(),
   enableSerpFallback: z.string().optional().transform(val => val === "true"),
   templateSlug: z.string().optional(),
-  minNativeResults: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined)
+  minNativeResults: z.string().optional().transform(safeParseInt)
 });
 
 // SERP Result DTO for consistent typing

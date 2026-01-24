@@ -118,7 +118,7 @@ The application features a modern, responsive design built with Tailwind CSS and
   - **Partnership Tracking**: Automatic identification of high-engagement providers (HIGH: 50+ clicks or 10+ inquiries, MEDIUM: 20+ clicks or 5+ inquiries)
   - **Inquiry System**: Direct contact flow for external providers with user/trip context
   - **Database Tables**: serp_cache, serp_providers, serp_inquiries
-  - **API Endpoints**: `/api/serp/template-search`, `/api/serp/track-click`, `/api/serp/inquiries`, `/api/serp/partnerships`, `/api/catalog/search-hybrid`
+  - **API Endpoints**: `/api/serp/template-search`, `/api/serp/track-click`, `/api/serp/inquiry`, `/api/serp/partnerships`, `/api/catalog/search-hybrid`
   - **Frontend Components**: UnifiedResultCard (with "Traveloure Partner" badges), SerpInquiryDialog
   - **Hybrid Search**: Automatic SERP fallback when native results < threshold, prioritizes native providers in results
 
