@@ -2694,3 +2694,126 @@ export type RealtimeSignal = typeof realtimeSignals.$inferSelect;
 export type InsertRealtimeSignal = z.infer<typeof insertRealtimeSignalSchema>;
 export type UserSpontaneityPreferences = typeof userSpontaneityPreferences.$inferSelect;
 export type InsertUserSpontaneityPreferences = z.infer<typeof insertUserSpontaneityPreferencesSchema>;
+
+// === SERP API Hybrid Data Tables ===
+
+export const serpCache = pgTable("serp_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  cacheKey: varchar("cache_key", { length: 500 }).unique().notNull(),
+  query: text("query").notNull(),
+  location: varchar("location", { length: 200 }).notNull(),
+  category: varchar("category", { length: 100 }),
+  template: varchar("template", { length: 100 }),
+  results: jsonb("results").notNull(),
+  resultCount: integer("result_count").default(0),
+  cachedAt: timestamp("cached_at").defaultNow().notNull(),
+});
+
+export const serpProviderTracking = pgTable("serp_provider_tracking", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serpProviderId: varchar("serp_provider_id", { length: 200 }).unique().notNull(),
+  providerName: varchar("provider_name", { length: 300 }).notNull(),
+  destination: varchar("destination", { length: 200 }),
+  category: varchar("category", { length: 100 }),
+  template: varchar("template", { length: 100 }),
+  clickCount: integer("click_count").default(0),
+  inquiryCount: integer("inquiry_count").default(0),
+  priorityScore: varchar("priority_score", { length: 20 }).default("LOW"),
+  lastClickedAt: timestamp("last_clicked_at"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const serpInquiries = pgTable("serp_inquiries", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull(),
+  serpProviderId: varchar("serp_provider_id", { length: 200 }).notNull(),
+  providerName: varchar("provider_name", { length: 300 }).notNull(),
+  providerEmail: varchar("provider_email", { length: 200 }),
+  providerPhone: varchar("provider_phone", { length: 50 }),
+  providerWebsite: text("provider_website"),
+  message: text("message").notNull(),
+  destination: varchar("destination", { length: 200 }),
+  category: varchar("category", { length: 100 }),
+  template: varchar("template", { length: 100 }),
+  status: varchar("status", { length: 50 }).default("pending"),
+  sentAt: timestamp("sent_at"),
+  respondedAt: timestamp("responded_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// SERP Insert Schemas
+export const insertSerpCacheSchema = createInsertSchema(serpCache).omit({ id: true, cachedAt: true });
+export const insertSerpProviderTrackingSchema = createInsertSchema(serpProviderTracking).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSerpInquirySchema = createInsertSchema(serpInquiries).omit({ id: true, createdAt: true, updatedAt: true });
+
+// SERP API Request Validation Schemas
+export const serpTemplateSearchQuerySchema = z.object({
+  serviceType: z.string().min(1, "serviceType is required"),
+  destination: z.string().min(1, "destination is required"),
+  template: z.string().optional().default("travel"),
+  priceRange: z.string().optional(),
+  style: z.string().optional(),
+  groupSize: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined)
+});
+
+export const serpTrackClickBodySchema = z.object({
+  providerId: z.string().min(1, "providerId is required"),
+  metadata: z.record(z.unknown()).optional().default({})
+});
+
+export const serpInquiryBodySchema = z.object({
+  serpProviderId: z.string().min(1, "serpProviderId is required"),
+  providerName: z.string().min(1, "providerName is required"),
+  providerEmail: z.string().optional(),
+  providerPhone: z.string().optional(),
+  providerWebsite: z.string().optional(),
+  message: z.string().min(1, "Message is required").min(10, "Message must be at least 10 characters"),
+  destination: z.string().optional().default(""),
+  category: z.string().optional().default(""),
+  template: z.string().optional().default("")
+});
+
+export const hybridCatalogSearchQuerySchema = z.object({
+  destination: z.string().optional(),
+  query: z.string().optional(),
+  priceMin: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
+  priceMax: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
+  rating: z.string().optional().transform(val => val ? parseFloat(val) : undefined),
+  sortBy: z.enum(["popular", "price_low", "price_high", "rating"]).optional(),
+  limit: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined),
+  offset: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined),
+  providers: z.string().optional().transform(val => val ? val.split(",") : undefined),
+  experienceTypeSlug: z.string().optional(),
+  tabSlug: z.string().optional(),
+  enableSerpFallback: z.string().optional().transform(val => val === "true"),
+  templateSlug: z.string().optional(),
+  minNativeResults: z.string().optional().transform(val => val ? parseInt(val, 10) : undefined)
+});
+
+// SERP Result DTO for consistent typing
+export const serpResultSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  rating: z.number().nullable(),
+  reviewCount: z.number().nullable(),
+  priceLevel: z.string().nullable(),
+  address: z.string().nullable(),
+  phone: z.string().nullable(),
+  website: z.string().nullable(),
+  imageUrl: z.string().nullable(),
+  source: z.literal("serp"),
+  isPartner: z.literal(false)
+});
+
+export type SerpResult = z.infer<typeof serpResultSchema>;
+
+// SERP Types
+export type SerpCacheEntry = typeof serpCache.$inferSelect;
+export type InsertSerpCacheEntry = z.infer<typeof insertSerpCacheSchema>;
+export type SerpProviderTracking = typeof serpProviderTracking.$inferSelect;
+export type InsertSerpProviderTracking = z.infer<typeof insertSerpProviderTrackingSchema>;
+export type SerpInquiry = typeof serpInquiries.$inferSelect;
+export type InsertSerpInquiry = z.infer<typeof insertSerpInquirySchema>;
