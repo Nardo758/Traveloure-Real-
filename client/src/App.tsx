@@ -100,6 +100,7 @@ import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
 import SpontaneousPage from "@/pages/spontaneous";
 import HiddenGemsPage from "@/pages/hidden-gems";
+import TransportationBookingPage from "@/pages/transportation-booking";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -175,6 +176,9 @@ function Router() {
       </Route>
       <Route path="/global-calendar">
         <Layout><GlobalCalendarPage /></Layout>
+      </Route>
+      <Route path="/transportation">
+        <Layout><TransportationBookingPage /></Layout>
       </Route>
       <Route path="/partner-with-us">
         <Layout><PartnerWithUsPage /></Layout>
