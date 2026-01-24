@@ -66,6 +66,7 @@ import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
 import AdminData from "@/pages/admin/data";
+import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import BrowsePage from "@/pages/browse";
 import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
@@ -394,6 +395,9 @@ function Router() {
       </Route>
       <Route path="/admin/data">
         {() => <ProtectedRoute component={AdminData} />}
+      </Route>
+      <Route path="/admin/affiliate-partners">
+        {() => <ProtectedRoute component={AdminAffiliatePartners} />}
       </Route>
 
       {/* Redirect /create-trip to /experiences */}

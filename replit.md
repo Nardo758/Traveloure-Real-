@@ -34,6 +34,14 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
 - **Logistics Intelligence Layer**: Provides shared functionality including multi-person RSVP tracking, vendor management, budget management (cost splitting, currency conversion, tip calculation), AI-powered scheduling optimization, and emergency services.
 - **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities from cached provider data (e.g., activities, events, hotels) with a scoring system based on urgency, actionability, and trending.
 - **AI Discovery System (Hidden Gems)**: Grok-powered discovery of authentic local secrets and off-the-beaten-path experiences across 12 categories.
+- **Affiliate Web Scraping System**: AI-powered web scraping for partners without APIs, featuring:
+  - Partner management with tracking IDs and commission rates
+  - Grok-powered HTML extraction to structured product data
+  - Automatic affiliate link generation with customizable templates
+  - Click tracking for commission attribution
+  - Database tables: `affiliate_partners`, `affiliate_products`, `affiliate_scrape_jobs`, `affiliate_clicks`
+  - Admin UI at `/admin/affiliate-partners` for partner CRUD and scrape triggers
+  - API endpoints: `/api/affiliate/partners`, `/api/affiliate/products`, `/api/affiliate/track-click`
 
 ### System Design Choices
 - **Modularity**: Codebase organized for clear separation of concerns.
