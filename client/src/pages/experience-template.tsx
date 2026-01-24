@@ -86,6 +86,7 @@ import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { AffiliateTransportProducts } from "@/components/affiliate-transport-products";
 
 interface CartItem {
   id: string;
@@ -122,6 +123,7 @@ interface CartItem {
     travelers?: number;
     meetingPoint?: string;
     meetingPointCoordinates?: { lat: number; lng: number };
+    affiliateUrl?: string;
     rawData?: any;
   };
 }
@@ -2427,12 +2429,22 @@ export default function ExperienceTemplatePage() {
               
               {/* 12Go Ground Transportation Booking - Trains, Buses, Ferries */}
               <div className="mt-6 border-t pt-6">
-                <TwelveGoTransport
-                  origin={destination}
+                <AffiliateTransportProducts
                   destination={destination}
-                  departureDate={startDate}
-                  passengers={travelers}
-                  variant="full"
+                  origin={destination}
+                  onAddToCart={(item) => {
+                    addToCart({
+                      id: item.id,
+                      type: item.type,
+                      name: item.name,
+                      price: item.price,
+                      quantity: item.quantity,
+                      provider: item.provider,
+                      details: item.details,
+                      isExternal: item.isExternal,
+                      metadata: { affiliateUrl: item.affiliateUrl }
+                    });
+                  }}
                 />
               </div>
             </div>
