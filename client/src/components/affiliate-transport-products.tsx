@@ -24,6 +24,11 @@ interface AffiliateProduct {
   location: string | null;
 }
 
+interface ProductsResponse {
+  products: AffiliateProduct[];
+  total: number;
+}
+
 interface AffiliateTransportProductsProps {
   destination?: string;
   origin?: string;
@@ -66,9 +71,11 @@ export function AffiliateTransportProducts({
 }: AffiliateTransportProductsProps) {
   const queryUrl = `/api/affiliate/products?category=transportation${destination ? `&city=${encodeURIComponent(destination)}` : ''}`;
   
-  const { data: products, isLoading, isError } = useQuery<AffiliateProduct[]>({
+  const { data: response, isLoading, isError } = useQuery<ProductsResponse>({
     queryKey: [queryUrl],
   });
+  
+  const products = response?.products || [];
 
   const trackClick = useMutation({
     mutationFn: async (productId: string) => {
@@ -156,12 +163,12 @@ export function AffiliateTransportProducts({
     );
   }
 
-  const transportProducts = products?.filter(p => 
+  const transportProducts = products.filter(p => 
     p.category === "transportation" || 
     p.name.toLowerCase().includes('train') ||
     p.name.toLowerCase().includes('bus') ||
     p.name.toLowerCase().includes('ferry')
-  ) || [];
+  );
 
   if (transportProducts.length === 0) {
     return (
