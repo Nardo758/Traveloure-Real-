@@ -1480,6 +1480,69 @@ export const userFilterPreferences = pgTable("user_filter_preferences", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// ============ AMADEUS POI CACHE TABLE ============
+export const poiCache = pgTable("poi_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  amadeusId: varchar("amadeus_id", { length: 100 }).notNull().unique(),
+  name: varchar("name", { length: 500 }).notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  rank: integer("rank").default(0),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
+  city: varchar("city", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  countryCode: varchar("country_code", { length: 10 }),
+  tags: jsonb("tags").default([]),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+// ============ AMADEUS TRANSFER CACHE TABLE ============
+export const transferCache = pgTable("transfer_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  offerId: varchar("offer_id", { length: 100 }).notNull(),
+  transferType: varchar("transfer_type", { length: 50 }).notNull(),
+  startLocationCode: varchar("start_location_code", { length: 10 }).notNull(),
+  endAddress: text("end_address"),
+  endCityName: varchar("end_city_name", { length: 255 }),
+  endLatitude: decimal("end_latitude", { precision: 10, scale: 7 }),
+  endLongitude: decimal("end_longitude", { precision: 10, scale: 7 }),
+  vehicleCode: varchar("vehicle_code", { length: 50 }),
+  vehicleCategory: varchar("vehicle_category", { length: 100 }),
+  vehicleDescription: text("vehicle_description"),
+  maxSeats: integer("max_seats"),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  provider: varchar("provider", { length: 100 }).default("amadeus"),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+// ============ AMADEUS SAFETY RATING CACHE TABLE ============
+export const safetyCache = pgTable("safety_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  amadeusId: varchar("amadeus_id", { length: 100 }).notNull().unique(),
+  name: varchar("name", { length: 500 }).notNull(),
+  subType: varchar("sub_type", { length: 50 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
+  city: varchar("city", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  countryCode: varchar("country_code", { length: 10 }),
+  overallScore: integer("overall_score"),
+  lgbtqScore: integer("lgbtq_score"),
+  medicalScore: integer("medical_score"),
+  physicalHarmScore: integer("physical_harm_score"),
+  politicalFreedomScore: integer("political_freedom_score"),
+  theftScore: integer("theft_score"),
+  womenSafetyScore: integer("women_safety_score"),
+  rawData: jsonb("raw_data").default({}),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // Cache schemas and types
 export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
 export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
@@ -1487,6 +1550,9 @@ export const insertActivityCacheSchema = createInsertSchema(activityCache).omit(
 export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
 export const insertLocationCacheSchema = createInsertSchema(locationCache).omit({ id: true, lastUpdated: true });
 export const insertFeverEventCacheSchema = createInsertSchema(feverEventCache).omit({ id: true, lastUpdated: true });
+export const insertPoiCacheSchema = createInsertSchema(poiCache).omit({ id: true, lastUpdated: true });
+export const insertTransferCacheSchema = createInsertSchema(transferCache).omit({ id: true, lastUpdated: true });
+export const insertSafetyCacheSchema = createInsertSchema(safetyCache).omit({ id: true, lastUpdated: true });
 export const insertUserFilterPreferencesSchema = createInsertSchema(userFilterPreferences).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HotelCache = typeof hotelCache.$inferSelect;
@@ -1497,6 +1563,12 @@ export type ActivityCache = typeof activityCache.$inferSelect;
 export type InsertActivityCache = z.infer<typeof insertActivityCacheSchema>;
 export type FlightCache = typeof flightCache.$inferSelect;
 export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
+export type PoiCache = typeof poiCache.$inferSelect;
+export type InsertPoiCache = z.infer<typeof insertPoiCacheSchema>;
+export type TransferCache = typeof transferCache.$inferSelect;
+export type InsertTransferCache = z.infer<typeof insertTransferCacheSchema>;
+export type SafetyCache = typeof safetyCache.$inferSelect;
+export type InsertSafetyCache = z.infer<typeof insertSafetyCacheSchema>;
 export type LocationCache = typeof locationCache.$inferSelect;
 export type InsertLocationCache = z.infer<typeof insertLocationCacheSchema>;
 export type FeverEventCache = typeof feverEventCache.$inferSelect;

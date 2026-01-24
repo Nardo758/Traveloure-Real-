@@ -3370,6 +3370,161 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Search Points of Interest by location
+  app.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius, categories } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const pois = await amadeusService.searchPointsOfInterest({
+        latitude: parseFloat(latitude as string),
+        longitude: parseFloat(longitude as string),
+        radius: radius ? parseInt(radius as string, 10) : 5,
+        categories: categories ? (categories as string).split(',') : undefined,
+      });
+      
+      res.json(pois);
+    } catch (error: any) {
+      console.error('POI search error:', error);
+      res.status(500).json({ message: error.message || "POI search failed" });
+    }
+  });
+
+  // Get POI by ID
+  app.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
+    try {
+      const poi = await amadeusService.getPointOfInterestById(req.params.id);
+      if (!poi) {
+        return res.status(404).json({ message: "POI not found" });
+      }
+      res.json(poi);
+    } catch (error: any) {
+      console.error('POI get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get POI" });
+    }
+  });
+
+  // Search Amadeus Tours & Activities by location
+  app.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const activities = await amadeusService.searchActivities({
+        latitude: parseFloat(latitude as string),
+        longitude: parseFloat(longitude as string),
+        radius: radius ? parseInt(radius as string, 10) : 20,
+      });
+      
+      res.json(activities);
+    } catch (error: any) {
+      console.error('Amadeus activities search error:', error);
+      res.status(500).json({ message: error.message || "Activities search failed" });
+    }
+  });
+
+  // Get Amadeus activity by ID
+  app.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
+    try {
+      const activity = await amadeusService.getActivityById(req.params.id);
+      if (!activity) {
+        return res.status(404).json({ message: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error: any) {
+      console.error('Amadeus activity get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get activity" });
+    }
+  });
+
+  // Search airport transfers
+  const transferSearchSchema = z.object({
+    startLocationCode: z.string().min(3).max(4),
+    endAddressLine: z.string().optional(),
+    endCityName: z.string().optional(),
+    endGeoCode: z.object({
+      latitude: z.number(),
+      longitude: z.number()
+    }).optional(),
+    transferType: z.string(),
+    startDateTime: z.string(),
+    passengers: z.union([z.string(), z.number()]).transform((val) => 
+      typeof val === 'string' ? parseInt(val, 10) : val
+    ),
+  });
+
+  app.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = transferSearchSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+      
+      const { startLocationCode, endAddressLine, endCityName, endGeoCode, transferType, startDateTime, passengers } = parseResult.data;
+      
+      const transfers = await amadeusService.searchTransfers({
+        startLocationCode,
+        endAddressLine,
+        endCityName,
+        endGeoCode,
+        transferType,
+        startDateTime,
+        passengers,
+      });
+      
+      res.json(transfers);
+    } catch (error: any) {
+      console.error('Transfers search error:', error);
+      res.status(500).json({ message: error.message || "Transfers search failed" });
+    }
+  });
+
+  // Get safety ratings for a location
+  app.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const safetyRatings = await amadeusService.getSafetyRatings({
+        latitude: parseFloat(latitude as string),
+        longitude: parseFloat(longitude as string),
+        radius: radius ? parseInt(radius as string, 10) : 5,
+      });
+      
+      res.json(safetyRatings);
+    } catch (error: any) {
+      console.error('Safety ratings search error:', error);
+      res.status(500).json({ message: error.message || "Safety ratings search failed" });
+    }
+  });
+
+  // Get safety rating by ID
+  app.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
+    try {
+      const rating = await amadeusService.getSafetyRatingById(req.params.id);
+      if (!rating) {
+        return res.status(404).json({ message: "Safety rating not found" });
+      }
+      res.json(rating);
+    } catch (error: any) {
+      console.error('Safety rating get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get safety rating" });
+    }
+  });
+
   // ============ VIATOR API ROUTES ============
 
   // Search activities by destination (freetext search)

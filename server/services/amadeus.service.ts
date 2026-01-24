@@ -104,6 +104,123 @@ export interface HotelOffer {
   }>;
 }
 
+export interface PointOfInterest {
+  id: string;
+  type: string;
+  name: string;
+  category: string;
+  rank: number;
+  geoCode: {
+    latitude: number;
+    longitude: number;
+  };
+  tags?: string[];
+}
+
+export interface Activity {
+  id: string;
+  type: string;
+  name: string;
+  shortDescription?: string;
+  description?: string;
+  geoCode: {
+    latitude: number;
+    longitude: number;
+  };
+  rating?: number;
+  price?: {
+    amount: string;
+    currencyCode: string;
+  };
+  pictures?: string[];
+  bookingLink?: string;
+  minimumDuration?: string;
+}
+
+export interface TransferOffer {
+  id: string;
+  type: string;
+  transferType: string;
+  start: {
+    dateTime: string;
+    locationCode: string;
+  };
+  end: {
+    dateTime?: string;
+    locationCode?: string;
+    address?: {
+      line?: string;
+      cityName?: string;
+      countryCode?: string;
+    };
+  };
+  vehicle: {
+    code: string;
+    category: string;
+    description: string;
+    seats?: Array<{
+      count: number;
+    }>;
+  };
+  quotation: {
+    monetaryAmount: string;
+    currencyCode: string;
+  };
+  cancellationRules?: Array<{
+    feeType: string;
+    percentage?: string;
+  }>;
+}
+
+export interface SafetyRating {
+  id: string;
+  type: string;
+  subType: string;
+  name: string;
+  geoCode: {
+    latitude: number;
+    longitude: number;
+  };
+  safetyScores: {
+    overall: number;
+    lgbtq: number;
+    medical: number;
+    physicalHarm: number;
+    politicalFreedom: number;
+    theft: number;
+    women: number;
+  };
+}
+
+export interface POISearchParams {
+  latitude: number;
+  longitude: number;
+  radius?: number;
+  categories?: string[];
+}
+
+export interface ActivitySearchParams {
+  latitude: number;
+  longitude: number;
+  radius?: number;
+}
+
+export interface TransferSearchParams {
+  startLocationCode: string;
+  endAddressLine?: string;
+  endCityName?: string;
+  endGeoCode?: string;
+  transferType: 'PRIVATE' | 'SHARED';
+  startDateTime: string;
+  passengers: number;
+}
+
+export interface SafetySearchParams {
+  latitude: number;
+  longitude: number;
+  radius?: number;
+}
+
 export class AmadeusService {
   async searchFlights(params: FlightSearchParams): Promise<FlightOffer[]> {
     try {
@@ -181,6 +298,123 @@ export class AmadeusService {
     } catch (error: any) {
       console.error('Amadeus city search error:', error?.response?.body || error);
       throw new Error(error?.response?.body?.errors?.[0]?.detail || 'City search failed');
+    }
+  }
+
+  async searchPointsOfInterest(params: POISearchParams): Promise<PointOfInterest[]> {
+    try {
+      const queryParams: any = {
+        latitude: params.latitude,
+        longitude: params.longitude,
+        radius: params.radius || 5,
+      };
+      
+      if (params.categories && params.categories.length > 0) {
+        queryParams.categories = params.categories.join(',');
+      }
+
+      const response = await (amadeus.referenceData.locations as any).pointsOfInterest.get(queryParams);
+      return response.data || [];
+    } catch (error: any) {
+      console.error('Amadeus POI search error:', error?.response?.body || error);
+      if (error?.response?.statusCode === 404) {
+        return [];
+      }
+      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'POI search failed');
+    }
+  }
+
+  async getPointOfInterestById(poiId: string): Promise<PointOfInterest | null> {
+    try {
+      const response = await (amadeus.referenceData.locations as any).pointOfInterest(poiId).get();
+      return response.data || null;
+    } catch (error: any) {
+      console.error('Amadeus POI get error:', error?.response?.body || error);
+      return null;
+    }
+  }
+
+  async searchActivities(params: ActivitySearchParams): Promise<Activity[]> {
+    try {
+      const response = await (amadeus.shopping as any).activities.get({
+        latitude: params.latitude,
+        longitude: params.longitude,
+        radius: params.radius || 20,
+      });
+      return response.data || [];
+    } catch (error: any) {
+      console.error('Amadeus activities search error:', error?.response?.body || error);
+      if (error?.response?.statusCode === 404) {
+        return [];
+      }
+      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Activities search failed');
+    }
+  }
+
+  async getActivityById(activityId: string): Promise<Activity | null> {
+    try {
+      const response = await (amadeus.shopping as any).activity(activityId).get();
+      return response.data || null;
+    } catch (error: any) {
+      console.error('Amadeus activity get error:', error?.response?.body || error);
+      return null;
+    }
+  }
+
+  async searchTransfers(params: TransferSearchParams): Promise<TransferOffer[]> {
+    try {
+      const requestBody: any = {
+        startLocationCode: params.startLocationCode,
+        transferType: params.transferType,
+        startDateTime: params.startDateTime,
+        passengers: params.passengers,
+      };
+
+      if (params.endAddressLine) {
+        requestBody.endAddressLine = params.endAddressLine;
+      }
+      if (params.endCityName) {
+        requestBody.endCityName = params.endCityName;
+      }
+      if (params.endGeoCode) {
+        requestBody.endGeoCode = params.endGeoCode;
+      }
+
+      const response = await (amadeus.shopping as any).transferOffers.post(JSON.stringify(requestBody));
+      return response.data || [];
+    } catch (error: any) {
+      console.error('Amadeus transfers search error:', error?.response?.body || error);
+      if (error?.response?.statusCode === 404 || error?.response?.statusCode === 400) {
+        return [];
+      }
+      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Transfers search failed');
+    }
+  }
+
+  async getSafetyRatings(params: SafetySearchParams): Promise<SafetyRating[]> {
+    try {
+      const response = await (amadeus as any).safety.safetyRatedLocations.get({
+        latitude: params.latitude,
+        longitude: params.longitude,
+        radius: params.radius || 5,
+      });
+      return response.data || [];
+    } catch (error: any) {
+      console.error('Amadeus safety search error:', error?.response?.body || error);
+      if (error?.response?.statusCode === 404) {
+        return [];
+      }
+      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Safety ratings search failed');
+    }
+  }
+
+  async getSafetyRatingById(locationId: string): Promise<SafetyRating | null> {
+    try {
+      const response = await (amadeus as any).safety.safetyRatedLocation(locationId).get();
+      return response.data || null;
+    } catch (error: any) {
+      console.error('Amadeus safety get error:', error?.response?.body || error);
+      return null;
     }
   }
 }

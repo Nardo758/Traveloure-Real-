@@ -87,6 +87,9 @@ import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { AffiliateTransportProducts } from "@/components/affiliate-transport-products";
+import { AmadeusPOIs } from "@/components/amadeus-pois";
+import { AmadeusTransfers } from "@/components/amadeus-transfers";
+import { AmadeusSafety } from "@/components/amadeus-safety";
 
 interface CartItem {
   id: string;
@@ -2447,6 +2450,25 @@ export default function ExperienceTemplatePage() {
                   }}
                 />
               </div>
+
+              {/* Airport Transfers via Amadeus */}
+              <div className="mt-6 border-t pt-6">
+                <AmadeusTransfers
+                  destination={destination}
+                  onAddToCart={(item) => {
+                    addToCart({
+                      id: item.id,
+                      type: item.type,
+                      name: item.name,
+                      price: item.price,
+                      quantity: item.quantity,
+                      provider: item.provider,
+                      details: item.details,
+                      isExternal: item.isExternal,
+                    });
+                  }}
+                />
+              </div>
             </div>
           )}
 
@@ -2520,6 +2542,36 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+
+              {/* Points of Interest and Destination Safety */}
+              {destinationCenter && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                  <div className="md:col-span-2">
+                    <AmadeusPOIs
+                      latitude={destinationCenter.lat}
+                      longitude={destinationCenter.lng}
+                      onAddToCart={(item) => {
+                        addToCart({
+                          id: item.id,
+                          type: item.type,
+                          name: item.name,
+                          price: item.price,
+                          quantity: item.quantity,
+                          provider: item.provider,
+                          details: item.details,
+                          isExternal: item.isExternal,
+                        });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <AmadeusSafety
+                      latitude={destinationCenter.lat}
+                      longitude={destinationCenter.lng}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
