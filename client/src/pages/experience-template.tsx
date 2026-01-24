@@ -2455,6 +2455,8 @@ export default function ExperienceTemplatePage() {
               <div className="mt-6 border-t pt-6">
                 <AmadeusTransfers
                   destination={destination}
+                  startDate={startDate?.toISOString().split('T')[0]}
+                  travelers={travelers}
                   onAddToCart={(item) => {
                     addToCart({
                       id: item.id,
