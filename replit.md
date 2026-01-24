@@ -111,6 +111,16 @@ The application features a modern, responsive design built with Tailwind CSS and
   - Multi-provider filtering, sorting (popular, price_low, price_high, rating), and destination aggregation
   - API endpoints: `/api/catalog/search`, `/api/catalog/templates/:slug`, `/api/catalog/items/:type/:id`, `/api/catalog/destinations`
 - **Experience Discovery Page** (`client/src/pages/experience-discovery.tsx`): Frontend for browsing the unified catalog with reactive filters, provider selection, and visual result cards
+- **SERP API Hybrid Search System**: Seamless integration of external providers via SerpAPI with native provider prioritization:
+  - **SerpService** (`server/services/serp.service.ts`): Template-aware query construction, result parsing, quality filtering (min 3.5 rating, 5+ reviews), and 24-hour caching
+  - **Quality Filters**: Excludes aggregators (Viator, TripAdvisor, Booking.com), requires valid contact info (website/phone)
+  - **Template Mappings**: Context-appropriate searches for 22+ experience types (wedding venues, corporate events, proposals, etc.)
+  - **Partnership Tracking**: Automatic identification of high-engagement providers (HIGH: 50+ clicks or 10+ inquiries, MEDIUM: 20+ clicks or 5+ inquiries)
+  - **Inquiry System**: Direct contact flow for external providers with user/trip context
+  - **Database Tables**: serp_cache, serp_providers, serp_inquiries
+  - **API Endpoints**: `/api/serp/template-search`, `/api/serp/track-click`, `/api/serp/inquiries`, `/api/serp/partnerships`, `/api/catalog/search-hybrid`
+  - **Frontend Components**: UnifiedResultCard (with "Traveloure Partner" badges), SerpInquiryDialog
+  - **Hybrid Search**: Automatic SERP fallback when native results < threshold, prioritizes native providers in results
 
 ### Key NPM Packages
 - `@tanstack/react-query`: Server state management.
