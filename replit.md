@@ -61,7 +61,14 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
 - **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence daily.
 - **Content Enrichment System**: Merges AI-generated recommendations with booking/affiliate data.
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
-- **Amadeus Self-Service API**: Real-time flight and hotel search.
+- **Amadeus Self-Service API**: Comprehensive travel content including:
+  - Real-time flight and hotel search
+  - Points of Interest (POI) discovery with categorized attractions
+  - Tours and Activities search with real-time availability
+  - Airport Transfer booking with vehicle options and pricing
+  - Destination Safety Ratings with multi-category safety scores (LGBTQ+, medical, physical, political, theft, women safety)
+  - Database caching tables: `poi_cache`, `transfer_cache`, `safety_cache`
+  - UI components: AmadeusPOIs, AmadeusTransfers, AmadeusSafety
 - **Viator Partner API**: Real-time tours and activities search.
 - **Fever Partner API**: Event discovery and ticketing in global cities, with caching.
 - **12Go Transportation Booking**: Affiliate widget for ground transportation bookings.
