@@ -2397,22 +2397,6 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
-              <ServiceBrowser
-                defaultLocation={destination}
-                categorySlug="transportation-logistics"
-                showCategoryFilter={false}
-                title="Local Transportation Services"
-                onAddToCart={(service) => {
-                  addToCart({
-                    id: `transport-${service.id}`,
-                    type: "transportation",
-                    name: service.serviceName,
-                    price: parseFloat(service.price) || 0,
-                    quantity: 1,
-                    provider: "Platform Service",
-                  });
-                }}
-              />
               
               {/* Transportation Analysis - Google Transit Routes & AI Tips */}
               {(activityLocations.length > 0 || hotelLocation) && (
@@ -2430,27 +2414,6 @@ export default function ExperienceTemplatePage() {
                 </div>
               )}
               
-              {/* 12Go Ground Transportation Booking - Trains, Buses, Ferries */}
-              <div className="mt-6 border-t pt-6">
-                <AffiliateTransportProducts
-                  destination={destination}
-                  origin={destination}
-                  onAddToCart={(item) => {
-                    addToCart({
-                      id: item.id,
-                      type: item.type,
-                      name: item.name,
-                      price: item.price,
-                      quantity: item.quantity,
-                      provider: item.provider,
-                      details: item.details,
-                      isExternal: item.isExternal,
-                      metadata: { affiliateUrl: item.affiliateUrl }
-                    });
-                  }}
-                />
-              </div>
-
               {/* Airport Transfers via Amadeus */}
               <div className="mt-6 border-t pt-6">
                 <AmadeusTransfers
@@ -2467,6 +2430,27 @@ export default function ExperienceTemplatePage() {
                       provider: item.provider,
                       details: item.details,
                       isExternal: item.isExternal,
+                    });
+                  }}
+                />
+              </div>
+
+              {/* 12Go Ground Transportation Booking - Trains, Buses, Ferries */}
+              <div className="mt-6 border-t pt-6">
+                <AffiliateTransportProducts
+                  destination={destination}
+                  origin={destination}
+                  onAddToCart={(item) => {
+                    addToCart({
+                      id: item.id,
+                      type: item.type,
+                      name: item.name,
+                      price: item.price,
+                      quantity: item.quantity,
+                      provider: item.provider,
+                      details: item.details,
+                      isExternal: item.isExternal,
+                      metadata: { affiliateUrl: item.affiliateUrl }
                     });
                   }}
                 />
