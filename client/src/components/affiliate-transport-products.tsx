@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Train, Bus, Ship, ExternalLink, Clock, MapPin } from "lucide-react";
+import { Train, Bus, Ship, ExternalLink, Clock, MapPin, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 interface AffiliateProduct {
@@ -11,6 +11,7 @@ interface AffiliateProduct {
   partnerId: string;
   name: string;
   description: string | null;
+  shortDescription: string | null;
   price: string | null;
   currency: string;
   productUrl: string;
@@ -18,7 +19,9 @@ interface AffiliateProduct {
   imageUrl: string | null;
   category: string;
   city: string | null;
+  country: string | null;
   duration: string | null;
+  location: string | null;
 }
 
 interface AffiliateTransportProductsProps {
@@ -38,31 +41,60 @@ interface AffiliateTransportProductsProps {
   }) => void;
 }
 
+function formatPrice(price: string | null, currency: string): string {
+  if (!price) return "View price";
+  const numPrice = parseFloat(price);
+  if (isNaN(numPrice)) return "View price";
+  
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    }).format(numPrice);
+  } catch {
+    return `${currency} ${numPrice.toFixed(2)}`;
+  }
+}
+
 export function AffiliateTransportProducts({
   destination,
   origin,
   className = "",
   onAddToCart
 }: AffiliateTransportProductsProps) {
-  const { data: products, isLoading
-  } = useQuery<AffiliateProduct[]>({
-    queryKey: ["/api/affiliate/products", { category: "transportation" }],
-    enabled: true
+  const queryUrl = `/api/affiliate/products?category=transportation${destination ? `&city=${encodeURIComponent(destination)}` : ''}`;
+  
+  const { data: products, isLoading, isError } = useQuery<AffiliateProduct[]>({
+    queryKey: [queryUrl],
   });
 
   const trackClick = useMutation({
     mutationFn: async (productId: string) => {
-      await apiRequest("POST", "/api/affiliate/track-click", { productId });
+      try {
+        await apiRequest("POST", "/api/affiliate/track-click", { productId });
+      } catch (e) {
+        console.warn("Click tracking failed, proceeding with booking", e);
+      }
     }
   });
 
-  const handleBookNow = (product: AffiliateProduct) => {
-    trackClick.mutate(product.id);
+  const handleBookNow = async (product: AffiliateProduct) => {
+    try {
+      await trackClick.mutateAsync(product.id);
+    } catch {
+      // Continue even if tracking fails
+    }
     window.open(product.affiliateUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const handleAddToCart = (product: AffiliateProduct) => {
-    trackClick.mutate(product.id);
+  const handleAddToCart = async (product: AffiliateProduct) => {
+    try {
+      await trackClick.mutateAsync(product.id);
+    } catch {
+      // Continue even if tracking fails
+    }
     if (onAddToCart) {
       onAddToCart({
         id: `affiliate-${product.id}`,
@@ -71,7 +103,7 @@ export function AffiliateTransportProducts({
         price: parseFloat(product.price || "0"),
         quantity: 1,
         provider: "12Go Asia",
-        details: product.description || undefined,
+        details: product.description || product.shortDescription || undefined,
         isExternal: true,
         affiliateUrl: product.affiliateUrl
       });
@@ -89,20 +121,38 @@ export function AffiliateTransportProducts({
   if (isLoading) {
     return (
       <div className={`space-y-3 ${className}`}>
+        <div className="flex items-center justify-between mb-4">
+          <Skeleton className="h-6 w-48" />
+          <Skeleton className="h-5 w-24" />
+        </div>
         {[1, 2, 3].map((i) => (
           <Card key={i}>
             <CardContent className="p-4">
               <div className="flex gap-4">
-                <Skeleton className="w-16 h-16 rounded" />
+                <Skeleton className="w-12 h-12 rounded" />
                 <div className="flex-1 space-y-2">
                   <Skeleton className="h-5 w-3/4" />
                   <Skeleton className="h-4 w-1/2" />
                 </div>
+                <Skeleton className="h-9 w-20" />
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <Card className={className}>
+        <CardContent className="p-6 text-center">
+          <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">
+            Unable to load transportation options. Please try again later.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -114,7 +164,32 @@ export function AffiliateTransportProducts({
   ) || [];
 
   if (transportProducts.length === 0) {
-    return null;
+    return (
+      <Card className={className}>
+        <CardContent className="p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex gap-1">
+              <Train className="w-5 h-5 text-blue-600" />
+              <Bus className="w-5 h-5 text-green-600" />
+              <Ship className="w-5 h-5 text-cyan-600" />
+            </div>
+            <h3 className="font-semibold">Ground Transportation</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Book trains, buses, and ferries for your trip via 12Go Asia.
+          </p>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => window.open(`https://12go.asia/en?affiliate_id=13805109${destination ? `&q=${encodeURIComponent(destination)}` : ''}`, '_blank')}
+            data-testid="button-browse-12go"
+          >
+            Browse Transportation Options
+            <ExternalLink className="h-4 w-4 ml-2" />
+          </Button>
+        </CardContent>
+      </Card>
+    );
   }
 
   return (
@@ -136,22 +211,22 @@ export function AffiliateTransportProducts({
             <Card key={product.id} className="hover-elevate" data-testid={`card-transport-${product.id}`}>
               <CardContent className="p-4">
                 <div className="flex items-start gap-4">
-                  <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950">
+                  <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950 shrink-0">
                     <Icon className="h-6 w-6 text-blue-600" />
                   </div>
                   
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm mb-1 truncate">{product.name}</h4>
-                    {product.description && (
+                    <h4 className="font-medium text-sm mb-1">{product.name}</h4>
+                    {(product.description || product.shortDescription) && (
                       <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-                        {product.description}
+                        {product.description || product.shortDescription}
                       </p>
                     )}
                     <div className="flex flex-wrap gap-2">
-                      {product.city && (
+                      {(product.city || product.location) && (
                         <Badge variant="secondary" className="text-xs">
                           <MapPin className="h-3 w-3 mr-1" />
-                          {product.city}
+                          {product.city || product.location}
                         </Badge>
                       )}
                       {product.duration && (
@@ -163,23 +238,19 @@ export function AffiliateTransportProducts({
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-2">
-                    {product.price && (
-                      <div className="text-right">
-                        <span className="text-lg font-bold">
-                          ${parseFloat(product.price).toFixed(0)}
-                        </span>
-                        <span className="text-xs text-muted-foreground ml-1">
-                          {product.currency}
-                        </span>
-                      </div>
-                    )}
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <div className="text-right">
+                      <span className="text-lg font-bold">
+                        {formatPrice(product.price, product.currency)}
+                      </span>
+                    </div>
                     <div className="flex gap-2">
                       {onAddToCart && (
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleAddToCart(product)}
+                          disabled={trackClick.isPending}
                           data-testid={`button-add-transport-${product.id}`}
                         >
                           Add
@@ -188,6 +259,7 @@ export function AffiliateTransportProducts({
                       <Button
                         size="sm"
                         onClick={() => handleBookNow(product)}
+                        disabled={trackClick.isPending}
                         data-testid={`button-book-transport-${product.id}`}
                       >
                         Book
