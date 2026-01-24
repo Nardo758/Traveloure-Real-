@@ -33,6 +33,8 @@ import {
   Plus,
   Building2,
   Check,
+  Compass,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
@@ -346,6 +348,35 @@ export default function HelpMeDecidePage() {
                 Find Trips
               </Button>
             </div>
+          </motion.div>
+
+          {/* Quick Actions */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex flex-wrap justify-center gap-3 mt-6"
+          >
+            <Link href="/discover">
+              <Button
+                variant="outline"
+                className="bg-white/10 backdrop-blur-sm border-white/30 text-white font-medium"
+                data-testid="button-discover"
+              >
+                <Compass className="w-4 h-4 mr-2" />
+                Discover Experiences
+              </Button>
+            </Link>
+            <Link href="/spontaneous">
+              <Button
+                variant="outline"
+                className="bg-amber-500/20 backdrop-blur-sm border-amber-400/50 text-white font-medium"
+                data-testid="button-live-intel-hmd"
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                Live Intel
+              </Button>
+            </Link>
           </motion.div>
         </div>
       </section>
