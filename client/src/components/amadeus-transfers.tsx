@@ -4,10 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Car, Users, Clock, AlertCircle, Search, Plus } from "lucide-react";
+import { Car, Users, Clock, AlertCircle, Search, Plus, Plane } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 interface TransferOffer {
@@ -40,8 +38,9 @@ interface TransferOffer {
 }
 
 interface AmadeusTransfersProps {
-  airportCode?: string;
-  destination?: string;
+  destination: string;
+  startDate?: string;
+  travelers?: number;
   className?: string;
   onAddToCart?: (item: {
     id: string;
@@ -69,24 +68,29 @@ function formatPrice(amount: string, currency: string): string {
 }
 
 export function AmadeusTransfers({
-  airportCode = "",
-  destination = "",
+  destination,
+  startDate,
+  travelers = 2,
   className = "",
   onAddToCart
 }: AmadeusTransfersProps) {
-  const [searchParams, setSearchParams] = useState({
-    startLocationCode: airportCode,
-    endCityName: destination,
-    transferType: "PRIVATE" as "PRIVATE" | "SHARED",
-    startDateTime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
-    passengers: 2,
-  });
+  const [airportCode, setAirportCode] = useState("");
   const [transfers, setTransfers] = useState<TransferOffer[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
 
+  const searchDateTime = startDate 
+    ? new Date(startDate + "T10:00:00").toISOString()
+    : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
   const searchMutation = useMutation({
-    mutationFn: async (params: typeof searchParams) => {
-      const response = await apiRequest("POST", "/api/amadeus/transfers", params);
+    mutationFn: async (code: string) => {
+      const response = await apiRequest("POST", "/api/amadeus/transfers", {
+        startLocationCode: code,
+        endCityName: destination,
+        transferType: "PRIVATE",
+        startDateTime: searchDateTime,
+        passengers: travelers,
+      });
       return response.json();
     },
     onSuccess: (data) => {
@@ -96,8 +100,14 @@ export function AmadeusTransfers({
   });
 
   const handleSearch = () => {
-    if (!searchParams.startLocationCode) return;
-    searchMutation.mutate(searchParams);
+    if (!airportCode || airportCode.length < 3) return;
+    searchMutation.mutate(airportCode);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
   };
 
   const handleAddToCart = (transfer: TransferOffer) => {
@@ -109,7 +119,7 @@ export function AmadeusTransfers({
         price: parseFloat(transfer.quotation.monetaryAmount),
         quantity: 1,
         provider: "Amadeus Transfers",
-        details: `From ${transfer.start.locationCode} to ${transfer.end.address?.cityName || 'destination'}`,
+        details: `From ${transfer.start.locationCode} to ${destination}`,
         isExternal: false,
       });
     }
@@ -117,94 +127,38 @@ export function AmadeusTransfers({
 
   return (
     <Card className={className} data-testid="card-amadeus-transfers">
-      <CardHeader>
+      <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg" data-testid="title-amadeus-transfers">
           <Car className="h-5 w-5 text-primary" />
-          Airport Transfers
+          Airport Transfers to {destination || "your destination"}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="airport" className="text-xs">Airport Code</Label>
-              <Input
-                id="airport"
-                placeholder="e.g. JFK, LAX"
-                value={searchParams.startLocationCode}
-                onChange={(e) => setSearchParams({ ...searchParams, startLocationCode: e.target.value.toUpperCase() })}
-                className="uppercase"
-                data-testid="input-transfer-airport"
-              />
-            </div>
-            <div>
-              <Label htmlFor="destination" className="text-xs">Destination City</Label>
-              <Input
-                id="destination"
-                placeholder="e.g. Manhattan"
-                value={searchParams.endCityName}
-                onChange={(e) => setSearchParams({ ...searchParams, endCityName: e.target.value })}
-                data-testid="input-transfer-destination"
-              />
-            </div>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Plane className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Enter airport code (e.g., JFK, LAX, BKK)"
+              value={airportCode}
+              onChange={(e) => setAirportCode(e.target.value.toUpperCase())}
+              onKeyDown={handleKeyDown}
+              className="pl-9 uppercase"
+              maxLength={4}
+              data-testid="input-transfer-airport"
+            />
           </div>
-          
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label htmlFor="type" className="text-xs">Type</Label>
-              <Select
-                value={searchParams.transferType}
-                onValueChange={(v) => setSearchParams({ ...searchParams, transferType: v as "PRIVATE" | "SHARED" })}
-              >
-                <SelectTrigger data-testid="select-transfer-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PRIVATE">Private</SelectItem>
-                  <SelectItem value="SHARED">Shared</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="datetime" className="text-xs">Date & Time</Label>
-              <Input
-                id="datetime"
-                type="datetime-local"
-                value={searchParams.startDateTime}
-                onChange={(e) => setSearchParams({ ...searchParams, startDateTime: e.target.value })}
-                data-testid="input-transfer-datetime"
-              />
-            </div>
-            <div>
-              <Label htmlFor="passengers" className="text-xs">Passengers</Label>
-              <Input
-                id="passengers"
-                type="number"
-                min={1}
-                max={10}
-                value={searchParams.passengers}
-                onChange={(e) => setSearchParams({ ...searchParams, passengers: parseInt(e.target.value) || 1 })}
-                data-testid="input-transfer-passengers"
-              />
-            </div>
-          </div>
-
           <Button
             onClick={handleSearch}
-            disabled={!searchParams.startLocationCode || searchMutation.isPending}
-            className="w-full"
+            disabled={!airportCode || airportCode.length < 3 || searchMutation.isPending}
             data-testid="button-search-transfers"
           >
-            {searchMutation.isPending ? (
-              <>Searching...</>
-            ) : (
-              <>
-                <Search className="h-4 w-4 mr-2" />
-                Search Transfers
-              </>
-            )}
+            {searchMutation.isPending ? "..." : <Search className="h-4 w-4" />}
           </Button>
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          {travelers} traveler{travelers !== 1 ? 's' : ''} • {startDate ? new Date(startDate).toLocaleDateString() : 'Flexible dates'}
+        </p>
 
         {searchMutation.isPending && (
           <div className="space-y-3">
@@ -225,7 +179,7 @@ export function AmadeusTransfers({
           <div className="p-4 text-center">
             <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">
-              Unable to find transfers. Please try different search criteria.
+              Unable to find transfers. Please check the airport code and try again.
             </p>
           </div>
         )}
@@ -234,7 +188,7 @@ export function AmadeusTransfers({
           <div className="p-4 text-center">
             <Car className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">
-              No transfers available for this route and time.
+              No transfers available from {airportCode} to {destination}.
             </p>
           </div>
         )}
