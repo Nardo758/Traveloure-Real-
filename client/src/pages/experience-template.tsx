@@ -88,8 +88,8 @@ import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { AffiliateTransportProducts } from "@/components/affiliate-transport-products";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
-import { AmadeusTransfers } from "@/components/amadeus-transfers";
 import { AmadeusSafety } from "@/components/amadeus-safety";
+import { TripTransportPlanner } from "@/components/trip-transport-planner";
 
 interface CartItem {
   id: string;
@@ -2414,43 +2414,24 @@ export default function ExperienceTemplatePage() {
                 </div>
               )}
               
-              {/* Airport Transfers via Amadeus */}
+              {/* Trip Transport Planner - Intelligent transport analysis based on bookings */}
               <div className="mt-6 border-t pt-6">
-                <AmadeusTransfers
+                <TripTransportPlanner
+                  cart={cart}
                   destination={destination}
-                  startDate={startDate?.toISOString().split('T')[0]}
+                  startDate={startDate}
+                  endDate={endDate}
                   travelers={travelers}
-                  onAddToCart={(item) => {
+                  onBookTransfer={(segment, option) => {
                     addToCart({
-                      id: item.id,
-                      type: item.type,
-                      name: item.name,
-                      price: item.price,
-                      quantity: item.quantity,
-                      provider: item.provider,
-                      details: item.details,
-                      isExternal: item.isExternal,
-                    });
-                  }}
-                />
-              </div>
-
-              {/* 12Go Ground Transportation Booking - Trains, Buses, Ferries */}
-              <div className="mt-6 border-t pt-6">
-                <AffiliateTransportProducts
-                  destination={destination}
-                  origin={destination}
-                  onAddToCart={(item) => {
-                    addToCart({
-                      id: item.id,
-                      type: item.type,
-                      name: item.name,
-                      price: item.price,
-                      quantity: item.quantity,
-                      provider: item.provider,
-                      details: item.details,
-                      isExternal: item.isExternal,
-                      metadata: { affiliateUrl: item.affiliateUrl }
+                      id: `transport-${segment.id}-${Date.now()}`,
+                      type: "transportation",
+                      name: `${option.name}: ${segment.from.name} → ${segment.to.name}`,
+                      price: option.price || 0,
+                      quantity: 1,
+                      provider: option.provider,
+                      details: option.description,
+                      isExternal: true,
                     });
                   }}
                 />
