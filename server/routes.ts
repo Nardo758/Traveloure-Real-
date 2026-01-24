@@ -7327,4 +7327,209 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to get jobs", error: error.message });
     }
   });
+
+  // ==================== AFFILIATE PARTNER MANAGEMENT ====================
+  
+  const { affiliateScraperService } = await import("./services/affiliate-scraper.service");
+
+  // Get partner categories
+  app.get("/api/affiliate/categories", async (_req, res) => {
+    try {
+      const categories = await affiliateScraperService.getPartnerCategories();
+      res.json({ categories });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get categories", error: error.message });
+    }
+  });
+
+  // Create affiliate partner
+  app.post("/api/affiliate/partners", isAuthenticated, async (req, res) => {
+    try {
+      const { name, websiteUrl, category, affiliateTrackingId, affiliateLinkTemplate, description, logoUrl, commissionRate, scrapeConfig } = req.body;
+
+      if (!name || !websiteUrl || !category) {
+        return res.status(400).json({ message: "name, websiteUrl, and category are required" });
+      }
+
+      const partner = await affiliateScraperService.createPartner({
+        name,
+        websiteUrl,
+        category,
+        affiliateTrackingId,
+        affiliateLinkTemplate,
+        description,
+        logoUrl,
+        commissionRate,
+        scrapeConfig,
+      });
+
+      res.status(201).json({ partner, message: "Partner created successfully" });
+    } catch (error: any) {
+      console.error("Create partner error:", error);
+      res.status(500).json({ message: "Failed to create partner", error: error.message });
+    }
+  });
+
+  // Get all affiliate partners
+  app.get("/api/affiliate/partners", async (req, res) => {
+    try {
+      const { category, isActive, limit, offset } = req.query;
+      const result = await affiliateScraperService.getPartners({
+        category: category as string,
+        isActive: isActive === "true" ? true : isActive === "false" ? false : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get partners", error: error.message });
+    }
+  });
+
+  // Get single affiliate partner
+  app.get("/api/affiliate/partners/:id", async (req, res) => {
+    try {
+      const partner = await affiliateScraperService.getPartnerById(req.params.id);
+      if (!partner) {
+        return res.status(404).json({ message: "Partner not found" });
+      }
+      res.json({ partner });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get partner", error: error.message });
+    }
+  });
+
+  // Update affiliate partner
+  app.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+    try {
+      const partner = await affiliateScraperService.updatePartner(req.params.id, req.body);
+      if (!partner) {
+        return res.status(404).json({ message: "Partner not found" });
+      }
+      res.json({ partner, message: "Partner updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update partner", error: error.message });
+    }
+  });
+
+  // Delete affiliate partner
+  app.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+    try {
+      const deleted = await affiliateScraperService.deletePartner(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Partner not found" });
+      }
+      res.json({ message: "Partner deleted successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete partner", error: error.message });
+    }
+  });
+
+  // Trigger partner website scrape
+  app.post("/api/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
+    try {
+      const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Scrape error:", error);
+      res.status(500).json({ message: "Failed to scrape partner website", error: error.message });
+    }
+  });
+
+  // Get scrape jobs for a partner
+  app.get("/api/affiliate/partners/:id/jobs", isAuthenticated, async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const jobs = await affiliateScraperService.getScrapeJobs({
+        partnerId: req.params.id,
+        limit: limit ? parseInt(limit as string) : undefined,
+      });
+      res.json({ jobs });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get scrape jobs", error: error.message });
+    }
+  });
+
+  // Get all affiliate products
+  app.get("/api/affiliate/products", async (req, res) => {
+    try {
+      const { partnerId, category, city, country, search, minPrice, maxPrice, minRating, limit, offset } = req.query;
+      const result = await affiliateScraperService.getProducts({
+        partnerId: partnerId as string,
+        category: category as string,
+        city: city as string,
+        country: country as string,
+        search: search as string,
+        minPrice: minPrice ? parseFloat(minPrice as string) : undefined,
+        maxPrice: maxPrice ? parseFloat(maxPrice as string) : undefined,
+        minRating: minRating ? parseFloat(minRating as string) : undefined,
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get products", error: error.message });
+    }
+  });
+
+  // Get single product
+  app.get("/api/affiliate/products/:id", async (req, res) => {
+    try {
+      const product = await affiliateScraperService.getProductById(req.params.id);
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      res.json({ product });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get product", error: error.message });
+    }
+  });
+
+  // Track affiliate click
+  app.post("/api/affiliate/track-click", async (req, res) => {
+    try {
+      const { productId, partnerId, userId, tripId, itineraryItemId } = req.body;
+      
+      if (!productId && !partnerId) {
+        return res.status(400).json({ message: "productId or partnerId is required" });
+      }
+
+      const result = await affiliateScraperService.trackClick({
+        productId,
+        partnerId,
+        userId,
+        tripId,
+        itineraryItemId,
+        referrer: req.headers.referer,
+        userAgent: req.headers["user-agent"],
+        ipAddress: req.ip,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Get products for a specific location (for itinerary integration)
+  app.get("/api/affiliate/products/by-location", async (req, res) => {
+    try {
+      const { city, country, category, limit } = req.query;
+      
+      if (!city && !country) {
+        return res.status(400).json({ message: "city or country is required" });
+      }
+
+      const result = await affiliateScraperService.getProducts({
+        city: city as string,
+        country: country as string,
+        category: category as string,
+        limit: limit ? parseInt(limit as string) : 10,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get products by location", error: error.message });
+    }
+  });
 }

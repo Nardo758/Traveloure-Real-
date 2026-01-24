@@ -2919,6 +2919,143 @@ export const insertUserSavedGemSchema = createInsertSchema(userSavedGems).omit({
   createdAt: true
 });
 
+// ==================== AFFILIATE WEB SCRAPING ====================
+
+// Affiliate partner categories
+export const affiliatePartnerCategories = [
+  "tours_activities",
+  "hotels_accommodation", 
+  "transportation",
+  "restaurants_dining",
+  "events_tickets",
+  "experiences",
+  "travel_gear",
+  "insurance",
+  "other"
+] as const;
+export type AffiliatePartnerCategory = typeof affiliatePartnerCategories[number];
+
+// Affiliate partners table - stores partner info and tracking codes
+export const affiliatePartners = pgTable("affiliate_partners", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name: varchar("name", { length: 200 }).notNull(),
+  websiteUrl: varchar("website_url", { length: 500 }).notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
+  affiliateTrackingId: varchar("affiliate_tracking_id", { length: 200 }),
+  affiliateLinkTemplate: varchar("affiliate_link_template", { length: 1000 }),
+  description: text("description"),
+  logoUrl: varchar("logo_url", { length: 500 }),
+  commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }),
+  scrapeConfig: jsonb("scrape_config").$type<{
+    productListUrl?: string;
+    productSelector?: string;
+    paginationType?: "page" | "scroll" | "loadMore";
+    maxPages?: number;
+    scrapeInterval?: number;
+  }>(),
+  isActive: boolean("is_active").default(true),
+  lastScrapedAt: timestamp("last_scraped_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Affiliate products table - stores scraped product data
+export const affiliateProducts = pgTable("affiliate_products", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  partnerId: varchar("partner_id").notNull().references(() => affiliatePartners.id, { onDelete: "cascade" }),
+  externalId: varchar("external_id", { length: 200 }),
+  name: varchar("name", { length: 500 }).notNull(),
+  description: text("description"),
+  shortDescription: varchar("short_description", { length: 500 }),
+  category: varchar("category", { length: 100 }),
+  subCategory: varchar("sub_category", { length: 100 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  originalPrice: decimal("original_price", { precision: 10, scale: 2 }),
+  discountPercent: integer("discount_percent"),
+  imageUrl: varchar("image_url", { length: 1000 }),
+  imageUrls: jsonb("image_urls").$type<string[]>().default([]),
+  productUrl: varchar("product_url", { length: 1000 }).notNull(),
+  affiliateUrl: varchar("affiliate_url", { length: 1500 }),
+  location: varchar("location", { length: 300 }),
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  coordinates: jsonb("coordinates").$type<{ lat: number; lng: number }>(),
+  rating: decimal("rating", { precision: 3, scale: 2 }),
+  reviewCount: integer("review_count"),
+  duration: varchar("duration", { length: 100 }),
+  highlights: jsonb("highlights").$type<string[]>().default([]),
+  includes: jsonb("includes").$type<string[]>().default([]),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  availability: varchar("availability", { length: 200 }),
+  bookingInfo: text("booking_info"),
+  metadata: jsonb("metadata"),
+  isActive: boolean("is_active").default(true),
+  lastScrapedAt: timestamp("last_scraped_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Affiliate scrape jobs table - tracks scraping operations
+export const affiliateScrapeJobs = pgTable("affiliate_scrape_jobs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  partnerId: varchar("partner_id").notNull().references(() => affiliatePartners.id, { onDelete: "cascade" }),
+  status: varchar("status", { length: 50 }).default("pending"),
+  productsFound: integer("products_found").default(0),
+  productsUpdated: integer("products_updated").default(0),
+  productsNew: integer("products_new").default(0),
+  pagesScraped: integer("pages_scraped").default(0),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Affiliate click tracking table - for commission tracking
+export const affiliateClicks = pgTable("affiliate_clicks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  productId: varchar("product_id").references(() => affiliateProducts.id, { onDelete: "set null" }),
+  partnerId: varchar("partner_id").references(() => affiliatePartners.id, { onDelete: "set null" }),
+  userId: varchar("user_id"),
+  tripId: varchar("trip_id"),
+  itineraryItemId: varchar("itinerary_item_id"),
+  referrer: varchar("referrer", { length: 500 }),
+  userAgent: varchar("user_agent", { length: 500 }),
+  ipAddress: varchar("ip_address", { length: 50 }),
+  clickedAt: timestamp("clicked_at").defaultNow(),
+});
+
+// Insert schemas for affiliate tables
+export const insertAffiliatePartnerSchema = createInsertSchema(affiliatePartners).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastScrapedAt: true,
+});
+
+export const insertAffiliateProductSchema = createInsertSchema(affiliateProducts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastScrapedAt: true,
+});
+
+export const insertAffiliateScrapeJobSchema = createInsertSchema(affiliateScrapeJobs).omit({
+  id: true,
+  createdAt: true,
+  status: true,
+  productsFound: true,
+  productsUpdated: true,
+  productsNew: true,
+  pagesScraped: true,
+});
+
+export const insertAffiliateClickSchema = createInsertSchema(affiliateClicks).omit({
+  id: true,
+  clickedAt: true,
+});
+
 // Types
 export type AiDiscoveredGem = typeof aiDiscoveredGems.$inferSelect;
 export type InsertAiDiscoveredGem = z.infer<typeof insertAiDiscoveredGemSchema>;
@@ -2926,3 +3063,13 @@ export type DiscoveryJob = typeof discoveryJobs.$inferSelect;
 export type InsertDiscoveryJob = z.infer<typeof insertDiscoveryJobSchema>;
 export type UserSavedGem = typeof userSavedGems.$inferSelect;
 export type InsertUserSavedGem = z.infer<typeof insertUserSavedGemSchema>;
+
+// Affiliate types
+export type AffiliatePartner = typeof affiliatePartners.$inferSelect;
+export type InsertAffiliatePartner = z.infer<typeof insertAffiliatePartnerSchema>;
+export type AffiliateProduct = typeof affiliateProducts.$inferSelect;
+export type InsertAffiliateProduct = z.infer<typeof insertAffiliateProductSchema>;
+export type AffiliateScrapeJob = typeof affiliateScrapeJobs.$inferSelect;
+export type InsertAffiliateScrapeJob = z.infer<typeof insertAffiliateScrapeJobSchema>;
+export type AffiliateClick = typeof affiliateClicks.$inferSelect;
+export type InsertAffiliateClick = z.infer<typeof insertAffiliateClickSchema>;
