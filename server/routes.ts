@@ -981,6 +981,28 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // Hybrid catalog search with SERP fallback
+  app.get("/api/catalog/search-hybrid", async (req, res) => {
+    try {
+      const { hybridCatalogSearchQuerySchema } = await import("@shared/schema");
+      const parseResult = hybridCatalogSearchQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+
+      const result = await experienceCatalogService.searchWithSerpFallback(parseResult.data);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Hybrid catalog search error:", error);
+      res.status(500).json({ message: "Failed to search catalog" });
+    }
+  });
+
   // Get experience type with all tabs and filters
   app.get("/api/catalog/templates/:slug", async (req, res) => {
     try {
@@ -5720,6 +5742,146 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error("Error searching SERP:", error);
       res.status(500).json({ message: "Failed to search venues", error: error.message });
+    }
+  });
+
+  // Template-aware SERP search with caching
+  app.get("/api/serp/template-search", async (req, res) => {
+    try {
+      const { serpTemplateSearchQuerySchema } = await import("@shared/schema");
+      const parseResult = serpTemplateSearchQuerySchema.safeParse(req.query);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+
+      const { serviceType, destination, template, priceRange, style, groupSize } = parseResult.data;
+
+      const { serpService } = await import("./services/serp.service");
+      
+      const queryParams = serpService.buildQueryForTemplate(
+        serviceType,
+        destination,
+        template,
+        { priceRange, style, groupSize }
+      );
+
+      const results = await serpService.searchAttractions(
+        destination,
+        "",
+        queryParams.query
+      );
+
+      res.json({ 
+        results,
+        query: queryParams.query,
+        cached: false,
+        source: "serp"
+      });
+    } catch (error: any) {
+      console.error("Error in template SERP search:", error);
+      res.status(500).json({ message: "Failed to search", error: error.message });
+    }
+  });
+
+  // Track SERP provider click
+  app.post("/api/serp/track-click", async (req, res) => {
+    try {
+      const { serpTrackClickBodySchema } = await import("@shared/schema");
+      const parseResult = serpTrackClickBodySchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+
+      const { providerId, metadata } = parseResult.data;
+
+      const { serpService } = await import("./services/serp.service");
+      const userId = (req.user as any)?.id || null;
+      
+      await serpService.trackClick(providerId, userId, metadata);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error tracking SERP click:", error);
+      res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Create inquiry to SERP provider
+  app.post("/api/serp/inquiry", isAuthenticated, async (req, res) => {
+    try {
+      const { serpInquiryBodySchema } = await import("@shared/schema");
+      const parseResult = serpInquiryBodySchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Validation error",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+
+      const { 
+        serpProviderId, 
+        providerName, 
+        providerEmail, 
+        providerPhone, 
+        providerWebsite, 
+        message, 
+        destination, 
+        category, 
+        template 
+      } = parseResult.data;
+
+      const { serpService } = await import("./services/serp.service");
+      
+      const inquiry = await serpService.createInquiry({
+        userId: (req.user as any).id,
+        serpProviderId,
+        providerName,
+        providerEmail,
+        providerPhone,
+        providerWebsite,
+        message,
+        destination,
+        category,
+        template
+      });
+
+      if (!inquiry) {
+        return res.status(500).json({ message: "Failed to create inquiry" });
+      }
+
+      res.json({ success: true, inquiry });
+    } catch (error: any) {
+      console.error("Error creating SERP inquiry:", error);
+      res.status(500).json({ message: "Failed to create inquiry", error: error.message });
+    }
+  });
+
+  // Get partnership opportunities (admin)
+  app.get("/api/serp/partnerships", isAuthenticated, async (req, res) => {
+    try {
+      const { limit = "20", byMarket } = req.query;
+      
+      const { serpService } = await import("./services/serp.service");
+      
+      if (byMarket === "true") {
+        const report = await serpService.getPartnershipReportByMarket();
+        return res.json({ byMarket: true, report });
+      }
+
+      const opportunities = await serpService.getTopPartnershipOpportunities(parseInt(limit as string));
+      res.json({ opportunities });
+    } catch (error: any) {
+      console.error("Error fetching partnerships:", error);
+      res.status(500).json({ message: "Failed to fetch partnerships", error: error.message });
     }
   });
 

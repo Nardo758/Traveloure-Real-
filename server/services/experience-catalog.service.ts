@@ -574,6 +574,88 @@ class ExperienceCatalogService {
     const uniqueDestinations = Array.from(new Set(allDestinations));
     return uniqueDestinations.sort();
   }
+
+  async searchWithSerpFallback(params: CatalogSearchParams & {
+    enableSerpFallback?: boolean;
+    templateSlug?: string;
+    minNativeResults?: number;
+  }): Promise<CatalogSearchResult & {
+    serpResults: import("@shared/schema").SerpResult[];
+    usedSerpFallback: boolean;
+  }> {
+    const minNative = params.minNativeResults || 5;
+    
+    const nativeResult = await this.searchCatalog(params);
+    
+    if (!params.enableSerpFallback || nativeResult.items.length >= minNative) {
+      return {
+        ...nativeResult,
+        serpResults: [],
+        usedSerpFallback: false
+      };
+    }
+
+    this.catalogLogger.info({
+      nativeCount: nativeResult.items.length,
+      minNative,
+      destination: params.destination,
+      template: params.templateSlug
+    }, "Native results sparse, attempting SERP fallback");
+
+    try {
+      const serpModule = await import("./serp.service");
+      const { serpService } = serpModule;
+      type EnrichedVenue = import("./serp.service").EnrichedVenue;
+      
+      let serpResults: EnrichedVenue[] = [];
+      
+      if (params.destination) {
+        const queryParams = serpService.buildQueryForTemplate(
+          params.experienceTypeSlug || "travel",
+          params.destination,
+          params.templateSlug || "travel",
+          {}
+        );
+
+        serpResults = await serpService.searchAttractions(
+          params.destination,
+          "",
+          queryParams.query
+        );
+      }
+
+      const formattedSerpResults: import("@shared/schema").SerpResult[] = serpResults.map(r => ({
+        id: r.id || `serp-${crypto.randomUUID()}`,
+        name: r.name || "Unknown",
+        rating: r.rating ?? null,
+        reviewCount: r.reviewCount ?? null,
+        priceLevel: r.priceLevel ?? null,
+        address: r.address ?? null,
+        phone: r.phone ?? null,
+        website: r.website ?? null,
+        imageUrl: r.thumbnail ?? null,
+        source: "serp" as const,
+        isPartner: false as const
+      }));
+
+      this.catalogLogger.info({
+        serpResultCount: formattedSerpResults.length
+      }, "SERP fallback completed");
+
+      return {
+        ...nativeResult,
+        serpResults: formattedSerpResults,
+        usedSerpFallback: formattedSerpResults.length > 0
+      };
+    } catch (error) {
+      this.catalogLogger.error({ error }, "SERP fallback failed");
+      return {
+        ...nativeResult,
+        serpResults: [],
+        usedSerpFallback: false
+      };
+    }
+  }
 }
 
 export const experienceCatalogService = new ExperienceCatalogService();
