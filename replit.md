@@ -30,6 +30,14 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
 - **Role-Based Dashboards**: Dashboards for Service Providers, Administrators, and Executive Assistants.
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
 - **Coordination Hub**: Tracks planning lifecycle, vendor availability, state management, and bookings.
+- **Trip Transport Planner**: Intelligent transportation planning that analyzes all cart bookings to build a transport timeline:
+  - Automatically detects flights, hotels, and activities from cart with all type variations
+  - Builds transport segments: airport→hotel, hotel→activities, activity→activity, hotel→airport
+  - Hotel transfer perk detection via `metadata.includesAirportTransfer` showing "Covered" status
+  - Flights sorted by departure time for accurate arrival/departure identification
+  - Actionable transport options for each gap: Google Transit, Amadeus transfers, taxi/ride-share, 12Go affiliate links
+  - Component: `TripTransportPlanner` in Transportation tab of experience templates
+  - Affiliate integration: 12Go Asia (tracking ID: 13805109)
 - **Transportation Analysis & Map Integration**: Multi-modal transit analysis and route visualization using Google Maps and AI.
 - **Logistics Intelligence Layer**: Provides shared functionality including multi-person RSVP tracking, vendor management, budget management (cost splitting, currency conversion, tip calculation), AI-powered scheduling optimization, and emergency services.
 - **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities from cached provider data (e.g., activities, events, hotels) with a scoring system based on urgency, actionability, and trending.
