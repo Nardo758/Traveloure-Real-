@@ -85,6 +85,7 @@ import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
+import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 
 interface CartItem {
   id: string;
@@ -2423,6 +2424,17 @@ export default function ExperienceTemplatePage() {
                   />
                 </div>
               )}
+              
+              {/* 12Go Ground Transportation Booking - Trains, Buses, Ferries */}
+              <div className="mt-6 border-t pt-6">
+                <TwelveGoTransport
+                  origin={destination}
+                  destination={destination}
+                  departureDate={startDate}
+                  passengers={travelers}
+                  variant="full"
+                />
+              </div>
             </div>
           )}
 
