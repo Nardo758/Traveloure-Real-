@@ -444,18 +444,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Footer */}
-      <footer className="bg-gray-900 text-white py-16">
+      <footer className="bg-background border-t border-border py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
             {/* Brand Column */}
             <div className="lg:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="bg-[#FF385C] p-2 rounded-lg">
-                  <Compass className="h-5 w-5 text-white" />
+                <div className="bg-primary p-2 rounded-lg">
+                  <Compass className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <span className="font-display font-bold text-xl">Traveloure</span>
+                <span className="font-display font-bold text-xl text-foreground">Traveloure</span>
               </div>
-              <p className="text-gray-400 text-sm mb-6 max-w-sm">
+              <p className="text-muted-foreground text-sm mb-6 max-w-sm">
                 Experience personalized travel planning with insider knowledge from travel experts, powered by advanced AI technology.
               </p>
               {/* Social Links */}
@@ -464,7 +464,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://facebook.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
+                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
                   data-testid="link-social-facebook"
                 >
                   <Facebook className="w-5 h-5" />
@@ -473,7 +473,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://twitter.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
+                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
                   data-testid="link-social-twitter"
                 >
                   <Twitter className="w-5 h-5" />
@@ -482,7 +482,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://instagram.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
+                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
                   data-testid="link-social-instagram"
                 >
                   <Instagram className="w-5 h-5" />
@@ -491,7 +491,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   href="https://linkedin.com" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center hover:bg-[#FF385C] transition-colors"
+                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
                   data-testid="link-social-linkedin"
                 >
                   <Linkedin className="w-5 h-5" />
@@ -501,51 +501,46 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Product Column */}
             <div>
-              <h4 className="font-semibold mb-4 text-white">Product</h4>
-              <ul className="space-y-3 text-sm text-gray-400">
-                <li><Link href="/experiences" className="hover:text-white transition-colors" data-testid="link-footer-create-trip">Plan an Experience</Link></li>
-                <li><Link href="/discover" className="hover:text-white transition-colors" data-testid="link-footer-explore">Discover Services</Link></li>
-                <li><Link href="/chat" className="hover:text-white transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
-                <li><Link href="/how-it-works" className="hover:text-white transition-colors" data-testid="link-footer-how-it-works">How It Works</Link></li>
-                <li><Link href="/pricing" className="hover:text-white transition-colors" data-testid="link-footer-pricing">Pricing</Link></li>
+              <h4 className="font-semibold mb-4 text-foreground">Product</h4>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li><Link href="/experiences" className="hover:text-foreground transition-colors" data-testid="link-footer-create-trip">Plan an Experience</Link></li>
+                <li><Link href="/discover" className="hover:text-foreground transition-colors" data-testid="link-footer-explore">Discover Services</Link></li>
+                <li><Link href="/chat" className="hover:text-foreground transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
+                <li><Link href="/how-it-works" className="hover:text-foreground transition-colors" data-testid="link-footer-how-it-works">How It Works</Link></li>
+                <li><Link href="/pricing" className="hover:text-foreground transition-colors" data-testid="link-footer-pricing">Pricing</Link></li>
               </ul>
             </div>
 
             {/* Company Column */}
             <div>
-              <h4 className="font-semibold mb-4 text-white">Company</h4>
-              <ul className="space-y-3 text-sm text-gray-400">
-                <li><Link href="/about" className="hover:text-white transition-colors" data-testid="link-footer-about">About Us</Link></li>
-                <li><Link href="/partner-with-us" className="hover:text-white transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
-                <li><Link href="/careers" className="hover:text-white transition-colors" data-testid="link-footer-careers">Careers</Link></li>
-                <li><Link href="/blog" className="hover:text-white transition-colors" data-testid="link-footer-blog">Blog</Link></li>
-                <li><Link href="/press" className="hover:text-white transition-colors" data-testid="link-footer-press">Press</Link></li>
+              <h4 className="font-semibold mb-4 text-foreground">Company</h4>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li><Link href="/about" className="hover:text-foreground transition-colors" data-testid="link-footer-about">About Us</Link></li>
+                <li><Link href="/partner-with-us" className="hover:text-foreground transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
+                <li><Link href="/careers" className="hover:text-foreground transition-colors" data-testid="link-footer-careers">Careers</Link></li>
+                <li><Link href="/blog" className="hover:text-foreground transition-colors" data-testid="link-footer-blog">Blog</Link></li>
+                <li><Link href="/press" className="hover:text-foreground transition-colors" data-testid="link-footer-press">Press</Link></li>
               </ul>
             </div>
 
             {/* Support Column */}
             <div>
-              <h4 className="font-semibold mb-4 text-white">Support</h4>
-              <ul className="space-y-3 text-sm text-gray-400">
-                <li><Link href="/help" className="hover:text-white transition-colors" data-testid="link-footer-help">Help Center</Link></li>
-                <li><Link href="/contact" className="hover:text-white transition-colors" data-testid="link-footer-contact">Contact Us</Link></li>
-                <li><Link href="/privacy" className="hover:text-white transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
-                <li><Link href="/terms" className="hover:text-white transition-colors" data-testid="link-footer-terms">Terms of Service</Link></li>
-                <li><Link href="/faq" className="hover:text-white transition-colors" data-testid="link-footer-faq">FAQ</Link></li>
+              <h4 className="font-semibold mb-4 text-foreground">Support</h4>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li><Link href="/help" className="hover:text-foreground transition-colors" data-testid="link-footer-help">Help Center</Link></li>
+                <li><Link href="/contact" className="hover:text-foreground transition-colors" data-testid="link-footer-contact">Contact Us</Link></li>
+                <li><Link href="/privacy" className="hover:text-foreground transition-colors" data-testid="link-footer-privacy">Privacy Policy</Link></li>
+                <li><Link href="/terms" className="hover:text-foreground transition-colors" data-testid="link-footer-terms">Terms of Service</Link></li>
+                <li><Link href="/faq" className="hover:text-foreground transition-colors" data-testid="link-footer-faq">FAQ</Link></li>
               </ul>
             </div>
           </div>
 
           {/* Bottom Bar */}
-          <div className="border-t border-gray-800 mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-gray-400">
+          <div className="border-t border-border mt-12 pt-8 flex flex-col md:flex-row items-center justify-center">
+            <p className="text-sm text-muted-foreground">
               © {new Date().getFullYear()} Traveloure. All rights reserved.
             </p>
-            <div className="flex items-center gap-6 text-sm text-gray-400">
-              <Link href="/privacy" className="hover:text-white transition-colors" data-testid="link-footer-bottom-privacy">Privacy</Link>
-              <Link href="/terms" className="hover:text-white transition-colors" data-testid="link-footer-bottom-terms">Terms</Link>
-              <Link href="/cookies" className="hover:text-white transition-colors" data-testid="link-footer-bottom-cookies">Cookies</Link>
-            </div>
           </div>
         </div>
       </footer>
