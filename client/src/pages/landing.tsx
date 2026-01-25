@@ -44,15 +44,26 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const popularTemplates = [
+const experienceTemplates = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500" },
   { icon: Heart, label: "Wedding", slug: "wedding", color: "text-pink-500" },
+  { icon: Gem, label: "Proposal", slug: "proposal", color: "text-purple-500" },
+  { icon: Sparkles, label: "Date Night", slug: "date-night", color: "text-red-500" },
   { icon: Cake, label: "Birthday", slug: "birthday", color: "text-orange-500" },
-  { icon: Building2, label: "Corporate", slug: "corporate-events", color: "text-slate-600" },
-  { icon: Sparkles, label: "Romantic Getaway", slug: "romance", color: "text-red-500" },
-  { icon: PartyPopper, label: "Bachelor/ette", slug: "bachelor-bachelorette", color: "text-pink-600" },
+  { icon: PartyPopper, label: "Bachelor/Bachelorette", slug: "bachelor-bachelorette", color: "text-pink-600" },
+  { icon: HeartHandshake, label: "Anniversary Trip", slug: "anniversary-trip", color: "text-rose-600" },
+  { icon: Building2, label: "Corporate Events", slug: "corporate-events", color: "text-slate-600" },
+  { icon: Users, label: "Reunions", slug: "reunions", color: "text-indigo-500" },
+  { icon: CalendarHeart, label: "Wedding Anniversaries", slug: "wedding-anniversaries", color: "text-rose-500" },
+  { icon: Mountain, label: "Retreats", slug: "retreats", color: "text-emerald-500" },
   { icon: Baby, label: "Baby Shower", slug: "baby-shower", color: "text-sky-400" },
-  { icon: GraduationCap, label: "Graduation", slug: "graduation-party", color: "text-amber-500" },
+  { icon: GraduationCap, label: "Graduation Party", slug: "graduation-party", color: "text-amber-500" },
+  { icon: Diamond, label: "Engagement Party", slug: "engagement-party", color: "text-fuchsia-500" },
+  { icon: Home, label: "Housewarming Party", slug: "housewarming-party", color: "text-teal-500" },
+  { icon: Wine, label: "Retirement Party", slug: "retirement-party", color: "text-violet-500" },
+  { icon: Trophy, label: "Career Achievement Party", slug: "career-achievement-party", color: "text-yellow-500" },
+  { icon: HandHeart, label: "Farewell Party", slug: "farewell-party", color: "text-cyan-500" },
+  { icon: TreePine, label: "Holiday Party", slug: "holiday-party", color: "text-green-600" },
 ];
 
 const keyFeatures = [
@@ -202,12 +213,12 @@ export default function LandingPage() {
                   </div>
                   
                   <p className="text-sm text-white/80 mb-4">
-                    Select from our most popular experience types:
+                    Choose your experience type to get started:
                   </p>
 
-                  {/* Popular Template Buttons */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {popularTemplates.map((cat) => (
+                  {/* Experience Template Buttons */}
+                  <div className="flex flex-wrap gap-2 max-h-[280px] overflow-y-auto pr-1">
+                    {experienceTemplates.map((cat) => (
                       <Link key={cat.label} href={`/experiences/${cat.slug}`}>
                         <Button
                           size="sm"
@@ -221,10 +232,6 @@ export default function LandingPage() {
                       </Link>
                     ))}
                   </div>
-                  
-                  <Link href="/discover" className="inline-flex items-center gap-1 text-sm text-white/80 hover:text-white transition-colors">
-                    View all 21+ templates <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
                 </CardContent>
               </Card>
             </motion.div>
