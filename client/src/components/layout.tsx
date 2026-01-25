@@ -130,12 +130,13 @@ const navItems = [
       },
     ],
   },
+  { name: "Discover", href: "/discover" },
   {
-    name: "Services",
+    name: "Planning Tools",
     icon: ChevronDown,
     sections: [
       {
-        title: "PLANNING TOOLS",
+        title: "AI & EXPERTS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
           { name: "Find Local Experts", href: "/vendors", icon: Users, description: "Connect with destination experts" },
@@ -143,9 +144,8 @@ const navItems = [
         ],
       },
       {
-        title: "DISCOVER",
+        title: "EXPLORE",
         items: [
-          { name: "Explore Destinations", href: "/discover", icon: Compass, description: "Browse all experiences" },
           { name: "Live Intel", href: "/spontaneous", icon: Sparkles, description: "Real-time local insights" },
           { name: "Today's Deals", href: "/deals", icon: CreditCard, description: "Special offers & discounts" },
         ],
