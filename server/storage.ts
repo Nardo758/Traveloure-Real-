@@ -13,6 +13,7 @@ import {
   experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
   experienceUniversalFilters, experienceUniversalFilterOptions,
   expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
+  revenueSplits, expertTips, expertReferrals, affiliateEarnings,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -48,7 +49,11 @@ import {
   type TemplatePurchase, type InsertTemplatePurchase,
   type TemplateReview, type InsertTemplateReview,
   type ExpertEarning, type InsertExpertEarning,
-  type ExpertPayout, type InsertExpertPayout
+  type ExpertPayout, type InsertExpertPayout,
+  type RevenueSplit, type InsertRevenueSplit,
+  type ExpertTip, type InsertExpertTip,
+  type ExpertReferral, type InsertExpertReferral,
+  type AffiliateEarning, type InsertAffiliateEarning
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -330,6 +335,26 @@ export interface IStorage {
   // Expert Payouts
   getExpertPayouts(expertId: string): Promise<ExpertPayout[]>;
   createExpertPayout(payout: InsertExpertPayout): Promise<ExpertPayout>;
+  
+  // Revenue Splits
+  getRevenueSplits(): Promise<RevenueSplit[]>;
+  getRevenueSplit(type: string): Promise<RevenueSplit | undefined>;
+  
+  // Expert Tips
+  getExpertTips(expertId: string): Promise<ExpertTip[]>;
+  createExpertTip(tip: InsertExpertTip): Promise<ExpertTip>;
+  getTipsForExpert(expertId: string): Promise<{ tips: ExpertTip[]; totalAmount: number }>;
+  
+  // Expert Referrals
+  getExpertReferrals(referrerId: string): Promise<ExpertReferral[]>;
+  createExpertReferral(referral: InsertExpertReferral): Promise<ExpertReferral>;
+  getReferralByCode(code: string): Promise<ExpertReferral | undefined>;
+  updateReferralStatus(id: string, status: string, qualifiedAt?: Date): Promise<void>;
+  
+  // Affiliate Earnings
+  getAffiliateEarnings(expertId: string): Promise<AffiliateEarning[]>;
+  createAffiliateEarning(earning: InsertAffiliateEarning): Promise<AffiliateEarning>;
+  getAffiliateEarningsSummary(expertId: string): Promise<{ total: number; pending: number; confirmed: number; paid: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1958,6 +1983,135 @@ export class DatabaseStorage implements IStorage {
   async createExpertPayout(payout: InsertExpertPayout): Promise<ExpertPayout> {
     const [newPayout] = await db.insert(expertPayouts).values(payout).returning();
     return newPayout;
+  }
+
+  // Revenue Splits
+  async getRevenueSplits(): Promise<RevenueSplit[]> {
+    return await db.select().from(revenueSplits).where(eq(revenueSplits.isActive, true));
+  }
+
+  async getRevenueSplit(type: string): Promise<RevenueSplit | undefined> {
+    const [split] = await db.select().from(revenueSplits)
+      .where(and(eq(revenueSplits.type, type), eq(revenueSplits.isActive, true)));
+    return split;
+  }
+
+  // Expert Tips
+  async getExpertTips(expertId: string): Promise<ExpertTip[]> {
+    return await db.select().from(expertTips)
+      .where(eq(expertTips.expertId, expertId))
+      .orderBy(desc(expertTips.createdAt));
+  }
+
+  async createExpertTip(tip: InsertExpertTip): Promise<ExpertTip> {
+    // Get the revenue split for tips
+    const split = await this.getRevenueSplit('tip');
+    const platformPct = parseFloat(split?.platformPercentage || '5') / 100;
+    const tipAmount = parseFloat(String(tip.amount));
+    const platformFee = tipAmount * platformPct;
+    const expertAmount = tipAmount - platformFee;
+
+    const [newTip] = await db.insert(expertTips).values({
+      ...tip,
+      platformFee: String(platformFee),
+      expertAmount: String(expertAmount),
+    }).returning();
+
+    // Also create an expert earning record
+    await this.createExpertEarning({
+      expertId: tip.expertId,
+      type: 'tip',
+      amount: String(expertAmount),
+      referenceId: newTip.id,
+      referenceType: 'expert_tip',
+      description: tip.message ? `Tip: ${tip.message.substring(0, 50)}` : 'Tip from traveler',
+      status: 'available',
+    });
+
+    return newTip;
+  }
+
+  async getTipsForExpert(expertId: string): Promise<{ tips: ExpertTip[]; totalAmount: number }> {
+    const tips = await this.getExpertTips(expertId);
+    const totalAmount = tips
+      .filter(t => t.status === 'completed')
+      .reduce((sum, t) => sum + parseFloat(t.expertAmount || '0'), 0);
+    return { tips, totalAmount };
+  }
+
+  // Expert Referrals
+  async getExpertReferrals(referrerId: string): Promise<ExpertReferral[]> {
+    return await db.select().from(expertReferrals)
+      .where(eq(expertReferrals.referrerId, referrerId))
+      .orderBy(desc(expertReferrals.createdAt));
+  }
+
+  async createExpertReferral(referral: InsertExpertReferral): Promise<ExpertReferral> {
+    const [newReferral] = await db.insert(expertReferrals).values(referral).returning();
+    return newReferral;
+  }
+
+  async getReferralByCode(code: string): Promise<ExpertReferral | undefined> {
+    const [referral] = await db.select().from(expertReferrals)
+      .where(eq(expertReferrals.referralCode, code));
+    return referral;
+  }
+
+  async updateReferralStatus(id: string, status: string, qualifiedAt?: Date): Promise<void> {
+    await db.update(expertReferrals)
+      .set({ status, qualifiedAt: qualifiedAt || new Date() })
+      .where(eq(expertReferrals.id, id));
+
+    // If status is qualified, create the referral bonus earning
+    if (status === 'qualified') {
+      const [referral] = await db.select().from(expertReferrals).where(eq(expertReferrals.id, id));
+      if (referral) {
+        await this.createExpertEarning({
+          expertId: referral.referrerId,
+          type: 'referral_bonus',
+          amount: referral.bonusAmount || '50',
+          referenceId: referral.id,
+          referenceType: 'expert_referral',
+          description: 'Referral bonus for new expert signup',
+          status: 'available',
+        });
+      }
+    }
+  }
+
+  // Affiliate Earnings
+  async getAffiliateEarnings(expertId: string): Promise<AffiliateEarning[]> {
+    return await db.select().from(affiliateEarnings)
+      .where(eq(affiliateEarnings.expertId, expertId))
+      .orderBy(desc(affiliateEarnings.createdAt));
+  }
+
+  async createAffiliateEarning(earning: InsertAffiliateEarning): Promise<AffiliateEarning> {
+    const [newEarning] = await db.insert(affiliateEarnings).values(earning).returning();
+
+    // Also create an expert earning record for the expert's share
+    await this.createExpertEarning({
+      expertId: earning.expertId!,
+      type: 'affiliate_commission',
+      amount: earning.expertShare,
+      referenceId: newEarning.id,
+      referenceType: 'affiliate_earning',
+      description: `Affiliate commission from booking`,
+      status: 'pending',
+    });
+
+    return newEarning;
+  }
+
+  async getAffiliateEarningsSummary(expertId: string): Promise<{ total: number; pending: number; confirmed: number; paid: number }> {
+    const earnings = await this.getAffiliateEarnings(expertId);
+
+    return {
+      total: earnings.reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
+      pending: earnings.filter(e => e.status === 'pending').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
+      confirmed: earnings.filter(e => e.status === 'confirmed').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
+      paid: earnings.filter(e => e.status === 'paid').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
+    };
   }
 }
 
