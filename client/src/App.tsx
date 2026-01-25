@@ -78,6 +78,7 @@ import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
 import ExperienceTemplatePage from "@/pages/experience-template";
+import ArchitectureDiagram from "@/pages/architecture-diagram";
 import ExperiencesPage from "@/pages/experiences";
 import ExperienceDiscoveryPage from "@/pages/experience-discovery";
 import DealsPage from "@/pages/deals";
@@ -137,6 +138,9 @@ function Router() {
       </Route>
       <Route path="/about">
         <Layout><About /></Layout>
+      </Route>
+      <Route path="/architecture">
+        <ArchitectureDiagram />
       </Route>
       <Route path="/explore">
         <Layout><Explore /></Layout>
