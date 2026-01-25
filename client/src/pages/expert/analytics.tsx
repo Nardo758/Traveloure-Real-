@@ -22,6 +22,14 @@ import {
 } from "lucide-react";
 
 interface AnalyticsDashboard {
+  expertProfile: {
+    selectedServices: string[];
+    specializations: string[];
+    destinations: string[];
+    city?: string;
+    country?: string;
+  };
+  serviceAlignment: Array<{ name: string; status: string }>;
   summary: {
     totalRevenue: number;
     totalBookings: number;
@@ -48,6 +56,11 @@ interface AnalyticsDashboard {
 }
 
 interface MarketIntelligence {
+  expertMarkets?: {
+    destinations: string[];
+    city?: string;
+    country?: string;
+  };
   trending: Array<{ destination: string; score: number; reason: string; category: string }>;
   cities: Array<{ name: string; country: string; bestTimeToVisit: string; summary: string }>;
   happeningNow: Array<{ title: string; type: string; location: string; urgency: string }>;
@@ -144,6 +157,72 @@ export default function ExpertAnalytics() {
           </div>
         ) : (
           <>
+            {(analytics?.expertProfile?.destinations?.length || analytics?.expertProfile?.city || analytics?.serviceAlignment?.length) ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card className="border" data-testid="card-your-markets">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-primary" />
+                      Your Markets
+                    </CardTitle>
+                    <CardDescription>Intelligence is filtered for your focus areas</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {analytics?.expertProfile?.destinations?.map((dest, i) => (
+                        <Badge key={i} variant="outline" className="bg-primary/10">
+                          {dest}
+                        </Badge>
+                      ))}
+                      {analytics?.expertProfile?.city && (
+                        <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                          {analytics.expertProfile.city}
+                        </Badge>
+                      )}
+                      {analytics?.expertProfile?.country && (
+                        <Badge variant="outline" className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                          {analytics.expertProfile.country}
+                        </Badge>
+                      )}
+                      {!analytics?.expertProfile?.destinations?.length && !analytics?.expertProfile?.city && !analytics?.expertProfile?.country && (
+                        <span className="text-sm text-muted-foreground">No markets set - showing global trends</span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border" data-testid="card-service-alignment">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Target className="w-4 h-4 text-primary" />
+                      Service Alignment
+                    </CardTitle>
+                    <CardDescription>Services you selected at signup</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {analytics?.serviceAlignment?.map((service, i) => (
+                        <Badge 
+                          key={i} 
+                          variant="outline"
+                          className={service.status === "created" 
+                            ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200" 
+                            : "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200"
+                          }
+                        >
+                          {service.name}
+                          {service.status === "created" ? " ✓" : " (pending)"}
+                        </Badge>
+                      ))}
+                      {!analytics?.serviceAlignment?.length && (
+                        <span className="text-sm text-muted-foreground">No services selected at signup</span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="border" data-testid="metric-total-revenue">
                 <CardContent className="p-4">
@@ -304,6 +383,17 @@ export default function ExpertAnalytics() {
               </TabsContent>
 
               <TabsContent value="market">
+                {marketIntel?.expertMarkets && (marketIntel.expertMarkets.destinations?.length > 0 || marketIntel.expertMarkets.city || marketIntel.expertMarkets.country) && (
+                  <div className="mb-4 p-3 rounded-lg border bg-primary/5 flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <span className="text-sm text-muted-foreground">
+                      Showing trends for your markets: 
+                      <span className="font-medium text-foreground ml-1">
+                        {[...marketIntel.expertMarkets.destinations || [], marketIntel.expertMarkets.city, marketIntel.expertMarkets.country].filter(Boolean).join(", ")}
+                      </span>
+                    </span>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card className="border">
                     <CardHeader>

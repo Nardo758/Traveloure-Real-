@@ -2690,6 +2690,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const earnings = await storage.getExpertEarnings(userId);
       const templates = await storage.getExpertTemplates(userId);
       
+      // Get expert's profile for selected services and specializations
+      const expertProfile = await storage.getLocalExpertForm(userId);
+      const selectedServicesAtSignup = (expertProfile?.selectedServices as string[]) || [];
+      const expertSpecializations = (expertProfile?.specializations as string[]) || [];
+      const expertDestinations = (expertProfile?.destinations as string[]) || [];
+      
       // Calculate key metrics
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
       const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
@@ -2716,7 +2722,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const revenue = Number(s.totalRevenue || 0);
         if (revenue > 0) {
           acc.push({
-            service: s.name || "Unnamed Service",
+            service: s.serviceName || "Unnamed Service",
             revenue,
             bookings: s.bookingsCount || 0,
             percentage: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0
@@ -2766,7 +2772,24 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         avgBookingsPerClient: 1.8
       };
       
+      // Track which selected services have been created vs pending
+      const createdServiceNames = services.map(s => (s.serviceName || "").toLowerCase());
+      const serviceAlignment = selectedServicesAtSignup.map(serviceName => ({
+        name: serviceName,
+        status: createdServiceNames.some(cs => cs.includes(serviceName.toLowerCase()) || serviceName.toLowerCase().includes(cs)) 
+          ? "created" 
+          : "pending"
+      }));
+      
       res.json({
+        expertProfile: {
+          selectedServices: selectedServicesAtSignup,
+          specializations: expertSpecializations,
+          destinations: expertDestinations,
+          city: expertProfile?.city,
+          country: expertProfile?.country
+        },
+        serviceAlignment,
         summary: {
           totalRevenue,
           totalBookings,
@@ -2789,36 +2812,114 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  // Get market intelligence for experts
+  // Get market intelligence for experts - filtered by their markets
   app.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) => {
     try {
-      // Fetch trending destinations from TravelPulse
-      const trending = await db.select().from(travelPulseTrending).limit(10);
-      const cities = await db.select().from(travelPulseCities).limit(5);
-      const happeningNow = await db.select().from(travelPulseHappeningNow).limit(5);
+      const userId = (req.user as any).claims.sub;
       
-      // Seasonal demand forecast (mock enhanced with real data context)
-      const seasonalDemand = [
-        { season: "Cherry Blossom Season", location: "Japan", timing: "Mar-Apr", demandIncrease: 85, suggestedRateIncrease: 25, status: "upcoming", daysAway: 45 },
-        { season: "Summer Peak", location: "Europe", timing: "Jun-Aug", demandIncrease: 120, suggestedRateIncrease: 35, status: "upcoming", daysAway: 120 },
-        { season: "Fall Foliage", location: "New England", timing: "Sep-Oct", demandIncrease: 65, suggestedRateIncrease: 20, status: "future", daysAway: 200 },
-        { season: "Winter Holidays", location: "Caribbean", timing: "Dec-Jan", demandIncrease: 95, suggestedRateIncrease: 30, status: "future", daysAway: 280 },
-      ];
+      // Get expert's profile to find their markets/destinations
+      const expertProfile = await storage.getLocalExpertForm(userId);
+      const expertDestinations = (expertProfile?.destinations as string[]) || [];
+      const expertCity = expertProfile?.city;
+      const expertCountry = expertProfile?.country;
+      
+      // Fetch all trending destinations from TravelPulse
+      const allTrending = await db.select().from(travelPulseTrending).limit(50);
+      const allCities = await db.select().from(travelPulseCities).limit(20);
+      const allHappeningNow = await db.select().from(travelPulseHappeningNow).limit(20);
+      
+      // Filter trending to match expert's markets
+      let filteredTrending = allTrending;
+      if (expertDestinations.length > 0 || expertCity || expertCountry) {
+        const marketKeywords = [...expertDestinations, expertCity, expertCountry].filter(Boolean).map(s => s?.toLowerCase());
+        filteredTrending = allTrending.filter(t => {
+          const destLower = (t.destinationName || "").toLowerCase();
+          const cityLower = (t.city || "").toLowerCase();
+          const countryLower = (t.country || "").toLowerCase();
+          return marketKeywords.some(keyword => 
+            destLower.includes(keyword!) || cityLower.includes(keyword!) || countryLower.includes(keyword!)
+          );
+        });
+        // If no matches, show global trending as fallback
+        if (filteredTrending.length === 0) {
+          filteredTrending = allTrending.slice(0, 10);
+        }
+      }
+      
+      // Filter cities to match expert's markets
+      let filteredCities = allCities;
+      if (expertDestinations.length > 0 || expertCity || expertCountry) {
+        const marketKeywords = [...expertDestinations, expertCity, expertCountry].filter(Boolean).map(s => s?.toLowerCase());
+        filteredCities = allCities.filter(c => {
+          const cityLower = (c.cityName || "").toLowerCase();
+          const countryLower = (c.country || "").toLowerCase();
+          return marketKeywords.some(keyword => 
+            cityLower.includes(keyword!) || countryLower.includes(keyword!)
+          );
+        });
+        if (filteredCities.length === 0) {
+          filteredCities = allCities.slice(0, 5);
+        }
+      }
+      
+      // Filter happening now to match expert's markets
+      let filteredHappeningNow = allHappeningNow;
+      if (expertDestinations.length > 0 || expertCity || expertCountry) {
+        const marketKeywords = [...expertDestinations, expertCity, expertCountry].filter(Boolean).map(s => s?.toLowerCase());
+        filteredHappeningNow = allHappeningNow.filter(h => {
+          const cityLower = (h.city || "").toLowerCase();
+          return marketKeywords.some(keyword => cityLower.includes(keyword!));
+        });
+        if (filteredHappeningNow.length === 0) {
+          filteredHappeningNow = allHappeningNow.slice(0, 5);
+        }
+      }
+      
+      // Generate seasonal demand based on expert's markets
+      const seasonalDemandByMarket: Record<string, any[]> = {
+        "japan": [{ season: "Cherry Blossom Season", location: "Japan", timing: "Mar-Apr", demandIncrease: 85, suggestedRateIncrease: 25, status: "upcoming", daysAway: 45 }],
+        "europe": [{ season: "Summer Peak", location: "Europe", timing: "Jun-Aug", demandIncrease: 120, suggestedRateIncrease: 35, status: "upcoming", daysAway: 120 }],
+        "usa": [{ season: "Fall Foliage", location: "New England", timing: "Sep-Oct", demandIncrease: 65, suggestedRateIncrease: 20, status: "future", daysAway: 200 }],
+        "caribbean": [{ season: "Winter Holidays", location: "Caribbean", timing: "Dec-Jan", demandIncrease: 95, suggestedRateIncrease: 30, status: "future", daysAway: 280 }],
+        "asia": [{ season: "Lunar New Year", location: "Asia", timing: "Jan-Feb", demandIncrease: 90, suggestedRateIncrease: 30, status: "upcoming", daysAway: 30 }],
+        "australia": [{ season: "Summer Season", location: "Australia", timing: "Dec-Feb", demandIncrease: 80, suggestedRateIncrease: 25, status: "upcoming", daysAway: 60 }],
+      };
+      
+      // Match seasonal demand to expert's markets
+      let seasonalDemand: any[] = [];
+      const allMarkets = [...expertDestinations, expertCity, expertCountry].filter(Boolean).map(s => s?.toLowerCase());
+      for (const market of allMarkets) {
+        for (const [key, demand] of Object.entries(seasonalDemandByMarket)) {
+          if (market?.includes(key) || key.includes(market || "")) {
+            seasonalDemand.push(...demand);
+          }
+        }
+      }
+      // Remove duplicates and provide fallback
+      seasonalDemand = Array.from(new Map(seasonalDemand.map(d => [d.season, d])).values());
+      if (seasonalDemand.length === 0) {
+        seasonalDemand = Object.values(seasonalDemandByMarket).flat().slice(0, 4);
+      }
       
       res.json({
-        trending: trending.map(t => ({
+        expertMarkets: {
+          destinations: expertDestinations,
+          city: expertCity,
+          country: expertCountry
+        },
+        trending: filteredTrending.slice(0, 10).map(t => ({
           destination: t.destinationName,
           score: t.trendScore || 0,
           reason: t.triggerEvent || "Trending destination",
           category: t.destinationType || "destination"
         })),
-        cities: cities.map(c => ({
+        cities: filteredCities.slice(0, 5).map(c => ({
           name: c.cityName,
           country: c.country,
           bestTimeToVisit: c.aiBestTimeToVisit || "Year-round",
           summary: c.aiTravelTips || "Explore this destination"
         })),
-        happeningNow: happeningNow.map(h => ({
+        happeningNow: filteredHappeningNow.slice(0, 5).map(h => ({
           title: h.title,
           type: h.eventType,
           location: h.city,
@@ -2861,7 +2962,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       // Service performance
       const servicePerformance = services.map(s => ({
         id: s.id,
-        title: s.name || "Unnamed Service",
+        title: s.serviceName || "Unnamed Service",
         revenue: Number(s.totalRevenue || 0),
         bookings: s.bookingsCount || 0,
         rating: Number(s.averageRating || 0),
