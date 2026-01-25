@@ -73,6 +73,9 @@ export interface IStorage {
   // Tourist Places
   searchTouristPlaces(query: string): Promise<TouristPlaceResult[]>;
 
+  // Users
+  getUser(userId: string): Promise<User | undefined>;
+
   // Chats
   getChats(userId: string): Promise<UserAndExpertChat[]>;
   createChat(chat: any): Promise<UserAndExpertChat>;
@@ -402,6 +405,12 @@ export class DatabaseStorage implements IStorage {
   async searchTouristPlaces(query: string): Promise<TouristPlaceResult[]> {
     // Basic search implementation
     return await db.select().from(touristPlaceResults).where(ilike(touristPlaceResults.place, `%${query}%`));
+  }
+
+  // Users
+  async getUser(userId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    return user;
   }
 
   // Chats
