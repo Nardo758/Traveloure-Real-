@@ -65,6 +65,16 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - Database tables: `affiliate_partners`, `affiliate_products`, `affiliate_scrape_jobs`, `affiliate_clicks`
   - Admin UI at `/admin/affiliate-partners` for partner CRUD and scrape triggers
   - API endpoints: `/api/affiliate/partners`, `/api/affiliate/products`, `/api/affiliate/track-click`
+- **Content Tracking System**: Platform-wide content management and moderation with unique tracking numbers:
+  - Tracking number format: TRV-YYYYMM-XXXXX (auto-incremented monthly sequences)
+  - Invoice number format: INV-YYYYMM-XXXXX (linked to content tracking numbers)
+  - 15 content types: trip, itinerary, service, review, blog, guide, experience, template, booking, message, profile, portfolio, certificate, recommendation, custom
+  - Content statuses: draft, pending_review, published, flagged, under_review, suspended, archived, deleted
+  - Moderation workflow: Flag content with severity levels → Review in queue → Approve/Suspend/Delete with notes
+  - Version history: Tracks all changes with before/after snapshots
+  - Database tables: `content_registry`, `content_invoices`, `content_versions`, `content_flags`, `content_analytics`, `tracking_sequences`
+  - Admin UI at `/admin/content-tracking` with tabs: Registry, Moderation, Invoices, Analytics
+  - API endpoints: `/api/admin/content/registry`, `/api/admin/content/moderation/queue`, `/api/admin/content/flags/pending`, etc. (admin-only access)
 
 ### System Design Choices
 - **Modularity**: Codebase organized for clear separation of concerns.
