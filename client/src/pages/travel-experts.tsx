@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,6 +115,11 @@ export default function TravelExpertsPage() {
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Check for influencer query parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const influencerFromUrl = urlParams.get('influencer') === 'true';
+  
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -137,7 +142,7 @@ export default function TravelExpertsPage() {
     hourlyRate: "",
     agreeToTerms: false,
     // Influencer fields
-    isInfluencer: false,
+    isInfluencer: influencerFromUrl,
     instagramLink: "",
     tiktokLink: "",
     youtubeLink: "",
