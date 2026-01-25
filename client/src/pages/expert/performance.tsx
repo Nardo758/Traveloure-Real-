@@ -127,7 +127,7 @@ export default function ExpertPerformance() {
                   {monthlyMetrics.map((month, index) => (
                     <div 
                       key={index} 
-                      className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                      className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover-elevate"
                       data-testid={`month-metric-${index}`}
                     >
                       <div>

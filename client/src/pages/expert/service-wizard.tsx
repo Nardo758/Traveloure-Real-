@@ -533,7 +533,7 @@ export default function ServiceWizard() {
                   Save as Draft
                 </Button>
                 <Button
-                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  className="bg-[#FF385C] "
                   onClick={() => handleSubmit(false)}
                   disabled={createMutation.isPending}
                   data-testid="button-publish-service"
@@ -543,7 +543,7 @@ export default function ServiceWizard() {
               </>
             ) : (
               <Button
-                className="bg-[#FF385C] hover:bg-[#E23350]"
+                className="bg-[#FF385C] "
                 onClick={handleNext}
                 data-testid="button-wizard-next"
               >

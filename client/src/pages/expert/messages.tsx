@@ -57,7 +57,7 @@ export default function ExpertMessages() {
             {conversations.map((convo) => (
               <div
                 key={convo.id}
-                className={`p-4 cursor-pointer border-b border-gray-100 hover:bg-gray-50 ${
+                className={`p-4 cursor-pointer border-b border-gray-100 hover-elevate ${
                   selectedConversation === convo.id ? "bg-[#FF385C]/5 border-l-2 border-l-[#FF385C]" : ""
                 }`}
                 onClick={() => setSelectedConversation(convo.id)}
@@ -161,7 +161,7 @@ export default function ExpertMessages() {
                 className="flex-1"
                 data-testid="input-message"
               />
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-send">
+              <Button className="bg-[#FF385C] " data-testid="button-send">
                 <Send className="w-4 h-4" />
               </Button>
             </div>

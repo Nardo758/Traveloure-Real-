@@ -211,7 +211,7 @@ export default function ExpertCustomServicesPage() {
           </div>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
-              <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-service">
+              <Button className="bg-[#FF385C]  text-white" data-testid="button-create-service">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Service
               </Button>
@@ -327,7 +327,7 @@ export default function ExpertCustomServicesPage() {
                       {formData.deliverables.map((item, idx) => (
                         <Badge key={idx} variant="secondary" className="gap-1">
                           {item}
-                          <button onClick={() => removeDeliverable(idx)} className="ml-1 hover:text-red-500">
+                          <button onClick={() => removeDeliverable(idx)} className="ml-1 ">
                             <XCircle className="w-3 h-3" />
                           </button>
                         </Badge>
@@ -354,7 +354,7 @@ export default function ExpertCustomServicesPage() {
                 </Button>
                 <Button 
                   onClick={handleSubmit} 
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+                  className="bg-[#FF385C]  text-white"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-service"
                 >
@@ -382,7 +382,7 @@ export default function ExpertCustomServicesPage() {
               </p>
               <Button 
                 onClick={() => setIsDialogOpen(true)}
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+                className="bg-[#FF385C]  text-white"
                 data-testid="button-create-first-service"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -537,7 +537,7 @@ function ServiceCard({
                 size="sm" 
                 onClick={onDelete}
                 disabled={isDeleting}
-                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                className="text-red-500  "
                 data-testid={`button-delete-${service.id}`}
               >
                 {isDeleting ? (

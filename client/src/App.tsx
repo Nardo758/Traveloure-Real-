@@ -87,6 +87,10 @@ import CreditsBillingPage from "@/pages/credits-billing";
 import ExpertStatusPage from "@/pages/expert-status";
 import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
+import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
+import ExpertLeaderboard from "@/pages/expert/leaderboard";
+import ExpertAnalytics from "@/pages/expert/analytics";
+import ExpertTemplates from "@/pages/expert/templates";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
@@ -307,6 +311,18 @@ function Router() {
       </Route>
       <Route path="/expert/performance">
         {() => <ProtectedRoute component={ExpertPerformance} />}
+      </Route>
+      <Route path="/expert/revenue-optimization">
+        {() => <ProtectedRoute component={ExpertRevenueOptimization} />}
+      </Route>
+      <Route path="/expert/leaderboard">
+        {() => <ProtectedRoute component={ExpertLeaderboard} />}
+      </Route>
+      <Route path="/expert/analytics">
+        {() => <ProtectedRoute component={ExpertAnalytics} />}
+      </Route>
+      <Route path="/expert/templates">
+        {() => <ProtectedRoute component={ExpertTemplates} />}
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} />}

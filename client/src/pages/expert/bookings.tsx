@@ -76,7 +76,7 @@ export default function ExpertBookings() {
             <h1 className="text-2xl font-bold text-gray-900" data-testid="text-bookings-title">Bookings & Calendar</h1>
             <p className="text-gray-600">Manage your appointments and reservations</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-new-booking">
+          <Button className="bg-[#FF385C] " data-testid="button-new-booking">
             <CalendarDays className="w-4 h-4 mr-2" /> New Booking
           </Button>
         </div>
@@ -107,7 +107,7 @@ export default function ExpertBookings() {
               {todayEvents.map((event, index) => (
                 <div 
                   key={index} 
-                  className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50"
+                  className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover-elevate"
                   data-testid={`today-event-${index}`}
                 >
                   <div className="flex items-center gap-2 text-sm font-medium text-gray-600 min-w-16">
@@ -165,7 +165,7 @@ export default function ExpertBookings() {
             {upcomingBookings.map((booking) => (
               <div 
                 key={booking.id} 
-                className="p-4 rounded-lg border border-gray-200 hover:bg-gray-50"
+                className="p-4 rounded-lg border border-gray-200 hover-elevate"
                 data-testid={`booking-${booking.id}`}
               >
                 <div className="flex items-start justify-between">
