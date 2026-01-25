@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -3639,11 +3639,13 @@ export const contentAnalytics = pgTable("content_analytics", {
 // Tracking number sequences for generating unique IDs
 export const trackingSequences = pgTable("tracking_sequences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  prefix: varchar("prefix", { length: 10 }).notNull().unique(), // TRV, INV, etc.
+  prefix: varchar("prefix", { length: 10 }).notNull(), // TRV, INV, etc.
   yearMonth: varchar("year_month", { length: 6 }).notNull(), // YYYYMM
   lastNumber: integer("last_number").default(0),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  prefixYearMonthUnique: unique().on(table.prefix, table.yearMonth),
+}));
 
 // Schema exports
 export const insertContentRegistrySchema = createInsertSchema(contentRegistry).omit({
