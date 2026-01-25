@@ -12,6 +12,7 @@ import {
   expertCustomServices, destinationEvents, destinationSeasons, locationCache,
   experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
   experienceUniversalFilters, experienceUniversalFilterOptions,
+  expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -42,7 +43,12 @@ import {
   type ExpertCustomService, type InsertExpertCustomService,
   type DestinationEvent, type InsertDestinationEvent,
   type DestinationSeason, type InsertDestinationSeason,
-  type LocationCache, type InsertLocationCache
+  type LocationCache, type InsertLocationCache,
+  type ExpertTemplate, type InsertExpertTemplate,
+  type TemplatePurchase, type InsertTemplatePurchase,
+  type TemplateReview, type InsertTemplateReview,
+  type ExpertEarning, type InsertExpertEarning,
+  type ExpertPayout, type InsertExpertPayout
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -297,6 +303,33 @@ export interface IStorage {
   searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]>;
   upsertLocationCache(location: InsertLocationCache): Promise<LocationCache>;
   getLocationByIataCode(iataCode: string, locationType?: string): Promise<LocationCache | undefined>;
+
+  // Expert Templates
+  getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; category?: string; destination?: string }): Promise<ExpertTemplate[]>;
+  getExpertTemplate(id: string): Promise<ExpertTemplate | undefined>;
+  createExpertTemplate(template: InsertExpertTemplate): Promise<ExpertTemplate>;
+  updateExpertTemplate(id: string, updates: Partial<InsertExpertTemplate>): Promise<ExpertTemplate | undefined>;
+  deleteExpertTemplate(id: string): Promise<void>;
+  incrementTemplateView(id: string): Promise<void>;
+  
+  // Template Purchases
+  getTemplatePurchases(filters?: { buyerId?: string; expertId?: string }): Promise<TemplatePurchase[]>;
+  getTemplatePurchase(id: string): Promise<TemplatePurchase | undefined>;
+  createTemplatePurchase(purchase: InsertTemplatePurchase): Promise<TemplatePurchase>;
+  hasUserPurchasedTemplate(userId: string, templateId: string): Promise<boolean>;
+  
+  // Template Reviews
+  getTemplateReviews(templateId: string): Promise<TemplateReview[]>;
+  createTemplateReview(review: InsertTemplateReview): Promise<TemplateReview>;
+  
+  // Expert Earnings
+  getExpertEarnings(expertId: string): Promise<ExpertEarning[]>;
+  getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
+  createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning>;
+  
+  // Expert Payouts
+  getExpertPayouts(expertId: string): Promise<ExpertPayout[]>;
+  createExpertPayout(payout: InsertExpertPayout): Promise<ExpertPayout>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1786,6 +1819,145 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return result;
+  }
+
+  // Expert Templates
+  async getExpertTemplates(filters?: { expertId?: string; isPublished?: boolean; category?: string; destination?: string }): Promise<ExpertTemplate[]> {
+    const conditions = [];
+    if (filters?.expertId) {
+      conditions.push(eq(expertTemplates.expertId, filters.expertId));
+    }
+    if (filters?.isPublished !== undefined) {
+      conditions.push(eq(expertTemplates.isPublished, filters.isPublished));
+    }
+    if (filters?.category) {
+      conditions.push(eq(expertTemplates.category, filters.category));
+    }
+    if (filters?.destination) {
+      conditions.push(ilike(expertTemplates.destination, `%${filters.destination}%`));
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(expertTemplates).where(and(...conditions)).orderBy(desc(expertTemplates.createdAt));
+    }
+    return await db.select().from(expertTemplates).orderBy(desc(expertTemplates.createdAt));
+  }
+
+  async getExpertTemplate(id: string): Promise<ExpertTemplate | undefined> {
+    const [template] = await db.select().from(expertTemplates).where(eq(expertTemplates.id, id));
+    return template;
+  }
+
+  async createExpertTemplate(template: InsertExpertTemplate): Promise<ExpertTemplate> {
+    const [newTemplate] = await db.insert(expertTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateExpertTemplate(id: string, updates: Partial<InsertExpertTemplate>): Promise<ExpertTemplate | undefined> {
+    const [updated] = await db.update(expertTemplates)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(expertTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteExpertTemplate(id: string): Promise<void> {
+    await db.delete(expertTemplates).where(eq(expertTemplates.id, id));
+  }
+
+  async incrementTemplateView(id: string): Promise<void> {
+    await db.execute(`UPDATE expert_templates SET view_count = view_count + 1 WHERE id = '${id}'`);
+  }
+
+  // Template Purchases
+  async getTemplatePurchases(filters?: { buyerId?: string; expertId?: string }): Promise<TemplatePurchase[]> {
+    const conditions = [];
+    if (filters?.buyerId) {
+      conditions.push(eq(templatePurchases.buyerId, filters.buyerId));
+    }
+    if (filters?.expertId) {
+      conditions.push(eq(templatePurchases.expertId, filters.expertId));
+    }
+    
+    if (conditions.length > 0) {
+      return await db.select().from(templatePurchases).where(and(...conditions)).orderBy(desc(templatePurchases.purchasedAt));
+    }
+    return await db.select().from(templatePurchases).orderBy(desc(templatePurchases.purchasedAt));
+  }
+
+  async getTemplatePurchase(id: string): Promise<TemplatePurchase | undefined> {
+    const [purchase] = await db.select().from(templatePurchases).where(eq(templatePurchases.id, id));
+    return purchase;
+  }
+
+  async createTemplatePurchase(purchase: InsertTemplatePurchase): Promise<TemplatePurchase> {
+    const [newPurchase] = await db.insert(templatePurchases).values(purchase).returning();
+    
+    // Update template sales count
+    await db.execute(`UPDATE expert_templates SET sales_count = sales_count + 1 WHERE id = '${purchase.templateId}'`);
+    
+    return newPurchase;
+  }
+
+  async hasUserPurchasedTemplate(userId: string, templateId: string): Promise<boolean> {
+    const [purchase] = await db.select()
+      .from(templatePurchases)
+      .where(and(
+        eq(templatePurchases.buyerId, userId),
+        eq(templatePurchases.templateId, templateId),
+        eq(templatePurchases.status, 'completed')
+      ))
+      .limit(1);
+    return !!purchase;
+  }
+
+  // Template Reviews
+  async getTemplateReviews(templateId: string): Promise<TemplateReview[]> {
+    return await db.select().from(templateReviews).where(eq(templateReviews.templateId, templateId)).orderBy(desc(templateReviews.createdAt));
+  }
+
+  async createTemplateReview(review: InsertTemplateReview): Promise<TemplateReview> {
+    const [newReview] = await db.insert(templateReviews).values(review).returning();
+    
+    // Update template review count and average rating
+    const allReviews = await this.getTemplateReviews(review.templateId);
+    const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+    await db.update(expertTemplates)
+      .set({ reviewCount: allReviews.length, averageRating: avgRating.toFixed(2) })
+      .where(eq(expertTemplates.id, review.templateId));
+    
+    return newReview;
+  }
+
+  // Expert Earnings
+  async getExpertEarnings(expertId: string): Promise<ExpertEarning[]> {
+    return await db.select().from(expertEarnings).where(eq(expertEarnings.expertId, expertId)).orderBy(desc(expertEarnings.createdAt));
+  }
+
+  async getExpertEarningsSummary(expertId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
+    const earnings = await this.getExpertEarnings(expertId);
+    
+    return {
+      total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      pending: earnings.filter(e => e.status === 'pending').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      available: earnings.filter(e => e.status === 'available').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+    };
+  }
+
+  async createExpertEarning(earning: InsertExpertEarning): Promise<ExpertEarning> {
+    const [newEarning] = await db.insert(expertEarnings).values(earning).returning();
+    return newEarning;
+  }
+
+  // Expert Payouts
+  async getExpertPayouts(expertId: string): Promise<ExpertPayout[]> {
+    return await db.select().from(expertPayouts).where(eq(expertPayouts.expertId, expertId)).orderBy(desc(expertPayouts.requestedAt));
+  }
+
+  async createExpertPayout(payout: InsertExpertPayout): Promise<ExpertPayout> {
+    const [newPayout] = await db.insert(expertPayouts).values(payout).returning();
+    return newPayout;
   }
 }
 
