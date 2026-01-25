@@ -61,6 +61,8 @@ import {
   ArrowRight,
   GitCompare,
   Zap,
+  Trophy,
+  CheckCircle,
 } from "lucide-react";
 import {
   Sheet,
@@ -330,22 +332,43 @@ function ServiceCard({
   const Icon = category ? categoryIcons[category.slug] || Compass : Compass;
   const description = service.shortDescription || service.description || "No description available";
   const location = service.location || "Remote";
+  
+  // Determine expert badges based on rating and review count
+  const isTopExpert = rating >= 4.8 && reviewCount >= 5;
+  const isVerified = reviewCount >= 3;
+  const isRising = rating >= 4.5 && reviewCount < 5 && reviewCount >= 1;
 
   return (
     <Card className="hover-elevate h-full" data-testid={`card-service-${service.id}`}>
       <CardContent className="p-4">
         <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
           <div className="flex gap-4 cursor-pointer">
-            <div className="w-16 h-16 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+            <div className="relative w-16 h-16 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
               <Icon className="w-8 h-8 text-muted-foreground" />
+              {isTopExpert && (
+                <div 
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow"
+                  data-testid={`icon-top-expert-${service.id}`}
+                >
+                  <Award className="w-3 h-3 text-primary-foreground" />
+                </div>
+              )}
             </div>
             <div className="flex-1 min-w-0">
-              <h3 
-                className="font-semibold text-foreground truncate"
-                data-testid={`text-service-name-${service.id}`}
-              >
-                {service.serviceName}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 
+                  className="font-semibold text-foreground truncate"
+                  data-testid={`text-service-name-${service.id}`}
+                >
+                  {service.serviceName}
+                </h3>
+                {isVerified && (
+                  <CheckCircle 
+                    className="w-4 h-4 text-primary flex-shrink-0" 
+                    data-testid={`icon-verified-${service.id}`}
+                  />
+                )}
+              </div>
               <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
                 {description}
               </p>
@@ -365,7 +388,19 @@ function ServiceCard({
           </div>
         </Link>
         <div className="flex items-center justify-between mt-4 pt-3 border-t gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {isTopExpert && (
+              <Badge variant="default" className="text-xs" data-testid={`badge-top-expert-${service.id}`}>
+                <Trophy className="w-3 h-3 mr-1" data-testid={`icon-trophy-${service.id}`} />
+                Top Expert
+              </Badge>
+            )}
+            {isRising && !isTopExpert && (
+              <Badge variant="default" className="text-xs" data-testid={`badge-rising-${service.id}`}>
+                <TrendingUp className="w-3 h-3 mr-1" data-testid={`icon-trending-${service.id}`} />
+                Rising Star
+              </Badge>
+            )}
             {category && (
               <Badge variant="secondary" className="text-xs" data-testid={`badge-category-${service.id}`}>
                 {category.name}

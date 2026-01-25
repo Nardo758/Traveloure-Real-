@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -51,31 +52,34 @@ type ExpertEarning = {
 };
 
 export default function RevenueOptimizationPage() {
-  // Fetch real earnings data
-  const { data: earningsData } = useQuery<{ earnings: ExpertEarning[]; summary: EarningsSummary }>({
+  // Fetch real earnings data with loading states
+  const { data: earningsData, isLoading: earningsLoading } = useQuery<{ earnings: ExpertEarning[]; summary: EarningsSummary }>({
     queryKey: ["/api/expert/earnings"],
   });
 
-  const { data: salesData } = useQuery<any[]>({
+  const { data: salesData, isLoading: salesLoading } = useQuery<any[]>({
     queryKey: ["/api/expert/template-sales"],
   });
 
-  const { data: templates } = useQuery<any[]>({
+  const { data: templates, isLoading: templatesLoading } = useQuery<any[]>({
     queryKey: ["/api/expert/templates"],
   });
 
-  // Calculate real earnings or use defaults
-  const realTotal = earningsData?.summary?.total || 0;
-  const realPending = earningsData?.summary?.pending || 0;
-  const realAvailable = earningsData?.summary?.available || 0;
-  const templateSalesCount = salesData?.length || 0;
-  const publishedTemplates = templates?.filter((t: any) => t.isPublished)?.length || 0;
+  // Combined loading state - show skeleton while any data is loading
+  const isLoading = earningsLoading || salesLoading || templatesLoading;
+
+  // Calculate real earnings - use 0 if no data available (not misleading fallbacks)
+  const realTotal = earningsData?.summary?.total ?? 0;
+  const realPending = earningsData?.summary?.pending ?? 0;
+  const realAvailable = earningsData?.summary?.available ?? 0;
+  const templateSalesCount = salesData?.length ?? 0;
+  const publishedTemplates = templates?.filter((t: any) => t.isPublished)?.length ?? 0;
 
   const earningsProjection = {
-    current: realTotal || 4850,
-    projected: Math.round((realTotal || 4850) * 1.48),
-    potential: Math.round((realTotal || 4850) * 1.96),
-    nextMonth: Math.round((realTotal || 4850) * 1.2),
+    current: realTotal,
+    projected: Math.round(realTotal * 1.48),
+    potential: Math.round(realTotal * 1.96),
+    nextMonth: Math.round(realTotal * 1.2),
     percentIncrease: 48,
   };
 
@@ -157,8 +161,11 @@ export default function RevenueOptimizationPage() {
     },
   ];
 
-  // Calculate template earnings from real sales data
-  const templateEarnings = salesData?.reduce((sum, sale) => sum + parseFloat(sale.expertEarnings || '0'), 0) || 0;
+  // Calculate template earnings from real sales data with safe parsing
+  const templateEarnings = salesData?.reduce((sum, sale) => {
+    const earnings = parseFloat(String(sale.expertEarnings || '0'));
+    return sum + (isNaN(earnings) ? 0 : earnings);
+  }, 0) ?? 0;
   
   const passiveIncomeStreams = [
     {
@@ -166,8 +173,8 @@ export default function RevenueOptimizationPage() {
       description: publishedTemplates > 0 
         ? `${publishedTemplates} templates published on the marketplace` 
         : "Sell pre-built itineraries on the marketplace",
-      monthlyEarnings: templateEarnings || 450,
-      sales: templateSalesCount || 23,
+      monthlyEarnings: templateEarnings,
+      sales: templateSalesCount,
       icon: Package,
       status: publishedTemplates > 0 ? "active" : "setup",
       link: "/expert/templates",
@@ -190,9 +197,9 @@ export default function RevenueOptimizationPage() {
   ];
 
   const instantPayoutBalance = {
-    available: realAvailable || 2100,
-    pending: realPending || 1450,
-    processing: 500,
+    available: realAvailable,
+    pending: realPending,
+    processing: 0,
     dailyFee: 1.5,
   };
 
@@ -264,6 +271,13 @@ export default function RevenueOptimizationPage() {
           </TabsList>
 
           <TabsContent value="projections" className="space-y-6">
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-28 rounded-lg" />
+                ))}
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="border" data-testid="card-current-month">
                 <CardContent className="p-4">
@@ -327,7 +341,10 @@ export default function RevenueOptimizationPage() {
                 </CardContent>
               </Card>
             </div>
+            )}
 
+            {!isLoading && (
+            <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border">
                 <CardHeader>
@@ -461,6 +478,8 @@ export default function RevenueOptimizationPage() {
                 </div>
               </CardContent>
             </Card>
+            </>
+            )}
           </TabsContent>
 
           <TabsContent value="pricing" className="space-y-6">
