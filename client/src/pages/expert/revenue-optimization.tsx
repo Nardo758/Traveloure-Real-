@@ -272,12 +272,20 @@ export default function RevenueOptimizationPage() {
 
           <TabsContent value="projections" className="space-y-6">
             {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-28 rounded-lg" />
-                ))}
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[1, 2, 3, 4].map((i) => (
+                    <Skeleton key={i} className="h-28 rounded-lg" />
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Skeleton className="h-64 rounded-lg" />
+                  <Skeleton className="h-64 rounded-lg" />
+                </div>
+                <Skeleton className="h-48 rounded-lg" />
               </div>
             ) : (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Card className="border" data-testid="card-current-month">
                 <CardContent className="p-4">
@@ -341,10 +349,7 @@ export default function RevenueOptimizationPage() {
                 </CardContent>
               </Card>
             </div>
-            )}
 
-            {!isLoading && (
-            <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card className="border">
                 <CardHeader>
