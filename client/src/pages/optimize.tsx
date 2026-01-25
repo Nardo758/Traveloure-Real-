@@ -177,10 +177,10 @@ export default function OptimizePage() {
             <Button
               variant="ghost"
               className="mb-6"
-              onClick={() => setLocation("/browse")}
-              data-testid="button-back-browse"
+              onClick={() => setLocation("/discover")}
+              data-testid="button-back-discover"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" /> Back to Browse
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back to Discover
             </Button>
 
             <Card className="border-gray-200">
@@ -320,7 +320,7 @@ export default function OptimizePage() {
                 <Button
                   variant="ghost"
                   className="w-full text-gray-500"
-                  onClick={() => setLocation("/browse")}
+                  onClick={() => setLocation("/discover")}
                   data-testid="button-no-thanks"
                 >
                   No Thanks, I'll Book As-Is

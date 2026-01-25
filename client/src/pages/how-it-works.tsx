@@ -223,7 +223,7 @@ export default function HowItWorksPage() {
                   Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </a>
-              <Link href="/explore">
+              <Link href="/experts">
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-browse-experts">
                   Browse Experts
                 </Button>

@@ -143,7 +143,7 @@ export default function PaymentPage() {
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="flex items-center justify-between h-16">
             <Link
-              href="/browse"
+              href="/cart"
               className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]"
               data-testid="link-back"
             >

@@ -12,9 +12,7 @@ import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
 import MyTrips from "@/pages/my-trips";
 import Profile from "@/pages/profile";
-import Credits from "@/pages/credits";
 import Notifications from "@/pages/notifications";
-import Explore from "@/pages/explore";
 import Chat from "@/pages/chat";
 import AIAssistant from "@/pages/ai-assistant";
 import Vendors from "@/pages/vendors";
@@ -67,12 +65,10 @@ import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
-import BrowsePage from "@/pages/browse";
 import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
 import DiscoverPage from "@/pages/discover";
-import HelpMeDecidePage from "@/pages/help-me-decide";
 import PartnerWithUsPage from "@/pages/partner-with-us";
 import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
@@ -142,12 +138,6 @@ function Router() {
       <Route path="/architecture">
         <ArchitectureDiagram />
       </Route>
-      <Route path="/explore">
-        <Layout><Explore /></Layout>
-      </Route>
-      <Route path="/browse">
-        <BrowsePage />
-      </Route>
       <Route path="/optimize">
         <OptimizePage />
       </Route>
@@ -157,9 +147,12 @@ function Router() {
       <Route path="/service-providers">
         <ServiceProvidersPage />
       </Route>
+      
+      {/* Consolidated Discover page (formerly discover, help-me-decide, explore, browse) */}
       <Route path="/discover">
         <DiscoverPage />
       </Route>
+      
       <Route path="/services/:id">
         <ServiceDetailPage />
       </Route>
@@ -174,9 +167,6 @@ function Router() {
       </Route>
       <Route path="/contracts/:id">
         <ContractViewPage />
-      </Route>
-      <Route path="/help-me-decide">
-        <Layout><HelpMeDecidePage /></Layout>
       </Route>
       <Route path="/global-calendar">
         <Layout><GlobalCalendarPage /></Layout>
@@ -220,12 +210,15 @@ function Router() {
       <Route path="/payment">
         <PaymentPage />
       </Route>
-      <Route path="/travel-experts">
+      
+      {/* Application pages for becoming an expert or provider */}
+      <Route path="/become-expert">
         <TravelExpertsPage />
       </Route>
-      <Route path="/services-provider">
+      <Route path="/become-provider">
         <ServicesProviderPage />
       </Route>
+      
       <Route path="/layout-mock">
         <LayoutMock />
       </Route>
@@ -240,14 +233,14 @@ function Router() {
       <Route path="/profile">
         {() => <ProtectedRoute component={Profile} />}
       </Route>
+      
+      {/* Consolidated Credits page */}
       <Route path="/credits">
-        {() => <ProtectedRoute component={Credits} />}
+        {() => <ProtectedRoute component={CreditsBillingPage} />}
       </Route>
+      
       <Route path="/notifications">
         {() => <ProtectedRoute component={Notifications} />}
-      </Route>
-      <Route path="/credits-billing">
-        {() => <ProtectedRoute component={CreditsBillingPage} />}
       </Route>
       <Route path="/expert-status">
         {() => <ProtectedRoute component={ExpertStatusPage} />}
@@ -408,10 +401,29 @@ function Router() {
         {() => <ProtectedRoute component={AdminAffiliatePartners} />}
       </Route>
 
-      {/* Redirect /create-trip to /experiences */}
+      {/* Redirects for consolidated/renamed pages */}
       <Route path="/create-trip">
         <Redirect to="/experiences" />
       </Route>
+      <Route path="/help-me-decide">
+        <Redirect to="/discover" />
+      </Route>
+      <Route path="/explore">
+        <Redirect to="/discover" />
+      </Route>
+      <Route path="/browse">
+        <Redirect to="/discover" />
+      </Route>
+      <Route path="/travel-experts">
+        <Redirect to="/become-expert" />
+      </Route>
+      <Route path="/services-provider">
+        <Redirect to="/become-provider" />
+      </Route>
+      <Route path="/credits-billing">
+        <Redirect to="/credits" />
+      </Route>
+      
       <Route path="/trip/:id">
         {() => <Layout><ProtectedRoute component={TripDetails} /></Layout>}
       </Route>

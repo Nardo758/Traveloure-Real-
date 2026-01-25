@@ -103,7 +103,7 @@ export default function AboutPage() {
                     Join Our Journey <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </a>
-                <Link href="/explore">
+                <Link href="/experts">
                   <Button size="lg" variant="outline" data-testid="button-meet-experts">
                     Meet Our Experts
                   </Button>

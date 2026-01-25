@@ -698,7 +698,7 @@ export default function ExpertsPage() {
             of your destination. Join our growing community of travel experts.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/travel-experts">
+            <Link href="/become-expert">
               <Button
                 size="lg"
                 className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
