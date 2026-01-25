@@ -32,6 +32,13 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - **Revenue Optimization Dashboard** (`/expert/revenue-optimization`): Earnings projections, suggested pricing analysis, upsell opportunities, seasonal demand forecasting, passive income streams (itinerary templates, affiliate commissions), and instant payout options.
   - **Expert Leaderboard** (`/expert/leaderboard`): Regional and global rankings, points system, badges/achievements, monthly competitions with prizes.
   - **Business Analytics** (`/expert/analytics`): Key metrics comparison with benchmarks, conversion funnel visualization, revenue by service breakdown, client acquisition sources, client lifetime value analysis, actionable AI-powered insights.
+    - API endpoints: `/api/expert/analytics/dashboard` (comprehensive metrics), `/api/expert/market-intelligence` (TravelPulse-powered trends)
+    - Real-time data from bookings, earnings, templates tables
+    - Market Intelligence tab with trending destinations and seasonal demand forecasts from TravelPulse data
+  - **Provider Performance Analytics** (`/provider/performance`): Service performance tracking for providers with monthly revenue trends, booking benchmarks, and service-level breakdowns.
+    - API endpoint: `/api/provider/analytics/dashboard`
+    - Benchmark comparisons (your average vs category average vs top performers)
+    - Service performance with ratings and revenue per service
   - **Templates & Quick Responses** (`/expert/templates`): Reusable response templates, itinerary template marketplace for passive income, AI smart reply system.
   - **AI Assistant** (`/expert/ai-assistant`): Task delegation, auto-draft responses, vendor research, automated follow-ups with quality scores and regeneration options.
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.

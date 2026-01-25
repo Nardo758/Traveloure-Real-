@@ -4,101 +4,101 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery } from "@tanstack/react-query";
 import { 
-  BarChart3, 
   TrendingUp, 
-  TrendingDown,
   Users,
   Clock,
   DollarSign,
   Target,
   AlertCircle,
-  CheckCircle,
   ArrowRight,
-  MessageSquare,
-  Calendar,
   Zap,
   Lightbulb,
-  Star
+  MapPin,
+  Calendar,
+  Sparkles
 } from "lucide-react";
 
-export default function ExpertAnalytics() {
-  const keyMetrics = {
-    responseTime: { value: "3 hrs", benchmark: "1 hr", status: "needs_improvement" },
-    conversionRate: { value: "42%", benchmark: "55%", status: "needs_improvement" },
-    clientRetention: { value: "78%", benchmark: "60%", status: "excellent" },
-    avgBookingValue: { value: "$485", benchmark: "$420", status: "good" },
+interface AnalyticsDashboard {
+  summary: {
+    totalRevenue: number;
+    totalBookings: number;
+    avgRating: number;
+    activeServices: number;
+    publishedTemplates: number;
+    templateRevenue: number;
+    pendingBookings: number;
+    completedBookings: number;
   };
+  keyMetrics: {
+    responseTime: { value: string; benchmark: string; status: string };
+    conversionRate: { value: string; benchmark: string; status: string };
+    avgRating: { value: string; benchmark: string; status: string };
+    avgBookingValue: { value: string; benchmark: string; status: string };
+  };
+  conversionFunnel: Array<{ stage: string; count: number; percent: number }>;
+  revenueByService: Array<{ service: string; revenue: number; bookings: number; percentage: number }>;
+  clientLifetimeValue: {
+    average: number;
+    repeatRate: number;
+    avgBookingsPerClient: number;
+  };
+}
 
-  const conversionFunnel = [
-    { stage: "Profile Views", count: 1250, percent: 100 },
-    { stage: "Inquiry Started", count: 380, percent: 30.4 },
-    { stage: "Responded", count: 365, percent: 96 },
-    { stage: "Quote Sent", count: 210, percent: 57.5 },
-    { stage: "Booking Made", count: 156, percent: 74.3 },
-    { stage: "Trip Completed", count: 142, percent: 91 },
-  ];
+interface MarketIntelligence {
+  trending: Array<{ destination: string; score: number; reason: string; category: string }>;
+  cities: Array<{ name: string; country: string; bestTimeToVisit: string; summary: string }>;
+  happeningNow: Array<{ title: string; type: string; location: string; urgency: string }>;
+  seasonalDemand: Array<{ season: string; location: string; timing: string; demandIncrease: number; suggestedRateIncrease: number; status: string; daysAway: number }>;
+}
 
-  const revenueByService = [
-    { service: "Trip Planning", revenue: 4200, percentage: 35, clients: 28 },
-    { service: "Proposal Planning", revenue: 3600, percentage: 30, clients: 12 },
-    { service: "Anniversary Events", revenue: 2100, percentage: 17.5, clients: 18 },
-    { service: "Corporate Retreats", revenue: 1500, percentage: 12.5, clients: 4 },
-    { service: "Other", revenue: 600, percentage: 5, clients: 8 },
-  ];
+export default function ExpertAnalytics() {
+  const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsDashboard>({
+    queryKey: ["/api/expert/analytics/dashboard"],
+  });
 
-  const clientAcquisition = [
-    { source: "Platform Search", clients: 45, percentage: 38 },
-    { source: "Direct Referral", clients: 32, percentage: 27 },
-    { source: "Featured Placement", clients: 24, percentage: 20 },
-    { source: "Expert Matching", clients: 12, percentage: 10 },
-    { source: "Social Media", clients: 6, percentage: 5 },
-  ];
+  const { data: marketIntel, isLoading: marketLoading } = useQuery<MarketIntelligence>({
+    queryKey: ["/api/expert/market-intelligence"],
+  });
+
+  const isLoading = analyticsLoading || marketLoading;
 
   const actionableInsights = [
     {
-      type: "urgent",
-      title: "Response time is hurting conversions",
-      description: "Your 3hr average response time is 3x slower than top performers. Experts who respond in <1hr earn 40% more.",
-      action: "Enable quick reply templates",
-      impact: "+$1,200/month potential",
-    },
-    {
       type: "opportunity",
-      title: "Add transportation to your services",
-      description: "68% of your clients book transportation separately. Adding this service could increase your average booking value by 35%.",
-      action: "Add service now",
-      impact: "+$170/booking average",
+      title: "Trending destinations to promote",
+      description: marketIntel?.trending?.[0] 
+        ? `${marketIntel.trending[0].destination} is trending - ${marketIntel.trending[0].reason}`
+        : "Check market trends for new opportunities",
+      action: "View trends",
+      impact: "Increase visibility",
     },
     {
       type: "growth",
-      title: "Your proposal planning is a hit",
-      description: "You have a 89% conversion rate on proposals - 34% above average. Consider raising rates by 20%.",
-      action: "Update pricing",
-      impact: "+$720/month potential",
+      title: "Optimize your conversion rate",
+      description: analytics?.keyMetrics?.conversionRate?.status === "needs_improvement"
+        ? "Your conversion rate is below average. Consider faster response times and competitive pricing."
+        : "Your conversion rate is healthy. Keep up the good work!",
+      action: "View funnel",
+      impact: analytics?.keyMetrics?.conversionRate?.value || "N/A",
     },
     {
       type: "retention",
-      title: "Re-engage past clients",
-      description: "12 clients haven't booked in 6+ months. A simple check-in could bring back 30% of them.",
-      action: "Send follow-up",
-      impact: "3-4 potential bookings",
+      title: "Client lifetime value opportunity",
+      description: `Average CLV is $${analytics?.clientLifetimeValue?.average || 0}. Repeat rate: ${analytics?.clientLifetimeValue?.repeatRate || 0}%`,
+      action: "Re-engage clients",
+      impact: "Increase repeat bookings",
     },
   ];
 
-  const clientLifetimeValue = {
-    average: 1850,
-    topClients: 4200,
-    repeatRate: 45,
-    avgBookingsPerClient: 2.3,
-  };
-
   const getInsightColor = (type: string) => {
     switch (type) {
-      case "urgent": return "border-red-200 bg-red-50";
-      case "opportunity": return "border-amber-200 bg-amber-50";
-      case "growth": return "border-green-200 bg-green-50";
-      case "retention": return "border-blue-200 bg-blue-50";
+      case "urgent": return "border-red-200 bg-red-50 dark:bg-red-950/20";
+      case "opportunity": return "border-amber-200 bg-amber-50 dark:bg-amber-950/20";
+      case "growth": return "border-green-200 bg-green-50 dark:bg-green-950/20";
+      case "retention": return "border-blue-200 bg-blue-50 dark:bg-blue-950/20";
       default: return "border-gray-200";
     }
   };
@@ -113,6 +113,15 @@ export default function ExpertAnalytics() {
     }
   };
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "excellent": return <Badge className="bg-green-100 text-green-700 border-green-200">Excellent</Badge>;
+      case "good": return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Good</Badge>;
+      case "needs_improvement": return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Needs Work</Badge>;
+      default: return null;
+    }
+  };
+
   return (
     <ExpertLayout title="Analytics">
       <div className="p-6 space-y-6">
@@ -120,245 +129,267 @@ export default function ExpertAnalytics() {
           <h1 className="text-2xl font-bold text-foreground" data-testid="text-analytics-title">
             Business Analytics
           </h1>
-          <p className="text-muted-foreground">Actionable insights to grow your business</p>
+          <p className="text-muted-foreground">Real-time insights from your data nervous system</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className={`border ${keyMetrics.responseTime.status === 'needs_improvement' ? 'border-red-200' : ''}`} data-testid="metric-response-time">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <Clock className="w-5 h-5 text-muted-foreground" />
-                {keyMetrics.responseTime.status === 'needs_improvement' && (
-                  <Badge className="bg-red-100 text-red-700 border-red-200">Needs Work</Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">Avg Response Time</p>
-              <p className="text-2xl font-bold text-foreground">{keyMetrics.responseTime.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Top experts: {keyMetrics.responseTime.benchmark}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className={`border ${keyMetrics.conversionRate.status === 'needs_improvement' ? 'border-amber-200' : ''}`} data-testid="metric-conversion">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <Target className="w-5 h-5 text-muted-foreground" />
-                {keyMetrics.conversionRate.status === 'needs_improvement' && (
-                  <Badge className="bg-amber-100 text-amber-700 border-amber-200">Below Avg</Badge>
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground">Conversion Rate</p>
-              <p className="text-2xl font-bold text-foreground">{keyMetrics.conversionRate.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Average: {keyMetrics.conversionRate.benchmark}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border border-green-200" data-testid="metric-retention">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <Users className="w-5 h-5 text-muted-foreground" />
-                <Badge className="bg-green-100 text-green-700 border-green-200">Excellent</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">Client Retention</p>
-              <p className="text-2xl font-bold text-green-600">{keyMetrics.clientRetention.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Average: {keyMetrics.clientRetention.benchmark}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card className="border" data-testid="metric-booking-value">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <DollarSign className="w-5 h-5 text-muted-foreground" />
-                <Badge className="bg-blue-100 text-blue-700 border-blue-200">Above Avg</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">Avg Booking Value</p>
-              <p className="text-2xl font-bold text-foreground">{keyMetrics.avgBookingValue.value}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Average: {keyMetrics.avgBookingValue.benchmark}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="border">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lightbulb className="w-5 h-5 text-amber-500" />
-              Actionable Insights
-            </CardTitle>
-            <CardDescription>AI-powered recommendations based on your data</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {actionableInsights.map((insight, index) => (
-              <div
-                key={index}
-                className={`p-4 rounded-lg border ${getInsightColor(insight.type)}`}
-                data-testid={`insight-${index}`}
-              >
-                <div className="flex items-start gap-3">
-                  {getInsightIcon(insight.type)}
-                  <div className="flex-1">
-                    <p className="font-medium text-foreground">{insight.title}</p>
-                    <p className="text-sm text-muted-foreground mt-1">{insight.description}</p>
-                    <div className="flex items-center gap-4 mt-3">
-                      <Button size="sm" variant="outline" data-testid={`button-insight-${index}`}>
-                        {insight.action} <ArrowRight className="w-3 h-3 ml-1" />
-                      </Button>
-                      <span className="text-sm text-green-600 font-medium">{insight.impact}</span>
-                    </div>
+        {isLoading ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Skeleton key={i} className="h-28 rounded-lg" />
+              ))}
+            </div>
+            <Skeleton className="h-64 rounded-lg" />
+            <Skeleton className="h-48 rounded-lg" />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border" data-testid="metric-total-revenue">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <DollarSign className="w-5 h-5 text-green-600" />
+                    <Badge className="bg-green-100 text-green-700 border-green-200">Revenue</Badge>
                   </div>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+                  <p className="text-sm text-muted-foreground">Total Revenue</p>
+                  <p className="text-2xl font-bold text-foreground">${(analytics?.summary?.totalRevenue || 0).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Templates: ${(analytics?.summary?.templateRevenue || 0).toLocaleString()}
+                  </p>
+                </CardContent>
+              </Card>
 
-        <Tabs defaultValue="funnel" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
-            <TabsTrigger value="funnel" data-testid="tab-funnel">Conversion Funnel</TabsTrigger>
-            <TabsTrigger value="revenue" data-testid="tab-revenue">Revenue by Service</TabsTrigger>
-            <TabsTrigger value="acquisition" data-testid="tab-acquisition">Client Acquisition</TabsTrigger>
-            <TabsTrigger value="lifetime" data-testid="tab-lifetime">Client Lifetime Value</TabsTrigger>
-          </TabsList>
+              <Card className="border" data-testid="metric-conversion">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Target className="w-5 h-5 text-muted-foreground" />
+                    {getStatusBadge(analytics?.keyMetrics?.conversionRate?.status || "")}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Conversion Rate</p>
+                  <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.conversionRate?.value || "0%"}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Benchmark: {analytics?.keyMetrics?.conversionRate?.benchmark || "55%"}
+                  </p>
+                </CardContent>
+              </Card>
 
-          <TabsContent value="funnel">
+              <Card className="border" data-testid="metric-rating">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Sparkles className="w-5 h-5 text-amber-500" />
+                    {getStatusBadge(analytics?.keyMetrics?.avgRating?.status || "")}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Average Rating</p>
+                  <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.avgRating?.value || "0"}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Benchmark: {analytics?.keyMetrics?.avgRating?.benchmark || "4.5"}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border" data-testid="metric-booking-value">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Users className="w-5 h-5 text-muted-foreground" />
+                    {getStatusBadge(analytics?.keyMetrics?.avgBookingValue?.status || "")}
+                  </div>
+                  <p className="text-sm text-muted-foreground">Avg Booking Value</p>
+                  <p className="text-2xl font-bold text-foreground">{analytics?.keyMetrics?.avgBookingValue?.value || "$0"}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Benchmark: {analytics?.keyMetrics?.avgBookingValue?.benchmark || "$350"}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
             <Card className="border">
               <CardHeader>
-                <CardTitle>Conversion Funnel</CardTitle>
-                <CardDescription>Track how visitors become paying clients</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Lightbulb className="w-5 h-5 text-amber-500" />
+                  Actionable Insights
+                </CardTitle>
+                <CardDescription>AI-powered recommendations based on your data</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {conversionFunnel.map((stage, index) => (
-                    <div key={index} className="flex items-center gap-4" data-testid={`funnel-stage-${index}`}>
-                      <div className="w-32 text-sm text-muted-foreground">{stage.stage}</div>
+              <CardContent className="space-y-3">
+                {actionableInsights.map((insight, index) => (
+                  <div
+                    key={index}
+                    className={`p-4 rounded-lg border ${getInsightColor(insight.type)}`}
+                    data-testid={`insight-${index}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {getInsightIcon(insight.type)}
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Progress value={stage.percent} className="h-6 flex-1" />
-                          <span className="text-sm font-medium w-16 text-right">{stage.count}</span>
+                        <p className="font-medium text-foreground">{insight.title}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{insight.description}</p>
+                        <div className="flex items-center gap-4 mt-3">
+                          <Button size="sm" variant="outline" data-testid={`button-insight-${index}`}>
+                            {insight.action} <ArrowRight className="w-3 h-3 ml-1" />
+                          </Button>
+                          <span className="text-sm text-green-600 font-medium">{insight.impact}</span>
                         </div>
                       </div>
-                      <div className="w-16 text-right">
-                        {index > 0 && (
-                          <span className={`text-sm ${stage.percent >= 70 ? 'text-green-600' : stage.percent >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
-                            {stage.percent}%
-                          </span>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Tabs defaultValue="funnel" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+                <TabsTrigger value="funnel" data-testid="tab-funnel">Conversion Funnel</TabsTrigger>
+                <TabsTrigger value="revenue" data-testid="tab-revenue">Revenue by Service</TabsTrigger>
+                <TabsTrigger value="market" data-testid="tab-market">Market Intelligence</TabsTrigger>
+                <TabsTrigger value="lifetime" data-testid="tab-lifetime">Client Value</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="funnel">
+                <Card className="border">
+                  <CardHeader>
+                    <CardTitle>Conversion Funnel</CardTitle>
+                    <CardDescription>Track how visitors become paying clients</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {(analytics?.conversionFunnel || []).map((stage, index) => (
+                        <div key={index} className="flex items-center gap-4" data-testid={`funnel-stage-${index}`}>
+                          <div className="w-32 text-sm text-muted-foreground">{stage.stage}</div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Progress value={stage.percent} className="h-6 flex-1" />
+                              <span className="text-sm font-medium w-16 text-right">{stage.count}</span>
+                            </div>
+                          </div>
+                          <div className="w-16 text-right">
+                            {index > 0 && (
+                              <span className={`text-sm ${stage.percent >= 70 ? 'text-green-600' : stage.percent >= 50 ? 'text-amber-600' : 'text-red-600'}`}>
+                                {stage.percent.toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="revenue">
+                <Card className="border">
+                  <CardHeader>
+                    <CardTitle>Revenue by Service</CardTitle>
+                    <CardDescription>See which services generate the most income</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {(analytics?.revenueByService || []).length > 0 ? (
+                      <div className="space-y-4">
+                        {analytics?.revenueByService.map((item, index) => (
+                          <div key={index} className="flex items-center gap-4" data-testid={`revenue-service-${index}`}>
+                            <div className="w-40 text-sm text-foreground font-medium truncate">{item.service}</div>
+                            <div className="flex-1">
+                              <Progress value={item.percentage} className="h-4" />
+                            </div>
+                            <div className="w-24 text-right">
+                              <p className="text-sm font-medium">${item.revenue.toLocaleString()}</p>
+                              <p className="text-xs text-muted-foreground">{item.bookings} bookings</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-center py-8">No revenue data yet. Start accepting bookings to see insights.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="market">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <Card className="border">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-primary" />
+                        Trending Destinations
+                      </CardTitle>
+                      <CardDescription>Popular destinations travelers are searching for</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {(marketIntel?.trending || []).slice(0, 5).map((item, index) => (
+                          <div key={index} className="flex items-center gap-3 p-3 rounded-lg border hover-elevate" data-testid={`trending-${index}`}>
+                            <MapPin className="w-4 h-4 text-primary" />
+                            <div className="flex-1">
+                              <p className="font-medium text-foreground">{item.destination}</p>
+                              <p className="text-xs text-muted-foreground">{item.reason}</p>
+                            </div>
+                            <Badge variant="outline">{item.category}</Badge>
+                          </div>
+                        ))}
+                        {(!marketIntel?.trending || marketIntel.trending.length === 0) && (
+                          <p className="text-muted-foreground text-center py-4">Market data loading...</p>
                         )}
                       </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-6 p-4 rounded-lg bg-blue-50 border border-blue-200">
-                  <div className="flex items-start gap-3">
-                    <Lightbulb className="w-5 h-5 text-blue-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-blue-800">Conversion Tip</p>
-                      <p className="text-sm text-blue-700 mt-1">
-                        Your inquiry-to-quote conversion (57.5%) is below average (65%). Consider using our AI to draft faster, more personalized quotes.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    </CardContent>
+                  </Card>
 
-          <TabsContent value="revenue">
-            <Card className="border">
-              <CardHeader>
-                <CardTitle>Revenue by Service</CardTitle>
-                <CardDescription>See which services drive the most income</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {revenueByService.map((service, index) => (
-                    <div key={index} className="p-4 rounded-lg border" data-testid={`service-revenue-${index}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="font-medium text-foreground">{service.service}</p>
-                        <p className="font-bold text-foreground">${service.revenue.toLocaleString()}</p>
+                  <Card className="border">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-amber-500" />
+                        Seasonal Demand Forecast
+                      </CardTitle>
+                      <CardDescription>Upcoming high-demand periods</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {(marketIntel?.seasonalDemand || []).map((season, index) => (
+                          <div key={index} className="p-3 rounded-lg border" data-testid={`season-${index}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="font-medium text-foreground">{season.season}</p>
+                              <Badge variant="outline" className={season.status === 'upcoming' ? 'bg-amber-100 text-amber-700' : ''}>
+                                {season.daysAway} days
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{season.location} - {season.timing}</p>
+                            <div className="flex gap-4 mt-2 text-xs">
+                              <span className="text-green-600">+{season.demandIncrease}% demand</span>
+                              <span className="text-primary">+{season.suggestedRateIncrease}% rate suggested</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <Progress value={service.percentage} className="h-2 mb-2" />
-                      <div className="flex items-center justify-between text-sm text-muted-foreground">
-                        <span>{service.percentage}% of total revenue</span>
-                        <span>{service.clients} clients</span>
-                      </div>
-                    </div>
-                  ))}
+                    </CardContent>
+                  </Card>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </TabsContent>
 
-          <TabsContent value="acquisition">
-            <Card className="border">
-              <CardHeader>
-                <CardTitle>Client Acquisition Sources</CardTitle>
-                <CardDescription>Where your clients are coming from</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {clientAcquisition.map((source, index) => (
-                    <div key={index} className="flex items-center gap-4" data-testid={`acquisition-source-${index}`}>
-                      <div className="w-40 text-sm text-foreground font-medium">{source.source}</div>
-                      <div className="flex-1">
-                        <Progress value={source.percentage} className="h-4" />
+              <TabsContent value="lifetime">
+                <Card className="border">
+                  <CardHeader>
+                    <CardTitle>Client Lifetime Value</CardTitle>
+                    <CardDescription>Understanding your client relationships</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="text-center p-6 rounded-lg border">
+                        <p className="text-3xl font-bold text-foreground">${analytics?.clientLifetimeValue?.average || 0}</p>
+                        <p className="text-sm text-muted-foreground mt-1">Average CLV</p>
                       </div>
-                      <div className="w-24 text-right">
-                        <span className="text-sm font-medium">{source.clients} clients</span>
-                        <span className="text-xs text-muted-foreground ml-1">({source.percentage}%)</span>
+                      <div className="text-center p-6 rounded-lg border">
+                        <p className="text-3xl font-bold text-foreground">{analytics?.clientLifetimeValue?.repeatRate || 0}%</p>
+                        <p className="text-sm text-muted-foreground mt-1">Repeat Rate</p>
+                      </div>
+                      <div className="text-center p-6 rounded-lg border">
+                        <p className="text-3xl font-bold text-foreground">{analytics?.clientLifetimeValue?.avgBookingsPerClient || 0}</p>
+                        <p className="text-sm text-muted-foreground mt-1">Avg Bookings/Client</p>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="lifetime">
-            <Card className="border">
-              <CardHeader>
-                <CardTitle>Client Lifetime Value</CardTitle>
-                <CardDescription>Understand the long-term value of your clients</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 text-center">
-                    <p className="text-sm text-muted-foreground">Average CLV</p>
-                    <p className="text-3xl font-bold text-primary">${clientLifetimeValue.average.toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-lg border text-center">
-                    <p className="text-sm text-muted-foreground">Top Client CLV</p>
-                    <p className="text-3xl font-bold text-foreground">${clientLifetimeValue.topClients.toLocaleString()}</p>
-                  </div>
-                  <div className="p-4 rounded-lg border text-center">
-                    <p className="text-sm text-muted-foreground">Repeat Rate</p>
-                    <p className="text-3xl font-bold text-green-600">{clientLifetimeValue.repeatRate}%</p>
-                  </div>
-                  <div className="p-4 rounded-lg border text-center">
-                    <p className="text-sm text-muted-foreground">Avg Bookings/Client</p>
-                    <p className="text-3xl font-bold text-foreground">{clientLifetimeValue.avgBookingsPerClient}</p>
-                  </div>
-                </div>
-                <div className="p-4 rounded-lg bg-green-50 border border-green-200">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-green-800">You're doing great!</p>
-                      <p className="text-sm text-green-700 mt-1">
-                        Your 45% repeat rate is 50% above platform average. Keep nurturing these relationships - they're your most valuable asset.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </>
+        )}
       </div>
     </ExpertLayout>
   );

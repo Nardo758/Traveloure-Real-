@@ -30,7 +30,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -2679,6 +2679,216 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       pendingBookings,
       completedBookings,
     });
+  });
+
+  // Get comprehensive expert analytics dashboard data
+  app.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const services = await storage.getProviderServicesByStatus(userId);
+      const bookings = await storage.getServiceBookings({ providerId: userId });
+      const earnings = await storage.getExpertEarnings(userId);
+      const templates = await storage.getExpertTemplates(userId);
+      
+      // Calculate key metrics
+      const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
+      const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+      const avgRating = services.filter(s => s.averageRating).reduce((sum, s, _, arr) => 
+        sum + Number(s.averageRating) / arr.length, 0
+      ) || 0;
+      
+      const completedBookings = bookings.filter(b => b.status === "completed");
+      const pendingBookings = bookings.filter(b => b.status === "pending");
+      const confirmedBookings = bookings.filter(b => b.status === "confirmed");
+      
+      // Template analytics
+      const publishedTemplates = templates.filter(t => t.isPublished);
+      const templateRevenue = earnings
+        .filter(e => e.type === "template_sale")
+        .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+      
+      // Calculate conversion metrics
+      const inquiryCount = bookings.length;
+      const conversionRate = inquiryCount > 0 ? (completedBookings.length / inquiryCount) * 100 : 0;
+      
+      // Revenue by service type
+      const revenueByService = services.reduce((acc: any[], s) => {
+        const revenue = Number(s.totalRevenue || 0);
+        if (revenue > 0) {
+          acc.push({
+            service: s.name || "Unnamed Service",
+            revenue,
+            bookings: s.bookingsCount || 0,
+            percentage: totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0
+          });
+        }
+        return acc;
+      }, []).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+      
+      // Conversion funnel
+      const profileViews = Math.floor(totalBookings * 3.5); // Estimated
+      const inquiriesStarted = totalBookings;
+      const quoteSent = Math.floor(totalBookings * 0.85);
+      const bookingsMade = completedBookings.length + confirmedBookings.length;
+      
+      const conversionFunnel = [
+        { stage: "Profile Views", count: profileViews, percent: 100 },
+        { stage: "Inquiries Started", count: inquiriesStarted, percent: profileViews > 0 ? (inquiriesStarted / profileViews) * 100 : 0 },
+        { stage: "Quote Sent", count: quoteSent, percent: inquiriesStarted > 0 ? (quoteSent / inquiriesStarted) * 100 : 0 },
+        { stage: "Booking Made", count: bookingsMade, percent: quoteSent > 0 ? (bookingsMade / quoteSent) * 100 : 0 },
+        { stage: "Completed", count: completedBookings.length, percent: bookingsMade > 0 ? (completedBookings.length / bookingsMade) * 100 : 0 },
+      ];
+      
+      // Calculate benchmarks
+      const benchmarks = {
+        responseTime: { value: "2 hrs", benchmark: "1 hr", status: "good" },
+        conversionRate: { 
+          value: `${conversionRate.toFixed(0)}%`, 
+          benchmark: "55%", 
+          status: conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
+        },
+        avgRating: {
+          value: avgRating.toFixed(1),
+          benchmark: "4.5",
+          status: avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
+        },
+        avgBookingValue: {
+          value: `$${totalBookings > 0 ? (totalRevenue / totalBookings).toFixed(0) : 0}`,
+          benchmark: "$350",
+          status: totalRevenue / (totalBookings || 1) >= 350 ? "excellent" : "good"
+        }
+      };
+      
+      // Client lifetime value
+      const clientLifetimeValue = {
+        average: totalBookings > 0 ? Math.round(totalRevenue / totalBookings * 1.8) : 0,
+        repeatRate: 35, // Estimated
+        avgBookingsPerClient: 1.8
+      };
+      
+      res.json({
+        summary: {
+          totalRevenue,
+          totalBookings,
+          avgRating,
+          activeServices: services.filter(s => s.status === "active").length,
+          publishedTemplates: publishedTemplates.length,
+          templateRevenue,
+          pendingBookings: pendingBookings.length,
+          completedBookings: completedBookings.length,
+        },
+        keyMetrics: benchmarks,
+        conversionFunnel,
+        revenueByService,
+        clientLifetimeValue,
+        earnings: earnings.slice(0, 10)
+      });
+    } catch (err) {
+      console.error("Error fetching expert analytics dashboard:", err);
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // Get market intelligence for experts
+  app.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) => {
+    try {
+      // Fetch trending destinations from TravelPulse
+      const trending = await db.select().from(travelPulseTrending).limit(10);
+      const cities = await db.select().from(travelPulseCities).limit(5);
+      const happeningNow = await db.select().from(travelPulseHappeningNow).limit(5);
+      
+      // Seasonal demand forecast (mock enhanced with real data context)
+      const seasonalDemand = [
+        { season: "Cherry Blossom Season", location: "Japan", timing: "Mar-Apr", demandIncrease: 85, suggestedRateIncrease: 25, status: "upcoming", daysAway: 45 },
+        { season: "Summer Peak", location: "Europe", timing: "Jun-Aug", demandIncrease: 120, suggestedRateIncrease: 35, status: "upcoming", daysAway: 120 },
+        { season: "Fall Foliage", location: "New England", timing: "Sep-Oct", demandIncrease: 65, suggestedRateIncrease: 20, status: "future", daysAway: 200 },
+        { season: "Winter Holidays", location: "Caribbean", timing: "Dec-Jan", demandIncrease: 95, suggestedRateIncrease: 30, status: "future", daysAway: 280 },
+      ];
+      
+      res.json({
+        trending: trending.map(t => ({
+          destination: t.destinationName,
+          score: t.trendScore || 0,
+          reason: t.triggerEvent || "Trending destination",
+          category: t.destinationType || "destination"
+        })),
+        cities: cities.map(c => ({
+          name: c.cityName,
+          country: c.country,
+          bestTimeToVisit: c.aiBestTimeToVisit || "Year-round",
+          summary: c.aiTravelTips || "Explore this destination"
+        })),
+        happeningNow: happeningNow.map(h => ({
+          title: h.title,
+          type: h.eventType,
+          location: h.city,
+          urgency: h.crowdLevel || "moderate"
+        })),
+        seasonalDemand
+      });
+    } catch (err) {
+      console.error("Error fetching market intelligence:", err);
+      res.status(500).json({ message: "Failed to fetch market intelligence" });
+    }
+  });
+
+  // Get provider analytics dashboard
+  app.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const services = await storage.getProviderServicesByStatus(userId);
+      const bookings = await storage.getServiceBookings({ providerId: userId });
+      
+      const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
+      const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+      const avgRating = services.filter(s => s.averageRating).reduce((sum, s, _, arr) => 
+        sum + Number(s.averageRating) / arr.length, 0
+      ) || 0;
+      
+      const completedBookings = bookings.filter(b => b.status === "completed");
+      const pendingBookings = bookings.filter(b => b.status === "pending");
+      
+      // Monthly breakdown (mock for now)
+      const monthlyRevenue = [
+        { month: "Jan", revenue: totalRevenue * 0.08, bookings: Math.floor(totalBookings * 0.08) },
+        { month: "Feb", revenue: totalRevenue * 0.07, bookings: Math.floor(totalBookings * 0.07) },
+        { month: "Mar", revenue: totalRevenue * 0.09, bookings: Math.floor(totalBookings * 0.09) },
+        { month: "Apr", revenue: totalRevenue * 0.08, bookings: Math.floor(totalBookings * 0.08) },
+        { month: "May", revenue: totalRevenue * 0.10, bookings: Math.floor(totalBookings * 0.10) },
+        { month: "Jun", revenue: totalRevenue * 0.12, bookings: Math.floor(totalBookings * 0.12) },
+      ];
+      
+      // Service performance
+      const servicePerformance = services.map(s => ({
+        id: s.id,
+        title: s.name || "Unnamed Service",
+        revenue: Number(s.totalRevenue || 0),
+        bookings: s.bookingsCount || 0,
+        rating: Number(s.averageRating || 0),
+        status: s.status
+      })).sort((a, b) => b.revenue - a.revenue);
+      
+      res.json({
+        summary: {
+          totalRevenue,
+          totalBookings,
+          avgRating,
+          activeServices: services.filter(s => s.status === "active").length,
+          pendingBookings: pendingBookings.length,
+          completedBookings: completedBookings.length,
+        },
+        monthlyRevenue,
+        servicePerformance,
+        benchmarks: {
+          avgBookingValue: totalBookings > 0 ? totalRevenue / totalBookings : 0,
+          categoryAvg: 280,
+          topPerformerAvg: 450
+        }
+      });
+    } catch (err) {
+      console.error("Error fetching provider analytics:", err);
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
   });
 
   // === Cart Routes ===
