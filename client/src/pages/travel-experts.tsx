@@ -136,6 +136,14 @@ export default function TravelExpertsPage() {
     responseTime: "",
     hourlyRate: "",
     agreeToTerms: false,
+    // Influencer fields
+    isInfluencer: false,
+    instagramLink: "",
+    tiktokLink: "",
+    youtubeLink: "",
+    instagramFollowers: "",
+    tiktokFollowers: "",
+    youtubeFollowers: "",
   });
 
   // Fetch experience types and service categories from API
@@ -204,6 +212,13 @@ export default function TravelExpertsPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      // Build social followers object if influencer
+      const socialFollowers = formData.isInfluencer ? {
+        instagram: formData.instagramFollowers ? parseInt(formData.instagramFollowers) : 0,
+        tiktok: formData.tiktokFollowers ? parseInt(formData.tiktokFollowers) : 0,
+        youtube: formData.youtubeFollowers ? parseInt(formData.youtubeFollowers) : 0,
+      } : {};
+
       const applicationData = {
         firstName: formData.firstName,
         lastName: formData.lastName,
@@ -224,12 +239,14 @@ export default function TravelExpertsPage() {
         availability: formData.availability,
         responseTime: formData.responseTime,
         hourlyRate: formData.hourlyRate,
+        // Influencer fields
+        isInfluencer: formData.isInfluencer,
+        instagramLink: formData.instagramLink,
+        tiktokLink: formData.tiktokLink,
+        youtubeLink: formData.youtubeLink,
+        socialFollowers,
       };
-      return apiRequest("/api/expert-application", {
-        method: "POST",
-        body: JSON.stringify(applicationData),
-        headers: { "Content-Type": "application/json" },
-      });
+      return apiRequest("POST", "/api/expert-application", applicationData);
     },
     onSuccess: () => {
       toast({
@@ -389,6 +406,100 @@ export default function TravelExpertsPage() {
                       data-testid="input-city"
                     />
                   </div>
+                </div>
+
+                {/* Influencer Toggle */}
+                <div className="border-t pt-6 mt-6">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <Checkbox
+                      id="isInfluencer"
+                      checked={formData.isInfluencer}
+                      onCheckedChange={(checked) => updateFormData("isInfluencer", checked)}
+                      data-testid="checkbox-is-influencer"
+                    />
+                    <div>
+                      <Label htmlFor="isInfluencer" className="text-[#374151] font-medium cursor-pointer">
+                        I'm a Travel Content Creator / Influencer
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Get a verified creator badge and earn referral commissions
+                      </p>
+                    </div>
+                  </div>
+
+                  {formData.isInfluencer && (
+                    <div className="space-y-4 pl-6 border-l-2 border-primary/20">
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Share your social media profiles. We'll verify your creator status and enable referral tracking.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-[#374151]">Instagram Profile</Label>
+                          <Input
+                            value={formData.instagramLink}
+                            onChange={(e) => updateFormData("instagramLink", e.target.value)}
+                            placeholder="https://instagram.com/yourhandle"
+                            className="mt-2 h-12 border-[#E5E7EB]"
+                            data-testid="input-instagram-link"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[#374151]">Instagram Followers</Label>
+                          <Input
+                            value={formData.instagramFollowers}
+                            onChange={(e) => updateFormData("instagramFollowers", e.target.value)}
+                            placeholder="e.g. 50000"
+                            className="mt-2 h-12 border-[#E5E7EB]"
+                            data-testid="input-instagram-followers"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-[#374151]">TikTok Profile</Label>
+                          <Input
+                            value={formData.tiktokLink}
+                            onChange={(e) => updateFormData("tiktokLink", e.target.value)}
+                            placeholder="https://tiktok.com/@yourhandle"
+                            className="mt-2 h-12 border-[#E5E7EB]"
+                            data-testid="input-tiktok-link"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[#374151]">TikTok Followers</Label>
+                          <Input
+                            value={formData.tiktokFollowers}
+                            onChange={(e) => updateFormData("tiktokFollowers", e.target.value)}
+                            placeholder="e.g. 100000"
+                            className="mt-2 h-12 border-[#E5E7EB]"
+                            data-testid="input-tiktok-followers"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-[#374151]">YouTube Channel</Label>
+                          <Input
+                            value={formData.youtubeLink}
+                            onChange={(e) => updateFormData("youtubeLink", e.target.value)}
+                            placeholder="https://youtube.com/@yourchannel"
+                            className="mt-2 h-12 border-[#E5E7EB]"
+                            data-testid="input-youtube-link"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-[#374151]">YouTube Subscribers</Label>
+                          <Input
+                            value={formData.youtubeFollowers}
+                            onChange={(e) => updateFormData("youtubeFollowers", e.target.value)}
+                            placeholder="e.g. 25000"
+                            className="mt-2 h-12 border-[#E5E7EB]"
+                            data-testid="input-youtube-followers"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
