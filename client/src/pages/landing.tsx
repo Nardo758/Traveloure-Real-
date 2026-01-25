@@ -192,9 +192,9 @@ export default function LandingPage() {
             </p>
           </motion.div>
 
-          {/* Two Pathway Cards */}
+          {/* Main Content Grid - Templates left, Expert + Features right */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            {/* Plan with AI Card */}
+            {/* Left Column: Templates Card */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -217,7 +217,7 @@ export default function LandingPage() {
                   </p>
 
                   {/* Experience Template Buttons */}
-                  <div className="flex flex-wrap gap-2 max-h-[280px] overflow-y-auto pr-1">
+                  <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto pr-1">
                     {experienceTemplates.map((cat) => (
                       <Link key={cat.label} href={`/experiences/${cat.slug}`}>
                         <Button
@@ -236,66 +236,67 @@ export default function LandingPage() {
               </Card>
             </motion.div>
 
-            {/* Plan with Expert Card - Compact */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="self-start"
-            >
-              <Card className="bg-white/10 backdrop-blur-md border-white/20">
-                <CardContent className="p-5">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center">
-                      <UserCheck className="w-4 h-4 text-white" />
+            {/* Right Column: Expert Card + Features Grid stacked */}
+            <div className="flex flex-col gap-4">
+              {/* Plan with Expert Card - Compact */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+              >
+                <Card className="bg-white/10 backdrop-blur-md border-white/20">
+                  <CardContent className="p-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center">
+                        <UserCheck className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-white">Plan with an Expert</h3>
+                        <p className="text-xs text-white/70">Get personalized guidance</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-white">Plan with an Expert</h3>
-                      <p className="text-xs text-white/70">Get personalized guidance</p>
+                    
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-xs text-white/80">
+                      <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-emerald-400" /> Local tips</span>
+                      <span className="flex items-center gap-1"><Star className="w-3 h-3 text-emerald-400" /> Personal support</span>
+                      <span className="flex items-center gap-1"><Globe className="w-3 h-3 text-emerald-400" /> Real-time help</span>
                     </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-xs text-white/80">
-                    <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-emerald-400" /> Local tips</span>
-                    <span className="flex items-center gap-1"><Star className="w-3 h-3 text-emerald-400" /> Personal support</span>
-                    <span className="flex items-center gap-1"><Globe className="w-3 h-3 text-emerald-400" /> Real-time help</span>
-                  </div>
-                  
-                  <Link href="/experts">
-                    <Button 
-                      size="default"
-                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                      data-testid="button-find-expert"
-                    >
-                      Find an Expert <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
+                    
+                    <Link href="/experts">
+                      <Button 
+                        size="default"
+                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+                        data-testid="button-find-expert"
+                      >
+                        Find an Expert <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </Link>
+                  </CardContent>
+                </Card>
+              </motion.div>
 
-          {/* Key Features Row */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            className="mt-10"
-          >
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">
-              {keyFeatures.map((feature) => (
-                <Link key={feature.label} href={feature.href}>
-                  <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-md p-4 hover:bg-white/20 transition-colors cursor-pointer group">
-                    <div className="flex items-center gap-2 mb-1">
-                      <feature.icon className="w-4 h-4 text-[#FF385C]" />
-                      <span className="text-sm font-semibold text-white">{feature.label}</span>
-                    </div>
-                    <p className="text-xs text-white/70 group-hover:text-white/90 transition-colors">{feature.description}</p>
-                  </div>
-                </Link>
-              ))}
+              {/* Key Features Grid - 2x2 */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.4 }}
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  {keyFeatures.map((feature) => (
+                    <Link key={feature.label} href={feature.href}>
+                      <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-md p-3 hover:bg-white/20 transition-colors cursor-pointer group h-full">
+                        <div className="flex items-center gap-2 mb-1">
+                          <feature.icon className="w-4 h-4 text-[#FF385C]" />
+                          <span className="text-sm font-semibold text-white">{feature.label}</span>
+                        </div>
+                        <p className="text-xs text-white/70 group-hover:text-white/90 transition-colors">{feature.description}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </motion.div>
             </div>
-          </motion.div>
+          </div>
         </div>
       </section>
 
