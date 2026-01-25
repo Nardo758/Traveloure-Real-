@@ -116,10 +116,12 @@ export default function TravelExpertsPage() {
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [socialAuthConnected, setSocialAuthConnected] = useState(false);
   
-  // Check for influencer query parameter
+  // Check for influencer and auth query parameters
   const urlParams = new URLSearchParams(window.location.search);
   const influencerFromUrl = urlParams.get('influencer') === 'true';
+  const authFromUrl = urlParams.get('auth');
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -151,6 +153,55 @@ export default function TravelExpertsPage() {
     tiktokFollowers: "",
     youtubeFollowers: "",
   });
+
+  // Fetch user data if authenticated via social login
+  const { data: userData } = useQuery<any>({
+    queryKey: ["/api/auth/user"],
+    enabled: authFromUrl === 'facebook',
+    retry: false,
+  });
+
+  // Fetch Instagram data if available
+  const { data: instagramData } = useQuery<any>({
+    queryKey: ["/api/auth/instagram-data"],
+    enabled: authFromUrl === 'facebook',
+    retry: false,
+  });
+
+  // Auto-fill form with social auth data
+  useEffect(() => {
+    if (userData && authFromUrl === 'facebook') {
+      setFormData(prev => ({
+        ...prev,
+        firstName: prev.firstName || userData.firstName || "",
+        lastName: prev.lastName || userData.lastName || "",
+        email: prev.email || userData.email || "",
+        isInfluencer: true,
+      }));
+      setSocialAuthConnected(true);
+      
+      toast({
+        title: "Account Connected",
+        description: "Your social account has been linked successfully!",
+      });
+    }
+  }, [userData, authFromUrl, toast]);
+
+  // Auto-fill Instagram data
+  useEffect(() => {
+    if (instagramData?.connected) {
+      setFormData(prev => ({
+        ...prev,
+        instagramLink: prev.instagramLink || `https://instagram.com/${instagramData.username}`,
+        instagramFollowers: prev.instagramFollowers || String(instagramData.followers_count || ""),
+      }));
+      
+      toast({
+        title: "Instagram Verified",
+        description: `@${instagramData.username} connected with ${instagramData.followers_count?.toLocaleString()} followers`,
+      });
+    }
+  }, [instagramData, toast]);
 
   // Fetch experience types and service categories from API
   const { data: experienceTypes = [] } = useQuery<any[]>({
@@ -354,39 +405,61 @@ export default function TravelExpertsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Quick Social Sign-In */}
-                <div className="bg-gradient-to-r from-[#1877F2]/5 via-[#E1306C]/5 to-[#833AB4]/5 rounded-lg p-5 border border-[#E5E7EB]">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles className="w-5 h-5 text-primary" />
-                    <p className="font-semibold text-foreground">
-                      Quick Sign-In with Social Media
+                {socialAuthConnected ? (
+                  <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-5 border border-green-200 dark:border-green-800">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Check className="w-5 h-5 text-green-600" />
+                      <p className="font-semibold text-green-700 dark:text-green-400">
+                        Social Account Connected
+                      </p>
+                    </div>
+                    <p className="text-sm text-green-600 dark:text-green-500">
+                      Your information has been auto-filled from your social account.
+                      {instagramData?.connected && (
+                        <span className="block mt-1">
+                          <Badge variant="secondary" className="mt-2">
+                            <SiInstagram className="w-3 h-3 mr-1" />
+                            @{instagramData.username} - {instagramData.followers_count?.toLocaleString()} followers
+                          </Badge>
+                        </span>
+                      )}
                     </p>
                   </div>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Sign in with your social account to auto-fill your information and verify your profile faster.
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="bg-[#1877F2] hover:bg-[#166FE5] text-white border-none"
-                      onClick={() => window.location.href = '/api/auth/facebook'}
-                      data-testid="button-facebook-login-top"
-                    >
-                      <SiFacebook className="w-4 h-4 mr-2" />
-                      Continue with Facebook
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 text-white border-none"
-                      onClick={() => window.location.href = '/api/auth/facebook'}
-                      data-testid="button-instagram-login-top"
-                    >
-                      <SiInstagram className="w-4 h-4 mr-2" />
-                      Continue with Instagram
-                    </Button>
+                ) : (
+                  <div className="bg-gradient-to-r from-[#1877F2]/5 via-[#E1306C]/5 to-[#833AB4]/5 rounded-lg p-5 border border-[#E5E7EB]">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                      <p className="font-semibold text-foreground">
+                        Quick Sign-In with Social Media
+                      </p>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Sign in with your social account to auto-fill your information and verify your profile faster.
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="bg-[#1877F2] hover:bg-[#166FE5] text-white border-none"
+                        onClick={() => window.location.href = '/api/auth/facebook'}
+                        data-testid="button-facebook-login-top"
+                      >
+                        <SiFacebook className="w-4 h-4 mr-2" />
+                        Continue with Facebook
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 text-white border-none"
+                        onClick={() => window.location.href = '/api/auth/facebook'}
+                        data-testid="button-instagram-login-top"
+                      >
+                        <SiInstagram className="w-4 h-4 mr-2" />
+                        Continue with Instagram
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
