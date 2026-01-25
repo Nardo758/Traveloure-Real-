@@ -99,9 +99,12 @@ import GlobalCalendarPage from "@/pages/global-calendar";
 import SpontaneousPage from "@/pages/spontaneous";
 import HiddenGemsPage from "@/pages/hidden-gems";
 import TransportationBookingPage from "@/pages/transportation-booking";
+import PrivacyPolicyPage from "@/pages/privacy";
+import TermsOfServicePage from "@/pages/terms";
+import AcceptTermsPage from "@/pages/accept-terms";
 import { Loader2 } from "lucide-react";
 
-function ProtectedRoute({ component: Component, ...rest }: any) {
+function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest }: any) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -114,6 +117,12 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   if (!user) {
     window.location.href = "/api/login";
+    return null;
+  }
+
+  // Check if user has accepted BOTH terms AND privacy policy (unless skipTermsCheck is true)
+  if (!skipTermsCheck && user && (!user.termsAcceptedAt || !user.privacyAcceptedAt)) {
+    window.location.href = "/accept-terms";
     return null;
   }
 
@@ -189,6 +198,15 @@ function Router() {
       </Route>
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
+      </Route>
+      <Route path="/privacy">
+        <PrivacyPolicyPage />
+      </Route>
+      <Route path="/terms">
+        <TermsOfServicePage />
+      </Route>
+      <Route path="/accept-terms">
+        <AcceptTermsPage />
       </Route>
       <Route path="/experiences">
         <ExperiencesPage />
