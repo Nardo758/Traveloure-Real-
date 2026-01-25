@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,12 +34,48 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 
+type EarningsSummary = {
+  total: number;
+  pending: number;
+  available: number;
+  paidOut: number;
+};
+
+type ExpertEarning = {
+  id: string;
+  type: string;
+  amount: string;
+  description?: string;
+  status: string;
+  createdAt?: string;
+};
+
 export default function RevenueOptimizationPage() {
+  // Fetch real earnings data
+  const { data: earningsData } = useQuery<{ earnings: ExpertEarning[]; summary: EarningsSummary }>({
+    queryKey: ["/api/expert/earnings"],
+  });
+
+  const { data: salesData } = useQuery<any[]>({
+    queryKey: ["/api/expert/template-sales"],
+  });
+
+  const { data: templates } = useQuery<any[]>({
+    queryKey: ["/api/expert/templates"],
+  });
+
+  // Calculate real earnings or use defaults
+  const realTotal = earningsData?.summary?.total || 0;
+  const realPending = earningsData?.summary?.pending || 0;
+  const realAvailable = earningsData?.summary?.available || 0;
+  const templateSalesCount = salesData?.length || 0;
+  const publishedTemplates = templates?.filter((t: any) => t.isPublished)?.length || 0;
+
   const earningsProjection = {
-    current: 4850,
-    projected: 7200,
-    potential: 9500,
-    nextMonth: 5800,
+    current: realTotal || 4850,
+    projected: Math.round((realTotal || 4850) * 1.48),
+    potential: Math.round((realTotal || 4850) * 1.96),
+    nextMonth: Math.round((realTotal || 4850) * 1.2),
     percentIncrease: 48,
   };
 
@@ -120,14 +157,20 @@ export default function RevenueOptimizationPage() {
     },
   ];
 
+  // Calculate template earnings from real sales data
+  const templateEarnings = salesData?.reduce((sum, sale) => sum + parseFloat(sale.expertEarnings || '0'), 0) || 0;
+  
   const passiveIncomeStreams = [
     {
       title: "Itinerary Templates",
-      description: "Sell pre-built itineraries on the marketplace",
-      monthlyEarnings: 450,
-      sales: 23,
+      description: publishedTemplates > 0 
+        ? `${publishedTemplates} templates published on the marketplace` 
+        : "Sell pre-built itineraries on the marketplace",
+      monthlyEarnings: templateEarnings || 450,
+      sales: templateSalesCount || 23,
       icon: Package,
-      status: "active",
+      status: publishedTemplates > 0 ? "active" : "setup",
+      link: "/expert/templates",
     },
     {
       title: "Affiliate Commissions",
@@ -147,8 +190,8 @@ export default function RevenueOptimizationPage() {
   ];
 
   const instantPayoutBalance = {
-    available: 2100,
-    pending: 1450,
+    available: realAvailable || 2100,
+    pending: realPending || 1450,
     processing: 500,
     dailyFee: 1.5,
   };
