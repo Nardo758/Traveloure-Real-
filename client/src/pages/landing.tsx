@@ -44,26 +44,22 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-const experienceCategories = [
+const popularTemplates = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500" },
   { icon: Heart, label: "Wedding", slug: "wedding", color: "text-pink-500" },
-  { icon: Gem, label: "Proposal", slug: "proposal", color: "text-purple-500" },
-  { icon: Sparkles, label: "Date Night", slug: "date-night", color: "text-red-500" },
   { icon: Cake, label: "Birthday", slug: "birthday", color: "text-orange-500" },
-  { icon: PartyPopper, label: "Bachelor/Bachelorette", slug: "bachelor-bachelorette", color: "text-pink-600" },
-  { icon: HeartHandshake, label: "Anniversary Trip", slug: "anniversary-trip", color: "text-rose-600" },
-  { icon: Building2, label: "Corporate Events", slug: "corporate-events", color: "text-slate-600" },
-  { icon: Users, label: "Reunions", slug: "reunions", color: "text-indigo-500" },
-  { icon: CalendarHeart, label: "Wedding Anniversaries", slug: "wedding-anniversaries", color: "text-rose-500" },
-  { icon: Mountain, label: "Retreats", slug: "retreats", color: "text-emerald-500" },
+  { icon: Building2, label: "Corporate", slug: "corporate-events", color: "text-slate-600" },
+  { icon: Sparkles, label: "Romantic Getaway", slug: "romance", color: "text-red-500" },
+  { icon: PartyPopper, label: "Bachelor/ette", slug: "bachelor-bachelorette", color: "text-pink-600" },
   { icon: Baby, label: "Baby Shower", slug: "baby-shower", color: "text-sky-400" },
-  { icon: GraduationCap, label: "Graduation Party", slug: "graduation-party", color: "text-amber-500" },
-  { icon: Diamond, label: "Engagement Party", slug: "engagement-party", color: "text-fuchsia-500" },
-  { icon: Home, label: "Housewarming Party", slug: "housewarming-party", color: "text-teal-500" },
-  { icon: Wine, label: "Retirement Party", slug: "retirement-party", color: "text-violet-500" },
-  { icon: Trophy, label: "Career Achievement Party", slug: "career-achievement-party", color: "text-yellow-500" },
-  { icon: HandHeart, label: "Farewell Party", slug: "farewell-party", color: "text-cyan-500" },
-  { icon: TreePine, label: "Holiday Party", slug: "holiday-party", color: "text-green-600" },
+  { icon: GraduationCap, label: "Graduation", slug: "graduation-party", color: "text-amber-500" },
+];
+
+const keyFeatures = [
+  { icon: Bot, label: "AI Trip Planner", description: "Instant personalized itineraries", href: "/ai-assistant" },
+  { icon: UserCheck, label: "Expert Matching", description: "Connect with local specialists", href: "/experts" },
+  { icon: Zap, label: "Live Intel", description: "Real-time local insights", href: "/spontaneous" },
+  { icon: Globe, label: "Discover", description: "Browse curated experiences", href: "/discover" },
 ];
 
 const faqItems = [
@@ -197,21 +193,21 @@ export default function LandingPage() {
                 <CardContent className="p-6">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
-                      <Bot className="w-5 h-5 text-white" />
+                      <Sparkles className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Plan with AI</h3>
-                      <p className="text-sm text-white/70">Build your perfect itinerary yourself</p>
+                      <h3 className="text-xl font-bold text-white">Choose Your Experience</h3>
+                      <p className="text-sm text-white/70">Start planning with our templates</p>
                     </div>
                   </div>
                   
                   <p className="text-sm text-white/80 mb-4">
-                    Choose your experience and let our AI help you create the perfect plan:
+                    Select from our most popular experience types:
                   </p>
 
-                  {/* Experience Category Buttons */}
-                  <div className="flex flex-wrap gap-2 max-h-[280px] overflow-y-auto pr-1">
-                    {experienceCategories.map((cat) => (
+                  {/* Popular Template Buttons */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {popularTemplates.map((cat) => (
                       <Link key={cat.label} href={`/experiences/${cat.slug}`}>
                         <Button
                           size="sm"
@@ -225,6 +221,10 @@ export default function LandingPage() {
                       </Link>
                     ))}
                   </div>
+                  
+                  <Link href="/discover" className="inline-flex items-center gap-1 text-sm text-white/80 hover:text-white transition-colors">
+                    View all 21+ templates <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </CardContent>
               </Card>
             </motion.div>
@@ -282,43 +282,26 @@ export default function LandingPage() {
             </motion.div>
           </div>
 
-          {/* Additional CTAs */}
+          {/* Key Features Row */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.4 }}
-            className="flex flex-wrap justify-center gap-4 mt-8"
+            className="mt-10"
           >
-            <Link href="/experiences/travel">
-              <Button 
-                size="lg"
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-6"
-                data-testid="button-create-trip"
-              >
-                Create a Trip <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </Link>
-            <Link href="/discover">
-              <Button
-                size="lg"
-                variant="outline"
-                className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6"
-                data-testid="button-discover-services"
-              >
-                Discover Services
-              </Button>
-            </Link>
-            <Link href="/spontaneous">
-              <Button
-                size="lg"
-                variant="outline"
-                className="bg-amber-500/20 backdrop-blur-sm border-amber-400/50 text-white font-medium px-6"
-                data-testid="button-live-intel"
-              >
-                <Zap className="w-4 h-4 mr-2" />
-                Live Intel
-              </Button>
-            </Link>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 max-w-4xl mx-auto">
+              {keyFeatures.map((feature) => (
+                <Link key={feature.label} href={feature.href}>
+                  <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-md p-4 hover:bg-white/20 transition-colors cursor-pointer group">
+                    <div className="flex items-center gap-2 mb-1">
+                      <feature.icon className="w-4 h-4 text-[#FF385C]" />
+                      <span className="text-sm font-semibold text-white">{feature.label}</span>
+                    </div>
+                    <p className="text-xs text-white/70 group-hover:text-white/90 transition-colors">{feature.description}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </motion.div>
         </div>
       </section>
