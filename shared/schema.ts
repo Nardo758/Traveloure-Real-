@@ -3372,3 +3372,115 @@ export type ExpertEarning = typeof expertEarnings.$inferSelect;
 export type InsertExpertEarning = z.infer<typeof insertExpertEarningsSchema>;
 export type ExpertPayout = typeof expertPayouts.$inferSelect;
 export type InsertExpertPayout = z.infer<typeof insertExpertPayoutSchema>;
+
+// ============================================
+// REVENUE SPLITS & INCOME STREAMS
+// ============================================
+
+// Revenue split configuration - defines how revenue is split between platform, providers, and experts
+export const revenueSplitTypes = ["service_booking", "template_sale", "affiliate_commission", "tip", "referral_bonus"] as const;
+export type RevenueSplitType = typeof revenueSplitTypes[number];
+
+export const revenueSplits = pgTable("revenue_splits", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  type: varchar("type", { length: 50 }).notNull(), // service_booking, template_sale, affiliate_commission, tip, referral_bonus
+  platformPercentage: decimal("platform_percentage", { precision: 5, scale: 2 }).notNull().default("15.00"), // Platform's cut
+  expertPercentage: decimal("expert_percentage", { precision: 5, scale: 2 }).notNull().default("85.00"), // Expert's cut
+  providerPercentage: decimal("provider_percentage", { precision: 5, scale: 2 }).default("0.00"), // Provider's cut (for affiliate bookings)
+  description: text("description"),
+  isActive: boolean("is_active").default(true),
+  effectiveFrom: timestamp("effective_from").defaultNow(),
+  effectiveUntil: timestamp("effective_until"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Expert tips - travelers can tip experts after service
+export const expertTips = pgTable("expert_tips", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  message: text("message"), // Optional thank you message
+  isAnonymous: boolean("is_anonymous").default(false),
+  platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).default("0.00"),
+  expertAmount: decimal("expert_amount", { precision: 10, scale: 2 }), // Amount after platform fee
+  status: varchar("status", { length: 20 }).default("pending"), // pending, completed, refunded
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Expert referrals - track expert-to-expert referrals
+export const expertReferrals = pgTable("expert_referrals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  referrerId: varchar("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }), // Expert who referred
+  referredId: varchar("referred_id").notNull().references(() => users.id, { onDelete: "cascade" }), // New expert who signed up
+  referralCode: varchar("referral_code", { length: 50 }),
+  status: varchar("status", { length: 20 }).default("pending"), // pending, qualified, paid
+  bonusAmount: decimal("bonus_amount", { precision: 10, scale: 2 }).default("50.00"), // Referral bonus
+  qualifiedAt: timestamp("qualified_at"), // When referral completed qualification (e.g., first booking)
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Affiliate earnings breakdown - detailed tracking for affiliate commissions
+export const affiliateEarnings = pgTable("affiliate_earnings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  clickId: varchar("click_id").references(() => affiliateClicks.id, { onDelete: "set null" }),
+  partnerId: varchar("partner_id").references(() => affiliatePartners.id, { onDelete: "set null" }),
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "cascade" }),
+  bookingAmount: decimal("booking_amount", { precision: 10, scale: 2 }).notNull(), // Total booking value
+  commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).notNull(), // Partner's commission %
+  totalCommission: decimal("total_commission", { precision: 10, scale: 2 }).notNull(), // Total commission earned
+  platformShare: decimal("platform_share", { precision: 10, scale: 2 }).notNull(), // Platform's cut
+  expertShare: decimal("expert_share", { precision: 10, scale: 2 }).notNull(), // Expert's cut
+  providerShare: decimal("provider_share", { precision: 10, scale: 2 }).default("0.00"), // Provider's cut if applicable
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  status: varchar("status", { length: 20 }).default("pending"), // pending, confirmed, paid
+  confirmedAt: timestamp("confirmed_at"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Insert schemas for income stream tables
+export const insertRevenueSplitSchema = createInsertSchema(revenueSplits).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertExpertTipSchema = createInsertSchema(expertTips).omit({
+  id: true,
+  platformFee: true,
+  expertAmount: true,
+  status: true,
+  createdAt: true,
+});
+
+export const insertExpertReferralSchema = createInsertSchema(expertReferrals).omit({
+  id: true,
+  status: true,
+  qualifiedAt: true,
+  paidAt: true,
+  createdAt: true,
+});
+
+export const insertAffiliateEarningSchema = createInsertSchema(affiliateEarnings).omit({
+  id: true,
+  status: true,
+  confirmedAt: true,
+  paidAt: true,
+  createdAt: true,
+});
+
+// Types for income stream tables
+export type RevenueSplit = typeof revenueSplits.$inferSelect;
+export type InsertRevenueSplit = z.infer<typeof insertRevenueSplitSchema>;
+export type ExpertTip = typeof expertTips.$inferSelect;
+export type InsertExpertTip = z.infer<typeof insertExpertTipSchema>;
+export type ExpertReferral = typeof expertReferrals.$inferSelect;
+export type InsertExpertReferral = z.infer<typeof insertExpertReferralSchema>;
+export type AffiliateEarning = typeof affiliateEarnings.$inferSelect;
+export type InsertAffiliateEarning = z.infer<typeof insertAffiliateEarningSchema>;
