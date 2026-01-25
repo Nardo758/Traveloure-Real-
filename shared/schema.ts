@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -3508,3 +3508,180 @@ export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLogs).om
 
 export type AccessAuditLog = typeof accessAuditLogs.$inferSelect;
 export type InsertAccessAuditLog = z.infer<typeof insertAccessAuditLogSchema>;
+
+// === Content Tracking System ===
+
+// Content types enum for the registry
+export const contentTypeEnum = pgEnum("content_type", [
+  "trip",
+  "itinerary",
+  "service",
+  "review",
+  "chat_message",
+  "expert_profile",
+  "provider_profile",
+  "template",
+  "booking",
+  "vendor",
+  "experience",
+  "custom_venue",
+  "contract",
+  "media",
+  "other"
+]);
+
+// Content status enum
+export const contentStatusEnum = pgEnum("content_status", [
+  "draft",
+  "pending_review",
+  "published",
+  "flagged",
+  "under_review",
+  "suspended",
+  "archived",
+  "deleted"
+]);
+
+// Content Registry - Central tracking of all platform content
+export const contentRegistry = pgTable("content_registry", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).notNull().unique(), // TRV-YYYYMM-XXXXX format
+  contentType: contentTypeEnum("content_type").notNull(),
+  contentId: varchar("content_id").notNull(), // ID in the source table
+  ownerId: varchar("owner_id").references(() => users.id, { onDelete: "set null" }),
+  status: contentStatusEnum("status").default("published"),
+  title: text("title"), // Summary/title for quick reference
+  description: text("description"), // Brief description
+  metadata: jsonb("metadata").default({}), // Flexible metadata storage
+  viewCount: integer("view_count").default(0),
+  engagementScore: integer("engagement_score").default(0),
+  lastViewedAt: timestamp("last_viewed_at"),
+  publishedAt: timestamp("published_at"),
+  flaggedAt: timestamp("flagged_at"),
+  flagReason: text("flag_reason"),
+  flaggedBy: varchar("flagged_by").references(() => users.id, { onDelete: "set null" }),
+  moderatorId: varchar("moderator_id").references(() => users.id, { onDelete: "set null" }),
+  moderatorNotes: text("moderator_notes"),
+  moderatedAt: timestamp("moderated_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Content Invoices - Links content to billing/invoices
+export const contentInvoices = pgTable("content_invoices", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  invoiceNumber: varchar("invoice_number", { length: 20 }).notNull().unique(), // INV-YYYYMM-XXXXX format
+  trackingNumber: varchar("tracking_number").notNull().references(() => contentRegistry.trackingNumber, { onDelete: "cascade" }),
+  customerId: varchar("customer_id").references(() => users.id, { onDelete: "set null" }),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "set null" }),
+  invoiceType: varchar("invoice_type", { length: 30 }).notNull(), // booking, service, template_purchase, subscription, etc.
+  amount: integer("amount").notNull(), // Amount in cents
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  status: varchar("status", { length: 20 }).default("pending"), // pending, paid, cancelled, refunded
+  taxAmount: integer("tax_amount").default(0),
+  discountAmount: integer("discount_amount").default(0),
+  totalAmount: integer("total_amount").notNull(),
+  paymentMethod: varchar("payment_method", { length: 30 }),
+  paymentReference: varchar("payment_reference"),
+  notes: text("notes"),
+  dueDate: timestamp("due_date"),
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Content Version History - Track changes to content
+export const contentVersions = pgTable("content_versions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number").notNull().references(() => contentRegistry.trackingNumber, { onDelete: "cascade" }),
+  version: integer("version").notNull().default(1),
+  changeType: varchar("change_type", { length: 20 }).notNull(), // created, updated, status_change, moderation
+  changedBy: varchar("changed_by").references(() => users.id, { onDelete: "set null" }),
+  previousData: jsonb("previous_data"), // Snapshot of previous state
+  newData: jsonb("new_data"), // Snapshot of new state
+  changeReason: text("change_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Content Flags - Reports/flags on content
+export const contentFlags = pgTable("content_flags", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number").notNull().references(() => contentRegistry.trackingNumber, { onDelete: "cascade" }),
+  reporterId: varchar("reporter_id").references(() => users.id, { onDelete: "set null" }),
+  flagType: varchar("flag_type", { length: 30 }).notNull(), // inappropriate, spam, misleading, copyright, safety, other
+  severity: varchar("severity", { length: 10 }).default("medium"), // low, medium, high, critical
+  description: text("description"),
+  evidence: jsonb("evidence").default([]), // Screenshots, links, etc.
+  status: varchar("status", { length: 20 }).default("pending"), // pending, investigating, resolved, dismissed
+  resolution: text("resolution"),
+  resolvedBy: varchar("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Content Analytics - Aggregate performance metrics
+export const contentAnalytics = pgTable("content_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number").notNull().references(() => contentRegistry.trackingNumber, { onDelete: "cascade" }),
+  date: timestamp("date").notNull(), // Date for daily aggregation
+  views: integer("views").default(0),
+  uniqueViews: integer("unique_views").default(0),
+  clicks: integer("clicks").default(0),
+  shares: integer("shares").default(0),
+  bookmarks: integer("bookmarks").default(0),
+  conversions: integer("conversions").default(0), // E.g., bookings made
+  revenue: integer("revenue").default(0), // Revenue generated in cents
+  avgTimeSpent: integer("avg_time_spent").default(0), // Seconds
+  bounceRate: integer("bounce_rate").default(0), // Percentage * 100
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Tracking number sequences for generating unique IDs
+export const trackingSequences = pgTable("tracking_sequences", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  prefix: varchar("prefix", { length: 10 }).notNull().unique(), // TRV, INV, etc.
+  yearMonth: varchar("year_month", { length: 6 }).notNull(), // YYYYMM
+  lastNumber: integer("last_number").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Schema exports
+export const insertContentRegistrySchema = createInsertSchema(contentRegistry).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertContentInvoiceSchema = createInsertSchema(contentInvoices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertContentVersionSchema = createInsertSchema(contentVersions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertContentFlagSchema = createInsertSchema(contentFlags).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertContentAnalyticsSchema = createInsertSchema(contentAnalytics).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Type exports
+export type ContentRegistry = typeof contentRegistry.$inferSelect;
+export type InsertContentRegistry = z.infer<typeof insertContentRegistrySchema>;
+export type ContentInvoice = typeof contentInvoices.$inferSelect;
+export type InsertContentInvoice = z.infer<typeof insertContentInvoiceSchema>;
+export type ContentVersion = typeof contentVersions.$inferSelect;
+export type InsertContentVersion = z.infer<typeof insertContentVersionSchema>;
+export type ContentFlag = typeof contentFlags.$inferSelect;
+export type InsertContentFlag = z.infer<typeof insertContentFlagSchema>;
+export type ContentAnalytics = typeof contentAnalytics.$inferSelect;
+export type InsertContentAnalytics = z.infer<typeof insertContentAnalyticsSchema>;
+export type TrackingSequence = typeof trackingSequences.$inferSelect;

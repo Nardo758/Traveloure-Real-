@@ -14,6 +14,13 @@ import {
   experienceUniversalFilters, experienceUniversalFilterOptions,
   expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
   revenueSplits, expertTips, expertReferrals, affiliateEarnings, accessAuditLogs,
+  contentRegistry, contentInvoices, contentVersions, contentFlags, contentAnalytics, trackingSequences,
+  type ContentRegistry, type InsertContentRegistry,
+  type ContentInvoice, type InsertContentInvoice,
+  type ContentVersion, type InsertContentVersion,
+  type ContentFlag, type InsertContentFlag,
+  type ContentAnalytics, type InsertContentAnalytics,
+  type TrackingSequence,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -2163,6 +2170,337 @@ export class DatabaseStorage implements IStorage {
       pending: earnings.filter(e => e.status === 'pending').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
       confirmed: earnings.filter(e => e.status === 'confirmed').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
       paid: earnings.filter(e => e.status === 'paid').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
+    };
+  }
+
+  // === Content Tracking System ===
+
+  // Generate unique tracking number (TRV-YYYYMM-XXXXX format)
+  async generateTrackingNumber(prefix: string = 'TRV'): Promise<string> {
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Get or create sequence for this prefix/month
+    const [existing] = await db.select().from(trackingSequences)
+      .where(and(
+        eq(trackingSequences.prefix, prefix),
+        eq(trackingSequences.yearMonth, yearMonth)
+      ));
+
+    let nextNumber: number;
+    if (existing) {
+      nextNumber = (existing.lastNumber || 0) + 1;
+      await db.update(trackingSequences)
+        .set({ lastNumber: nextNumber, updatedAt: new Date() })
+        .where(eq(trackingSequences.id, existing.id));
+    } else {
+      nextNumber = 1;
+      await db.insert(trackingSequences).values({
+        prefix,
+        yearMonth,
+        lastNumber: nextNumber,
+      });
+    }
+
+    return `${prefix}-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
+  }
+
+  // Generate invoice number (INV-YYYYMM-XXXXX format)
+  async generateInvoiceNumber(): Promise<string> {
+    return this.generateTrackingNumber('INV');
+  }
+
+  // Register new content in the tracking system
+  async registerContent(data: InsertContentRegistry): Promise<ContentRegistry> {
+    const trackingNumber = data.trackingNumber || await this.generateTrackingNumber();
+    const [content] = await db.insert(contentRegistry).values({
+      ...data,
+      trackingNumber,
+      publishedAt: data.status === 'published' ? new Date() : undefined,
+    }).returning();
+
+    // Create initial version record
+    await this.createContentVersion({
+      trackingNumber: content.trackingNumber,
+      version: 1,
+      changeType: 'created',
+      changedBy: data.ownerId,
+      newData: { title: data.title, description: data.description, status: data.status },
+    });
+
+    return content;
+  }
+
+  // Get content by tracking number
+  async getContentByTrackingNumber(trackingNumber: string): Promise<ContentRegistry | null> {
+    const [content] = await db.select().from(contentRegistry)
+      .where(eq(contentRegistry.trackingNumber, trackingNumber));
+    return content || null;
+  }
+
+  // Get content by content ID and type
+  async getContentByContentId(contentId: string, contentType: string): Promise<ContentRegistry | null> {
+    const [content] = await db.select().from(contentRegistry)
+      .where(and(
+        eq(contentRegistry.contentId, contentId),
+        eq(contentRegistry.contentType, contentType as any)
+      ));
+    return content || null;
+  }
+
+  // Update content registry entry
+  async updateContentRegistry(trackingNumber: string, updates: Partial<InsertContentRegistry>, changedBy?: string): Promise<ContentRegistry | null> {
+    const existing = await this.getContentByTrackingNumber(trackingNumber);
+    if (!existing) return null;
+
+    const [updated] = await db.update(contentRegistry)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(contentRegistry.trackingNumber, trackingNumber))
+      .returning();
+
+    // Record version change
+    await this.createContentVersion({
+      trackingNumber,
+      changeType: 'updated',
+      changedBy,
+      previousData: { status: existing.status, title: existing.title },
+      newData: updates,
+    });
+
+    return updated;
+  }
+
+  // Flag content
+  async flagContent(trackingNumber: string, flaggedBy: string, reason: string): Promise<ContentRegistry | null> {
+    return this.updateContentRegistry(trackingNumber, {
+      status: 'flagged',
+      flaggedAt: new Date(),
+      flaggedBy,
+      flagReason: reason,
+    } as any, flaggedBy);
+  }
+
+  // Moderate content
+  async moderateContent(trackingNumber: string, moderatorId: string, action: 'approve' | 'suspend' | 'delete', notes?: string): Promise<ContentRegistry | null> {
+    const statusMap = {
+      approve: 'published',
+      suspend: 'suspended',
+      delete: 'deleted',
+    };
+
+    return this.updateContentRegistry(trackingNumber, {
+      status: statusMap[action] as any,
+      moderatorId,
+      moderatorNotes: notes,
+      moderatedAt: new Date(),
+      flaggedAt: null as any,
+      flagReason: null as any,
+      flaggedBy: null as any,
+    } as any, moderatorId);
+  }
+
+  // Get all content (with filters)
+  async getContentRegistry(filters?: {
+    status?: string;
+    contentType?: string;
+    ownerId?: string;
+    flagged?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<ContentRegistry[]> {
+    let query = db.select().from(contentRegistry);
+
+    const conditions = [];
+    if (filters?.status) {
+      conditions.push(eq(contentRegistry.status, filters.status as any));
+    }
+    if (filters?.contentType) {
+      conditions.push(eq(contentRegistry.contentType, filters.contentType as any));
+    }
+    if (filters?.ownerId) {
+      conditions.push(eq(contentRegistry.ownerId, filters.ownerId));
+    }
+    if (filters?.flagged) {
+      conditions.push(eq(contentRegistry.status, 'flagged'));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    const results = await query
+      .orderBy(desc(contentRegistry.createdAt))
+      .limit(filters?.limit || 50)
+      .offset(filters?.offset || 0);
+
+    return results;
+  }
+
+  // Get moderation queue (flagged content)
+  async getModerationQueue(): Promise<ContentRegistry[]> {
+    return this.getContentRegistry({ status: 'flagged' });
+  }
+
+  // Increment view count
+  async incrementContentView(trackingNumber: string): Promise<void> {
+    const content = await this.getContentByTrackingNumber(trackingNumber);
+    if (content) {
+      await db.update(contentRegistry)
+        .set({
+          viewCount: (content.viewCount || 0) + 1,
+          lastViewedAt: new Date(),
+        })
+        .where(eq(contentRegistry.trackingNumber, trackingNumber));
+    }
+  }
+
+  // === Content Invoices ===
+
+  async createContentInvoice(data: InsertContentInvoice): Promise<ContentInvoice> {
+    const invoiceNumber = data.invoiceNumber || await this.generateInvoiceNumber();
+    const [invoice] = await db.insert(contentInvoices).values({
+      ...data,
+      invoiceNumber,
+    }).returning();
+    return invoice;
+  }
+
+  async getContentInvoice(invoiceNumber: string): Promise<ContentInvoice | null> {
+    const [invoice] = await db.select().from(contentInvoices)
+      .where(eq(contentInvoices.invoiceNumber, invoiceNumber));
+    return invoice || null;
+  }
+
+  async getInvoicesByTrackingNumber(trackingNumber: string): Promise<ContentInvoice[]> {
+    return await db.select().from(contentInvoices)
+      .where(eq(contentInvoices.trackingNumber, trackingNumber))
+      .orderBy(desc(contentInvoices.createdAt));
+  }
+
+  async getInvoicesByCustomer(customerId: string): Promise<ContentInvoice[]> {
+    return await db.select().from(contentInvoices)
+      .where(eq(contentInvoices.customerId, customerId))
+      .orderBy(desc(contentInvoices.createdAt));
+  }
+
+  async updateInvoiceStatus(invoiceNumber: string, status: string, paymentReference?: string): Promise<ContentInvoice | null> {
+    const updates: any = { status, updatedAt: new Date() };
+    if (status === 'paid') {
+      updates.paidAt = new Date();
+    }
+    if (paymentReference) {
+      updates.paymentReference = paymentReference;
+    }
+
+    const [updated] = await db.update(contentInvoices)
+      .set(updates)
+      .where(eq(contentInvoices.invoiceNumber, invoiceNumber))
+      .returning();
+    return updated || null;
+  }
+
+  // === Content Versions ===
+
+  async createContentVersion(data: InsertContentVersion): Promise<ContentVersion> {
+    // Get the latest version number
+    const versions = await db.select().from(contentVersions)
+      .where(eq(contentVersions.trackingNumber, data.trackingNumber))
+      .orderBy(desc(contentVersions.version))
+      .limit(1);
+
+    const nextVersion = versions.length > 0 ? (versions[0].version || 0) + 1 : 1;
+
+    const [version] = await db.insert(contentVersions).values({
+      ...data,
+      version: nextVersion,
+    }).returning();
+    return version;
+  }
+
+  async getContentVersions(trackingNumber: string): Promise<ContentVersion[]> {
+    return await db.select().from(contentVersions)
+      .where(eq(contentVersions.trackingNumber, trackingNumber))
+      .orderBy(desc(contentVersions.version));
+  }
+
+  // === Content Flags ===
+
+  async createContentFlag(data: InsertContentFlag): Promise<ContentFlag> {
+    const [flag] = await db.insert(contentFlags).values(data).returning();
+
+    // Also update the content registry to mark as flagged
+    await this.flagContent(data.trackingNumber, data.reporterId || 'system', data.description || data.flagType);
+
+    return flag;
+  }
+
+  async getContentFlags(trackingNumber: string): Promise<ContentFlag[]> {
+    return await db.select().from(contentFlags)
+      .where(eq(contentFlags.trackingNumber, trackingNumber))
+      .orderBy(desc(contentFlags.createdAt));
+  }
+
+  async getPendingFlags(): Promise<ContentFlag[]> {
+    return await db.select().from(contentFlags)
+      .where(eq(contentFlags.status, 'pending'))
+      .orderBy(desc(contentFlags.createdAt));
+  }
+
+  async resolveFlag(flagId: string, resolvedBy: string, resolution: string): Promise<ContentFlag | null> {
+    const [updated] = await db.update(contentFlags)
+      .set({
+        status: 'resolved',
+        resolution,
+        resolvedBy,
+        resolvedAt: new Date(),
+      })
+      .where(eq(contentFlags.id, flagId))
+      .returning();
+    return updated || null;
+  }
+
+  // === Content Analytics ===
+
+  async recordContentAnalytics(data: InsertContentAnalytics): Promise<ContentAnalytics> {
+    const [analytics] = await db.insert(contentAnalytics).values(data).returning();
+    return analytics;
+  }
+
+  async getContentAnalytics(trackingNumber: string, startDate?: Date, endDate?: Date): Promise<ContentAnalytics[]> {
+    let query = db.select().from(contentAnalytics)
+      .where(eq(contentAnalytics.trackingNumber, trackingNumber));
+
+    return await query.orderBy(desc(contentAnalytics.date));
+  }
+
+  // Get content tracking summary for dashboard
+  async getContentTrackingSummary(): Promise<{
+    totalContent: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+    flaggedCount: number;
+    recentContent: ContentRegistry[];
+  }> {
+    const allContent = await db.select().from(contentRegistry);
+
+    const byStatus: Record<string, number> = {};
+    const byType: Record<string, number> = {};
+
+    allContent.forEach(c => {
+      byStatus[c.status || 'unknown'] = (byStatus[c.status || 'unknown'] || 0) + 1;
+      byType[c.contentType] = (byType[c.contentType] || 0) + 1;
+    });
+
+    const recentContent = await db.select().from(contentRegistry)
+      .orderBy(desc(contentRegistry.createdAt))
+      .limit(10);
+
+    return {
+      totalContent: allContent.length,
+      byStatus,
+      byType,
+      flaggedCount: byStatus['flagged'] || 0,
+      recentContent,
     };
   }
 }
