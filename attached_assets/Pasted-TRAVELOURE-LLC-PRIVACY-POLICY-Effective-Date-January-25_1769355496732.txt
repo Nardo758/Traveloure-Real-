@@ -1,0 +1,217 @@
+TRAVELOURE LLC
+PRIVACY POLICY
+Effective Date: January 25, 2026
+1. INTRODUCTION
+Traveloure LLC ("Traveloure," "we," "us," or "our") operates a three-party marketplace platform connecting travelers with authenticated Local Experts and Service Providers to facilitate personalized travel experiences and life events. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our platform, whether as a Traveler, Local Expert, or Service Provider.
+We are committed to protecting your privacy and complying with applicable data protection laws, including the General Data Protection Regulation (GDPR), California Consumer Privacy Act (CCPA), and other international privacy regulations.
+By accessing or using Traveloure, you acknowledge that you have read, understood, and agree to be bound by this Privacy Policy. If you do not agree with this Privacy Policy, please do not access or use our services.
+2. INFORMATION WE COLLECT
+2.1 Information You Provide Directly
+We collect information that you voluntarily provide when you:
+•	Create an account (name, email address, password, phone number, profile photo)
+•	Complete your user profile (travel preferences, interests, accessibility needs, dietary restrictions)
+•	Apply as a Local Expert (professional qualifications, certifications, work history, language skills, areas of expertise, government-issued identification for verification)
+•	Register as a Service Provider (business information, licensing, insurance documentation, service descriptions, pricing)
+•	Book services or experiences (trip details, dates, participant information, special requests)
+•	Communicate through our platform (messages, reviews, ratings, feedback)
+•	Contact customer support (correspondence, support tickets, complaints)
+•	Participate in surveys, promotions, or contests
+2.2 Payment Information
+Payment processing is handled through Stripe Connect. We do not directly store complete credit card numbers. We collect:
+•	Billing address and contact information
+•	Last four digits of credit/debit cards for display purposes
+•	Payment transaction history and records
+•	Platform credit balances and usage
+•	For Experts and Providers: bank account information, tax identification numbers, payout preferences (processed securely through Stripe Connect)
+2.3 Automatically Collected Information
+When you access our platform, we automatically collect:
+•	Device information (IP address, browser type, operating system, device identifiers)
+•	Usage data (pages viewed, features used, time spent, search queries, click patterns)
+•	Location information (approximate location based on IP address; precise location if you grant permission)
+•	Cookies and similar tracking technologies (see Section 11)
+•	Log files (access times, error logs, performance data)
+2.4 Information from Third Parties
+We may receive information about you from third-party sources:
+•	Background verification services (for Expert and Provider vetting)
+•	Social media platforms (if you connect your account or use social login)
+•	Travel inventory partners (Viator, GetYourGuide, Klook, Fever, Musement, 12Go)
+•	Payment processors and financial institutions
+•	Analytics and marketing service providers
+•	Publicly available sources for identity verification
+3. HOW WE USE YOUR INFORMATION
+We use the collected information for the following purposes:
+3.1 Platform Operations
+•	Create and manage your account
+•	Facilitate connections between Travelers, Experts, and Service Providers
+•	Process bookings, reservations, and transactions
+•	Enable communication between users through our platform
+•	Display relevant content, recommendations, and search results
+•	Manage platform credits and process payments
+3.2 Safety and Trust
+•	Verify identity and credentials of Experts and Service Providers
+•	Conduct background checks and screening processes
+•	Monitor and prevent fraud, abuse, and security incidents
+•	Enforce our Terms of Service and policies
+•	Investigate and resolve disputes and complaints
+•	Comply with legal obligations and regulatory requirements
+3.3 Customer Service and Support
+•	Respond to your inquiries and support requests
+•	Provide customer service and technical assistance
+•	Send service-related notifications and updates
+•	Gather feedback to improve our services
+3.4 Platform Improvement and Personalization
+•	Analyze usage patterns and trends
+•	Conduct research, testing, and development
+•	Personalize your experience and provide tailored recommendations
+•	Develop new features and services
+•	Optimize platform performance and user experience
+3.5 Marketing and Communications
+•	Send promotional materials, newsletters, and special offers (with your consent)
+•	Conduct marketing campaigns and analytics
+•	Measure advertising effectiveness
+•	Manage loyalty and referral programs
+4. INFORMATION SHARING AND DISCLOSURE
+We share your information in the following circumstances:
+4.1 Within the Platform Ecosystem
+•	Travelers, Experts, and Service Providers: Information necessary to facilitate bookings and services (names, contact information, trip details, special requirements)
+•	Public profiles: Information you choose to make public (profile photos, bios, reviews, ratings, areas of expertise)
+•	Reviews and ratings: Public feedback about experiences, experts, and service providers
+4.2 Service Providers and Business Partners
+We share information with third-party service providers who perform services on our behalf:
+•	Payment processors (Stripe Connect for transaction processing and payouts)
+•	Background verification services (for Expert and Provider screening)
+•	Cloud hosting and data storage providers
+•	Email and communication service providers
+•	Analytics and marketing platforms
+•	Customer support tools and ticketing systems
+•	Travel inventory partners (Viator, GetYourGuide, Klook, Fever, Musement, 12Go)
+4.3 Legal Obligations and Protection
+We may disclose your information when required by law or to protect our rights:
+•	Comply with legal process, court orders, or governmental requests
+•	Enforce our Terms of Service and other agreements
+•	Protect the safety, rights, or property of Traveloure, our users, or the public
+•	Detect, prevent, or address fraud, security, or technical issues
+•	Respond to claims that content violates third-party rights
+•	Comply with Anti-Money Laundering (AML) and Know Your Customer (KYC) regulations
+4.4 Business Transfers
+In the event of a merger, acquisition, reorganization, bankruptcy, or sale of assets, your information may be transferred as part of that transaction. We will notify you of any such change and any choices you may have regarding your information.
+4.5 With Your Consent
+We may share your information for other purposes with your explicit consent or at your direction.
+5. INTERNATIONAL DATA TRANSFERS
+Traveloure operates across eight strategic global markets: Mumbai, Bogotá, Goa, Kyoto, Edinburgh, Cartagena, Jaipur, and Porto. Your information may be transferred to, stored, and processed in the United States and other countries where our service providers operate.
+When we transfer personal data from the European Economic Area (EEA), United Kingdom, or Switzerland to other countries, we implement appropriate safeguards:
+•	Standard Contractual Clauses approved by the European Commission
+•	Adequacy decisions by the European Commission
+•	Binding Corporate Rules for transfers within our corporate group
+•	Data Processing Agreements with third-party service providers
+For data transfers from other jurisdictions, we comply with applicable local data protection laws and implement appropriate security measures.
+ 
+6. DATA RETENTION
+We retain your personal information for as long as necessary to fulfill the purposes outlined in this Privacy Policy, unless a longer retention period is required or permitted by law. Specific retention periods include:
+•	Account information: Retained for the duration of your active account plus 7 years after account closure (for legal, tax, and audit purposes)
+•	Transaction records: 7 years from transaction date (for financial reporting and regulatory compliance)
+•	Verification documents: 7 years from verification date or account closure
+•	Communication records: 3 years from last interaction (for customer service quality and dispute resolution)
+•	Marketing communications: Until you opt-out or withdraw consent
+•	Usage logs and analytics: 2 years from collection
+After the retention period expires, we securely delete or anonymize your personal information. Some information may be retained in backup systems for up to 90 days after the retention period.
+7. DATA SECURITY
+We implement comprehensive security measures to protect your information:
+•	Encryption: Data encrypted in transit (TLS 1.2+) and at rest (AES-256)
+•	Secure payment processing: PCI DSS compliance through Stripe Connect
+•	Access controls: Role-based access with multi-factor authentication for employees
+•	Network security: Firewalls, intrusion detection, and regular security audits
+•	Data segregation: Customer funds held in FDIC-insured segregated accounts
+•	Incident response: Established protocols for security breach detection and response
+•	Regular testing: Penetration testing and vulnerability assessments
+•	Employee training: Regular security awareness training for staff
+While we strive to protect your information, no security system is impenetrable. We cannot guarantee absolute security. If you become aware of any security vulnerability or breach, please contact us immediately at security@traveloure.com.
+8. YOUR RIGHTS AND CHOICES
+Depending on your location and applicable law, you may have the following rights regarding your personal information:
+8.1 GDPR Rights (EEA, UK, Switzerland)
+•	Right of access: Request a copy of your personal data
+•	Right to rectification: Correct inaccurate or incomplete data
+•	Right to erasure (right to be forgotten): Request deletion of your data
+•	Right to restriction of processing: Limit how we use your data
+•	Right to data portability: Receive your data in a structured, machine-readable format
+•	Right to object: Object to processing based on legitimate interests or for direct marketing
+•	Right to withdraw consent: Withdraw consent for processing at any time
+•	Right to lodge a complaint: File a complaint with your local data protection authority
+8.2 CCPA Rights (California Residents)
+•	Right to know: Request disclosure of categories and specific pieces of personal information collected
+•	Right to delete: Request deletion of personal information
+•	Right to opt-out: Opt-out of sale of personal information (Note: We do not sell personal information)
+•	Right to non-discrimination: Equal service and pricing regardless of privacy choices
+8.3 General Rights (All Users)
+•	Account management: Update your profile and preferences through account settings
+•	Communication preferences: Unsubscribe from marketing emails via links in messages or account settings
+•	Cookie controls: Manage cookie preferences through browser settings or our cookie consent tool
+•	Location services: Disable location tracking through device settings
+•	Account closure: Request account deletion (subject to legal retention requirements)
+8.4 Exercising Your Rights
+To exercise any of these rights, please:
+•	Email us at privacy@traveloure.com
+•	Submit a request through your account settings
+•	Contact our Data Protection Officer (contact details in Section 14)
+We will respond to verified requests within 30 days (or as required by applicable law). We may need to verify your identity before processing your request.
+9. THIRD-PARTY SERVICES AND LINKS
+Our platform integrates with and may contain links to third-party services, including:
+•	Travel inventory providers (Viator, GetYourGuide, Klook, Fever, Musement, 12Go)
+•	Payment processors (Stripe)
+•	Social media platforms
+•	Analytics and advertising services
+•	Mapping and location services
+•	Customer support tools
+These third-party services have their own privacy policies. We are not responsible for their practices. We encourage you to review their privacy policies before providing information to them.
+When you use integrated third-party services through our platform, information may be shared with them according to their privacy policies and applicable data sharing agreements.
+10. CHILDREN'S PRIVACY
+Traveloure is not directed to individuals under the age of 18. We do not knowingly collect personal information from children under 18. If you are under 18, please do not use our services or provide any personal information.
+If we become aware that we have collected personal information from a child under 18 without parental consent, we will take steps to delete that information. If you believe we have collected information from a child under 18, please contact us immediately at privacy@traveloure.com.
+Parents or guardians may create bookings on behalf of minor travelers, but the account holder must be 18 or older.
+11. COOKIES AND TRACKING TECHNOLOGIES
+We use cookies and similar tracking technologies to enhance your experience and gather information about visitors and visits to our platform.
+11.1 Types of Cookies We Use
+•	Essential cookies: Required for platform functionality (authentication, security, preferences)
+•	Performance cookies: Collect information about how you use our platform (analytics, error tracking)
+•	Functional cookies: Remember your preferences and personalization settings
+•	Marketing cookies: Track your activity across websites for advertising purposes
+11.2 Third-Party Tracking
+We use third-party analytics and advertising services that may collect information through cookies and similar technologies:
+•	Google Analytics: Website usage analytics
+•	Facebook Pixel: Advertising and conversion tracking
+•	Marketing automation platforms: Email campaign tracking
+11.3 Managing Cookies
+You can control cookies through:
+•	Our cookie consent tool (available on first visit and in settings)
+•	Browser settings (most browsers allow you to refuse or delete cookies)
+•	Opt-out tools provided by advertising networks
+Note: Disabling essential cookies may affect platform functionality. Performance, functional, and marketing cookies are optional.
+ 
+12. DO NOT TRACK SIGNALS
+Some browsers offer a "Do Not Track" (DNT) signal. Because there is no common understanding of how to interpret DNT signals, our platform does not currently respond to DNT browser signals. We continue to monitor developments and may implement DNT signal recognition in the future.
+13. CHANGES TO THIS PRIVACY POLICY
+We may update this Privacy Policy from time to time to reflect changes in our practices, technology, legal requirements, or other factors. When we make material changes, we will:
+•	Post the updated Privacy Policy on our platform
+•	Update the "Effective Date" at the top of this document
+•	Notify you via email or prominent notice on our platform
+•	For material changes affecting your rights, obtain your consent where required by law
+Your continued use of Traveloure after changes become effective constitutes acceptance of the updated Privacy Policy. We encourage you to review this Privacy Policy periodically.
+14. CONTACT INFORMATION
+If you have questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:
+Traveloure LLC
+Data Protection Officer
+Email: privacy@traveloure.com
+Website: www.traveloure.com/privacy
+Mailing Address:
+Traveloure LLC
+Attn: Privacy Officer
+[Street Address]
+Greenacres City, FL [ZIP Code]
+United States
+For GDPR-related inquiries, you may also contact:
+EU Representative: [To be designated]
+UK Representative: [To be designated]
+We will respond to all legitimate requests within 30 days or as required by applicable law.
+***
+This Privacy Policy was last updated on January 25, 2026.
+Thank you for trusting Traveloure with your personal information.
