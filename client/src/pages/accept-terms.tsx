@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,39 +15,10 @@ export default function AcceptTermsPage() {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
 
-  // Check if user is authenticated
   const { data: user, isLoading: isLoadingUser } = useQuery<any>({
     queryKey: ["/api/auth/user"],
     retry: false,
   });
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!isLoadingUser && !user) {
-      window.location.href = "/api/login";
-    }
-  }, [isLoadingUser, user]);
-
-  // Redirect to home if user has already accepted terms
-  useEffect(() => {
-    if (user?.termsAcceptedAt && user?.privacyAcceptedAt) {
-      setLocation("/");
-    }
-  }, [user, setLocation]);
-
-  // Show loading while checking auth
-  if (isLoadingUser) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  // Don't render if not authenticated (will redirect)
-  if (!user) {
-    return null;
-  }
 
   const acceptMutation = useMutation({
     mutationFn: async () => {
@@ -73,6 +44,18 @@ export default function AcceptTermsPage() {
     },
   });
 
+  useEffect(() => {
+    if (!isLoadingUser && !user) {
+      window.location.href = "/api/login";
+    }
+  }, [isLoadingUser, user]);
+
+  useEffect(() => {
+    if (user?.termsAcceptedAt && user?.privacyAcceptedAt) {
+      setLocation("/");
+    }
+  }, [user, setLocation]);
+
   const canSubmit = acceptTerms && acceptPrivacy;
 
   const handleAccept = () => {
@@ -80,6 +63,22 @@ export default function AcceptTermsPage() {
       acceptMutation.mutate();
     }
   };
+
+  if (isLoadingUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
