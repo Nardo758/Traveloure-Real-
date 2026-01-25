@@ -353,6 +353,50 @@ export default function TravelExpertsPage() {
                 <CardTitle className="text-2xl text-[#111827]">Basic Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Quick Social Sign-In */}
+                <div className="bg-gradient-to-r from-[#1877F2]/5 via-[#E1306C]/5 to-[#833AB4]/5 rounded-lg p-5 border border-[#E5E7EB]">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="w-5 h-5 text-primary" />
+                    <p className="font-semibold text-foreground">
+                      Quick Sign-In with Social Media
+                    </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Sign in with your social account to auto-fill your information and verify your profile faster.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="bg-[#1877F2] hover:bg-[#166FE5] text-white border-none"
+                      onClick={() => window.location.href = '/api/auth/facebook'}
+                      data-testid="button-facebook-login-top"
+                    >
+                      <SiFacebook className="w-4 h-4 mr-2" />
+                      Continue with Facebook
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 text-white border-none"
+                      onClick={() => window.location.href = '/api/auth/facebook'}
+                      data-testid="button-instagram-login-top"
+                    >
+                      <SiInstagram className="w-4 h-4 mr-2" />
+                      Continue with Instagram
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or fill in manually</span>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-[#374151]">First Name</Label>
@@ -435,38 +479,8 @@ export default function TravelExpertsPage() {
 
                   {formData.isInfluencer && (
                     <div className="space-y-4 pl-6 border-l-2 border-primary/20">
-                      <div className="bg-gradient-to-r from-[#833AB4]/10 via-[#E1306C]/10 to-[#F77737]/10 rounded-lg p-4 mb-4">
-                        <p className="text-sm font-medium text-foreground mb-3">
-                          Quick Sign-In with Social Media
-                        </p>
-                        <div className="flex flex-wrap gap-3">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="bg-[#1877F2] hover:bg-[#166FE5] text-white border-none"
-                            onClick={() => window.location.href = '/api/auth/facebook'}
-                            data-testid="button-facebook-login"
-                          >
-                            <SiFacebook className="w-4 h-4 mr-2" />
-                            Continue with Facebook
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 text-white border-none"
-                            onClick={() => window.location.href = '/api/auth/facebook'}
-                            data-testid="button-instagram-login"
-                          >
-                            <SiInstagram className="w-4 h-4 mr-2" />
-                            Continue with Instagram
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Sign in with your creator account to auto-verify your profile
-                        </p>
-                      </div>
                       <p className="text-sm text-muted-foreground mb-4">
-                        Or manually share your social media profiles. We'll verify your creator status and enable referral tracking.
+                        Share your social media profiles. We'll verify your creator status and enable referral tracking.
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
