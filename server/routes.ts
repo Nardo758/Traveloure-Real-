@@ -38,6 +38,7 @@ import { itineraryIntelligenceService } from "./services/itinerary-intelligence.
 import { emergencyService } from "./services/emergency.service";
 import { experienceCatalogService } from "./services/experience-catalog.service";
 import { opportunityEngineService } from "./services/opportunity-engine.service";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName } from "./utils/data-sanitizer";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import { 
   insertTripParticipantSchema, 
@@ -2724,24 +2725,51 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // === Service Bookings Routes ===
   
   // Get bookings for provider (their services)
+  // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
   app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
+    const userRole = (req.user as any).claims.role || 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
-    res.json(bookings);
+    
+    // Enrich with traveler info (sanitized for privacy)
+    const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
+      const traveler = await storage.getUser(booking.travelerId);
+      const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
+      return {
+        ...sanitizeBookingForExpert(booking, userRole, userId),
+        traveler: sanitizedTraveler ? {
+          ...sanitizedTraveler,
+          displayName: getDisplayName(traveler.firstName, traveler.lastName)
+        } : null
+      };
+    }));
+    
+    res.json(enrichedBookings);
   });
 
   // Get bookings for traveler (services they booked)
   // Provider bookings (for calendar)
+  // NOTE: User data is sanitized - providers cannot see full traveler info
   app.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
+    const userRole = (req.user as any).claims.role || 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
-    // Enrich with service details
+    // Enrich with service details and sanitized traveler info
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
       const service = await storage.getProviderServiceById(booking.serviceId);
-      return { ...booking, service };
+      const traveler = await storage.getUser(booking.travelerId);
+      const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
+      return {
+        ...sanitizeBookingForExpert(booking, userRole, userId),
+        service,
+        traveler: sanitizedTraveler ? {
+          ...sanitizedTraveler,
+          displayName: getDisplayName(traveler.firstName, traveler.lastName)
+        } : null
+      };
     }));
     
     res.json(enrichedBookings);
@@ -2762,8 +2790,10 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // Get single booking
+  // NOTE: If requester is provider, traveler info is sanitized
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
+    const userRole = (req.user as any).claims.role || 'user';
     const booking = await storage.getServiceBooking(req.params.id);
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
@@ -2772,7 +2802,57 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     if (booking.travelerId !== userId && booking.providerId !== userId) {
       return res.status(403).json({ message: "Not authorized to view this booking" });
     }
-    res.json(booking);
+    
+    // If the user is the traveler, they see full booking
+    // If the user is the provider, sanitize the traveler info
+    if (booking.travelerId === userId) {
+      res.json(booking);
+    } else {
+      // Provider viewing - sanitize traveler info
+      const traveler = await storage.getUser(booking.travelerId);
+      const sanitizedBooking = sanitizeBookingForExpert(booking, userRole, userId);
+      res.json({
+        ...sanitizedBooking,
+        traveler: traveler ? {
+          ...sanitizeUserForRole(traveler, userRole, false),
+          displayName: getDisplayName(traveler.firstName, traveler.lastName)
+        } : null
+      });
+    }
+  });
+
+  // Get client profile (for experts/providers) - sanitized view
+  // Experts can only see limited client information for their bookings
+  app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const userRole = (req.user as any).claims.role || 'user';
+    const { clientId } = req.params;
+    
+    // Check if requester has a legitimate relationship with this client
+    // (i.e., they have bookings with this client)
+    const bookings = await storage.getServiceBookings({ providerId: userId });
+    const hasRelationship = bookings.some(b => b.travelerId === clientId);
+    
+    // Admins can see any client
+    const isAdmin = canSeeFullUserData(userRole);
+    
+    if (!hasRelationship && !isAdmin) {
+      return res.status(403).json({ message: "Not authorized to view this client" });
+    }
+    
+    const client = await storage.getUser(clientId);
+    if (!client) {
+      return res.status(404).json({ message: "Client not found" });
+    }
+    
+    // Return sanitized profile based on role
+    const sanitizedClient = sanitizeUserForRole(client, userRole, false);
+    res.json({
+      ...sanitizedClient,
+      displayName: getDisplayName(client.firstName, client.lastName),
+      // Include booking stats for this relationship
+      bookingCount: bookings.filter(b => b.travelerId === clientId).length
+    });
   });
 
   // Create a booking
