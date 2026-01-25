@@ -236,48 +236,34 @@ export default function LandingPage() {
               </Card>
             </motion.div>
 
-            {/* Plan with Expert Card */}
+            {/* Plan with Expert Card - Compact */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5, delay: 0.3 }}
+              className="self-start"
             >
-              <Card className="bg-white/10 backdrop-blur-md border-white/20 h-full">
-                <CardContent className="p-6 flex flex-col h-full">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
-                      <UserCheck className="w-5 h-5 text-white" />
+              <Card className="bg-white/10 backdrop-blur-md border-white/20">
+                <CardContent className="p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center">
+                      <UserCheck className="w-4 h-4 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Plan with an Expert</h3>
-                      <p className="text-sm text-white/70">Get personalized guidance</p>
+                      <h3 className="text-lg font-bold text-white">Plan with an Expert</h3>
+                      <p className="text-xs text-white/70">Get personalized guidance</p>
                     </div>
                   </div>
                   
-                  <div className="flex-1">
-                    <p className="text-sm text-white/80 mb-4">
-                      Connect with local travel and event experts who know their destinations inside out. They provide:
-                    </p>
-                    
-                    <ul className="space-y-2 mb-6">
-                      <li className="flex items-center gap-2 text-sm text-white/80">
-                        <Sparkles className="w-4 h-4 text-emerald-400" />
-                        Authentic local recommendations
-                      </li>
-                      <li className="flex items-center gap-2 text-sm text-white/80">
-                        <Star className="w-4 h-4 text-emerald-400" />
-                        Personalized planning support
-                      </li>
-                      <li className="flex items-center gap-2 text-sm text-white/80">
-                        <Globe className="w-4 h-4 text-emerald-400" />
-                        Real-time assistance during your experience
-                      </li>
-                    </ul>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mb-4 text-xs text-white/80">
+                    <span className="flex items-center gap-1"><Sparkles className="w-3 h-3 text-emerald-400" /> Local tips</span>
+                    <span className="flex items-center gap-1"><Star className="w-3 h-3 text-emerald-400" /> Personal support</span>
+                    <span className="flex items-center gap-1"><Globe className="w-3 h-3 text-emerald-400" /> Real-time help</span>
                   </div>
                   
                   <Link href="/experts">
                     <Button 
-                      size="lg"
+                      size="default"
                       className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
                       data-testid="button-find-expert"
                     >
