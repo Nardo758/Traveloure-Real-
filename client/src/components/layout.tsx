@@ -118,6 +118,7 @@ const navItems = [
           { name: "Event Planner", href: "/become-expert", icon: Calendar, description: "Plan weddings & celebrations" },
           { name: "Executive Assistant", href: "/become-expert", icon: Briefcase, description: "Manage high-end clients" },
           { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
+          { name: "Influencer Program", href: "/become-expert?influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
         ],
       },
       {
@@ -308,8 +309,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
             {/* User Actions */}
             <div className="hidden md:flex items-center gap-2">
-              <NotificationBell />
-              <UserMenu />
+              {!user && (
+                <>
+                  <Link href="/become-expert">
+                    <Button variant="outline" size="sm" data-testid="button-become-expert">
+                      Become an Expert
+                    </Button>
+                  </Link>
+                  <a href="/api/login">
+                    <Button size="sm" data-testid="button-sign-in">
+                      Sign In
+                    </Button>
+                  </a>
+                </>
+              )}
+              {user && (
+                <>
+                  <NotificationBell />
+                  <UserMenu />
+                </>
+              )}
             </div>
 
             {/* Mobile menu button */}
@@ -403,9 +422,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Button>
                   </div>
                 ) : (
-                  <a href="/api/login" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Button className="w-full" data-testid="button-mobile-sign-in">Sign In</Button>
-                  </a>
+                  <div className="flex flex-col gap-3">
+                    <Link href="/become-expert" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full" data-testid="button-mobile-become-expert">
+                        Become an Expert
+                      </Button>
+                    </Link>
+                    <a href="/api/login" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button className="w-full" data-testid="button-mobile-sign-in">Sign In</Button>
+                    </a>
+                  </div>
                 )}
               </div>
             </motion.div>
