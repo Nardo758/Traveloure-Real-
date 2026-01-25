@@ -293,10 +293,33 @@ export async function registerRoutes(
   });
 
   // Chats Routes
+  // NOTE: User data is sanitized - chat participants only see limited info about each other
   app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
+    const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
-    res.json(chats);
+    
+    // Enrich chats with sanitized participant info
+    const enrichedChats = await Promise.all(chats.map(async (chat) => {
+      // Get the other participant's info (sanitized)
+      const otherUserId = chat.senderId === userId ? chat.receiverId : chat.senderId;
+      if (otherUserId) {
+        const otherUser = await storage.getUser(otherUserId);
+        if (otherUser) {
+          const sanitizedUser = sanitizeUserForRole(otherUser, userRole, false);
+          return {
+            ...chat,
+            participant: {
+              ...sanitizedUser,
+              displayName: getDisplayName(otherUser.firstName, otherUser.lastName)
+            }
+          };
+        }
+      }
+      return chat;
+    }));
+    
+    res.json(enrichedChats);
   });
 
   app.post(api.chats.create.path, isAuthenticated, async (req, res) => {
