@@ -7,6 +7,7 @@ import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 
 import LandingPage from "@/pages/landing";
+import LandingMockups from "@/pages/landing-mockups";
 import Dashboard from "@/pages/dashboard";
 import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
@@ -125,6 +126,9 @@ function Router() {
       {/* Public Routes with Layout */}
       <Route path="/">
         <Layout><LandingPage /></Layout>
+      </Route>
+      <Route path="/landing-mockups">
+        <LandingMockups />
       </Route>
       <Route path="/how-it-works">
         <Layout><HowItWorks /></Layout>
