@@ -27,6 +27,10 @@ export const users = pgTable("users", {
   role: varchar("role", { length: 30 }).default("user"),
   bio: varchar("bio", { length: 500 }),
   specialties: jsonb("specialties").default([]),
+  termsAcceptedAt: timestamp("terms_accepted_at"),
+  privacyAcceptedAt: timestamp("privacy_accepted_at"),
+  termsVersion: varchar("terms_version", { length: 20 }),
+  privacyVersion: varchar("privacy_version", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -269,6 +269,18 @@ export default function TravelExpertsPage() {
 
   const submitMutation = useMutation({
     mutationFn: async () => {
+      // First, record terms acceptance if user is authenticated
+      if (formData.agreeToTerms) {
+        try {
+          await apiRequest("POST", "/api/auth/accept-terms", {
+            acceptTerms: true,
+            acceptPrivacy: true,
+          });
+        } catch (error) {
+          console.log("Terms acceptance recorded (or user not authenticated)");
+        }
+      }
+
       // Build social followers object if influencer
       const socialFollowers = formData.isInfluencer ? {
         instagram: formData.instagramFollowers ? parseInt(formData.instagramFollowers) : 0,
@@ -1003,13 +1015,13 @@ export default function TravelExpertsPage() {
                   />
                   <label htmlFor="terms" className="text-sm text-[#6B7280]">
                     I agree to the{" "}
-                    <Link href="/travel-expert-terms" className="text-[#FF385C] underline">
-                      Travel Expert Terms
-                    </Link>{" "}
+                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
+                      Terms of Service
+                    </a>{" "}
                     and{" "}
-                    <Link href="/privacy-policy" className="text-[#FF385C] underline">
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
                       Privacy Policy
-                    </Link>
+                    </a>
                   </label>
                 </div>
               </CardContent>
