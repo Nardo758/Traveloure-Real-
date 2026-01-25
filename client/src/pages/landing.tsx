@@ -14,10 +14,6 @@ import {
   Sparkles,
   Star,
   Globe,
-  Facebook,
-  Instagram,
-  Twitter,
-  Linkedin,
   Users,
   CalendarHeart,
   Mountain,
@@ -144,12 +140,6 @@ const testimonials = [
     rating: 4
   },
 ];
-
-const footerLinks = {
-  product: ["Features", "How It Works", "Pricing", "AI Tools"],
-  company: ["About", "Careers", "Press", "Blog"],
-  support: ["Help Center", "Contact Us", "FAQ", "Terms", "Privacy"],
-};
 
 export default function LandingPage() {
   return (
@@ -447,80 +437,6 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="py-12 lg:py-16 bg-white border-t border-[#E5E7EB]">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-12">
-            {/* Logo Column */}
-            <div className="col-span-2 md:col-span-1">
-              <Link href="/" data-testid="link-home">
-                <span className="text-xl font-bold text-[#111827]">Traveloure</span>
-              </Link>
-              <p className="text-sm text-[#6B7280] mt-3">
-                Plan your perfect life experiences with AI and local experts.
-              </p>
-            </div>
-
-            {/* Product */}
-            <div>
-              <h4 className="font-semibold text-[#111827] mb-4">PRODUCT</h4>
-              <ul className="space-y-2">
-                {footerLinks.product.map((link) => (
-                  <li key={link}>
-                    <a href="#" className="text-sm text-[#6B7280] hover:text-[#FF385C]" data-testid={`link-product-${link.toLowerCase().replace(/\s+/g, '-')}`}>{link}</a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Company */}
-            <div>
-              <h4 className="font-semibold text-[#111827] mb-4">COMPANY</h4>
-              <ul className="space-y-2">
-                {footerLinks.company.map((link) => (
-                  <li key={link}>
-                    <a href="#" className="text-sm text-[#6B7280] hover:text-[#FF385C]" data-testid={`link-company-${link.toLowerCase().replace(/\s+/g, '-')}`}>{link}</a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Support */}
-            <div>
-              <h4 className="font-semibold text-[#111827] mb-4">SUPPORT</h4>
-              <ul className="space-y-2">
-                {footerLinks.support.map((link) => (
-                  <li key={link}>
-                    <a href="#" className="text-sm text-[#6B7280] hover:text-[#FF385C]" data-testid={`link-support-${link.toLowerCase().replace(/\s+/g, '-')}`}>{link}</a>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Bottom row */}
-          <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-[#E5E7EB]">
-            <p className="text-sm text-[#6B7280] mb-4 md:mb-0">
-              © 2024 Traveloure LLC. All rights reserved.
-            </p>
-            <div className="flex gap-4">
-              <a href="#" className="text-[#6B7280] hover:text-[#FF385C]" data-testid="link-facebook">
-                <Facebook className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-[#6B7280] hover:text-[#FF385C]" data-testid="link-instagram">
-                <Instagram className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-[#6B7280] hover:text-[#FF385C]" data-testid="link-twitter">
-                <Twitter className="w-5 h-5" />
-              </a>
-              <a href="#" className="text-[#6B7280] hover:text-[#FF385C]" data-testid="link-linkedin">
-                <Linkedin className="w-5 h-5" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
