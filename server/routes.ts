@@ -1738,6 +1738,263 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Expert Templates (Income Streams) ===
+  
+  // Get all published templates (public)
+  app.get("/api/expert-templates", async (req, res) => {
+    try {
+      const { category, destination, expertId } = req.query;
+      const templates = await storage.getExpertTemplates({
+        isPublished: true,
+        category: category as string | undefined,
+        destination: destination as string | undefined,
+        expertId: expertId as string | undefined,
+      });
+      res.json(templates);
+    } catch (err) {
+      console.error("Error fetching templates:", err);
+      res.status(500).json({ message: "Failed to fetch templates" });
+    }
+  });
+
+  // Get single template (public - also tracks views)
+  app.get("/api/expert-templates/:id", async (req, res) => {
+    try {
+      const template = await storage.getExpertTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      // Increment view count
+      await storage.incrementTemplateView(req.params.id);
+      res.json(template);
+    } catch (err) {
+      console.error("Error fetching template:", err);
+      res.status(500).json({ message: "Failed to fetch template" });
+    }
+  });
+
+  // Get expert's own templates (authenticated)
+  app.get("/api/expert/templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const templates = await storage.getExpertTemplates({ expertId: userId });
+      res.json(templates);
+    } catch (err) {
+      console.error("Error fetching expert templates:", err);
+      res.status(500).json({ message: "Failed to fetch templates" });
+    }
+  });
+
+  // Create new template (authenticated)
+  app.post("/api/expert/templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const template = await storage.createExpertTemplate({
+        ...req.body,
+        expertId: userId,
+      });
+      res.json(template);
+    } catch (err) {
+      console.error("Error creating template:", err);
+      res.status(500).json({ message: "Failed to create template" });
+    }
+  });
+
+  // Update template (authenticated - owner only)
+  app.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const template = await storage.getExpertTemplate(req.params.id);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      if (template.expertId !== userId) {
+        return res.status(403).json({ message: "Not authorized to update this template" });
+      }
+
+      const updated = await storage.updateExpertTemplate(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating template:", err);
+      res.status(500).json({ message: "Failed to update template" });
+    }
+  });
+
+  // Delete template (authenticated - owner only)
+  app.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const template = await storage.getExpertTemplate(req.params.id);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      if (template.expertId !== userId) {
+        return res.status(403).json({ message: "Not authorized to delete this template" });
+      }
+
+      await storage.deleteExpertTemplate(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error deleting template:", err);
+      res.status(500).json({ message: "Failed to delete template" });
+    }
+  });
+
+  // Purchase template (authenticated)
+  app.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const template = await storage.getExpertTemplate(req.params.id);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      if (!template.isPublished) {
+        return res.status(400).json({ message: "Template is not available for purchase" });
+      }
+      if (template.expertId === userId) {
+        return res.status(400).json({ message: "You cannot purchase your own template" });
+      }
+
+      // Check if already purchased
+      const alreadyPurchased = await storage.hasUserPurchasedTemplate(userId, req.params.id);
+      if (alreadyPurchased) {
+        return res.status(400).json({ message: "You have already purchased this template" });
+      }
+
+      // Calculate fees (platform takes 20%)
+      const price = parseFloat(template.price as string);
+      const platformFee = price * 0.20;
+      const expertEarnings = price - platformFee;
+
+      // Create purchase record
+      const purchase = await storage.createTemplatePurchase({
+        templateId: req.params.id,
+        buyerId: userId,
+        expertId: template.expertId,
+        price: template.price,
+        currency: template.currency || 'USD',
+        platformFee: platformFee.toFixed(2),
+        expertEarnings: expertEarnings.toFixed(2),
+        status: 'completed',
+      });
+
+      // Record expert earning
+      await storage.createExpertEarning({
+        expertId: template.expertId,
+        type: 'template_sale',
+        amount: expertEarnings.toFixed(2),
+        currency: template.currency || 'USD',
+        referenceId: purchase.id,
+        referenceType: 'template_purchase',
+        description: `Sale of template: ${template.title}`,
+        status: 'available',
+        availableAt: new Date(),
+      });
+
+      res.json({ purchase, template });
+    } catch (err) {
+      console.error("Error purchasing template:", err);
+      res.status(500).json({ message: "Failed to purchase template" });
+    }
+  });
+
+  // Get user's purchased templates
+  app.get("/api/my-purchased-templates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const purchases = await storage.getTemplatePurchases({ buyerId: userId });
+      
+      // Get full template data for each purchase
+      const templatesWithPurchases = await Promise.all(
+        purchases.map(async (purchase) => {
+          const template = await storage.getExpertTemplate(purchase.templateId);
+          return { ...purchase, template };
+        })
+      );
+      
+      res.json(templatesWithPurchases);
+    } catch (err) {
+      console.error("Error fetching purchased templates:", err);
+      res.status(500).json({ message: "Failed to fetch purchased templates" });
+    }
+  });
+
+  // Get template reviews
+  app.get("/api/expert-templates/:id/reviews", async (req, res) => {
+    try {
+      const reviews = await storage.getTemplateReviews(req.params.id);
+      res.json(reviews);
+    } catch (err) {
+      console.error("Error fetching reviews:", err);
+      res.status(500).json({ message: "Failed to fetch reviews" });
+    }
+  });
+
+  // Create template review (authenticated - must have purchased)
+  app.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      // Get user's purchase of this template
+      const purchases = await storage.getTemplatePurchases({ buyerId: userId });
+      const purchase = purchases.find(p => p.templateId === req.params.id);
+      
+      if (!purchase) {
+        return res.status(403).json({ message: "You must purchase this template before reviewing" });
+      }
+
+      const review = await storage.createTemplateReview({
+        templateId: req.params.id,
+        purchaseId: purchase.id,
+        reviewerId: userId,
+        rating: req.body.rating,
+        review: req.body.review,
+      });
+
+      res.json(review);
+    } catch (err) {
+      console.error("Error creating review:", err);
+      res.status(500).json({ message: "Failed to create review" });
+    }
+  });
+
+  // Get expert earnings (authenticated)
+  app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const earnings = await storage.getExpertEarnings(userId);
+      const summary = await storage.getExpertEarningsSummary(userId);
+      res.json({ earnings, summary });
+    } catch (err) {
+      console.error("Error fetching earnings:", err);
+      res.status(500).json({ message: "Failed to fetch earnings" });
+    }
+  });
+
+  // Get expert template sales (authenticated)
+  app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const sales = await storage.getTemplatePurchases({ expertId: userId });
+      
+      // Get template details for each sale
+      const salesWithTemplates = await Promise.all(
+        sales.map(async (sale) => {
+          const template = await storage.getExpertTemplate(sale.templateId);
+          return { ...sale, template };
+        })
+      );
+      
+      res.json(salesWithTemplates);
+    } catch (err) {
+      console.error("Error fetching sales:", err);
+      res.status(500).json({ message: "Failed to fetch sales" });
+    }
+  });
+
   // === Destination Calendar (Public travel guide) ===
   
   // Get countries with calendar data (public)

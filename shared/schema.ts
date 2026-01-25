@@ -3220,3 +3220,155 @@ export type AffiliateScrapeJob = typeof affiliateScrapeJobs.$inferSelect;
 export type InsertAffiliateScrapeJob = z.infer<typeof insertAffiliateScrapeJobSchema>;
 export type AffiliateClick = typeof affiliateClicks.$inferSelect;
 export type InsertAffiliateClick = z.infer<typeof insertAffiliateClickSchema>;
+
+// === Expert Income Streams ===
+
+// Expert templates - itineraries that experts sell
+export const expertTemplates = pgTable("expert_templates", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description").notNull(),
+  shortDescription: varchar("short_description", { length: 500 }),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  duration: integer("duration").notNull(), // days
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  category: varchar("category", { length: 100 }), // adventure, luxury, budget, family, etc.
+  coverImage: varchar("cover_image", { length: 1000 }),
+  images: jsonb("images").$type<string[]>().default([]),
+  itineraryData: jsonb("itinerary_data").$type<{
+    days: Array<{
+      day: number;
+      title: string;
+      activities: Array<{
+        time?: string;
+        title: string;
+        description: string;
+        location?: string;
+        tips?: string;
+      }>;
+    }>;
+    highlights?: string[];
+    includes?: string[];
+    excludes?: string[];
+    packingList?: string[];
+    budgetBreakdown?: Record<string, number>;
+  }>(),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  highlights: jsonb("highlights").$type<string[]>().default([]),
+  isPublished: boolean("is_published").default(false),
+  isFeatured: boolean("is_featured").default(false),
+  salesCount: integer("sales_count").default(0),
+  viewCount: integer("view_count").default(0),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
+  reviewCount: integer("review_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Template purchases - tracks when users buy templates
+export const templatePurchases = pgTable("template_purchases", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  templateId: varchar("template_id").notNull().references(() => expertTemplates.id, { onDelete: "cascade" }),
+  buyerId: varchar("buyer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).notNull(), // Traveloure's cut
+  expertEarnings: decimal("expert_earnings", { precision: 10, scale: 2 }).notNull(),
+  status: varchar("status", { length: 50 }).default("completed"), // pending, completed, refunded
+  purchasedAt: timestamp("purchased_at").defaultNow(),
+  refundedAt: timestamp("refunded_at"),
+});
+
+// Template reviews - reviews for purchased templates
+export const templateReviews = pgTable("template_reviews", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  templateId: varchar("template_id").notNull().references(() => expertTemplates.id, { onDelete: "cascade" }),
+  purchaseId: varchar("purchase_id").notNull().references(() => templatePurchases.id, { onDelete: "cascade" }),
+  reviewerId: varchar("reviewer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(), // 1-5
+  review: text("review"),
+  helpfulCount: integer("helpful_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Expert earnings ledger - tracks all expert income
+export const expertEarnings = pgTable("expert_earnings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(), // template_sale, affiliate_commission, consulting, tip
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  referenceId: varchar("reference_id"), // template_purchase_id, affiliate_click_id, etc.
+  referenceType: varchar("reference_type", { length: 50 }),
+  description: text("description"),
+  status: varchar("status", { length: 50 }).default("pending"), // pending, available, paid_out
+  availableAt: timestamp("available_at"), // when funds become available for payout
+  paidOutAt: timestamp("paid_out_at"),
+  payoutId: varchar("payout_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Expert payouts - tracks payout requests
+export const expertPayouts = pgTable("expert_payouts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).default("USD"),
+  payoutMethod: varchar("payout_method", { length: 50 }), // bank_transfer, paypal, stripe
+  status: varchar("status", { length: 50 }).default("pending"), // pending, processing, completed, failed
+  processedAt: timestamp("processed_at"),
+  failureReason: text("failure_reason"),
+  transactionId: varchar("transaction_id", { length: 255 }),
+  metadata: jsonb("metadata"),
+  requestedAt: timestamp("requested_at").defaultNow(),
+});
+
+// Insert schemas for expert income tables
+export const insertExpertTemplateSchema = createInsertSchema(expertTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  salesCount: true,
+  viewCount: true,
+  reviewCount: true,
+});
+
+export const insertTemplatePurchaseSchema = createInsertSchema(templatePurchases).omit({
+  id: true,
+  purchasedAt: true,
+  refundedAt: true,
+});
+
+export const insertTemplateReviewSchema = createInsertSchema(templateReviews).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  helpfulCount: true,
+});
+
+export const insertExpertEarningsSchema = createInsertSchema(expertEarnings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertExpertPayoutSchema = createInsertSchema(expertPayouts).omit({
+  id: true,
+  requestedAt: true,
+  processedAt: true,
+});
+
+// Types for expert income tables
+export type ExpertTemplate = typeof expertTemplates.$inferSelect;
+export type InsertExpertTemplate = z.infer<typeof insertExpertTemplateSchema>;
+export type TemplatePurchase = typeof templatePurchases.$inferSelect;
+export type InsertTemplatePurchase = z.infer<typeof insertTemplatePurchaseSchema>;
+export type TemplateReview = typeof templateReviews.$inferSelect;
+export type InsertTemplateReview = z.infer<typeof insertTemplateReviewSchema>;
+export type ExpertEarning = typeof expertEarnings.$inferSelect;
+export type InsertExpertEarning = z.infer<typeof insertExpertEarningsSchema>;
+export type ExpertPayout = typeof expertPayouts.$inferSelect;
+export type InsertExpertPayout = z.infer<typeof insertExpertPayoutSchema>;
