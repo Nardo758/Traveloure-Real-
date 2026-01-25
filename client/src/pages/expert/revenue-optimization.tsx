@@ -51,51 +51,157 @@ type ExpertEarning = {
   createdAt?: string;
 };
 
+// Types for the comprehensive revenue optimization API
+interface IncomeStream {
+  name: string;
+  description: string;
+  revenue: number;
+  split: { expert: number; platform: number; provider: number };
+  status: string;
+  bookings?: number;
+  sales?: number;
+  publishedCount?: number;
+  pending?: number;
+  confirmed?: number;
+  count?: number;
+  referrals?: number;
+  qualified?: number;
+}
+
+interface RevenueOptimizationData {
+  summary: {
+    totalRevenue: number;
+    availableBalance: number;
+    pendingBalance: number;
+    paidOut: number;
+  };
+  incomeStreams: {
+    serviceBookings: IncomeStream;
+    templateSales: IncomeStream;
+    affiliateCommissions: IncomeStream;
+    tips: IncomeStream;
+    referralBonuses: IncomeStream;
+  };
+  projections: {
+    currentMonthly: number;
+    projectedGrowth: number;
+    potentialMax: number;
+    avgBookingValue: number;
+    monthlyBookings: number;
+  };
+  revenueSplits: {
+    serviceBooking: any;
+    templateSale: any;
+    affiliateCommission: any;
+    tip: any;
+  };
+  insights: Array<{ type: string; title: string; description: string; impact: string; priority: string }>;
+}
+
 export default function RevenueOptimizationPage() {
-  // Fetch real earnings data with loading states
-  const { data: earningsData, isLoading: earningsLoading } = useQuery<{ earnings: ExpertEarning[]; summary: EarningsSummary }>({
-    queryKey: ["/api/expert/earnings"],
+  // Fetch comprehensive revenue optimization data
+  const { data: revenueData, isLoading } = useQuery<RevenueOptimizationData>({
+    queryKey: ["/api/expert/revenue-optimization"],
   });
 
-  const { data: salesData, isLoading: salesLoading } = useQuery<any[]>({
-    queryKey: ["/api/expert/template-sales"],
+  // Also fetch referrals and tips for detailed views
+  const { data: referralsData } = useQuery<{ referralCode: string; referrals: any[]; stats: any }>({
+    queryKey: ["/api/expert/referrals"],
   });
 
-  const { data: templates, isLoading: templatesLoading } = useQuery<any[]>({
-    queryKey: ["/api/expert/templates"],
+  const { data: tipsData } = useQuery<{ tips: any[]; totalAmount: number }>({
+    queryKey: ["/api/expert/tips"],
   });
 
-  // Combined loading state - show skeleton while any data is loading
-  const isLoading = earningsLoading || salesLoading || templatesLoading;
-
-  // Calculate real earnings - use 0 if no data available (not misleading fallbacks)
-  const realTotal = earningsData?.summary?.total ?? 0;
-  const realPending = earningsData?.summary?.pending ?? 0;
-  const realAvailable = earningsData?.summary?.available ?? 0;
-  const templateSalesCount = salesData?.length ?? 0;
-  const publishedTemplates = templates?.filter((t: any) => t.isPublished)?.length ?? 0;
+  // Extract data with defaults
+  const summary = revenueData?.summary ?? { totalRevenue: 0, availableBalance: 0, pendingBalance: 0, paidOut: 0 };
+  const incomeStreams = revenueData?.incomeStreams;
+  const projections = revenueData?.projections ?? { currentMonthly: 0, projectedGrowth: 0, potentialMax: 0, avgBookingValue: 0, monthlyBookings: 0 };
+  const insights = revenueData?.insights ?? [];
 
   const earningsProjection = {
-    current: realTotal,
-    projected: Math.round(realTotal * 1.48),
-    potential: Math.round(realTotal * 1.96),
-    nextMonth: Math.round(realTotal * 1.2),
-    percentIncrease: 48,
+    current: summary.totalRevenue,
+    projected: projections.projectedGrowth,
+    potential: projections.potentialMax,
+    nextMonth: Math.round(summary.totalRevenue * 1.1),
+    percentIncrease: summary.totalRevenue > 0 ? Math.round((projections.projectedGrowth / summary.totalRevenue - 1) * 100) : 15,
   };
 
+  // Build passive income streams from real data
+  const passiveIncomeStreams = [
+    {
+      title: incomeStreams?.templateSales?.name || "Itinerary Templates",
+      description: incomeStreams?.templateSales?.description || "Sell pre-built itineraries on the marketplace",
+      monthlyEarnings: incomeStreams?.templateSales?.revenue || 0,
+      sales: incomeStreams?.templateSales?.sales || 0,
+      icon: Package,
+      status: incomeStreams?.templateSales?.status || "setup",
+      link: "/expert/templates",
+      split: incomeStreams?.templateSales?.split,
+    },
+    {
+      title: incomeStreams?.affiliateCommissions?.name || "Affiliate Commissions",
+      description: incomeStreams?.affiliateCommissions?.description || "Earn from client bookings automatically",
+      monthlyEarnings: incomeStreams?.affiliateCommissions?.revenue || 0,
+      pending: incomeStreams?.affiliateCommissions?.pending || 0,
+      icon: DollarSign,
+      status: incomeStreams?.affiliateCommissions?.status || "available",
+      split: incomeStreams?.affiliateCommissions?.split,
+    },
+    {
+      title: incomeStreams?.tips?.name || "Tips",
+      description: incomeStreams?.tips?.description || "Gratuity from satisfied travelers",
+      monthlyEarnings: incomeStreams?.tips?.revenue || 0,
+      count: incomeStreams?.tips?.count || 0,
+      icon: Gift,
+      status: incomeStreams?.tips?.status || "available",
+      split: incomeStreams?.tips?.split,
+    },
+    {
+      title: incomeStreams?.referralBonuses?.name || "Referral Bonuses",
+      description: incomeStreams?.referralBonuses?.description || "Earn $50 for each qualified expert referral",
+      monthlyEarnings: incomeStreams?.referralBonuses?.revenue || 0,
+      referrals: incomeStreams?.referralBonuses?.qualified || 0,
+      icon: Users,
+      status: incomeStreams?.referralBonuses?.status || "available",
+      split: incomeStreams?.referralBonuses?.split,
+      referralCode: referralsData?.referralCode,
+    },
+  ];
+
+  const instantPayoutBalance = {
+    available: summary.availableBalance,
+    pending: summary.pendingBalance,
+    processing: 0,
+    dailyFee: 1.5,
+  };
+
+  // Use real insights from API
+  const actionableInsights = insights.length > 0 ? insights : [
+    {
+      type: "opportunity",
+      title: "Start earning on Traveloure",
+      description: "Set up your services and templates to begin generating income.",
+      impact: "Unlock multiple income streams",
+      priority: "high",
+    },
+  ];
+
+  // Suggested pricing - will be data-driven in future
   const suggestedPricing = {
-    currentRate: 75,
+    currentRate: projections.avgBookingValue > 0 ? Math.round(projections.avgBookingValue) : 75,
     marketAverage: 95,
     topExpertRate: 150,
     suggestedRate: 110,
     potentialIncrease: 47,
   };
 
+  // Upsell opportunities - can be enhanced with real data later
   const upsellOpportunities = [
     {
       id: 1,
       title: "Add Transportation Service",
-      description: "92% of your clients also book transportation",
+      description: "Most clients also need transportation coordination",
       potential: "+$180/trip average",
       adoption: 92,
       icon: Zap,
@@ -103,7 +209,7 @@ export default function RevenueOptimizationPage() {
     {
       id: 2,
       title: "Offer Photography Package",
-      description: "68% of proposal clients want photo coordination",
+      description: "Many proposal clients want photo coordination",
       potential: "+$250/booking",
       adoption: 68,
       icon: Gift,
@@ -111,126 +217,33 @@ export default function RevenueOptimizationPage() {
     {
       id: 3,
       title: "Premium Concierge Add-on",
-      description: "High-value clients upgrade 45% of the time",
+      description: "High-value clients often upgrade",
       potential: "+$400/trip",
       adoption: 45,
       icon: Star,
     },
   ];
 
-  const seasonalDemand = [
+  // Seasonal demand - placeholder until connected to TravelPulse
+  const seasonalDemand: Array<{
+    season: string;
+    location: string;
+    timing: string;
+    demandIncrease: number;
+    suggestedRateIncrease: number;
+    icon: any;
+    status: string;
+    daysAway: number;
+  }> = [
     {
-      season: "Cherry Blossom Season",
-      location: "Kyoto, Japan",
-      timing: "March 20 - April 15",
-      demandIncrease: 180,
-      suggestedRateIncrease: 30,
-      icon: Flower2,
-      status: "upcoming",
-      daysAway: 54,
-    },
-    {
-      season: "Summer Festival Season",
-      location: "Tokyo, Japan",
-      timing: "July - August",
+      season: "Peak Travel Season",
+      location: "Your Markets",
+      timing: "Varies by destination",
       demandIncrease: 120,
       suggestedRateIncrease: 20,
       icon: Sun,
       status: "future",
-      daysAway: 158,
-    },
-    {
-      season: "Fall Foliage",
-      location: "Nikko, Japan",
-      timing: "October - November",
-      demandIncrease: 150,
-      suggestedRateIncrease: 25,
-      icon: Leaf,
-      status: "future",
-      daysAway: 248,
-    },
-    {
-      season: "Winter Illuminations",
-      location: "Tokyo, Japan",
-      timing: "December - January",
-      demandIncrease: 90,
-      suggestedRateIncrease: 15,
-      icon: Snowflake,
-      status: "current",
-      daysAway: 0,
-    },
-  ];
-
-  // Calculate template earnings from real sales data with safe parsing
-  const templateEarnings = salesData?.reduce((sum, sale) => {
-    const earnings = parseFloat(String(sale.expertEarnings || '0'));
-    return sum + (isNaN(earnings) ? 0 : earnings);
-  }, 0) ?? 0;
-  
-  const passiveIncomeStreams = [
-    {
-      title: "Itinerary Templates",
-      description: publishedTemplates > 0 
-        ? `${publishedTemplates} templates published on the marketplace` 
-        : "Sell pre-built itineraries on the marketplace",
-      monthlyEarnings: templateEarnings,
-      sales: templateSalesCount,
-      icon: Package,
-      status: publishedTemplates > 0 ? "active" : "setup",
-      link: "/expert/templates",
-    },
-    {
-      title: "Affiliate Commissions",
-      description: "Earn from client bookings automatically",
-      monthlyEarnings: 320,
-      bookings: 18,
-      icon: DollarSign,
-      status: "active",
-    },
-    {
-      title: "Sponsored Content",
-      description: "Create content for travel brands",
-      monthlyEarnings: 0,
-      icon: Sparkles,
-      status: "available",
-    },
-  ];
-
-  const instantPayoutBalance = {
-    available: realAvailable,
-    pending: realPending,
-    processing: 0,
-    dailyFee: 1.5,
-  };
-
-  const actionableInsights = [
-    {
-      type: "revenue",
-      title: "Raise your rates by 15%",
-      description: "You're priced 21% below average for your rating. Top experts in Kyoto charge $110-150/hour.",
-      impact: "+$1,200/month potential",
-      priority: "high",
-    },
-    {
-      type: "efficiency",
-      title: "Bundle your top services",
-      description: "Create a 'Complete Japan Experience' package combining your 3 most popular services.",
-      impact: "+32% conversion rate",
-      priority: "high",
-    },
-    {
-      type: "timing",
-      title: "Cherry Blossom preparation",
-      description: "Peak season in 54 days. Update your availability and prepare specialty itineraries now.",
-      impact: "180% demand increase expected",
-      priority: "medium",
-    },
-    {
-      type: "upsell",
-      title: "Add photography coordination",
-      description: "68% of your proposal clients ask about photography. Add it as a service option.",
-      impact: "+$250 per proposal booking",
-      priority: "medium",
+      daysAway: 30,
     },
   ];
 

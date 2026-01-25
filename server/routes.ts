@@ -1995,6 +1995,299 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Income Streams & Revenue Splits ===
+  
+  // Get revenue splits configuration
+  app.get("/api/revenue-splits", async (req, res) => {
+    try {
+      const splits = await storage.getRevenueSplits();
+      res.json(splits);
+    } catch (err) {
+      console.error("Error fetching revenue splits:", err);
+      res.status(500).json({ message: "Failed to fetch revenue splits" });
+    }
+  });
+
+  // Expert Tips - Create a tip for an expert
+  app.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
+    try {
+      const travelerId = (req.user as any).claims.sub;
+      const { expertId } = req.params;
+      
+      // Validate request body
+      const tipSchema = z.object({
+        amount: z.number().positive("Amount must be positive"),
+        message: z.string().max(500).optional(),
+        bookingId: z.string().optional(),
+        isAnonymous: z.boolean().optional().default(false),
+      });
+
+      const parsed = tipSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid tip data", errors: parsed.error.errors });
+      }
+
+      const { amount, message, bookingId, isAnonymous } = parsed.data;
+
+      // Note: createExpertTip in storage applies revenue split and creates expert earnings ledger entry
+      const tip = await storage.createExpertTip({
+        expertId,
+        travelerId,
+        amount: String(amount),
+        message,
+        bookingId,
+        isAnonymous,
+      });
+
+      res.json(tip);
+    } catch (err) {
+      console.error("Error creating tip:", err);
+      res.status(500).json({ message: "Failed to create tip" });
+    }
+  });
+
+  // Get tips received by expert
+  app.get("/api/expert/tips", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const result = await storage.getTipsForExpert(userId);
+      res.json(result);
+    } catch (err) {
+      console.error("Error fetching tips:", err);
+      res.status(500).json({ message: "Failed to fetch tips" });
+    }
+  });
+
+  // Expert Referrals - Get referral code and stats
+  app.get("/api/expert/referrals", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const referrals = await storage.getExpertReferrals(userId);
+      
+      // Get the expert's referral code from their profile
+      const expertProfile = await storage.getLocalExpertForm(userId);
+      const referralCode = expertProfile?.referralCode || `REF-${userId.substring(0, 8).toUpperCase()}`;
+      
+      const stats = {
+        totalReferrals: referrals.length,
+        pendingReferrals: referrals.filter(r => r.status === 'pending').length,
+        qualifiedReferrals: referrals.filter(r => r.status === 'qualified' || r.status === 'paid').length,
+        totalEarned: referrals.filter(r => r.status === 'paid').reduce((sum, r) => sum + parseFloat(r.bonusAmount || '0'), 0),
+      };
+
+      res.json({ referralCode, referrals, stats });
+    } catch (err) {
+      console.error("Error fetching referrals:", err);
+      res.status(500).json({ message: "Failed to fetch referrals" });
+    }
+  });
+
+  // Affiliate earnings for expert
+  app.get("/api/expert/affiliate-earnings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const earnings = await storage.getAffiliateEarnings(userId);
+      const summary = await storage.getAffiliateEarningsSummary(userId);
+      res.json({ earnings, summary });
+    } catch (err) {
+      console.error("Error fetching affiliate earnings:", err);
+      res.status(500).json({ message: "Failed to fetch affiliate earnings" });
+    }
+  });
+
+  // Comprehensive Revenue Optimization endpoint
+  app.get("/api/expert/revenue-optimization", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      
+      // Get all earnings data
+      const [
+        earningsData,
+        templateSales,
+        templates,
+        tips,
+        affiliateEarnings,
+        referrals,
+        services,
+        bookings,
+        revenueSplits
+      ] = await Promise.all([
+        storage.getExpertEarningsSummary(userId),
+        storage.getTemplatePurchases({ expertId: userId }),
+        storage.getExpertTemplates({ expertId: userId }),
+        storage.getTipsForExpert(userId),
+        storage.getAffiliateEarningsSummary(userId),
+        storage.getExpertReferrals(userId),
+        storage.getProviderServices(userId),
+        storage.getServiceBookings(userId),
+        storage.getRevenueSplits()
+      ]);
+
+      // Get revenue split configurations
+      const affiliateSplit = revenueSplits.find((s) => s.type === 'affiliate_commission');
+      const tipSplit = revenueSplits.find((s) => s.type === 'tip');
+      const serviceSplit = revenueSplits.find((s) => s.type === 'service_booking');
+      const templateSplit = revenueSplits.find((s) => s.type === 'template_sale');
+
+      // Calculate expert's share percentages
+      const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '85') / 100;
+      const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '80') / 100;
+      
+      // Calculate real earnings breakdown - using expert's share after platform fees
+      const publishedTemplates = templates.filter((t) => t.isPublished);
+      const templateGrossRevenue = templateSales.reduce((sum: number, s) => sum + parseFloat(s.price || '0'), 0);
+      const templateExpertRevenue = templateSales.reduce((sum: number, s) => sum + parseFloat(s.expertEarnings || '0'), 0);
+      
+      // Calculate service booking revenue - apply expert's share
+      const completedBookings = bookings.filter((b: any) => b.status === 'completed');
+      const serviceGrossRevenue = completedBookings.reduce((sum: number, b: any) => sum + parseFloat(b.amount || '0'), 0);
+      const serviceExpertRevenue = serviceGrossRevenue * serviceExpertPct; // Expert's share after platform fee
+
+      // Calculate income streams with real data - using expert's share
+      const incomeStreams = {
+        serviceBookings: {
+          name: "Service Bookings",
+          description: "Direct consulting, planning, and concierge services",
+          revenue: serviceExpertRevenue, // Expert's share after platform fee
+          grossRevenue: serviceGrossRevenue,
+          bookings: completedBookings.length,
+          split: {
+            expert: parseFloat(serviceSplit?.expertPercentage || '85'),
+            platform: parseFloat(serviceSplit?.platformPercentage || '15'),
+            provider: 0
+          },
+          status: services.length > 0 ? "active" : "setup"
+        },
+        templateSales: {
+          name: "Itinerary Templates",
+          description: "Pre-built itineraries sold on the marketplace",
+          revenue: templateExpertRevenue, // Expert's share after platform fee
+          grossRevenue: templateGrossRevenue,
+          sales: templateSales.length,
+          publishedCount: publishedTemplates.length,
+          split: {
+            expert: parseFloat(templateSplit?.expertPercentage || '80'),
+            platform: parseFloat(templateSplit?.platformPercentage || '20'),
+            provider: 0
+          },
+          status: publishedTemplates.length > 0 ? "active" : "setup"
+        },
+        affiliateCommissions: {
+          name: "Affiliate Commissions",
+          description: "Earnings from client bookings via your links",
+          revenue: affiliateEarnings.total,
+          pending: affiliateEarnings.pending,
+          confirmed: affiliateEarnings.confirmed,
+          split: {
+            expert: parseFloat(affiliateSplit?.expertPercentage || '60'),
+            platform: parseFloat(affiliateSplit?.platformPercentage || '20'),
+            provider: parseFloat(affiliateSplit?.providerPercentage || '20')
+          },
+          status: affiliateEarnings.total > 0 ? "active" : "available"
+        },
+        tips: {
+          name: "Tips",
+          description: "Gratuity from satisfied travelers",
+          revenue: tips.totalAmount,
+          count: tips.tips.length,
+          split: {
+            expert: parseFloat(tipSplit?.expertPercentage || '95'),
+            platform: parseFloat(tipSplit?.platformPercentage || '5'),
+            provider: 0
+          },
+          status: tips.tips.length > 0 ? "active" : "available"
+        },
+        referralBonuses: {
+          name: "Referral Bonuses",
+          description: "Earn $50 for each qualified expert referral",
+          revenue: referrals.filter((r) => r.status === 'paid').reduce((sum: number, r) => sum + parseFloat(r.bonusAmount || '0'), 0),
+          referrals: referrals.length,
+          qualified: referrals.filter((r) => r.status === 'qualified' || r.status === 'paid').length,
+          split: {
+            expert: 100,
+            platform: 0,
+            provider: 0
+          },
+          status: referrals.length > 0 ? "active" : "available"
+        }
+      };
+
+      // Total earnings
+      const totalRevenue = 
+        incomeStreams.serviceBookings.revenue +
+        incomeStreams.templateSales.revenue +
+        incomeStreams.affiliateCommissions.revenue +
+        incomeStreams.tips.revenue +
+        incomeStreams.referralBonuses.revenue;
+
+      // Calculate earnings projection based on actual trends (using expert's share)
+      const monthlyBookings = completedBookings.length;
+      const avgBookingValue = monthlyBookings > 0 ? serviceExpertRevenue / monthlyBookings : 0;
+      
+      const projections = {
+        currentMonthly: totalRevenue,
+        projectedGrowth: Math.round(totalRevenue * 1.15), // 15% growth target
+        potentialMax: Math.round(totalRevenue * 1.5), // With all optimizations
+        avgBookingValue,
+        monthlyBookings
+      };
+
+      // Generate AI-powered insights based on actual data
+      const insights = [];
+      
+      if (incomeStreams.templateSales.status === 'setup') {
+        insights.push({
+          type: 'opportunity',
+          title: 'Create Your First Template',
+          description: 'Publish itinerary templates to earn passive income while you sleep.',
+          impact: 'Avg template earns $50-200/month',
+          priority: 'high'
+        });
+      }
+      
+      if (incomeStreams.affiliateCommissions.status === 'available') {
+        insights.push({
+          type: 'opportunity',
+          title: 'Enable Affiliate Links',
+          description: 'Earn commissions when your clients book hotels and activities.',
+          impact: `You keep ${affiliateSplit?.expertPercentage || 60}% of each commission`,
+          priority: 'high'
+        });
+      }
+      
+      if (services.length === 0) {
+        insights.push({
+          type: 'urgent',
+          title: 'Create Your First Service',
+          description: 'Set up your consulting or planning services to start earning.',
+          impact: 'Unlock your primary income stream',
+          priority: 'high'
+        });
+      }
+
+      res.json({
+        summary: {
+          totalRevenue,
+          availableBalance: earningsData.available,
+          pendingBalance: earningsData.pending,
+          paidOut: earningsData.paidOut
+        },
+        incomeStreams,
+        projections,
+        revenueSplits: {
+          serviceBooking: serviceSplit,
+          templateSale: templateSplit,
+          affiliateCommission: affiliateSplit,
+          tip: tipSplit
+        },
+        insights
+      });
+    } catch (err) {
+      console.error("Error fetching revenue optimization data:", err);
+      res.status(500).json({ message: "Failed to fetch revenue optimization data" });
+    }
+  });
+
   // === Destination Calendar (Public travel guide) ===
   
   // Get countries with calendar data (public)
