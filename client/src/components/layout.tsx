@@ -24,7 +24,6 @@ import {
   Bot,
   Facebook,
   Instagram,
-  Linkedin,
   Twitter,
   CreditCard,
   UserCheck,
@@ -461,7 +460,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {/* Social Links */}
               <div className="flex items-center gap-4">
                 <a 
-                  href="https://facebook.com" 
+                  href="https://www.facebook.com/Traveloure/" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
@@ -470,7 +469,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Facebook className="w-5 h-5" />
                 </a>
                 <a 
-                  href="https://twitter.com" 
+                  href="https://x.com/Traveloure_" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
@@ -479,22 +478,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Twitter className="w-5 h-5" />
                 </a>
                 <a 
-                  href="https://instagram.com" 
+                  href="https://www.instagram.com/traveloure_" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
                   data-testid="link-social-instagram"
                 >
                   <Instagram className="w-5 h-5" />
-                </a>
-                <a 
-                  href="https://linkedin.com" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="w-10 h-10 rounded-full bg-muted flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors text-muted-foreground"
-                  data-testid="link-social-linkedin"
-                >
-                  <Linkedin className="w-5 h-5" />
                 </a>
               </div>
             </div>
