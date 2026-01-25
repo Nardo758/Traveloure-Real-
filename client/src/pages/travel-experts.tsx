@@ -31,6 +31,7 @@ import {
   Calendar,
   Briefcase,
 } from "lucide-react";
+import { SiFacebook, SiInstagram } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -434,8 +435,38 @@ export default function TravelExpertsPage() {
 
                   {formData.isInfluencer && (
                     <div className="space-y-4 pl-6 border-l-2 border-primary/20">
+                      <div className="bg-gradient-to-r from-[#833AB4]/10 via-[#E1306C]/10 to-[#F77737]/10 rounded-lg p-4 mb-4">
+                        <p className="text-sm font-medium text-foreground mb-3">
+                          Quick Sign-In with Social Media
+                        </p>
+                        <div className="flex flex-wrap gap-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="bg-[#1877F2] hover:bg-[#166FE5] text-white border-none"
+                            onClick={() => window.location.href = '/api/auth/facebook'}
+                            data-testid="button-facebook-login"
+                          >
+                            <SiFacebook className="w-4 h-4 mr-2" />
+                            Continue with Facebook
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="bg-gradient-to-r from-[#833AB4] via-[#E1306C] to-[#F77737] hover:opacity-90 text-white border-none"
+                            onClick={() => window.location.href = '/api/auth/facebook'}
+                            data-testid="button-instagram-login"
+                          >
+                            <SiInstagram className="w-4 h-4 mr-2" />
+                            Continue with Instagram
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Sign in with your creator account to auto-verify your profile
+                        </p>
+                      </div>
                       <p className="text-sm text-muted-foreground mb-4">
-                        Share your social media profiles. We'll verify your creator status and enable referral tracking.
+                        Or manually share your social media profiles. We'll verify your creator status and enable referral tracking.
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
