@@ -16,7 +16,8 @@ import {
   Shield,
   FolderKanban,
   Database,
-  Link2
+  Link2,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -28,6 +29,7 @@ const navItems = [
   { icon: UserCheck, label: "Experts", href: "/admin/experts" },
   { icon: Building2, label: "Providers", href: "/admin/providers" },
   { icon: Link2, label: "Affiliates", href: "/admin/affiliate-partners" },
+  { icon: FileText, label: "Content", href: "/admin/content-tracking" },
   { icon: FolderKanban, label: "Categories", href: "/admin/categories" },
   { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
   { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },

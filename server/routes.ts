@@ -8693,4 +8693,315 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to get products by location", error: error.message });
     }
   });
+
+  // === Content Tracking System API ===
+
+  // Get content tracking summary (admin only)
+  app.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const summary = await storage.getContentTrackingSummary();
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get content summary", error: error.message });
+    }
+  });
+
+  // Get all content registry entries (admin only)
+  app.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { status, contentType, ownerId, flagged, limit, offset } = req.query;
+      const content = await storage.getContentRegistry({
+        status: status as string,
+        contentType: contentType as string,
+        ownerId: ownerId as string,
+        flagged: flagged === 'true',
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      });
+
+      res.json(content);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get content registry", error: error.message });
+    }
+  });
+
+  // Get content by tracking number
+  app.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { trackingNumber } = req.params;
+      const content = await storage.getContentByTrackingNumber(trackingNumber);
+      if (!content) {
+        return res.status(404).json({ message: "Content not found" });
+      }
+
+      // Get related data
+      const versions = await storage.getContentVersions(trackingNumber);
+      const flags = await storage.getContentFlags(trackingNumber);
+      const invoices = await storage.getInvoicesByTrackingNumber(trackingNumber);
+
+      res.json({
+        content,
+        versions,
+        flags,
+        invoices,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get content details", error: error.message });
+    }
+  });
+
+  // Register new content
+  app.post("/api/admin/content/register", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { contentType, contentId, ownerId, title, description, status, metadata } = req.body;
+
+      if (!contentType || !contentId) {
+        return res.status(400).json({ message: "contentType and contentId are required" });
+      }
+
+      const content = await storage.registerContent({
+        contentType,
+        contentId,
+        ownerId,
+        title,
+        description,
+        status: status || 'published',
+        metadata: metadata || {},
+      });
+
+      res.json(content);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to register content", error: error.message });
+    }
+  });
+
+  // Get moderation queue (flagged content)
+  app.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const queue = await storage.getModerationQueue();
+      res.json(queue);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get moderation queue", error: error.message });
+    }
+  });
+
+  // Moderate content
+  app.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { trackingNumber } = req.params;
+      const { action, notes } = req.body;
+
+      if (!['approve', 'suspend', 'delete'].includes(action)) {
+        return res.status(400).json({ message: "Invalid action. Must be: approve, suspend, or delete" });
+      }
+
+      const result = await storage.moderateContent(
+        trackingNumber,
+        user.claims.sub,
+        action,
+        notes
+      );
+
+      if (!result) {
+        return res.status(404).json({ message: "Content not found" });
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to moderate content", error: error.message });
+    }
+  });
+
+  // Flag content
+  app.post("/api/content/:trackingNumber/flag", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { trackingNumber } = req.params;
+      const { flagType, severity, description, evidence } = req.body;
+
+      if (!flagType) {
+        return res.status(400).json({ message: "flagType is required" });
+      }
+
+      const flag = await storage.createContentFlag({
+        trackingNumber,
+        reporterId: user?.claims?.sub,
+        flagType,
+        severity: severity || 'medium',
+        description,
+        evidence: evidence || [],
+      });
+
+      res.json(flag);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to flag content", error: error.message });
+    }
+  });
+
+  // Get pending flags (admin only)
+  app.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const flags = await storage.getPendingFlags();
+      res.json(flags);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get pending flags", error: error.message });
+    }
+  });
+
+  // Resolve flag (admin only)
+  app.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { flagId } = req.params;
+      const { resolution } = req.body;
+
+      if (!resolution) {
+        return res.status(400).json({ message: "resolution is required" });
+      }
+
+      const result = await storage.resolveFlag(flagId, user.claims.sub, resolution);
+      if (!result) {
+        return res.status(404).json({ message: "Flag not found" });
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to resolve flag", error: error.message });
+    }
+  });
+
+  // === Content Invoices API ===
+
+  // Create invoice for content
+  app.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { trackingNumber, customerId, providerId, invoiceType, amount, currency, taxAmount, discountAmount, notes, dueDate } = req.body;
+
+      if (!trackingNumber || !invoiceType || !amount) {
+        return res.status(400).json({ message: "trackingNumber, invoiceType, and amount are required" });
+      }
+
+      const totalAmount = amount + (taxAmount || 0) - (discountAmount || 0);
+
+      const invoice = await storage.createContentInvoice({
+        trackingNumber,
+        customerId,
+        providerId,
+        invoiceType,
+        amount,
+        currency: currency || 'USD',
+        taxAmount: taxAmount || 0,
+        discountAmount: discountAmount || 0,
+        totalAmount,
+        notes,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
+      });
+
+      res.json(invoice);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create invoice", error: error.message });
+    }
+  });
+
+  // Get invoice by number
+  app.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { invoiceNumber } = req.params;
+      const invoice = await storage.getContentInvoice(invoiceNumber);
+
+      if (!invoice) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      res.json(invoice);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get invoice", error: error.message });
+    }
+  });
+
+  // Update invoice status
+  app.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { invoiceNumber } = req.params;
+      const { status, paymentReference } = req.body;
+
+      if (!status) {
+        return res.status(400).json({ message: "status is required" });
+      }
+
+      const result = await storage.updateInvoiceStatus(invoiceNumber, status, paymentReference);
+      if (!result) {
+        return res.status(404).json({ message: "Invoice not found" });
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update invoice status", error: error.message });
+    }
+  });
+
+  // Get invoices by customer
+  app.get("/api/invoices/my", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const invoices = await storage.getInvoicesByCustomer(user.claims.sub);
+      res.json(invoices);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get invoices", error: error.message });
+    }
+  });
 }
