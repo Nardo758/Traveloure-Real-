@@ -61,7 +61,7 @@ export function UserMenu() {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/credits-billing" className="cursor-pointer" data-testid="link-user-credits-billing">
+          <Link href="/credits" className="cursor-pointer" data-testid="link-user-credits">
             <CreditCard className="w-4 h-4 mr-2" />
             Credits & Billing
           </Link>

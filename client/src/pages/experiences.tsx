@@ -185,7 +185,7 @@ export default function Experiences() {
                       <ArrowRight className="h-4 w-4 ml-2" />
                     </Button>
                   </Link>
-                  <Link href="/help-me-decide">
+                  <Link href="/discover">
                     <Button variant="outline" data-testid="button-help-decide">
                       Explore Packages
                     </Button>

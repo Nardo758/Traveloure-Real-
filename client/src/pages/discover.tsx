@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Select,
   SelectContent,
@@ -17,9 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Search,
   MapPin,
@@ -48,8 +48,19 @@ import {
   ChevronRight,
   Wand2,
   Loader2,
-  Lightbulb,
   ShoppingCart,
+  Plus,
+  Check,
+  Building2,
+  Globe,
+  BookOpen,
+  Ticket,
+  TrendingUp,
+  Calendar,
+  Users,
+  ArrowRight,
+  GitCompare,
+  Zap,
 } from "lucide-react";
 import {
   Sheet,
@@ -59,6 +70,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
+import { CityGrid } from "@/components/travelpulse/CityGrid";
+import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
 
 type ServiceCategory = {
   id: string;
@@ -100,6 +116,13 @@ type AIRecommendation = {
   suggestions: string;
 };
 
+interface CartData {
+  items: any[];
+  itemCount: number;
+  subtotal: string;
+  total: string;
+}
+
 const categoryIcons: Record<string, React.ElementType> = {
   "photography-videography": Camera,
   "transportation-logistics": Car,
@@ -118,16 +141,135 @@ const categoryIcons: Record<string, React.ElementType> = {
   "custom-other": HelpCircle,
 };
 
+const tripCategories = [
+  { id: "all", label: "All", icon: Globe },
+  { id: "adventure", label: "Adventure", icon: TrendingUp },
+  { id: "cultural", label: "Cultural", icon: BookOpen },
+  { id: "relaxation", label: "Relaxation", icon: Heart },
+  { id: "romantic", label: "Romantic", icon: Heart },
+  { id: "family", label: "Family", icon: Users },
+];
+
+const preResearchedTrips = [
+  {
+    id: 1,
+    title: "Discover Kyoto's Ancient Temples",
+    destination: "Kyoto, Japan",
+    duration: "7 days",
+    travelers: "2-4",
+    category: "cultural",
+    rating: 4.9,
+    reviews: 234,
+    price: 2499,
+    originalPrice: 2999,
+    highlights: ["Fushimi Inari Shrine", "Traditional Tea Ceremony", "Bamboo Grove Walk"],
+    expertPick: true,
+  },
+  {
+    id: 2,
+    title: "Amalfi Coast Dream Escape",
+    destination: "Amalfi, Italy",
+    duration: "5 days",
+    travelers: "2",
+    category: "romantic",
+    rating: 4.8,
+    reviews: 189,
+    price: 3299,
+    originalPrice: 3899,
+    highlights: ["Positano Beach Day", "Limoncello Tasting", "Sunset Boat Cruise"],
+    expertPick: true,
+  },
+  {
+    id: 3,
+    title: "Bali Wellness Retreat",
+    destination: "Ubud, Bali",
+    duration: "6 days",
+    travelers: "1-2",
+    category: "relaxation",
+    rating: 4.9,
+    reviews: 312,
+    price: 1899,
+    originalPrice: 2299,
+    highlights: ["Yoga Sessions", "Rice Terrace Walks", "Spa Treatments"],
+    expertPick: false,
+  },
+  {
+    id: 4,
+    title: "Costa Rica Adventure Week",
+    destination: "Costa Rica",
+    duration: "8 days",
+    travelers: "2-6",
+    category: "adventure",
+    rating: 4.7,
+    reviews: 156,
+    price: 2199,
+    originalPrice: 2699,
+    highlights: ["Zip-lining", "Volcano Hiking", "Wildlife Safari"],
+    expertPick: false,
+  },
+  {
+    id: 5,
+    title: "Paris Family Discovery",
+    destination: "Paris, France",
+    duration: "5 days",
+    travelers: "4-6",
+    category: "family",
+    rating: 4.8,
+    reviews: 278,
+    price: 2799,
+    originalPrice: 3299,
+    highlights: ["Eiffel Tower", "Disneyland Paris", "Seine River Cruise"],
+    expertPick: true,
+  },
+  {
+    id: 6,
+    title: "Moroccan Desert Adventure",
+    destination: "Marrakech, Morocco",
+    duration: "6 days",
+    travelers: "2-4",
+    category: "adventure",
+    rating: 4.6,
+    reviews: 98,
+    price: 1599,
+    originalPrice: 1999,
+    highlights: ["Sahara Camping", "Medina Tour", "Camel Trek"],
+    expertPick: false,
+  },
+];
+
+const articles = [
+  {
+    id: 1,
+    title: "10 Hidden Gems in Southeast Asia You Need to Visit",
+    category: "Destinations",
+    readTime: "8 min",
+  },
+  {
+    id: 2,
+    title: "How to Plan the Perfect Honeymoon on a Budget",
+    category: "Planning",
+    readTime: "6 min",
+  },
+  {
+    id: 3,
+    title: "Best Time to Visit Japan: A Season-by-Season Guide",
+    category: "Guides",
+    readTime: "10 min",
+  },
+];
+
 function ServiceCard({ 
   service, 
   category,
   onAddToCart,
-  isAddingToCart 
+  isAddingToCart,
+  isAdded,
 }: { 
   service: Service; 
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
+  isAdded?: boolean;
 }) {
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
@@ -196,13 +338,25 @@ function ServiceCard({
         {onAddToCart && (
           <Button
             size="sm"
-            className="w-full mt-3"
+            className={cn(
+              "w-full mt-3",
+              isAdded ? "bg-green-600 hover:bg-green-700" : ""
+            )}
             onClick={() => onAddToCart(service.id)}
-            disabled={isAddingToCart}
+            disabled={isAddingToCart || isAdded}
             data-testid={`button-add-to-cart-${service.id}`}
           >
-            <ShoppingCart className="w-4 h-4 mr-2" />
-            {isAddingToCart ? "Adding..." : "Add to Cart"}
+            {isAdded ? (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Added
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="w-4 h-4 mr-2" />
+                {isAddingToCart ? "Adding..." : "Add to Cart"}
+              </>
+            )}
           </Button>
         )}
       </CardContent>
@@ -307,6 +461,11 @@ function FilterPanel({
 }
 
 export default function DiscoverPage() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { user } = useAuth();
+
+  // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
@@ -318,6 +477,16 @@ export default function DiscoverPage() {
   const [page, setPage] = useState(0);
   const limit = 12;
 
+  // Trip packages state
+  const [tripSearchQuery, setTripSearchQuery] = useState("");
+  const [selectedTripCategory, setSelectedTripCategory] = useState("all");
+  const [favorites, setFavorites] = useState<number[]>([]);
+
+  // Cart state
+  const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
+  const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
+  const [creatingComparison, setCreatingComparison] = useState(false);
+
   // Debounce search query
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -327,11 +496,12 @@ export default function DiscoverPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  // Data queries
   const { data: categories } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
   });
 
-  const { data: result, isLoading } = useQuery<DiscoverResult>({
+  const { data: result, isLoading: servicesLoading } = useQuery<DiscoverResult>({
     queryKey: [
       "/api/discover",
       debouncedQuery,
@@ -361,6 +531,11 @@ export default function DiscoverPage() {
     },
   });
 
+  const { data: cart } = useQuery<CartData>({
+    queryKey: ["/api/cart"],
+    enabled: !!user,
+  });
+
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
   // AI Recommendations
@@ -385,16 +560,14 @@ export default function DiscoverPage() {
     });
   };
 
-  const { toast } = useToast();
-  const { user } = useAuth();
-  const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
-
+  // Cart mutations
   const addToCartMutation = useMutation({
     mutationFn: async (serviceId: string) => {
       setAddingToCartId(serviceId);
       return apiRequest("POST", "/api/cart", { serviceId, quantity: 1 });
     },
-    onSuccess: () => {
+    onSuccess: (_, serviceId) => {
+      setAddedServices(prev => new Set(prev).add(serviceId));
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Added to cart!", description: "Service has been added to your cart." });
       setAddingToCartId(null);
@@ -412,12 +585,52 @@ export default function DiscoverPage() {
         title: "Sign in required", 
         description: "Please sign in to add items to your cart" 
       });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 1500);
       return;
     }
     addToCartMutation.mutate(serviceId);
+  };
+
+  const createComparison = async () => {
+    if (!cart || cart.items.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add some services first" });
+      return;
+    }
+    if (!user) {
+      toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
+      return;
+    }
+    setCreatingComparison(true);
+    
+    const cartItems = cart.items.map((item: any) => ({
+      name: item.service?.serviceName || "Service",
+      category: item.service?.category || "service",
+      price: item.service?.price || "0",
+      provider: item.service?.providerName || "Provider",
+      location: item.service?.location || ""
+    }));
+    
+    try {
+      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+        title: "My Trip",
+        destination: cart.items[0]?.service?.location || "Paris, France",
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        budget: cart.total,
+        travelers: 2
+      });
+      
+      const comparison = await response.json();
+      sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
+      setLocation(`/itinerary-comparison/${comparison.id}`);
+    } catch (error: any) {
+      toast({ 
+        variant: "destructive", 
+        title: "Failed to create comparison",
+        description: error?.message || "Please try again"
+      });
+    } finally {
+      setCreatingComparison(false);
+    }
   };
 
   const clearFilters = () => {
@@ -438,385 +651,676 @@ export default function DiscoverPage() {
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
 
+  // Trip filtering
+  const filteredTrips = preResearchedTrips.filter((trip) => {
+    const matchesSearch =
+      tripSearchQuery === "" ||
+      trip.title.toLowerCase().includes(tripSearchQuery.toLowerCase()) ||
+      trip.destination.toLowerCase().includes(tripSearchQuery.toLowerCase());
+    const matchesCategory =
+      selectedTripCategory === "all" || trip.category === selectedTripCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  const toggleFavorite = (id: number) => {
+    setFavorites((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
+    );
+  };
+
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 
-            className="text-3xl font-bold text-foreground"
-            data-testid="text-page-title"
-          >
-            Discover Services
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Find the perfect service for your travel needs
-          </p>
-        </div>
+      <div className="min-h-screen bg-background">
+        {/* Hero Section */}
+        <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
+          <div className="container mx-auto px-4 max-w-6xl">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center mb-8"
+            >
+              <div className="inline-flex items-center gap-2 bg-white/20 px-4 py-2 rounded-full text-sm mb-6">
+                <Sparkles className="w-4 h-4" />
+                Discover Your Perfect Experience
+              </div>
+              <h1 className="text-4xl md:text-5xl font-bold mb-4" data-testid="text-page-title">
+                Explore Services & Trip Packages
+              </h1>
+              <p className="text-lg text-primary-foreground/90 max-w-2xl mx-auto">
+                Browse expert services, curated trip packages, and get AI-powered recommendations
+                for your next adventure.
+              </p>
+            </motion.div>
 
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Desktop Filters Sidebar */}
-          <aside className="hidden lg:block lg:w-72 flex-shrink-0">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  Filters
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {categories && (
-                  <FilterPanel
-                    categories={categories}
-                    selectedCategory={selectedCategory}
-                    setSelectedCategory={setSelectedCategory}
-                    minPrice={minPrice}
-                    setMinPrice={setMinPrice}
-                    maxPrice={maxPrice}
-                    setMaxPrice={setMaxPrice}
-                    minRating={minRating}
-                    setMinRating={setMinRating}
-                    onClear={clearFilters}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </aside>
-
-          <main className="flex-1">
             {/* Search Bar */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search services..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                  data-testid="input-search"
-                />
-              </div>
-              <div className="relative sm:w-48">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Location"
-                  value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                  className="pl-10"
-                  data-testid="input-location"
-                />
-              </div>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="sm:w-44" data-testid="select-sort">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="rating">Top Rated</SelectItem>
-                  <SelectItem value="reviews">Most Reviews</SelectItem>
-                  <SelectItem value="price_low">Price: Low to High</SelectItem>
-                  <SelectItem value="price_high">Price: High to Low</SelectItem>
-                </SelectContent>
-              </Select>
-
-              {/* AI Recommendations Button */}
-              <Button 
-                onClick={getAIRecommendations}
-                disabled={recommendationsMutation.isPending}
-                className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-                data-testid="button-ai-recommendations"
-              >
-                {recommendationsMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Wand2 className="w-4 h-4 mr-2" />
-                )}
-                AI Suggestions
-              </Button>
-
-              {/* Mobile Filter Button */}
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="outline" className="lg:hidden" data-testid="button-mobile-filters">
-                    <SlidersHorizontal className="w-4 h-4 mr-2" />
-                    Filters
-                    {hasActiveFilters && (
-                      <Badge variant="secondary" className="ml-2">
-                        Active
-                      </Badge>
-                    )}
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="left">
-                  <SheetHeader>
-                    <SheetTitle>Filters</SheetTitle>
-                    <SheetDescription>
-                      Refine your search results
-                    </SheetDescription>
-                  </SheetHeader>
-                  <div className="mt-6">
-                    {categories && (
-                      <FilterPanel
-                        categories={categories}
-                        selectedCategory={selectedCategory}
-                        setSelectedCategory={setSelectedCategory}
-                        minPrice={minPrice}
-                        setMinPrice={setMinPrice}
-                        maxPrice={maxPrice}
-                        setMaxPrice={setMaxPrice}
-                        minRating={minRating}
-                        setMinRating={setMinRating}
-                        onClear={clearFilters}
-                      />
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
-
-            {/* Active Filters */}
-            {hasActiveFilters && (
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="text-sm text-muted-foreground">Active filters:</span>
-                {selectedCategory !== "all" && (
-                  <Badge variant="secondary" className="gap-1">
-                    {getCategoryById(selectedCategory)?.name}
-                    <button
-                      onClick={() => setSelectedCategory("all")}
-                      data-testid="button-remove-category-filter"
-                      className="ml-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {minPrice > 0 && (
-                  <Badge variant="secondary" className="gap-1">
-                    Min: ${minPrice}
-                    <button
-                      onClick={() => setMinPrice(0)}
-                      data-testid="button-remove-min-price-filter"
-                      className="ml-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {maxPrice > 0 && (
-                  <Badge variant="secondary" className="gap-1">
-                    Max: ${maxPrice}
-                    <button
-                      onClick={() => setMaxPrice(0)}
-                      data-testid="button-remove-max-price-filter"
-                      className="ml-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {minRating > 0 && (
-                  <Badge variant="secondary" className="gap-1">
-                    {minRating}+ stars
-                    <button
-                      onClick={() => setMinRating(0)}
-                      data-testid="button-remove-rating-filter"
-                      className="ml-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                {locationFilter && (
-                  <Badge variant="secondary" className="gap-1">
-                    {locationFilter}
-                    <button
-                      onClick={() => setLocationFilter("")}
-                      data-testid="button-remove-location-filter"
-                      className="ml-1"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={clearFilters}
-                  data-testid="button-clear-all"
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="bg-card rounded-xl p-4 shadow-xl max-w-3xl mx-auto"
+            >
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search services, destinations..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 h-12"
+                    data-testid="input-search"
+                  />
+                </div>
+                <Button
+                  className="h-12 px-8"
+                  onClick={getAIRecommendations}
+                  disabled={recommendationsMutation.isPending}
+                  data-testid="button-ai-suggestions"
                 >
-                  Clear all
+                  {recommendationsMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Wand2 className="w-4 h-4 mr-2" />
+                  )}
+                  AI Suggestions
                 </Button>
               </div>
-            )}
+            </motion.div>
 
-            {/* AI Recommendations Panel */}
-            {showRecommendations && recommendations && (
-              <Card className="mb-6 border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30">
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Lightbulb className="w-5 h-5 text-purple-500" />
-                      AI Recommendations
-                    </CardTitle>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowRecommendations(false)}
-                      data-testid="button-close-recommendations"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+            {/* Quick Actions */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="flex flex-wrap justify-center gap-3 mt-6"
+            >
+              <Link href="/experiences">
+                <Button
+                  variant="outline"
+                  className="bg-white/10 backdrop-blur-sm border-white/30 text-primary-foreground font-medium"
+                  data-testid="button-plan-experience"
+                >
+                  <Compass className="w-4 h-4 mr-2" />
+                  Plan Experience
+                </Button>
+              </Link>
+              <Link href="/spontaneous">
+                <Button
+                  variant="outline"
+                  className="bg-amber-500/20 backdrop-blur-sm border-amber-400/50 text-primary-foreground font-medium"
+                  data-testid="button-live-intel"
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Live Intel
+                </Button>
+              </Link>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Main Content */}
+        <section className="py-12">
+          <div className="container mx-auto px-4 max-w-[1400px]">
+            <Tabs defaultValue="services" className="w-full">
+              <TabsList className="bg-card border p-1 mb-8 flex-wrap gap-1">
+                <TabsTrigger
+                  value="services"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  data-testid="tab-services"
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Browse Services
+                </TabsTrigger>
+                <TabsTrigger
+                  value="packages"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  data-testid="tab-packages"
+                >
+                  <Globe className="w-4 h-4 mr-2" />
+                  Trip Packages
+                </TabsTrigger>
+                <TabsTrigger
+                  value="articles"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  data-testid="tab-articles"
+                >
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Travel Articles
+                </TabsTrigger>
+                <TabsTrigger
+                  value="events"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  data-testid="tab-events"
+                >
+                  <Ticket className="w-4 h-4 mr-2" />
+                  Upcoming Events
+                </TabsTrigger>
+                <TabsTrigger
+                  value="travelpulse"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                  data-testid="tab-travelpulse"
+                >
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  TravelPulse
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Browse Services Tab */}
+              <TabsContent value="services">
+                {/* Cart Summary Bar */}
+                {cart && cart.items.length > 0 && (
+                  <div className="mb-6 p-4 bg-card border rounded-lg flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <ShoppingCart className="w-5 h-5 text-primary" />
+                      <span className="font-medium">
+                        {cart.itemCount} items in cart
+                      </span>
+                      <span className="text-muted-foreground">
+                        Total: ${cart.total}
+                      </span>
+                    </div>
+                    <div className="flex gap-3">
+                      <Link href="/cart">
+                        <Button variant="outline" data-testid="button-view-cart">
+                          View Cart
+                        </Button>
+                      </Link>
+                      <Button
+                        onClick={createComparison}
+                        disabled={creatingComparison}
+                        data-testid="button-compare-ai"
+                      >
+                        {creatingComparison ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <GitCompare className="w-4 h-4 mr-2" />
+                        )}
+                        Compare AI Alternatives
+                      </Button>
+                    </div>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {recommendations.suggestions && (
-                    <p className="text-muted-foreground text-sm" data-testid="text-ai-suggestion">
+                )}
+
+                {/* AI Recommendations Panel */}
+                {showRecommendations && recommendations && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 rounded-lg"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Wand2 className="w-5 h-5 text-purple-600" />
+                        <span className="font-medium text-purple-900 dark:text-purple-100">AI Recommendations</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowRecommendations(false)}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <p className="text-sm text-purple-700 dark:text-purple-200 mb-3">
                       {recommendations.suggestions}
                     </p>
-                  )}
-                  
-                  {recommendations.recommendedCategories.length > 0 && (
-                    <div data-testid="section-recommended-categories">
-                      <p className="text-sm font-medium mb-2">Suggested Categories:</p>
+                    {recommendations.recommendedCategories.length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {recommendations.recommendedCategories
-                          .filter(cat => cat.slug)
-                          .map((cat, idx) => {
-                            const Icon = categoryIcons[cat.slug] || Compass;
-                            return (
-                              <Button
-                                key={idx}
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const category = categories?.find(c => c.slug === cat.slug);
-                                  if (category) setSelectedCategory(category.id);
-                                }}
-                                className="gap-2"
-                                data-testid={`button-rec-category-${cat.slug}`}
-                              >
-                                <Icon className="w-4 h-4" />
-                                {cat.name}
-                              </Button>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  )}
-
-                  {recommendations.recommendedServices.length > 0 && (
-                    <div data-testid="section-recommended-services">
-                      <p className="text-sm font-medium mb-2">Recommended Services:</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {recommendations.recommendedServices.slice(0, 4).map((service) => (
-                          <Link 
-                            key={service.id} 
-                            href={`/services/${service.id}`}
-                            data-testid={`link-rec-service-${service.id}`}
+                        {recommendations.recommendedCategories.map((cat) => (
+                          <Badge
+                            key={cat.slug}
+                            variant="secondary"
+                            className="cursor-pointer"
+                            onClick={() => {
+                              const found = categories?.find(c => c.slug === cat.slug);
+                              if (found) setSelectedCategory(found.id);
+                            }}
                           >
-                            <div 
-                              className="p-3 bg-background rounded-md border hover-elevate cursor-pointer"
-                              data-testid={`card-rec-service-${service.id}`}
-                            >
-                              <div 
-                                className="font-medium text-sm"
-                                data-testid={`text-rec-service-name-${service.id}`}
-                              >
-                                {service.serviceName}
-                              </div>
-                              <div 
-                                className="text-xs text-muted-foreground mt-1"
-                                data-testid={`text-rec-reason-${service.id}`}
-                              >
-                                {service.recommendationReason}
-                              </div>
-                            </div>
-                          </Link>
+                            {cat.name}
+                          </Badge>
                         ))}
                       </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                    )}
+                  </motion.div>
+                )}
 
-            {/* Results */}
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <Card key={i}>
-                    <CardContent className="p-4">
-                      <div className="flex gap-4">
-                        <Skeleton className="w-16 h-16 rounded-md" />
-                        <div className="flex-1 space-y-2">
-                          <Skeleton className="h-5 w-3/4" />
-                          <Skeleton className="h-4 w-full" />
-                          <Skeleton className="h-4 w-1/2" />
-                        </div>
+                <div className="flex flex-col lg:flex-row gap-6">
+                  {/* Desktop Filters Sidebar */}
+                  <aside className="hidden lg:block lg:w-72 flex-shrink-0">
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Filter className="w-4 h-4" />
+                          Filters
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {categories && (
+                          <FilterPanel
+                            categories={categories}
+                            selectedCategory={selectedCategory}
+                            setSelectedCategory={setSelectedCategory}
+                            minPrice={minPrice}
+                            setMinPrice={setMinPrice}
+                            maxPrice={maxPrice}
+                            setMaxPrice={setMaxPrice}
+                            minRating={minRating}
+                            setMinRating={setMinRating}
+                            onClear={clearFilters}
+                          />
+                        )}
+                      </CardContent>
+                    </Card>
+                  </aside>
+
+                  <main className="flex-1">
+                    {/* Search and Sort Row */}
+                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                      <div className="relative sm:w-48">
+                        <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Location"
+                          value={locationFilter}
+                          onChange={(e) => setLocationFilter(e.target.value)}
+                          className="pl-10"
+                          data-testid="input-location"
+                        />
                       </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : result && result.services.length > 0 ? (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {result.services.map((service) => (
-                    <ServiceCard 
-                      key={service.id} 
-                      service={service} 
-                      category={getCategoryById(service.categoryId)}
-                      onAddToCart={handleAddToCart}
-                      isAddingToCart={addingToCartId === service.id}
-                    />
+                      <Select value={sortBy} onValueChange={setSortBy}>
+                        <SelectTrigger className="sm:w-44" data-testid="select-sort">
+                          <SelectValue placeholder="Sort by" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="rating">Top Rated</SelectItem>
+                          <SelectItem value="reviews">Most Reviews</SelectItem>
+                          <SelectItem value="price_low">Price: Low to High</SelectItem>
+                          <SelectItem value="price_high">Price: High to Low</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      {/* Mobile Filter Button */}
+                      <Sheet>
+                        <SheetTrigger asChild>
+                          <Button variant="outline" className="lg:hidden" data-testid="button-mobile-filters">
+                            <SlidersHorizontal className="w-4 h-4 mr-2" />
+                            Filters
+                            {hasActiveFilters && (
+                              <Badge variant="secondary" className="ml-2">
+                                Active
+                              </Badge>
+                            )}
+                          </Button>
+                        </SheetTrigger>
+                        <SheetContent side="left">
+                          <SheetHeader>
+                            <SheetTitle>Filters</SheetTitle>
+                            <SheetDescription>
+                              Refine your search results
+                            </SheetDescription>
+                          </SheetHeader>
+                          <div className="mt-6">
+                            {categories && (
+                              <FilterPanel
+                                categories={categories}
+                                selectedCategory={selectedCategory}
+                                setSelectedCategory={setSelectedCategory}
+                                minPrice={minPrice}
+                                setMinPrice={setMinPrice}
+                                maxPrice={maxPrice}
+                                setMaxPrice={setMaxPrice}
+                                minRating={minRating}
+                                setMinRating={setMinRating}
+                                onClear={clearFilters}
+                              />
+                            )}
+                          </div>
+                        </SheetContent>
+                      </Sheet>
+                    </div>
+
+                    {/* Active Filters */}
+                    {hasActiveFilters && (
+                      <div className="flex items-center gap-2 mb-4 flex-wrap">
+                        <span className="text-sm text-muted-foreground">Active filters:</span>
+                        {selectedCategory !== "all" && (
+                          <Badge variant="secondary" className="gap-1">
+                            {getCategoryById(selectedCategory)?.name}
+                            <button
+                              onClick={() => setSelectedCategory("all")}
+                              data-testid="button-remove-category-filter"
+                              className="ml-1"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {minPrice > 0 && (
+                          <Badge variant="secondary" className="gap-1">
+                            Min: ${minPrice}
+                            <button onClick={() => setMinPrice(0)} className="ml-1">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {maxPrice > 0 && (
+                          <Badge variant="secondary" className="gap-1">
+                            Max: ${maxPrice}
+                            <button onClick={() => setMaxPrice(0)} className="ml-1">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {minRating > 0 && (
+                          <Badge variant="secondary" className="gap-1">
+                            {minRating}+ stars
+                            <button onClick={() => setMinRating(0)} className="ml-1">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        {locationFilter && (
+                          <Badge variant="secondary" className="gap-1">
+                            {locationFilter}
+                            <button onClick={() => setLocationFilter("")} className="ml-1">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={clearFilters}>
+                          Clear all
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Services Grid */}
+                    {servicesLoading ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                          <Skeleton key={i} className="h-48" />
+                        ))}
+                      </div>
+                    ) : result?.services && result.services.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {result.services.map((service) => (
+                            <ServiceCard
+                              key={service.id}
+                              service={service}
+                              category={getCategoryById(service.categoryId)}
+                              onAddToCart={handleAddToCart}
+                              isAddingToCart={addingToCartId === service.id}
+                              isAdded={addedServices.has(service.id)}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Pagination */}
+                        {totalPages > 1 && (
+                          <div className="flex items-center justify-center gap-2 mt-8">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={page === 0}
+                              onClick={() => setPage(p => p - 1)}
+                              data-testid="button-prev-page"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                            <span className="text-sm text-muted-foreground">
+                              Page {page + 1} of {totalPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={page >= totalPages - 1}
+                              onClick={() => setPage(p => p + 1)}
+                              data-testid="button-next-page"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-16">
+                        <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">No services found</h3>
+                        <p className="text-muted-foreground mb-4">
+                          Try adjusting your search or filters
+                        </p>
+                        <Button variant="outline" onClick={clearFilters}>
+                          Clear Filters
+                        </Button>
+                      </div>
+                    )}
+                  </main>
+                </div>
+              </TabsContent>
+
+              {/* Trip Packages Tab */}
+              <TabsContent value="packages">
+                {/* Category Filters */}
+                <div className="flex flex-wrap gap-2 mb-8">
+                  {tripCategories.map((cat) => (
+                    <Button
+                      key={cat.id}
+                      variant={selectedTripCategory === cat.id ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setSelectedTripCategory(cat.id)}
+                      data-testid={`button-category-${cat.id}`}
+                    >
+                      <cat.icon className="w-4 h-4 mr-1" />
+                      {cat.label}
+                    </Button>
                   ))}
                 </div>
 
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 mt-8">
+                {/* Trip Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredTrips.map((trip, idx) => (
+                    <motion.div
+                      key={trip.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                    >
+                      <Card
+                        className="hover-elevate overflow-hidden group"
+                        data-testid={`card-trip-${trip.id}`}
+                      >
+                        <CardContent className="p-0">
+                          <div className="relative h-48 bg-gradient-to-br from-muted to-muted/50">
+                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                              <MapPin className="w-12 h-12" />
+                            </div>
+                            
+                            <button
+                              onClick={() => toggleFavorite(trip.id)}
+                              className="absolute top-3 right-3 p-2 bg-background/90 rounded-full shadow-sm"
+                              data-testid={`button-favorite-${trip.id}`}
+                            >
+                              <Heart
+                                className={cn(
+                                  "w-5 h-5",
+                                  favorites.includes(trip.id)
+                                    ? "fill-primary text-primary"
+                                    : "text-muted-foreground"
+                                )}
+                              />
+                            </button>
+
+                            {trip.expertPick && (
+                              <div className="absolute top-3 left-3">
+                                <Badge>
+                                  <Star className="w-3 h-3 mr-1 fill-current" />
+                                  Expert Pick
+                                </Badge>
+                              </div>
+                            )}
+
+                            <div className="absolute bottom-3 right-3 bg-background px-3 py-1 rounded-lg shadow-sm">
+                              <span className="text-xs text-muted-foreground line-through">
+                                ${trip.originalPrice}
+                              </span>
+                              <span className="ml-1 font-bold">
+                                ${trip.price}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="p-4">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                              <MapPin className="w-4 h-4" />
+                              <span>{trip.destination}</span>
+                            </div>
+
+                            <h3 className="font-semibold mb-3 group-hover:text-primary transition-colors">
+                              {trip.title}
+                            </h3>
+
+                            <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-3">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-4 h-4" />
+                                {trip.duration}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Users className="w-4 h-4" />
+                                {trip.travelers}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                                {trip.rating} ({trip.reviews})
+                              </span>
+                            </div>
+
+                            <div className="flex flex-wrap gap-1 mb-4">
+                              {trip.highlights.slice(0, 2).map((h) => (
+                                <Badge key={h} variant="secondary" className="text-xs">
+                                  {h}
+                                </Badge>
+                              ))}
+                              {trip.highlights.length > 2 && (
+                                <Badge variant="secondary" className="text-xs">
+                                  +{trip.highlights.length - 2} more
+                                </Badge>
+                              )}
+                            </div>
+
+                            <Button className="w-full" data-testid={`button-view-trip-${trip.id}`}>
+                              View Details
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {filteredTrips.length === 0 && (
+                  <div className="text-center py-16">
+                    <Search className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No trips found</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Try adjusting your search or filters
+                    </p>
                     <Button
                       variant="outline"
-                      size="icon"
-                      onClick={() => setPage(p => Math.max(0, p - 1))}
-                      disabled={page === 0}
-                      data-testid="button-prev-page"
+                      onClick={() => {
+                        setTripSearchQuery("");
+                        setSelectedTripCategory("all");
+                      }}
                     >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span className="text-sm text-muted-foreground px-4">
-                      Page {page + 1} of {totalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
-                      disabled={page >= totalPages - 1}
-                      data-testid="button-next-page"
-                    >
-                      <ChevronRight className="w-4 h-4" />
+                      Clear Filters
                     </Button>
                   </div>
                 )}
+              </TabsContent>
 
-                <div className="mt-4 text-center text-sm text-muted-foreground">
-                  Showing {page * limit + 1}-{Math.min((page + 1) * limit, result.total)} of {result.total} services
+              {/* Articles Tab */}
+              <TabsContent value="articles">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {articles.map((article, idx) => (
+                    <motion.div
+                      key={article.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                    >
+                      <Card
+                        className="hover-elevate overflow-hidden cursor-pointer group"
+                        data-testid={`card-article-${article.id}`}
+                      >
+                        <CardContent className="p-0">
+                          <div className="h-40 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
+                            <BookOpen className="w-12 h-12 text-muted-foreground" />
+                          </div>
+                          <div className="p-4">
+                            <Badge variant="secondary" className="mb-2 text-xs">
+                              {article.category}
+                            </Badge>
+                            <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
+                              {article.title}
+                            </h3>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Clock className="w-4 h-4" />
+                              {article.readTime} read
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
                 </div>
-              </>
-            ) : (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Compass className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="font-semibold text-lg mb-2">No services found</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Try adjusting your search or filters to find what you're looking for.
-                  </p>
-                  <Button onClick={clearFilters} data-testid="button-clear-search">
-                    Clear all filters
+
+                <div className="text-center mt-8">
+                  <Button variant="outline" data-testid="button-view-all-articles">
+                    View All Articles
+                    <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
-                </CardContent>
-              </Card>
-            )}
-          </main>
-        </div>
+                </div>
+              </TabsContent>
+
+              {/* Events Tab - Global Calendar */}
+              <TabsContent value="events">
+                <GlobalCalendar 
+                  onCityClick={(cityName) => {
+                    setLocation(`/discover?tab=travelpulse&city=${encodeURIComponent(cityName)}`);
+                  }}
+                />
+              </TabsContent>
+
+              {/* TravelPulse Tab */}
+              <TabsContent value="travelpulse">
+                <CityGrid />
+              </TabsContent>
+            </Tabs>
+          </div>
+        </section>
+
+        {/* Still Undecided CTA */}
+        <section className="py-16 bg-card border-t">
+          <div className="container mx-auto px-4 max-w-4xl text-center">
+            <h2 className="text-3xl font-bold mb-4">
+              Need Help Deciding?
+            </h2>
+            <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
+              Talk to one of our travel experts. They'll help you find the perfect
+              trip based on your preferences, budget, and travel style.
+            </p>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Link href="/experts">
+                <Button size="lg" className="px-8" data-testid="button-talk-to-expert">
+                  Talk to an Expert
+                </Button>
+              </Link>
+              <Link href="/experiences">
+                <Button size="lg" variant="outline" className="px-8" data-testid="button-plan-experience-cta">
+                  Plan Your Experience
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
       </div>
     </Layout>
   );

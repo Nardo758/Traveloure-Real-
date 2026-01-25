@@ -38,8 +38,8 @@ const menuItems = [
   { title: "Cart", href: "/cart", icon: ShoppingCart },
   { title: "AI Planner", href: "/ai-assistant", icon: Bot },
   { title: "Messages", href: "/chat", icon: MessageSquare },
-  { title: "Experts", href: "/explore", icon: Users },
-  { title: "Credits", href: "/credits-billing", icon: CreditCard },
+  { title: "Discover", href: "/discover", icon: Users },
+  { title: "Credits", href: "/credits", icon: CreditCard },
   { title: "Profile", href: "/profile", icon: User },
   { title: "Notifications", href: "/notifications", icon: Bell },
 ];

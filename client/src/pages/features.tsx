@@ -125,7 +125,7 @@ export default function FeaturesPage() {
               gives you all the tools to create unforgettable travel experiences.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/browse">
+              <Link href="/discover">
                 <Button
                   size="lg"
                   className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
@@ -274,7 +274,7 @@ export default function FeaturesPage() {
             Start planning your perfect trip today. It's free to get started.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/browse">
+            <Link href="/discover">
               <Button
                 size="lg"
                 className="bg-white text-[#FF385C] hover:bg-gray-100 px-8"
@@ -283,7 +283,7 @@ export default function FeaturesPage() {
                 Start Free
               </Button>
             </Link>
-            <Link href="/help-me-decide">
+            <Link href="/discover">
               <Button
                 size="lg"
                 variant="outline"

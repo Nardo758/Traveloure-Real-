@@ -78,11 +78,11 @@ const navItems = [
       {
         title: "BECOME A PARTNER",
         items: [
-          { name: "Travel Expert", href: "/travel-experts", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/travel-experts", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/travel-experts", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/travel-experts", icon: Briefcase, description: "Manage high-end clients" },
-          { name: "Service Provider", href: "/services-provider", icon: Building2, description: "Offer venues & services" },
+          { name: "Travel Expert", href: "/become-expert", icon: Plane, description: "Share your destination expertise" },
+          { name: "Local Expert", href: "/become-expert", icon: Globe, description: "Guide travelers in your city" },
+          { name: "Event Planner", href: "/become-expert", icon: Calendar, description: "Plan weddings & celebrations" },
+          { name: "Executive Assistant", href: "/become-expert", icon: Briefcase, description: "Manage high-end clients" },
+          { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
         ],
       },
       {
@@ -97,7 +97,6 @@ const navItems = [
   },
   { name: "Discover", href: "/discover" },
   { name: "Experts", href: "/experts" },
-  { name: "Help Me Decide", href: "/help-me-decide" },
   { name: "Live Intel", href: "/spontaneous" },
   { name: "Deals", href: "/deals" },
   { name: "Contact", href: "/contact" },
@@ -105,7 +104,7 @@ const navItems = [
 
 const authNavItems = [
   { href: "/dashboard", label: "My Trips", icon: Map },
-  { href: "/explore", label: "Explore", icon: Compass },
+  { href: "/discover", label: "Discover", icon: Compass },
   { href: "/chat", label: "Expert Chat", icon: MessageSquare },
 ];
 
@@ -411,7 +410,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="font-semibold mb-4 text-white">Product</h4>
               <ul className="space-y-3 text-sm text-gray-400">
                 <li><Link href="/experiences" className="hover:text-white transition-colors" data-testid="link-footer-create-trip">Plan an Experience</Link></li>
-                <li><Link href="/explore" className="hover:text-white transition-colors" data-testid="link-footer-explore">Explore Destinations</Link></li>
+                <li><Link href="/discover" className="hover:text-white transition-colors" data-testid="link-footer-explore">Discover Services</Link></li>
                 <li><Link href="/chat" className="hover:text-white transition-colors" data-testid="link-footer-experts">Talk to Experts</Link></li>
                 <li><Link href="/how-it-works" className="hover:text-white transition-colors" data-testid="link-footer-how-it-works">How It Works</Link></li>
                 <li><Link href="/pricing" className="hover:text-white transition-colors" data-testid="link-footer-pricing">Pricing</Link></li>

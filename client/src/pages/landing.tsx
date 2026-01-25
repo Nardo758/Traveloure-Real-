@@ -298,14 +298,14 @@ export default function LandingPage() {
                 Create a Trip <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
-            <Link href="/help-me-decide">
+            <Link href="/discover">
               <Button
                 size="lg"
                 variant="outline"
                 className="bg-white/10 backdrop-blur-sm border-white/30 text-white hover:bg-white/20 font-medium px-6"
-                data-testid="button-help-me-decide"
+                data-testid="button-discover-services"
               >
-                Help Me Decide
+                Discover Services
               </Button>
             </Link>
             <Link href="/spontaneous">

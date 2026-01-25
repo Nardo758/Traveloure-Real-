@@ -393,7 +393,7 @@ export default function ServiceProviders() {
                       ? "No services available in this category yet."
                       : "Be the first to offer a service in this marketplace."}
                   </p>
-                  <Link href="/services-provider">
+                  <Link href="/become-provider">
                     <Button data-testid="button-become-provider">
                       Become a Provider
                     </Button>

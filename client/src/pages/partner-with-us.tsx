@@ -40,7 +40,7 @@ const partnerTypes = [
       "Responsive within 24 hours",
     ],
     cta: "Apply as Travel Expert",
-    href: "/travel-experts",
+    href: "/become-expert",
     popular: true,
   },
   {
@@ -60,7 +60,7 @@ const partnerTypes = [
       "Language proficiency",
     ],
     cta: "Apply as Local Expert",
-    href: "/travel-experts",
+    href: "/become-expert",
     popular: false,
   },
   {
@@ -80,7 +80,7 @@ const partnerTypes = [
       "Portfolio of past events",
     ],
     cta: "Apply as Event Planner",
-    href: "/travel-experts",
+    href: "/become-expert",
     popular: false,
   },
   {
@@ -100,7 +100,7 @@ const partnerTypes = [
       "Insurance coverage",
     ],
     cta: "Register Your Business",
-    href: "/services-provider",
+    href: "/become-provider",
     popular: false,
   },
   {
@@ -120,7 +120,7 @@ const partnerTypes = [
       "Multi-tasking ability",
     ],
     cta: "Apply as EA",
-    href: "/travel-experts",
+    href: "/become-expert",
     popular: false,
   },
 ];
@@ -300,7 +300,7 @@ export default function PartnerWithUsPage() {
                       </ul>
                     </div>
 
-                    <Link href={type.id === "service-provider" ? "/services-provider" : "/travel-experts"}>
+                    <Link href={type.id === "service-provider" ? "/become-provider" : "/become-expert"}>
                       <Button
                         className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
                         data-testid={`button-apply-${type.id}`}
@@ -419,7 +419,7 @@ export default function PartnerWithUsPage() {
             No upfront costs, flexible schedule, unlimited potential.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/travel-experts">
+            <Link href="/become-expert">
               <Button
                 size="lg"
                 className="bg-white text-[#FF385C] hover:bg-gray-100 px-8"
@@ -428,7 +428,7 @@ export default function PartnerWithUsPage() {
                 Apply as Expert
               </Button>
             </Link>
-            <Link href="/services-provider">
+            <Link href="/become-provider">
               <Button
                 size="lg"
                 variant="outline"

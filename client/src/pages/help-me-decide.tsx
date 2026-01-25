@@ -823,7 +823,7 @@ export default function HelpMeDecidePage() {
                 Talk to an Expert
               </Button>
             </Link>
-            <Link href="/browse">
+            <Link href="/discover">
               <Button
                 size="lg"
                 variant="outline"
