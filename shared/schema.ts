@@ -3484,3 +3484,27 @@ export type ExpertReferral = typeof expertReferrals.$inferSelect;
 export type InsertExpertReferral = z.infer<typeof insertExpertReferralSchema>;
 export type AffiliateEarning = typeof affiliateEarnings.$inferSelect;
 export type InsertAffiliateEarning = z.infer<typeof insertAffiliateEarningSchema>;
+
+// === Security & Audit Logging ===
+
+export const accessAuditLogs = pgTable("access_audit_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  actorId: varchar("actor_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  actorRole: varchar("actor_role", { length: 30 }).notNull(),
+  action: varchar("action", { length: 50 }).notNull(), // view_profile, view_booking, access_chat, etc.
+  resourceType: varchar("resource_type", { length: 50 }).notNull(), // user, booking, chat, etc.
+  resourceId: varchar("resource_id"), // ID of the accessed resource
+  targetUserId: varchar("target_user_id").references(() => users.id, { onDelete: "set null" }), // Whose data was accessed
+  metadata: jsonb("metadata").default({}), // Additional context
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAccessAuditLogSchema = createInsertSchema(accessAuditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AccessAuditLog = typeof accessAuditLogs.$inferSelect;
+export type InsertAccessAuditLog = z.infer<typeof insertAccessAuditLogSchema>;

@@ -13,7 +13,7 @@ import {
   experienceTemplateTabs, experienceTemplateFilters, experienceTemplateFilterOptions,
   experienceUniversalFilters, experienceUniversalFilterOptions,
   expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
-  revenueSplits, expertTips, expertReferrals, affiliateEarnings,
+  revenueSplits, expertTips, expertReferrals, affiliateEarnings, accessAuditLogs,
   type Trip, type InsertTrip,
   type GeneratedItinerary, type InsertGeneratedItinerary,
   type TouristPlaceResult,
@@ -75,6 +75,19 @@ export interface IStorage {
 
   // Users
   getUser(userId: string): Promise<User | undefined>;
+
+  // Security & Audit Logging
+  logAccess(log: {
+    actorId: string;
+    actorRole: string;
+    action: string;
+    resourceType: string;
+    resourceId?: string;
+    targetUserId?: string;
+    metadata?: any;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<void>;
 
   // Chats
   getChats(userId: string): Promise<UserAndExpertChat[]>;
@@ -411,6 +424,36 @@ export class DatabaseStorage implements IStorage {
   async getUser(userId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, userId));
     return user;
+  }
+
+  // Security & Audit Logging
+  async logAccess(log: {
+    actorId: string;
+    actorRole: string;
+    action: string;
+    resourceType: string;
+    resourceId?: string;
+    targetUserId?: string;
+    metadata?: any;
+    ipAddress?: string;
+    userAgent?: string;
+  }): Promise<void> {
+    try {
+      await db.insert(accessAuditLogs).values({
+        actorId: log.actorId,
+        actorRole: log.actorRole,
+        action: log.action,
+        resourceType: log.resourceType,
+        resourceId: log.resourceId,
+        targetUserId: log.targetUserId,
+        metadata: log.metadata || {},
+        ipAddress: log.ipAddress,
+        userAgent: log.userAgent,
+      });
+    } catch (error) {
+      // Log to console but don't fail the request if audit logging fails
+      console.error("Audit log error:", error);
+    }
   }
 
   // Chats

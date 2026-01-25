@@ -11,6 +11,7 @@ export const SENSITIVE_FIELDS = {
 } as const;
 
 // Define what each role can see
+// SECURITY: Experts and providers do NOT see lastName - only first name for privacy
 export const ROLE_PERMISSIONS = {
   admin: {
     canSeeFull: true,
@@ -22,20 +23,23 @@ export const ROLE_PERMISSIONS = {
   },
   expert: {
     canSeeFull: false,
-    allowedFields: ['id', 'firstName', 'lastName', 'profileImageUrl', 'bio', 'createdAt'],
-    maskedFields: ['email'],
-    description: 'Limited access - can see names and profile info only'
+    allowedFields: ['id', 'firstName', 'profileImageUrl', 'bio', 'createdAt'],
+    maskedFields: [],
+    hiddenFields: ['lastName', 'email', 'phoneNumber', 'address'],
+    description: 'Limited access - first name and profile only, no contact info'
   },
   provider: {
     canSeeFull: false,
-    allowedFields: ['id', 'firstName', 'lastName', 'profileImageUrl', 'bio', 'createdAt'],
-    maskedFields: ['email'],
-    description: 'Limited access - can see names and profile info only'
+    allowedFields: ['id', 'firstName', 'profileImageUrl', 'bio', 'createdAt'],
+    maskedFields: [],
+    hiddenFields: ['lastName', 'email', 'phoneNumber', 'address'],
+    description: 'Limited access - first name and profile only, no contact info'
   },
   user: {
     canSeeFull: false,
-    allowedFields: ['id', 'firstName', 'lastName', 'profileImageUrl', 'bio', 'createdAt'],
+    allowedFields: ['id', 'firstName', 'profileImageUrl', 'bio', 'createdAt'],
     maskedFields: [],
+    hiddenFields: ['lastName', 'email', 'phoneNumber'],
     description: 'Standard user - limited access to other users data'
   }
 } as const;
@@ -192,12 +196,67 @@ export function createPublicProfile<T extends Record<string, any>>(userData: T):
 }
 
 /**
- * Get display name (first name + last initial) for privacy
+ * Get display name for privacy - first name only for maximum protection
  */
 export function getDisplayName(firstName?: string | null, lastName?: string | null): string {
+  return firstName || 'Traveler';
+}
+
+/**
+ * Get display name with last initial (less strict mode)
+ */
+export function getDisplayNameWithInitial(firstName?: string | null, lastName?: string | null): string {
   const first = firstName || 'User';
   const lastInitial = lastName ? ` ${lastName.charAt(0)}.` : '';
   return `${first}${lastInitial}`;
+}
+
+/**
+ * Patterns for detecting contact information in text
+ */
+const CONTACT_PATTERNS = {
+  email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+  phone: /(?:\+?1[-.\s]?)?(?:\(?[0-9]{3}\)?[-.\s]?)?[0-9]{3}[-.\s]?[0-9]{4}/g,
+  phoneIntl: /\+[0-9]{1,3}[-.\s]?[0-9]{6,14}/g,
+  whatsapp: /(?:whatsapp|wa\.me|chat on whatsapp)/gi,
+  socialHandles: /@[a-zA-Z0-9_]{2,30}/g,
+};
+
+/**
+ * Redact contact information from text content
+ * Replaces detected patterns with [REDACTED]
+ */
+export function redactContactInfo(text: string | null | undefined): string | null {
+  if (!text) return null;
+  
+  let redacted = text;
+  
+  // Redact emails
+  redacted = redacted.replace(CONTACT_PATTERNS.email, '[email redacted]');
+  
+  // Redact phone numbers
+  redacted = redacted.replace(CONTACT_PATTERNS.phone, '[phone redacted]');
+  redacted = redacted.replace(CONTACT_PATTERNS.phoneIntl, '[phone redacted]');
+  
+  // Redact WhatsApp references
+  redacted = redacted.replace(CONTACT_PATTERNS.whatsapp, '[contact redacted]');
+  
+  // Redact social media handles
+  redacted = redacted.replace(CONTACT_PATTERNS.socialHandles, '[handle redacted]');
+  
+  return redacted;
+}
+
+/**
+ * Check if text contains contact information
+ */
+export function containsContactInfo(text: string | null | undefined): boolean {
+  if (!text) return false;
+  
+  return Object.values(CONTACT_PATTERNS).some(pattern => {
+    pattern.lastIndex = 0; // Reset regex state
+    return pattern.test(text);
+  });
 }
 
 /**
