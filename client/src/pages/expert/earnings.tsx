@@ -51,7 +51,7 @@ export default function ExpertEarnings() {
             <h1 className="text-2xl font-bold text-gray-900">Earnings Dashboard</h1>
             <p className="text-gray-600">Track your revenue and manage payouts</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-request-payout">
+          <Button className="bg-[#FF385C] " data-testid="button-request-payout">
             <DollarSign className="w-4 h-4 mr-2" />
             Request Payout
           </Button>
@@ -143,7 +143,7 @@ export default function ExpertEarnings() {
               <CardContent>
                 <div className="space-y-3">
                   {monthlyBreakdown.map((month, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50" data-testid={`monthly-breakdown-${index}`}>
+                    <div key={index} className="flex items-center justify-between p-2 rounded-lg hover-elevate" data-testid={`monthly-breakdown-${index}`}>
                       <div>
                         <p className="font-medium text-gray-900">{month.month}</p>
                         <p className="text-sm text-gray-500">{month.clients} clients</p>

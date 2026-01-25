@@ -56,7 +56,7 @@ export default function ExpertProfile() {
             <h1 className="text-2xl font-bold text-gray-900">Business Profile</h1>
             <p className="text-gray-600">Manage your public profile and preferences</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-save-profile">
+          <Button className="bg-[#FF385C] " data-testid="button-save-profile">
             <Save className="w-4 h-4 mr-2" />
             Save Changes
           </Button>
@@ -78,7 +78,7 @@ export default function ExpertProfile() {
                 </Avatar>
                 <Button
                   size="icon"
-                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-[#FF385C] hover:bg-[#E23350]"
+                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-[#FF385C] "
                   data-testid="button-change-photo"
                 >
                   <Camera className="w-4 h-4" />
@@ -211,7 +211,7 @@ export default function ExpertProfile() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-5 w-5 hover:bg-gray-300/50"
+                    className="h-5 w-5 "
                     onClick={() => handleRemoveSpecialty(specialty)}
                     data-testid={`button-remove-specialty-${specialty}`}
                   >

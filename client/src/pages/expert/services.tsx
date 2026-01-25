@@ -247,7 +247,7 @@ export default function ExpertServices() {
             <p className="text-gray-600">Create and manage your service offerings</p>
           </div>
           <Link href="/expert/services/new">
-            <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-add-service">
+            <Button className="bg-[#FF385C] " data-testid="button-add-service">
               <Plus className="w-4 h-4 mr-2" /> Create Service
             </Button>
           </Link>
@@ -374,7 +374,7 @@ export default function ExpertServices() {
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No services yet</h3>
                     <p className="text-gray-600 mb-4">Create your first service to start accepting bookings</p>
                     <Link href="/expert/services/new">
-                      <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-create-first-service">
+                      <Button className="bg-[#FF385C] " data-testid="button-create-first-service">
                         <Plus className="w-4 h-4 mr-2" /> Create Service
                       </Button>
                     </Link>

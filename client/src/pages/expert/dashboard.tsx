@@ -171,7 +171,7 @@ export default function ExpertDashboard() {
                       </Badge>
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-handle-${item.id}`}>
+                      <Button size="sm" className="bg-[#FF385C] " data-testid={`button-handle-${item.id}`}>
                         Handle Now
                       </Button>
                       <Button size="sm" variant="outline" data-testid={`button-delegate-${item.id}`}>
@@ -282,7 +282,7 @@ export default function ExpertDashboard() {
                   </p>
                 </div>
                 <Button 
-                  className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]" 
+                  className="w-full mt-4 bg-[#FF385C] " 
                   data-testid="button-review-ai-work"
                 >
                   Review AI Work <ArrowRight className="w-4 h-4 ml-1" />

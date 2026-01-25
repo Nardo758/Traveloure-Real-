@@ -160,7 +160,7 @@ export default function ContractCategories() {
             </h1>
             <p className="text-gray-600">Manage your service categories and track contracts</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-add-category">
+          <Button className="bg-[#FF385C] " data-testid="button-add-category">
             <Plus className="w-4 h-4 mr-2" />
             Add Category
           </Button>

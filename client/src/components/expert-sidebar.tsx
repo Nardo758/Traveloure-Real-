@@ -26,10 +26,14 @@ import {
   LogOut,
   Compass,
   PlusSquare,
+  TrendingUp,
+  Award,
+  FileText,
 } from "lucide-react";
 
 const menuItems = [
   { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+  { title: "Revenue Optimizer", href: "/expert/revenue-optimization", icon: TrendingUp },
   { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
   { title: "Messages", href: "/expert/messages", icon: MessageSquare },
   { title: "Clients", href: "/expert/clients", icon: Users },
@@ -38,6 +42,9 @@ const menuItems = [
   { title: "Custom Services", href: "/expert/custom-services", icon: PlusSquare },
   { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
   { title: "Performance", href: "/expert/performance", icon: BarChart3 },
+  { title: "Leaderboard", href: "/expert/leaderboard", icon: Award },
+  { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
+  { title: "Templates", href: "/expert/templates", icon: FileText },
   { title: "Profile", href: "/expert/profile", icon: User },
 ];
 
@@ -50,16 +57,16 @@ export function ExpertSidebar() {
     : "EX";
 
   return (
-    <Sidebar className="border-r border-gray-200">
-      <SidebarHeader className="p-4 border-b border-gray-200">
+    <Sidebar className="border-r border-border">
+      <SidebarHeader className="p-4 border-b border-border">
         <Link href="/" data-testid="link-expert-logo">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-md bg-[#FF385C] flex items-center justify-center">
-              <Compass className="w-5 h-5 text-white" />
+            <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center">
+              <Compass className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <span className="font-bold text-lg text-gray-900">Traveloure</span>
-              <span className="ml-2 text-xs bg-[#FF385C] text-white px-2 py-0.5 rounded-full">
+              <span className="font-bold text-lg text-foreground">Traveloure</span>
+              <span className="ml-2 text-xs bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
                 EXPERT
               </span>
             </div>
@@ -78,17 +85,13 @@ export function ExpertSidebar() {
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
                       asChild
-                      className={`w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                        isActive
-                          ? "bg-[#FF385C]/10 text-[#FF385C] font-medium"
-                          : "text-gray-600 hover:bg-gray-100"
-                      }`}
+                      isActive={isActive}
                     >
                       <Link
                         href={item.href}
                         data-testid={`link-expert-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                       >
-                        <item.icon className={`w-5 h-5 ${isActive ? "text-[#FF385C]" : "text-gray-500"}`} />
+                        <item.icon className="w-5 h-5" />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -100,24 +103,24 @@ export function ExpertSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-gray-200">
+      <SidebarFooter className="p-4 border-t border-border">
         <div className="flex items-center gap-3 mb-3">
-          <Avatar className="h-10 w-10 border-2 border-[#FF385C]/20">
+          <Avatar className="h-10 w-10 border-2 border-primary/20">
             <AvatarImage src={user?.profileImageUrl || undefined} />
-            <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C] font-medium">
+            <AvatarFallback className="bg-primary/10 text-primary font-medium">
               {userInitials}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">
+            <p className="text-sm font-medium text-foreground truncate">
               {user?.firstName} {user?.lastName}
             </p>
-            <p className="text-xs text-gray-500 truncate">Travel Expert</p>
+            <p className="text-xs text-muted-foreground truncate">Travel Expert</p>
           </div>
         </div>
         <Button
           variant="ghost"
-          className="w-full justify-start gap-2 text-gray-600 hover:text-red-600 hover:bg-red-50"
+          className="w-full justify-start gap-2 text-destructive"
           onClick={() => logout()}
           data-testid="button-expert-logout"
         >
