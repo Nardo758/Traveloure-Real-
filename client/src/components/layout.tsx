@@ -30,7 +30,20 @@ import {
   UserCheck,
   HelpCircle,
   FileText,
-  ShoppingCart
+  ShoppingCart,
+  PartyPopper,
+  GraduationCap,
+  Baby,
+  Gift,
+  TreePine,
+  Wine,
+  Palmtree,
+  UsersRound,
+  Crown,
+  Flower2,
+  HandHeart,
+  Trophy,
+  Umbrella
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,26 +60,48 @@ import { NotificationBell } from "@/components/notification-bell";
 
 const navItems = [
   {
-    name: "Features",
+    name: "Experiences",
     icon: ChevronDown,
     sections: [
       {
-        title: "FOR TRAVELERS",
+        title: "TRAVEL & GETAWAYS",
         items: [
-          { name: "Plan Your Perfect Trip", href: "/experiences/travel", icon: Plane, description: "Personalized travel planning" },
-          { name: "Find Local Experts", href: "/vendors", icon: Users, description: "Connect with destination experts" },
-          { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Executive Assistant Services", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
+          { name: "Travel Planning", href: "/experiences/travel", icon: Plane, description: "Plan your perfect trip" },
+          { name: "Romantic Getaways", href: "/experiences/romance", icon: Sparkles, description: "Special romantic escapes" },
+          { name: "Date Night", href: "/experiences/date-night", icon: Wine, description: "Perfect evening plans" },
+          { name: "Retreats", href: "/experiences/retreats", icon: Palmtree, description: "Relaxation & wellness" },
         ],
       },
       {
-        title: "FOR LIFE EVENTS",
+        title: "CELEBRATIONS",
         items: [
-          { name: "Plan Your Dream Wedding", href: "/experiences/wedding", icon: Heart, description: "Full wedding planning" },
-          { name: "Perfect Proposal Planning", href: "/experiences/proposal", icon: Gem, description: "Create the perfect moment" },
-          { name: "Romantic Getaways", href: "/experiences/romance", icon: Sparkles, description: "Special romantic experiences" },
-          { name: "Birthday Celebrations", href: "/experiences/birthday", icon: Cake, description: "Plan unforgettable parties" },
-          { name: "Corporate Events & Retreats", href: "/experiences/corporate", icon: Building2, description: "Team events made easy" },
+          { name: "Birthday Party", href: "/experiences/birthday", icon: Cake, description: "Unforgettable celebrations" },
+          { name: "Holiday Party", href: "/experiences/holiday-party", icon: TreePine, description: "Festive gatherings" },
+          { name: "Housewarming", href: "/experiences/housewarming-party", icon: Home, description: "Welcome home events" },
+          { name: "Farewell Party", href: "/experiences/farewell-party", icon: HandHeart, description: "Send-off celebrations" },
+          { name: "Career Achievement", href: "/experiences/career-achievement-party", icon: Trophy, description: "Celebrate success" },
+        ],
+      },
+      {
+        title: "LIFE MILESTONES",
+        items: [
+          { name: "Wedding", href: "/experiences/wedding", icon: Heart, description: "Dream wedding planning" },
+          { name: "Proposal", href: "/experiences/proposal", icon: Gem, description: "Perfect proposal moment" },
+          { name: "Engagement Party", href: "/experiences/engagement-party", icon: Flower2, description: "Celebrate your love" },
+          { name: "Baby Shower", href: "/experiences/baby-shower", icon: Baby, description: "Welcome the new arrival" },
+          { name: "Anniversary", href: "/experiences/wedding-anniversaries", icon: Gift, description: "Celebrate your journey" },
+          { name: "Graduation", href: "/experiences/graduation-party", icon: GraduationCap, description: "Honor achievements" },
+          { name: "Retirement", href: "/experiences/retirement-party", icon: Crown, description: "New chapter celebration" },
+        ],
+      },
+      {
+        title: "GROUP EVENTS",
+        items: [
+          { name: "Corporate Events", href: "/experiences/corporate-events", icon: Building2, description: "Team events & meetings" },
+          { name: "Corporate Retreats", href: "/experiences/corporate", icon: Briefcase, description: "Team building retreats" },
+          { name: "Boys Trip", href: "/experiences/boys-trip", icon: Users, description: "Epic adventures" },
+          { name: "Girls Trip", href: "/experiences/girls-trip", icon: UsersRound, description: "Getaways with friends" },
+          { name: "Reunions", href: "/experiences/reunions", icon: PartyPopper, description: "Reconnect & celebrate" },
         ],
       },
     ],
@@ -95,10 +130,29 @@ const navItems = [
       },
     ],
   },
-  { name: "Discover", href: "/discover" },
+  {
+    name: "Services",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "PLANNING TOOLS",
+        items: [
+          { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
+          { name: "Find Local Experts", href: "/vendors", icon: Users, description: "Connect with destination experts" },
+          { name: "Executive Assistant", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
+        ],
+      },
+      {
+        title: "DISCOVER",
+        items: [
+          { name: "Explore Destinations", href: "/discover", icon: Compass, description: "Browse all experiences" },
+          { name: "Live Intel", href: "/spontaneous", icon: Sparkles, description: "Real-time local insights" },
+          { name: "Today's Deals", href: "/deals", icon: CreditCard, description: "Special offers & discounts" },
+        ],
+      },
+    ],
+  },
   { name: "Experts", href: "/experts" },
-  { name: "Live Intel", href: "/spontaneous" },
-  { name: "Deals", href: "/deals" },
   { name: "Contact", href: "/contact" },
 ];
 
@@ -134,10 +188,10 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       <Link
         href={item.href || "#"}
         className={cn(
-          "text-sm font-medium transition-colors px-3 py-2 relative",
+          "text-sm font-medium transition-colors px-3 py-2 relative hover-elevate rounded-md",
           isActive 
             ? "text-primary after:absolute after:bottom-0 after:left-3 after:right-3 after:h-0.5 after:bg-primary after:rounded-full" 
-            : "text-[#6B7280] hover:text-[#FF385C]"
+            : "text-muted-foreground"
         )}
         data-testid={`link-nav-${slugify(item.name)}`}
       >
@@ -153,7 +207,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
       onMouseLeave={handleMouseLeave}
     >
       <button
-        className="flex items-center text-sm font-medium text-[#6B7280] hover:text-[#FF385C] transition-colors px-3 py-2"
+        className="flex items-center text-sm font-medium text-muted-foreground hover-elevate transition-colors px-3 py-2 rounded-md"
         type="button"
         data-testid={`button-nav-dropdown-${slugify(item.name)}`}
       >
@@ -168,27 +222,41 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 border border-[#E5E7EB] rounded-lg shadow-xl z-50"
+            className={cn(
+              "absolute top-full mt-1 bg-card border border-border rounded-lg shadow-xl z-50",
+              item.sections.length > 2 
+                ? "left-1/2 -translate-x-1/2 w-[800px]" 
+                : "left-0 w-72"
+            )}
           >
-            <div className="py-2">
+            <div className={cn(
+              "py-3",
+              item.sections.length > 2 ? "grid grid-cols-4 gap-1 px-2" : ""
+            )}>
               {item.sections.map((section, sIdx) => (
-                <div key={section.title}>
-                  {sIdx > 0 && <div className="border-t border-[#E5E7EB] my-2" />}
-                  <div className="px-4 py-2 text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide">
+                <div key={section.title} className={item.sections.length > 2 ? "px-2" : ""}>
+                  {sIdx > 0 && item.sections.length <= 2 && <div className="border-t border-border my-2" />}
+                  <div className={cn(
+                    "text-xs font-semibold text-muted-foreground uppercase tracking-wide",
+                    item.sections.length > 2 ? "px-2 py-2 border-b border-border mb-1" : "px-4 py-2"
+                  )}>
                     {section.title}
                   </div>
                   {section.items.map((child) => (
                     <Link
                       key={child.name}
                       href={child.href || "#"}
-                      className="flex items-start gap-3 px-4 py-2.5 text-sm hover:bg-[#F3F4F6] transition-colors group"
+                      className={cn(
+                        "flex items-start gap-2 text-sm hover-elevate transition-colors group rounded-md",
+                        item.sections.length > 2 ? "px-2 py-2" : "px-4 py-2.5 gap-3"
+                      )}
                       data-testid={`link-nav-${slugify(child.name)}`}
                     >
-                      {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-[#6B7280] group-hover:text-[#FF385C]" />}
-                      <div>
-                        <div className="text-[#111827] font-medium group-hover:text-[#FF385C]">{child.name}</div>
-                        {child.description && (
-                          <div className="text-xs text-[#9CA3AF]">{child.description}</div>
+                      {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />}
+                      <div className="min-w-0">
+                        <div className="text-foreground font-medium truncate">{child.name}</div>
+                        {child.description && item.sections.length <= 2 && (
+                          <div className="text-xs text-muted-foreground">{child.description}</div>
                         )}
                       </div>
                     </Link>
@@ -213,19 +281,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-white dark:bg-gray-900 border-b border-[#E5E7EB] sticky top-0 z-50">
+      <nav className="bg-background border-b border-border sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               {/* Logo */}
               <Link href="/" className="flex-shrink-0 flex items-center gap-3" data-testid="link-logo">
                 <div className="flex items-center gap-1.5">
-                  <Compass className="h-6 w-6 text-[#FF385C]" />
-                  <span className="font-bold text-xl tracking-tight text-[#111827] dark:text-white uppercase">
+                  <Compass className="h-6 w-6 text-primary" />
+                  <span className="font-bold text-xl tracking-tight text-foreground uppercase">
                     Traveloure
                   </span>
                 </div>
-                <span className="px-2 py-0.5 text-xs font-semibold bg-[#FFE3E8] text-[#FF385C] rounded-full border border-[#FF385C]/20">
+                <span className="px-2 py-0.5 text-xs font-semibold bg-primary/10 text-primary rounded-full border border-primary/20">
                   BETA
                 </span>
               </Link>
@@ -248,7 +316,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center md:hidden">
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+                className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
                 data-testid="button-mobile-menu"
               >
                 {isMobileMenuOpen ? (
@@ -268,26 +336,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden border-t border-[#E5E7EB] bg-white dark:bg-gray-900"
+              className="md:hidden border-t border-border bg-background"
             >
               {/* Mobile Nav - Same for all users */}
               <div className="pt-2 pb-3 space-y-1 px-4">
                 {navItems.map((item) => (
                   item.sections ? (
                     <div key={item.name} className="py-2">
-                      <div className="px-3 py-2 text-sm font-semibold text-[#9CA3AF] uppercase tracking-wide">
+                      <div className="px-3 py-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                         {item.name}
                       </div>
                       {item.sections.map((section) => (
                         <div key={section.title}>
-                          <div className="px-6 py-1.5 text-xs font-semibold text-[#9CA3AF] uppercase">
+                          <div className="px-6 py-1.5 text-xs font-semibold text-muted-foreground uppercase">
                             {section.title}
                           </div>
                           {section.items.map((child) => (
                             <Link
                               key={child.name}
                               href={child.href || "#"}
-                              className="flex items-center gap-3 px-8 py-2.5 text-base font-medium text-[#6B7280] hover:text-[#FF385C] hover:bg-[#F3F4F6] rounded-lg transition-colors"
+                              className="flex items-center gap-3 px-8 py-2.5 text-base font-medium text-muted-foreground hover-elevate rounded-lg transition-colors"
                               onClick={() => setIsMobileMenuOpen(false)}
                               data-testid={`link-mobile-${child.name.toLowerCase().replace(/\s+/g, '-')}`}
                             >
@@ -302,7 +370,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Link
                       key={item.name}
                       href={item.href || "#"}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-[#6B7280] hover:bg-[#F3F4F6] hover:text-[#FF385C] transition-colors"
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-base font-medium text-muted-foreground hover-elevate transition-colors"
                       onClick={() => setIsMobileMenuOpen(false)}
                       data-testid={`link-mobile-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
@@ -328,7 +396,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       variant="ghost"
                       size="icon"
                       onClick={() => logout()}
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      className="text-destructive hover-elevate"
                       data-testid="button-mobile-logout"
                     >
                       <LogOut className="h-5 w-5" />
@@ -422,7 +490,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h4 className="font-semibold mb-4 text-white">Company</h4>
               <ul className="space-y-3 text-sm text-gray-400">
                 <li><Link href="/about" className="hover:text-white transition-colors" data-testid="link-footer-about">About Us</Link></li>
-                <li><Link href="/partner" className="hover:text-white transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
+                <li><Link href="/partner-with-us" className="hover:text-white transition-colors" data-testid="link-footer-partner">Partner With Us</Link></li>
                 <li><Link href="/careers" className="hover:text-white transition-colors" data-testid="link-footer-careers">Careers</Link></li>
                 <li><Link href="/blog" className="hover:text-white transition-colors" data-testid="link-footer-blog">Blog</Link></li>
                 <li><Link href="/press" className="hover:text-white transition-colors" data-testid="link-footer-press">Press</Link></li>
