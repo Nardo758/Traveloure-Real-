@@ -2,15 +2,26 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { ExpertLayout } from "@/components/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +40,6 @@ import {
 } from "@/components/ui/select";
 import { 
   FileText, 
-  MessageSquare,
   Copy,
   Plus,
   Edit2,
@@ -55,30 +65,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import type { ExpertTemplate, InsertExpertTemplate } from "@shared/schema";
 
-type ExpertTemplate = {
-  id: string;
-  expertId: string;
-  title: string;
-  description: string;
-  shortDescription?: string;
-  destination: string;
-  duration: number;
-  price: string;
-  currency?: string;
-  category?: string;
-  coverImage?: string;
-  images?: string[];
-  highlights?: string[];
-  tags?: string[];
-  isPublished: boolean;
-  isFeatured: boolean;
-  salesCount?: number;
-  viewCount?: number;
-  averageRating?: string;
-  reviewCount?: number;
-  createdAt?: string;
-};
+// Form schema for template creation
+const templateFormSchema = z.object({
+  title: z.string().min(3, "Title must be at least 3 characters").max(255),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  shortDescription: z.string().max(500).optional(),
+  destination: z.string().min(2, "Destination is required"),
+  duration: z.coerce.number().min(1, "Duration must be at least 1 day"),
+  price: z.string().regex(/^\d+\.?\d*$/, "Please enter a valid price"),
+  category: z.string().optional(),
+  highlights: z.string().optional(),
+  isPublished: z.boolean().default(false),
+});
+
+type TemplateFormData = z.infer<typeof templateFormSchema>;
 
 type EarningsSummary = {
   total: number;
@@ -90,16 +92,20 @@ type EarningsSummary = {
 export default function ExpertTemplates() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newTemplate, setNewTemplate] = useState({
-    title: "",
-    description: "",
-    shortDescription: "",
-    destination: "",
-    duration: 7,
-    price: "",
-    category: "adventure",
-    highlights: "",
-    isPublished: false,
+
+  const form = useForm<TemplateFormData>({
+    resolver: zodResolver(templateFormSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      shortDescription: "",
+      destination: "",
+      duration: 7,
+      price: "",
+      category: "adventure",
+      highlights: "",
+      isPublished: false,
+    },
   });
 
   const { data: templates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
@@ -115,24 +121,18 @@ export default function ExpertTemplates() {
   });
 
   const createTemplateMutation = useMutation({
-    mutationFn: async (data: any) => {
-      const res = await apiRequest("POST", "/api/expert/templates", data);
+    mutationFn: async (data: TemplateFormData) => {
+      const payload = {
+        ...data,
+        highlights: data.highlights?.split(",").map(h => h.trim()).filter(Boolean) || [],
+      };
+      const res = await apiRequest("POST", "/api/expert/templates", payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/templates"] });
       setIsCreateOpen(false);
-      setNewTemplate({
-        title: "",
-        description: "",
-        shortDescription: "",
-        destination: "",
-        duration: 7,
-        price: "",
-        category: "adventure",
-        highlights: "",
-        isPublished: false,
-      });
+      form.reset();
       toast({
         title: "Template created!",
         description: "Your itinerary template has been saved.",
@@ -174,33 +174,20 @@ export default function ExpertTemplates() {
     },
   });
 
-  const handleCreateTemplate = () => {
-    if (!newTemplate.title || !newTemplate.destination || !newTemplate.price) {
-      toast({
-        title: "Missing fields",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    createTemplateMutation.mutate({
-      ...newTemplate,
-      highlights: newTemplate.highlights.split(",").map(h => h.trim()).filter(Boolean),
-      price: newTemplate.price,
-    });
+  const onSubmit = (data: TemplateFormData) => {
+    createTemplateMutation.mutate(data);
   };
 
-  const totalEarnings = earningsData?.summary?.total || 0;
-  const totalSales = salesData?.length || 0;
-  const publishedCount = templates?.filter(t => t.isPublished).length || 0;
+  const totalEarnings = earningsData?.summary?.total ?? 0;
+  const totalSales = salesData?.length ?? 0;
+  const publishedCount = templates?.filter(t => t.isPublished)?.length ?? 0;
 
   const responseTemplates = [
     {
       id: 1,
       name: "Initial Inquiry Response",
       category: "Inquiry",
-      content: "Thank you for reaching out! I'd love to help you plan your trip to {destination}. To create the perfect itinerary, could you tell me more about...",
+      content: "Thank you for reaching out! I'd love to help you plan your trip to {destination}.",
       usageCount: 145,
       lastUsed: "2 hours ago",
       aiGenerated: false,
@@ -209,7 +196,7 @@ export default function ExpertTemplates() {
       id: 2,
       name: "Quote Follow-up",
       category: "Sales",
-      content: "Hi {client_name}, just wanted to follow up on the quote I sent for your {trip_type}. Do you have any questions about the itinerary or pricing?",
+      content: "Hi {client_name}, just wanted to follow up on the quote I sent for your {trip_type}.",
       usageCount: 89,
       lastUsed: "1 day ago",
       aiGenerated: false,
@@ -218,7 +205,7 @@ export default function ExpertTemplates() {
       id: 3,
       name: "Booking Confirmation",
       category: "Confirmation",
-      content: "Great news! Your {trip_type} is confirmed for {dates}. I've attached all the details including your personalized itinerary...",
+      content: "Great news! Your {trip_type} is confirmed for {dates}.",
       usageCount: 67,
       lastUsed: "3 days ago",
       aiGenerated: false,
@@ -228,12 +215,12 @@ export default function ExpertTemplates() {
   const smartReplySuggestions = [
     {
       context: "Client asks about pricing",
-      suggestion: "Based on your requirements for a {duration} trip to {destination}, I typically charge ${price_range}. This includes...",
+      suggestion: "Based on your requirements for a {duration} trip to {destination}, I typically charge...",
       confidence: 95,
     },
     {
       context: "Client wants to modify dates",
-      suggestion: "I can definitely work with the new dates ({new_dates}). Let me check availability and update your itinerary...",
+      suggestion: "I can definitely work with the new dates ({new_dates}). Let me check availability...",
       confidence: 92,
     },
   ];
@@ -284,8 +271,8 @@ export default function ExpertTemplates() {
               <Card className="border" data-testid="card-template-sales">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-950 flex items-center justify-center">
-                      <Package className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                      <Package className="w-5 h-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Templates Sold</p>
@@ -297,8 +284,8 @@ export default function ExpertTemplates() {
               <Card className="border" data-testid="card-template-active">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-muted-foreground" />
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Published Templates</p>
@@ -324,137 +311,201 @@ export default function ExpertTemplates() {
                       Create a ready-made travel itinerary that travelers can purchase. You'll earn 80% of the sale price.
                     </DialogDescription>
                   </DialogHeader>
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="title">Title *</Label>
-                      <Input
-                        id="title"
-                        placeholder="e.g., 7-Day Tokyo Adventure"
-                        value={newTemplate.title}
-                        onChange={(e) => setNewTemplate({ ...newTemplate, title: e.target.value })}
-                        data-testid="input-template-title"
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+                      <FormField
+                        control={form.control}
+                        name="title"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Title *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g., 7-Day Tokyo Adventure"
+                                {...field}
+                                data-testid="input-template-title"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="destination">Destination *</Label>
-                        <Input
-                          id="destination"
-                          placeholder="e.g., Tokyo, Japan"
-                          value={newTemplate.destination}
-                          onChange={(e) => setNewTemplate({ ...newTemplate, destination: e.target.value })}
-                          data-testid="input-template-destination"
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="destination"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Destination *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="e.g., Tokyo, Japan"
+                                  {...field}
+                                  data-testid="input-template-destination"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="duration"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Duration (days) *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  {...field}
+                                  data-testid="input-template-duration"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="duration">Duration (days) *</Label>
-                        <Input
-                          id="duration"
-                          type="number"
-                          min="1"
-                          value={newTemplate.duration}
-                          onChange={(e) => setNewTemplate({ ...newTemplate, duration: parseInt(e.target.value) || 1 })}
-                          data-testid="input-template-duration"
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="price"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Price (USD) *</FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="49.99"
+                                  {...field}
+                                  data-testid="input-template-price"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name="category"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Category</FormLabel>
+                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                <FormControl>
+                                  <SelectTrigger data-testid="select-template-category">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="adventure">Adventure</SelectItem>
+                                  <SelectItem value="cultural">Cultural</SelectItem>
+                                  <SelectItem value="luxury">Luxury</SelectItem>
+                                  <SelectItem value="budget">Budget</SelectItem>
+                                  <SelectItem value="family">Family</SelectItem>
+                                  <SelectItem value="romantic">Romantic</SelectItem>
+                                  <SelectItem value="business">Business</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="price">Price (USD) *</Label>
-                        <Input
-                          id="price"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="49.99"
-                          value={newTemplate.price}
-                          onChange={(e) => setNewTemplate({ ...newTemplate, price: e.target.value })}
-                          data-testid="input-template-price"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="category">Category</Label>
-                        <Select
-                          value={newTemplate.category}
-                          onValueChange={(value) => setNewTemplate({ ...newTemplate, category: value })}
+                      <FormField
+                        control={form.control}
+                        name="shortDescription"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Short Description</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Brief summary shown in listings"
+                                {...field}
+                                data-testid="input-template-short-desc"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Full Description *</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="Detailed description of what's included in this itinerary..."
+                                className="min-h-[100px]"
+                                {...field}
+                                data-testid="input-template-description"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="highlights"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Highlights (comma-separated)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g., Hidden temples, Local food tours, Mt. Fuji day trip"
+                                {...field}
+                                data-testid="input-template-highlights"
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Separate multiple highlights with commas
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="isPublished"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center gap-3 pt-2">
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                                data-testid="switch-template-publish"
+                              />
+                            </FormControl>
+                            <FormLabel className="cursor-pointer !mt-0">
+                              Publish immediately (make available for purchase)
+                            </FormLabel>
+                          </FormItem>
+                        )}
+                      />
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button 
+                          type="submit"
+                          disabled={createTemplateMutation.isPending}
+                          data-testid="button-save-template"
                         >
-                          <SelectTrigger data-testid="select-template-category">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="adventure">Adventure</SelectItem>
-                            <SelectItem value="cultural">Cultural</SelectItem>
-                            <SelectItem value="luxury">Luxury</SelectItem>
-                            <SelectItem value="budget">Budget</SelectItem>
-                            <SelectItem value="family">Family</SelectItem>
-                            <SelectItem value="romantic">Romantic</SelectItem>
-                            <SelectItem value="business">Business</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="shortDescription">Short Description</Label>
-                      <Input
-                        id="shortDescription"
-                        placeholder="Brief summary shown in listings"
-                        value={newTemplate.shortDescription}
-                        onChange={(e) => setNewTemplate({ ...newTemplate, shortDescription: e.target.value })}
-                        data-testid="input-template-short-desc"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Full Description *</Label>
-                      <Textarea
-                        id="description"
-                        placeholder="Detailed description of what's included in this itinerary..."
-                        className="min-h-[100px]"
-                        value={newTemplate.description}
-                        onChange={(e) => setNewTemplate({ ...newTemplate, description: e.target.value })}
-                        data-testid="input-template-description"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="highlights">Highlights (comma-separated)</Label>
-                      <Input
-                        id="highlights"
-                        placeholder="e.g., Hidden temples, Local food tours, Mt. Fuji day trip"
-                        value={newTemplate.highlights}
-                        onChange={(e) => setNewTemplate({ ...newTemplate, highlights: e.target.value })}
-                        data-testid="input-template-highlights"
-                      />
-                    </div>
-                    <div className="flex items-center gap-3 pt-2">
-                      <Switch
-                        id="publish"
-                        checked={newTemplate.isPublished}
-                        onCheckedChange={(checked) => setNewTemplate({ ...newTemplate, isPublished: checked })}
-                        data-testid="switch-template-publish"
-                      />
-                      <Label htmlFor="publish" className="cursor-pointer">
-                        Publish immediately (make available for purchase)
-                      </Label>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button 
-                      onClick={handleCreateTemplate}
-                      disabled={createTemplateMutation.isPending}
-                      data-testid="button-save-template"
-                    >
-                      {createTemplateMutation.isPending ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Creating...
-                        </>
-                      ) : (
-                        "Create Template"
-                      )}
-                    </Button>
-                  </DialogFooter>
+                          {createTemplateMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Creating...
+                            </>
+                          ) : (
+                            "Create Template"
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </Form>
                 </DialogContent>
               </Dialog>
             </div>
@@ -489,10 +540,10 @@ export default function ExpertTemplates() {
                           <Calendar className="w-3 h-3" /> {template.duration} days
                         </span>
                         <span className="flex items-center gap-1">
-                          <Package className="w-3 h-3" /> {template.salesCount || 0} sold
+                          <Package className="w-3 h-3" /> {template.salesCount ?? 0} sold
                         </span>
                         <span className="flex items-center gap-1">
-                          <Eye className="w-3 h-3" /> {template.viewCount || 0} views
+                          <Eye className="w-3 h-3" /> {template.viewCount ?? 0} views
                         </span>
                         {template.averageRating && parseFloat(template.averageRating) > 0 && (
                           <span className="flex items-center gap-1 text-amber-600">
@@ -500,9 +551,9 @@ export default function ExpertTemplates() {
                           </span>
                         )}
                       </div>
-                      {template.salesCount && template.salesCount > 0 && (
-                        <div className="p-2 rounded bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-300 mb-3">
-                          Earned ${((template.salesCount || 0) * parseFloat(template.price) * 0.8).toFixed(2)} from this template
+                      {(template.salesCount ?? 0) > 0 && (
+                        <div className="p-2 rounded bg-muted text-sm mb-3">
+                          Earned ${(((template.salesCount ?? 0) * parseFloat(template.price)) * 0.8).toFixed(2)} from this template
                         </div>
                       )}
                       <div className="flex items-center gap-2">
@@ -517,20 +568,21 @@ export default function ExpertTemplates() {
                         </Button>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button size="icon" variant="ghost">
+                            <Button size="icon" variant="ghost" data-testid={`button-menu-${template.id}`}>
                               <MoreVertical className="w-4 h-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem data-testid={`menu-edit-${template.id}`}>
                               <Edit2 className="w-4 h-4 mr-2" /> Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem data-testid={`menu-preview-${template.id}`}>
                               <Eye className="w-4 h-4 mr-2" /> Preview
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               className="text-destructive"
                               onClick={() => deleteTemplateMutation.mutate(template.id)}
+                              data-testid={`menu-delete-${template.id}`}
                             >
                               <Trash2 className="w-4 h-4 mr-2" /> Delete
                             </DropdownMenuItem>
@@ -584,7 +636,7 @@ export default function ExpertTemplates() {
                             {template.category}
                           </Badge>
                           {template.aiGenerated && (
-                            <Badge variant="outline" className="bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+                            <Badge variant="secondary">
                               <Sparkles className="w-3 h-3 mr-1" /> AI Generated
                             </Badge>
                           )}
@@ -633,7 +685,7 @@ export default function ExpertTemplates() {
             <Card className="border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-purple-500" />
+                  <Sparkles className="w-5 h-5 text-primary" />
                   AI Smart Reply System
                 </CardTitle>
                 <CardDescription>
@@ -641,12 +693,12 @@ export default function ExpertTemplates() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="p-4 rounded-lg bg-purple-50 dark:bg-purple-950 border border-purple-200 dark:border-purple-800">
+                <div className="p-4 rounded-lg bg-muted">
                   <div className="flex items-center gap-3 mb-3">
-                    <CheckCircle className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <CheckCircle className="w-5 h-5 text-primary" />
                     <div>
-                      <p className="font-medium text-purple-800 dark:text-purple-200">AI Replies Enabled</p>
-                      <p className="text-sm text-purple-700 dark:text-purple-300">You'll see smart suggestions when responding to clients</p>
+                      <p className="font-medium">AI Replies Enabled</p>
+                      <p className="text-sm text-muted-foreground">You'll see smart suggestions when responding to clients</p>
                     </div>
                   </div>
                 </div>
@@ -659,7 +711,7 @@ export default function ExpertTemplates() {
                         <Badge variant="outline" className="bg-muted">
                           {suggestion.context}
                         </Badge>
-                        <span className="text-xs text-green-600 dark:text-green-400 font-medium">
+                        <span className="text-xs text-muted-foreground font-medium">
                           {suggestion.confidence}% confidence
                         </span>
                       </div>
