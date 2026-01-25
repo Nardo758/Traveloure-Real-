@@ -28,6 +28,12 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - **Comprehensive Template Support**: Standardized tab and filter specifications across 22+ experience templates covering diverse travel and event types.
 - **Reviews & Notifications**: User review and update system.
 - **Role-Based Dashboards**: Dashboards for Service Providers, Administrators, and Executive Assistants.
+- **Expert Tools Suite**: Comprehensive tools for travel experts to grow their business:
+  - **Revenue Optimization Dashboard** (`/expert/revenue-optimization`): Earnings projections, suggested pricing analysis, upsell opportunities, seasonal demand forecasting, passive income streams (itinerary templates, affiliate commissions), and instant payout options.
+  - **Expert Leaderboard** (`/expert/leaderboard`): Regional and global rankings, points system, badges/achievements, monthly competitions with prizes.
+  - **Business Analytics** (`/expert/analytics`): Key metrics comparison with benchmarks, conversion funnel visualization, revenue by service breakdown, client acquisition sources, client lifetime value analysis, actionable AI-powered insights.
+  - **Templates & Quick Responses** (`/expert/templates`): Reusable response templates, itinerary template marketplace for passive income, AI smart reply system.
+  - **AI Assistant** (`/expert/ai-assistant`): Task delegation, auto-draft responses, vendor research, automated follow-ups with quality scores and regeneration options.
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
 - **Coordination Hub**: Tracks planning lifecycle, vendor availability, state management, and bookings.
 - **Trip Transport Planner**: Intelligent transportation planning that analyzes all cart bookings to build a transport timeline:
