@@ -38,7 +38,7 @@ import { itineraryIntelligenceService } from "./services/itinerary-intelligence.
 import { emergencyService } from "./services/emergency.service";
 import { experienceCatalogService } from "./services/experience-catalog.service";
 import { opportunityEngineService } from "./services/opportunity-engine.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import { 
   insertTripParticipantSchema, 
@@ -293,30 +293,47 @@ export async function registerRoutes(
   });
 
   // Chats Routes
-  // NOTE: User data is sanitized - chat participants only see limited info about each other
+  // SECURITY: User data is sanitized and contact info in messages is redacted
   app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
     
-    // Enrich chats with sanitized participant info
+    // Log access for audit trail
+    storage.logAccess({
+      actorId: userId,
+      actorRole: userRole,
+      action: 'view_chats',
+      resourceType: 'chat',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent'),
+    });
+    
+    // Enrich chats with sanitized participant info and redacted messages
     const enrichedChats = await Promise.all(chats.map(async (chat) => {
       // Get the other participant's info (sanitized)
       const otherUserId = chat.senderId === userId ? chat.receiverId : chat.senderId;
+      
+      // Redact any contact info from message content
+      const redactedMessage = redactContactInfo(chat.message);
+      
+      let participant = null;
       if (otherUserId) {
         const otherUser = await storage.getUser(otherUserId);
         if (otherUser) {
           const sanitizedUser = sanitizeUserForRole(otherUser, userRole, false);
-          return {
-            ...chat,
-            participant: {
-              ...sanitizedUser,
-              displayName: getDisplayName(otherUser.firstName, otherUser.lastName)
-            }
+          participant = {
+            ...sanitizedUser,
+            displayName: getDisplayName(otherUser.firstName, otherUser.lastName)
           };
         }
       }
-      return chat;
+      
+      return {
+        ...chat,
+        message: redactedMessage, // Contact info redacted
+        participant
+      };
     }));
     
     res.json(enrichedChats);
@@ -2845,7 +2862,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // Get client profile (for experts/providers) - sanitized view
-  // Experts can only see limited client information for their bookings
+  // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const userRole = (req.user as any).claims.role || 'user';
@@ -2860,6 +2877,18 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const isAdmin = canSeeFullUserData(userRole);
     
     if (!hasRelationship && !isAdmin) {
+      // Log unauthorized access attempt
+      storage.logAccess({
+        actorId: userId,
+        actorRole: userRole,
+        action: 'view_profile_denied',
+        resourceType: 'user',
+        resourceId: clientId,
+        targetUserId: clientId,
+        metadata: { reason: 'no_relationship' },
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+      });
       return res.status(403).json({ message: "Not authorized to view this client" });
     }
     
@@ -2867,6 +2896,18 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     if (!client) {
       return res.status(404).json({ message: "Client not found" });
     }
+    
+    // Log successful profile access
+    storage.logAccess({
+      actorId: userId,
+      actorRole: userRole,
+      action: 'view_profile',
+      resourceType: 'user',
+      resourceId: clientId,
+      targetUserId: clientId,
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent'),
+    });
     
     // Return sanitized profile based on role
     const sanitizedClient = sanitizeUserForRole(client, userRole, false);
