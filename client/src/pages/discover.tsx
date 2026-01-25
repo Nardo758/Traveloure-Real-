@@ -237,24 +237,54 @@ const preResearchedTrips = [
   },
 ];
 
-const articles = [
+const influencerContent = [
   {
     id: 1,
-    title: "10 Hidden Gems in Southeast Asia You Need to Visit",
-    category: "Destinations",
-    readTime: "8 min",
+    title: "My Top 10 Hidden Cafes in Bali",
+    category: "Food & Drink",
+    creator: "@wanderlust_sarah",
+    followers: "125K",
+    platform: "instagram",
   },
   {
     id: 2,
-    title: "How to Plan the Perfect Honeymoon on a Budget",
-    category: "Planning",
-    readTime: "6 min",
+    title: "Ultimate Tokyo Street Food Guide",
+    category: "Destinations",
+    creator: "@nomadic_mike",
+    followers: "89K",
+    platform: "youtube",
   },
   {
     id: 3,
-    title: "Best Time to Visit Japan: A Season-by-Season Guide",
-    category: "Guides",
-    readTime: "10 min",
+    title: "Budget Travel Hacks That Actually Work",
+    category: "Tips",
+    creator: "@thriftytraveler",
+    followers: "250K",
+    platform: "tiktok",
+  },
+  {
+    id: 4,
+    title: "Romance in Paris: Local's Guide",
+    category: "Romantic",
+    creator: "@couples_abroad",
+    followers: "180K",
+    platform: "instagram",
+  },
+  {
+    id: 5,
+    title: "Best Sunset Spots in Santorini",
+    category: "Photography",
+    creator: "@golden_hour_jen",
+    followers: "95K",
+    platform: "instagram",
+  },
+  {
+    id: 6,
+    title: "How I Plan Corporate Retreats",
+    category: "Business",
+    creator: "@eventpro_lisa",
+    followers: "45K",
+    platform: "linkedin",
   },
 ];
 
@@ -784,7 +814,7 @@ export default function DiscoverPage() {
                   data-testid="tab-articles"
                 >
                   <BookOpen className="w-4 h-4 mr-2" />
-                  Travel Articles
+                  Influencer Curated
                 </TabsTrigger>
                 <TabsTrigger
                   value="events"
@@ -1236,34 +1266,51 @@ export default function DiscoverPage() {
                 )}
               </TabsContent>
 
-              {/* Articles Tab */}
+              {/* Influencer Curated Content Tab */}
               <TabsContent value="articles">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {articles.map((article, idx) => (
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold mb-2">Curated by Travel Creators</h2>
+                  <p className="text-muted-foreground">Discover authentic recommendations from verified travel influencers and local experts.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {influencerContent.map((content, idx) => (
                     <motion.div
-                      key={article.id}
+                      key={content.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
                     >
                       <Card
                         className="hover-elevate overflow-hidden cursor-pointer group"
-                        data-testid={`card-article-${article.id}`}
+                        data-testid={`card-influencer-${content.id}`}
                       >
                         <CardContent className="p-0">
-                          <div className="h-40 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center">
-                            <BookOpen className="w-12 h-12 text-muted-foreground" />
+                          <div className="h-36 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center relative">
+                            <div className="absolute top-2 right-2">
+                              <Badge variant="secondary" className="text-xs bg-white/90">
+                                {content.platform === "instagram" && "📸 Instagram"}
+                                {content.platform === "youtube" && "🎬 YouTube"}
+                                {content.platform === "tiktok" && "🎵 TikTok"}
+                                {content.platform === "linkedin" && "💼 LinkedIn"}
+                              </Badge>
+                            </div>
+                            <Users className="w-10 h-10 text-primary/40" />
                           </div>
                           <div className="p-4">
-                            <Badge variant="secondary" className="mb-2 text-xs">
-                              {article.category}
-                            </Badge>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline" className="text-xs">
+                                {content.category}
+                              </Badge>
+                              <Badge className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                                Verified Creator
+                              </Badge>
+                            </div>
                             <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
-                              {article.title}
+                              {content.title}
                             </h3>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                              <Clock className="w-4 h-4" />
-                              {article.readTime} read
+                            <div className="flex items-center justify-between text-sm text-muted-foreground">
+                              <span className="font-medium text-foreground">{content.creator}</span>
+                              <span>{content.followers} followers</span>
                             </div>
                           </div>
                         </CardContent>
@@ -1273,8 +1320,8 @@ export default function DiscoverPage() {
                 </div>
 
                 <div className="text-center mt-8">
-                  <Button variant="outline" data-testid="button-view-all-articles">
-                    View All Articles
+                  <Button variant="outline" data-testid="button-view-all-creators">
+                    View All Creators
                     <ChevronRight className="w-4 h-4 ml-1" />
                   </Button>
                 </div>

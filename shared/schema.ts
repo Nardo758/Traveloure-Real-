@@ -280,6 +280,14 @@ export const localExpertForms = pgTable("local_expert_forms", {
   confirmAge: boolean("confirm_age").default(false),
   termsAndConditions: boolean("terms_and_conditions").default(false),
   partnership: boolean("partnership").default(false),
+  // Influencer fields
+  isInfluencer: boolean("is_influencer").default(false),
+  socialFollowers: jsonb("social_followers").default({}), // {"instagram": 50000, "tiktok": 100000, "youtube": 25000}
+  verifiedInfluencer: boolean("verified_influencer").default(false),
+  influencerTier: varchar("influencer_tier", { length: 20 }), // nano, micro, mid, macro, mega
+  referralCode: varchar("referral_code", { length: 50 }).unique(),
+  tiktokLink: text("tiktok_link"),
+  youtubeLink: text("youtube_link"),
   status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -854,6 +862,48 @@ export const expertCustomServices = pgTable("expert_custom_services", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// === Influencer Referral Tracking ===
+export const influencerReferralStatusEnum = ["pending", "converted", "paid", "expired"] as const;
+
+export const influencerReferrals = pgTable("influencer_referrals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  influencerId: varchar("influencer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  referralCode: varchar("referral_code", { length: 50 }).notNull(),
+  referredUserId: varchar("referred_user_id").references(() => users.id, { onDelete: "set null" }),
+  bookingId: varchar("booking_id"), // Can reference contracts or bookings
+  status: varchar("status", { length: 20 }).default("pending"), // pending, converted, paid, expired
+  commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).default("10.00"), // Percentage
+  commissionAmount: decimal("commission_amount", { precision: 10, scale: 2 }),
+  bookingAmount: decimal("booking_amount", { precision: 10, scale: 2 }),
+  paidAt: timestamp("paid_at"),
+  expiresAt: timestamp("expires_at"),
+  metadata: jsonb("metadata").default({}), // Additional tracking data
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Influencer curated content/collections
+export const influencerCuratedContent = pgTable("influencer_curated_content", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  influencerId: varchar("influencer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 100 }), // Food & Drink, Destinations, Tips, etc.
+  contentType: varchar("content_type", { length: 50 }).default("guide"), // guide, collection, itinerary, tips
+  platform: varchar("platform", { length: 50 }), // instagram, youtube, tiktok, blog
+  externalUrl: text("external_url"), // Link to original content
+  imageUrl: text("image_url"),
+  destinations: jsonb("destinations").default([]), // Cities/countries featured
+  experiences: jsonb("experiences").default([]), // Experience types covered
+  tags: jsonb("tags").default([]),
+  viewCount: integer("view_count").default(0),
+  saveCount: integer("save_count").default(0),
+  isFeatured: boolean("is_featured").default(false),
+  isActive: boolean("is_active").default(true),
+  publishedAt: timestamp("published_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -924,7 +974,17 @@ export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments
 export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
 // New schemas for Expert/Provider applications
-export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
+export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({ 
+  id: true, 
+  userId: true, 
+  status: true, 
+  rejectionMessage: true, 
+  createdAt: true,
+  // Admin-managed influencer fields (set by backend after verification)
+  verifiedInfluencer: true,
+  influencerTier: true,
+  referralCode: true,
+});
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
@@ -1035,6 +1095,21 @@ export const insertExpertCustomServiceSchema = createInsertSchema(expertCustomSe
 
 export type ExpertCustomService = typeof expertCustomServices.$inferSelect;
 export type InsertExpertCustomService = z.infer<typeof insertExpertCustomServiceSchema>;
+
+// Influencer schemas and types
+export const insertInfluencerReferralSchema = createInsertSchema(influencerReferrals).omit({ id: true, createdAt: true });
+export const insertInfluencerCuratedContentSchema = createInsertSchema(influencerCuratedContent).omit({ 
+  id: true, 
+  viewCount: true, 
+  saveCount: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+
+export type InfluencerReferral = typeof influencerReferrals.$inferSelect;
+export type InsertInfluencerReferral = z.infer<typeof insertInfluencerReferralSchema>;
+export type InfluencerCuratedContent = typeof influencerCuratedContent.$inferSelect;
+export type InsertInfluencerCuratedContent = z.infer<typeof insertInfluencerCuratedContentSchema>;
 
 export type UserExperience = typeof userExperiences.$inferSelect;
 export type InsertUserExperience = z.infer<typeof insertUserExperienceSchema>;
