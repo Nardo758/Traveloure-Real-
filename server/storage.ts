@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
@@ -2176,33 +2177,36 @@ export class DatabaseStorage implements IStorage {
   // === Content Tracking System ===
 
   // Generate unique tracking number (TRV-YYYYMM-XXXXX format)
-  async generateTrackingNumber(prefix: string = 'TRV'): Promise<string> {
+  // Uses atomic upsert with retry for concurrent safety
+  async generateTrackingNumber(prefix: string = 'TRV', maxRetries: number = 3): Promise<string> {
     const now = new Date();
     const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Get or create sequence for this prefix/month
-    const [existing] = await db.select().from(trackingSequences)
-      .where(and(
-        eq(trackingSequences.prefix, prefix),
-        eq(trackingSequences.yearMonth, yearMonth)
-      ));
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Try to insert or update atomically using raw SQL for true atomicity
+        const result = await db.execute(sql`
+          INSERT INTO tracking_sequences (id, prefix, year_month, last_number, updated_at)
+          VALUES (gen_random_uuid(), ${prefix}, ${yearMonth}, 1, NOW())
+          ON CONFLICT (prefix, year_month)
+          DO UPDATE SET 
+            last_number = tracking_sequences.last_number + 1,
+            updated_at = NOW()
+          RETURNING last_number
+        `);
 
-    let nextNumber: number;
-    if (existing) {
-      nextNumber = (existing.lastNumber || 0) + 1;
-      await db.update(trackingSequences)
-        .set({ lastNumber: nextNumber, updatedAt: new Date() })
-        .where(eq(trackingSequences.id, existing.id));
-    } else {
-      nextNumber = 1;
-      await db.insert(trackingSequences).values({
-        prefix,
-        yearMonth,
-        lastNumber: nextNumber,
-      });
+        const nextNumber = (result.rows[0] as any).last_number as number;
+        return `${prefix}-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
+      } catch (error: any) {
+        // Retry on concurrent insert conflicts
+        if (attempt < maxRetries - 1 && error.code === '23505') {
+          continue;
+        }
+        throw error;
+      }
     }
 
-    return `${prefix}-${yearMonth}-${String(nextNumber).padStart(5, '0')}`;
+    throw new Error(`Failed to generate tracking number after ${maxRetries} attempts`);
   }
 
   // Generate invoice number (INV-YYYYMM-XXXXX format)
