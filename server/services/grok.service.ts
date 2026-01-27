@@ -214,7 +214,7 @@ class GrokService {
     const inputCostCents = (promptTokens / 1000000) * pricing.input;
     const outputCostCents = (completionTokens / 1000000) * pricing.output;
     return {
-      costCents: Math.round((inputCostCents + outputCostCents) * 100) / 100,
+      costCents: Math.round(inputCostCents + outputCostCents), // Integer cents for precision
       inputRate: pricing.input,
       outputRate: pricing.output,
     };
