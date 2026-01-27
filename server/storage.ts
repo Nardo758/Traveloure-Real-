@@ -399,6 +399,7 @@ export class DatabaseStorage implements IStorage {
     
     // Auto-register in content tracking system
     await this.registerContent({
+      trackingNumber,
       contentType: 'trip',
       contentId: newTrip.id,
       ownerId: newTrip.userId || undefined,
@@ -430,6 +431,7 @@ export class DatabaseStorage implements IStorage {
     
     // Auto-register in content tracking system
     await this.registerContent({
+      trackingNumber,
       contentType: 'itinerary',
       contentId: newItinerary.id,
       title: `Itinerary for Trip ${itinerary.tripId}`,
@@ -499,7 +501,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createChat(chat: any): Promise<UserAndExpertChat> {
-    const [newChat] = await db.insert(userAndExpertChats).values(chat).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newChat] = await db.insert(userAndExpertChats).values({ ...chat, trackingNumber }).returning();
+    
+    // Auto-register chat in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'chat_message',
+      contentId: newChat.id,
+      ownerId: chat.senderId,
+      title: `Chat message`,
+      status: 'published',
+      metadata: { senderId: chat.senderId, receiverId: chat.receiverId },
+    });
+    
     return newChat;
   }
 
@@ -597,7 +612,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
-    const [newService] = await db.insert(providerServices).values(service).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newService] = await db.insert(providerServices).values({ ...service, trackingNumber }).returning();
+    
+    // Auto-register in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'service',
+      contentId: newService.id,
+      ownerId: newService.userId,
+      title: newService.serviceName,
+      status: newService.status === 'draft' ? 'draft' : 'published',
+      metadata: { serviceType: newService.serviceType, categoryId: newService.categoryId },
+    });
+    
     return newService;
   }
 
@@ -879,7 +907,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking> {
-    const [newBooking] = await db.insert(serviceBookings).values(booking).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newBooking] = await db.insert(serviceBookings).values({ ...booking, trackingNumber }).returning();
+    
+    // Auto-register in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'booking',
+      contentId: newBooking.id,
+      ownerId: newBooking.travelerId,
+      title: `Booking ${trackingNumber}`,
+      status: newBooking.status === 'pending' ? 'pending_review' : 'published',
+      metadata: { serviceId: newBooking.serviceId, providerId: newBooking.providerId },
+    });
+    
     return newBooking;
   }
 
@@ -917,7 +958,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
-    const [newReview] = await db.insert(serviceReviews).values(review).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newReview] = await db.insert(serviceReviews).values({ ...review, trackingNumber }).returning();
+    
+    // Auto-register in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'review',
+      contentId: newReview.id,
+      ownerId: newReview.travelerId,
+      title: `Review for Service ${review.serviceId}`,
+      status: 'pending_review',
+      metadata: { rating: newReview.rating, serviceId: newReview.serviceId, providerId: newReview.providerId },
+    });
     
     // Update service average rating
     const allReviews = await this.getServiceReviews(review.serviceId);
@@ -1280,7 +1333,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUserExperience(experience: InsertUserExperience & { userId: string }): Promise<UserExperience> {
-    const [newExperience] = await db.insert(userExperiences).values(experience).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newExperience] = await db.insert(userExperiences).values({ ...experience, trackingNumber }).returning();
+    
+    // Auto-register experience in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'experience',
+      contentId: newExperience.id,
+      ownerId: newExperience.userId,
+      title: newExperience.title || 'Untitled Experience',
+      status: 'draft',
+      metadata: { location: newExperience.location },
+    });
+    
     return newExperience;
   }
 
@@ -1957,7 +2023,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExpertTemplate(template: InsertExpertTemplate): Promise<ExpertTemplate> {
-    const [newTemplate] = await db.insert(expertTemplates).values(template).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newTemplate] = await db.insert(expertTemplates).values({ ...template, trackingNumber }).returning();
+    
+    // Auto-register in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'template',
+      contentId: newTemplate.id,
+      ownerId: newTemplate.expertId,
+      title: newTemplate.title,
+      status: newTemplate.isPublished ? 'published' : 'draft',
+      metadata: { destination: newTemplate.destination, category: newTemplate.category, price: newTemplate.price },
+    });
+    
     return newTemplate;
   }
 
