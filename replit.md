@@ -23,63 +23,22 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
 - **AI-Powered Trip Planning**: Includes an AI Itinerary Builder, Real-Time Intelligence Widget, AI-powered Expert-Traveler Matching, and an AI Content Assistant for experts.
 - **Expert Advisor Chat**: Direct communication with local travel experts.
 - **Tourist Place Discovery**: Search and exploration of destinations.
-- **Experience Planning System**: Template-based planning for various experience types (e.g., Travel, Wedding, Corporate) with category-specific provider browsing, interactive map view, and an AI Optimization tab for itinerary analysis.
-  - **Dynamic Template System**: Database-driven tabs and multi-level filtering with various filter types (single_select, multi_select, range, toggle) and universal filters (date range, budget, booking status, etc.).
-  - **Comprehensive Template Support**: Standardized tab and filter specifications across 22+ experience templates covering diverse travel and event types.
+- **Experience Planning System**: Template-based planning for various experience types (e.g., Travel, Wedding, Corporate) with category-specific provider browsing, interactive map view, and an AI Optimization tab for itinerary analysis. It features a dynamic template system with database-driven tabs, multi-level filtering, and comprehensive template support for 22+ experience types.
 - **Reviews & Notifications**: User review and update system.
 - **Role-Based Dashboards**: Dashboards for Service Providers, Administrators, and Executive Assistants.
-- **Expert Tools Suite**: Comprehensive tools for travel experts to grow their business:
-  - **Revenue Optimization Dashboard** (`/expert/revenue-optimization`): Earnings projections, suggested pricing analysis, upsell opportunities, seasonal demand forecasting, passive income streams (itinerary templates, affiliate commissions), and instant payout options.
-  - **Expert Leaderboard** (`/expert/leaderboard`): Regional and global rankings, points system, badges/achievements, monthly competitions with prizes.
-  - **Business Analytics** (`/expert/analytics`): Key metrics comparison with benchmarks, conversion funnel visualization, revenue by service breakdown, client acquisition sources, client lifetime value analysis, actionable AI-powered insights.
-    - API endpoints: `/api/expert/analytics/dashboard` (comprehensive metrics, expert profile, service alignment), `/api/expert/market-intelligence` (TravelPulse-powered trends filtered by expert's markets)
-    - Real-time data from bookings, earnings, templates tables
-    - Market Intelligence tab with trending destinations and seasonal demand forecasts from TravelPulse data, filtered by expert's geographic markets (destinations, city, country) with fallback to global trends
-    - "Your Markets" section displaying expert's focus areas (destinations, city, country badges)
-    - "Service Alignment" section tracking which services selected at signup have been created vs pending
-  - **Provider Performance Analytics** (`/provider/performance`): Service performance tracking for providers with monthly revenue trends, booking benchmarks, and service-level breakdowns.
-    - API endpoint: `/api/provider/analytics/dashboard`
-    - Benchmark comparisons (your average vs category average vs top performers)
-    - Service performance with ratings and revenue per service
-  - **Templates & Quick Responses** (`/expert/templates`): Reusable response templates, itinerary template marketplace for passive income, AI smart reply system.
-  - **AI Assistant** (`/expert/ai-assistant`): Task delegation, auto-draft responses, vendor research, automated follow-ups with quality scores and regeneration options.
+- **Expert Tools Suite**: Comprehensive tools for travel experts to grow their business, including Revenue Optimization Dashboard, Expert Leaderboard, Business Analytics (with market intelligence from TravelPulse), and Templates & Quick Responses.
+- **AI Assistant**: Task delegation, auto-draft responses, vendor research, and automated follow-ups.
 - **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
 - **Coordination Hub**: Tracks planning lifecycle, vendor availability, state management, and bookings.
-- **Trip Transport Planner**: Intelligent transportation planning that analyzes all cart bookings to build a transport timeline:
-  - Automatically detects flights, hotels, and activities from cart with all type variations
-  - Builds transport segments: airport→hotel, hotel→activities, activity→activity, hotel→airport
-  - Hotel transfer perk detection via `metadata.includesAirportTransfer` showing "Covered" status
-  - Flights sorted by departure time for accurate arrival/departure identification
-  - Actionable transport options for each gap: Google Transit, Amadeus transfers, taxi/ride-share, 12Go affiliate links
-  - Component: `TripTransportPlanner` in Transportation tab of experience templates
-  - Affiliate integration: 12Go Asia (tracking ID: 13805109)
+- **Trip Transport Planner**: Intelligent transportation planning that analyzes all cart bookings to build a transport timeline, detect hotel transfer perks, and suggest actionable transport options.
 - **Transportation Analysis & Map Integration**: Multi-modal transit analysis and route visualization using Google Maps and AI.
-- **Logistics Intelligence Layer**: Provides shared functionality including multi-person RSVP tracking, vendor management, budget management (cost splitting, currency conversion, tip calculation), AI-powered scheduling optimization, and emergency services.
-- **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities from cached provider data (e.g., activities, events, hotels) with a scoring system based on urgency, actionability, and trending.
-- **AI Discovery System (Hidden Gems)**: Grok-powered discovery of authentic local secrets and off-the-beaten-path experiences across 12 categories.
-- **Affiliate Web Scraping System**: AI-powered web scraping for partners without APIs, featuring:
-  - Partner management with tracking IDs and commission rates
-  - Grok-powered HTML extraction to structured product data
-  - Automatic affiliate link generation with customizable templates
-  - Click tracking for commission attribution
-  - Database tables: `affiliate_partners`, `affiliate_products`, `affiliate_scrape_jobs`, `affiliate_clicks`
-  - Admin UI at `/admin/affiliate-partners` for partner CRUD and scrape triggers
-  - API endpoints: `/api/affiliate/partners`, `/api/affiliate/products`, `/api/affiliate/track-click`
-- **Content Tracking System**: Platform-wide content management and moderation with unique tracking numbers:
-  - Tracking number format: TRV-YYYYMM-XXXXX (auto-incremented monthly sequences)
-  - Invoice number format: INV-YYYYMM-XXXXX (linked to content tracking numbers)
-  - 15 content types: trip, itinerary, service, review, blog, guide, experience, template, booking, message, profile, portfolio, certificate, recommendation, custom
-  - Content statuses: draft, pending_review, published, flagged, under_review, suspended, archived, deleted
-  - Moderation workflow: Flag content with severity levels → Review in queue → Approve/Suspend/Delete with notes
-  - Version history: Tracks all changes with before/after snapshots
-  - Database tables: `content_registry`, `content_invoices`, `content_versions`, `content_flags`, `content_analytics`, `tracking_sequences`
-  - Admin UI at `/admin/content-tracking` with tabs: Registry, Moderation, Invoices, Analytics
-  - API endpoints: `/api/admin/content/registry`, `/api/admin/content/moderation/queue`, `/api/admin/content/flags/pending`, etc. (admin-only access)
-  - **Automatic Content Registration**: All content creation points now auto-generate tracking numbers and register with the content_registry:
-    - createTrip → trip, createGeneratedItinerary → itinerary, createProviderService → service
-    - createServiceBooking → booking, createServiceReview → review, createExpertTemplate → template
-    - createUserExperience → experience, createChat → chat_message
-  - Tracking numbers are stored in both the content record and the content_registry for bidirectional lookup
+- **Logistics Intelligence Layer**: Provides shared functionality including multi-person RSVP tracking, vendor management, budget management, AI-powered scheduling optimization, and emergency services.
+- **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities from cached provider data with a scoring system.
+- **AI Discovery System (Hidden Gems)**: Grok-powered discovery of authentic local secrets and off-the-beaten-path experiences.
+- **Affiliate Web Scraping System**: AI-powered web scraping for partners without APIs, featuring partner management, Grok-powered HTML extraction, automatic affiliate link generation, and click tracking.
+- **Content Tracking System**: Platform-wide content management and moderation with unique tracking numbers, 15 content types, statuses, moderation workflow, and version history. All content creation points automatically register content.
+- **Revenue Tracking System**: Complete platform revenue tracking linked to content tracking, including platform revenue, provider earnings, provider payouts, and daily revenue summaries. It features automatic revenue recording on booking completion, template purchase, and expert tips, with content-linked audit trails.
+- **Service Recommendation Engine**: AI-powered service opportunity recommendations based on TravelPulse trends, with templates for various recommendation types, displayed on Expert/Provider dashboards.
 
 ### System Design Choices
 - **Modularity**: Codebase organized for clear separation of concerns.
@@ -96,49 +55,16 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - **Grok (xAI)**: For expert matching, real-time intelligence, content generation, autonomous itinerary building, and city intelligence.
   - **Anthropic Claude**: For empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice.
   - **AI Orchestrator**: Routes requests to the appropriate AI provider.
-- **AI Cost Tracking System**: Platform-wide AI usage monitoring and cost analytics.
-  - Database table: `ai_usage_logs` tracking provider, model, operation, tokens, costs, response times
-  - xAI Pricing (Jan 2026): Grok-2 ($2/1M input, $10/1M output), Grok-4.1 Fast ($0.20/$0.50)
-  - Auto-logging: Each Grok API call automatically logs usage stats
-  - Admin Dashboard: `/admin/ai-costs` with cost summaries, daily usage charts, operation breakdown
-  - API endpoints: `/api/admin/ai-usage/summary`, `/api/admin/ai-usage/daily`, `/api/admin/ai-usage/logs`, `/api/admin/ai-usage/pricing`
+- **AI Cost Tracking System**: Platform-wide AI usage monitoring and cost analytics, tracking provider, model, operation, tokens, costs, and response times.
 - **External API Cost Tracking System**: Platform-wide external API (Amadeus) usage monitoring.
-  - Database table: `api_usage_logs` tracking provider, endpoint, operation, costs, response times, result counts
-  - Amadeus Self-Service Pricing (Jan 2026): $0.003-$0.046 per call depending on endpoint
-  - Auto-logging: Each Amadeus API call automatically logs usage stats (flight search, hotel search, POI, activities, transfers, safety)
-  - Unified Admin Dashboard: `/admin/ai-costs` with tabs for AI costs and External API costs
-  - API endpoints: `/api/admin/api-usage/summary`, `/api/admin/api-usage/daily`, `/api/admin/api-usage/logs`, `/api/admin/api-usage/pricing`
 - **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence daily.
-  - Scheduler: Runs every 24 hours, starts 5 minutes after server startup
-  - Cache Scheduler: Integrated with main cache scheduler for unified refresh (hotels, activities, flights, Fever, TravelPulse)
-  - Manual refresh: `/api/travelpulse/ai/refresh` (single city), `/api/travelpulse/ai/refresh-all` (all stale cities)
-  - Status: `/api/travelpulse/ai/status` for scheduler state
 - **Content Enrichment System**: Merges AI-generated recommendations with booking/affiliate data.
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
-- **Amadeus Self-Service API**: Comprehensive travel content including:
-  - Real-time flight and hotel search
-  - Points of Interest (POI) discovery with categorized attractions
-  - Tours and Activities search with real-time availability
-  - Airport Transfer booking with vehicle options and pricing
-  - Destination Safety Ratings with multi-category safety scores (LGBTQ+, medical, physical, political, theft, women safety)
-  - Database caching tables: `poi_cache`, `transfer_cache`, `safety_cache`
-  - UI components: AmadeusPOIs, AmadeusTransfers, AmadeusSafety
+- **Amadeus Self-Service API**: Comprehensive travel content including real-time flight and hotel search, Points of Interest (POI) discovery, Tours and Activities search, Airport Transfer booking, and Destination Safety Ratings.
 - **Viator Partner API**: Real-time tours and activities search.
-- **Fever Partner API**: Event discovery and ticketing in global cities, with caching.
+- **Fever Partner API**: Event discovery and ticketing in global cities.
 - **12Go Transportation Booking**: Affiliate widget for ground transportation bookings.
-- **External API Caching System**: Provides 24-hour caching for hotel, flight, and activity data with background refreshers, filtering, and sorting.
-- **Unified Experience Catalog Service**: Unifies search across cached provider data (activities, hotels, events) with template-driven retrieval, filtering, and sorting.
-- **SERP API Hybrid Search System**: Integrates external providers via SerpAPI with native provider prioritization, quality filtering, template mappings, and partnership tracking.
+- **External API Caching System**: Provides 24-hour caching for hotel, flight, and activity data with background refreshers.
+- **Unified Experience Catalog Service**: Unifies search across cached provider data (activities, hotels, events).
+- **SERP API Hybrid Search System**: Integrates external providers via SerpAPI with native provider prioritization.
 - **SerpAPI**: For venue searches (restaurants, attractions, nightlife).
-
-### Key NPM Packages
-- `@tanstack/react-query`
-- `drizzle-orm` / `drizzle-kit`
-- `zod`
-- `passport` / `openid-client`
-- `express-session` / `connect-pg-simple`
-- `framer-motion`
-- `@vis.gl/react-google-maps`
-- `@anthropic-ai/sdk`
-- `openai`
-- `amadeus`
