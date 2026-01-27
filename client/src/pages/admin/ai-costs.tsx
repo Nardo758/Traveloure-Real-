@@ -101,8 +101,11 @@ export default function AdminAICosts() {
   });
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage"] });
-    refetchSummary();
+    // Invalidate all AI usage queries
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/summary"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/daily"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/logs"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/pricing"] });
   };
 
   if (summaryLoading) {
