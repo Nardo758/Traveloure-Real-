@@ -102,6 +102,12 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - Auto-logging: Each Grok API call automatically logs usage stats
   - Admin Dashboard: `/admin/ai-costs` with cost summaries, daily usage charts, operation breakdown
   - API endpoints: `/api/admin/ai-usage/summary`, `/api/admin/ai-usage/daily`, `/api/admin/ai-usage/logs`, `/api/admin/ai-usage/pricing`
+- **External API Cost Tracking System**: Platform-wide external API (Amadeus) usage monitoring.
+  - Database table: `api_usage_logs` tracking provider, endpoint, operation, costs, response times, result counts
+  - Amadeus Self-Service Pricing (Jan 2026): $0.003-$0.046 per call depending on endpoint
+  - Auto-logging: Each Amadeus API call automatically logs usage stats (flight search, hotel search, POI, activities, transfers, safety)
+  - Unified Admin Dashboard: `/admin/ai-costs` with tabs for AI costs and External API costs
+  - API endpoints: `/api/admin/api-usage/summary`, `/api/admin/api-usage/daily`, `/api/admin/api-usage/logs`, `/api/admin/api-usage/pricing`
 - **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence daily.
   - Scheduler: Runs every 24 hours, starts 5 minutes after server startup
   - Cache Scheduler: Integrated with main cache scheduler for unified refresh (hotels, activities, flights, Fever, TravelPulse)
