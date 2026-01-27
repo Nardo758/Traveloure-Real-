@@ -38,6 +38,7 @@ import { itineraryIntelligenceService } from "./services/itinerary-intelligence.
 import { emergencyService } from "./services/emergency.service";
 import { experienceCatalogService } from "./services/experience-catalog.service";
 import { opportunityEngineService } from "./services/opportunity-engine.service";
+import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import { 
@@ -9006,6 +9007,95 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json(invoices);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get invoices", error: error.message });
+    }
+  });
+
+  // =============================================
+  // AI Usage & Cost Tracking Endpoints (Admin)
+  // =============================================
+
+  // Get AI usage summary with cost breakdown
+  app.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { startDate, endDate } = req.query;
+      const start = startDate ? new Date(startDate as string) : undefined;
+      const end = endDate ? new Date(endDate as string) : undefined;
+
+      const summary = await aiUsageService.getSummary(start, end);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get AI usage summary", error: error.message });
+    }
+  });
+
+  // Get daily AI usage for charts
+  app.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const days = parseInt(req.query.days as string) || 30;
+      const dailyUsage = await aiUsageService.getDailyUsage(days);
+      res.json(dailyUsage);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get daily AI usage", error: error.message });
+    }
+  });
+
+  // Get recent AI usage logs
+  app.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const limit = parseInt(req.query.limit as string) || 100;
+      const logs = await aiUsageService.getRecentLogs(limit);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get AI usage logs", error: error.message });
+    }
+  });
+
+  // Get AI pricing info
+  app.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      res.json({
+        providers: {
+          grok: {
+            models: {
+              'grok-2': { input: 200, output: 1000 },
+              'grok-2-vision': { input: 200, output: 1000 },
+              'grok-4': { input: 300, output: 1500 },
+              'grok-4.1-fast': { input: 20, output: 50 },
+            },
+            note: "Prices in cents per 1M tokens"
+          },
+          anthropic: {
+            models: {
+              'claude-3-sonnet': { input: 300, output: 1500 },
+              'claude-3-opus': { input: 1500, output: 7500 },
+            },
+            note: "Prices in cents per 1M tokens"
+          }
+        },
+        lastUpdated: "2026-01-27"
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get pricing info", error: error.message });
     }
   });
 }

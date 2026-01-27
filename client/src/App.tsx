@@ -67,6 +67,7 @@ import AdminSystem from "@/pages/admin/system";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
+import AdminAICosts from "@/pages/admin/ai-costs";
 import OptimizePage from "@/pages/optimize";
 import ExpertsPage from "@/pages/experts";
 import ServiceProvidersPage from "@/pages/service-providers";
@@ -441,6 +442,9 @@ function Router() {
       </Route>
       <Route path="/admin/content-tracking">
         {() => <ProtectedRoute component={AdminContentTracking} />}
+      </Route>
+      <Route path="/admin/ai-costs">
+        {() => <ProtectedRoute component={AdminAICosts} />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
