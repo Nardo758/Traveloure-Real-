@@ -9098,4 +9098,65 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to get pricing info", error: error.message });
     }
   });
+
+  // External API Usage Tracking (Amadeus, etc.)
+  app.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { apiUsageService } = await import('./services/api-usage.service');
+      const summary = await apiUsageService.getUsageSummary(30);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get API usage summary", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/api-usage/daily", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { apiUsageService } = await import('./services/api-usage.service');
+      const daily = await apiUsageService.getDailyUsage(30);
+      res.json(daily);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get daily API usage", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/api-usage/logs", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { apiUsageService } = await import('./services/api-usage.service');
+      const logs = await apiUsageService.getRecentLogs(100);
+      res.json(logs);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get API usage logs", error: error.message });
+    }
+  });
+
+  app.get("/api/admin/api-usage/pricing", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { apiUsageService } = await import('./services/api-usage.service');
+      const pricing = apiUsageService.getPricingInfo();
+      res.json(pricing);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get API pricing info", error: error.message });
+    }
+  });
 }
