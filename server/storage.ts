@@ -394,7 +394,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTrip(trip: InsertTrip & { userId: string }): Promise<Trip> {
-    const [newTrip] = await db.insert(trips).values(trip).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newTrip] = await db.insert(trips).values({ ...trip, trackingNumber }).returning();
+    
+    // Auto-register in content tracking system
+    await this.registerContent({
+      contentType: 'trip',
+      contentId: newTrip.id,
+      ownerId: newTrip.userId || undefined,
+      title: newTrip.title || 'Untitled Trip',
+      status: newTrip.status === 'draft' ? 'draft' : 'published',
+      metadata: { destination: newTrip.destination, eventType: newTrip.eventType },
+    });
+    
     return newTrip;
   }
 
@@ -413,7 +425,18 @@ export class DatabaseStorage implements IStorage {
 
   // Itineraries
   async createGeneratedItinerary(itinerary: InsertGeneratedItinerary): Promise<GeneratedItinerary> {
-    const [newItinerary] = await db.insert(generatedItineraries).values(itinerary).returning();
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+    const [newItinerary] = await db.insert(generatedItineraries).values({ ...itinerary, trackingNumber }).returning();
+    
+    // Auto-register in content tracking system
+    await this.registerContent({
+      contentType: 'itinerary',
+      contentId: newItinerary.id,
+      title: `Itinerary for Trip ${itinerary.tripId}`,
+      status: newItinerary.status === 'pending' ? 'draft' : 'published',
+      metadata: { tripId: itinerary.tripId },
+    });
+    
     return newItinerary;
   }
 

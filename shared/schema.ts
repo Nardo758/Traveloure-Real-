@@ -53,6 +53,7 @@ export const touristPlaceCategory = pgTable("tourist_place_category", {
 export const trips = pgTable("trips", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   title: varchar("title", { length: 255 }).default("My Trip"),
   eventType: varchar("event_type", { length: 30 }).default("vacation"), // Enum: eventTypeEnum
   startDate: date("start_date").notNull(),
@@ -70,6 +71,7 @@ export const trips = pgTable("trips", {
 export const generatedItineraries = pgTable("generated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   itineraryData: jsonb("itinerary_data").default({}),
   status: varchar("status", { length: 20 }).default("pending"), // Enum: itineraryStatusEnum
   errorMessage: text("error_message"),
@@ -372,6 +374,7 @@ export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   serviceName: varchar("service_name", { length: 255 }).notNull(),
   shortDescription: varchar("short_description", { length: 150 }),
   description: text("description"),
@@ -463,6 +466,7 @@ export const serviceBookingStatusEnum = ["pending", "confirmed", "in_progress", 
 
 export const serviceBookings = pgTable("service_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
   travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -492,6 +496,7 @@ export const serviceBookings = pgTable("service_bookings", {
 
 export const serviceReviews = pgTable("service_reviews", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
   serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
   providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -3226,6 +3231,7 @@ export type InsertAffiliateClick = z.infer<typeof insertAffiliateClickSchema>;
 // Expert templates - itineraries that experts sell
 export const expertTemplates = pgTable("expert_templates", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description").notNull(),
