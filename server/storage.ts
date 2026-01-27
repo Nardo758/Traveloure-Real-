@@ -2299,7 +2299,7 @@ export class DatabaseStorage implements IStorage {
     // Auto-register in content tracking system
     await this.registerContent({
       trackingNumber,
-      contentType: 'other',  // Using 'other' for tips since 'tip' is not in content type enum
+      contentType: 'tip',
       contentId: newTip.id,
       ownerId: tip.expertId,
       title: `Tip from traveler`,
