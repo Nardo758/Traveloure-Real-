@@ -15,6 +15,7 @@ import {
   experienceUniversalFilters, experienceUniversalFilterOptions,
   expertTemplates, templatePurchases, templateReviews, expertEarnings, expertPayouts,
   revenueSplits, expertTips, expertReferrals, affiliateEarnings, accessAuditLogs,
+  providerEarnings, providerPayouts, platformRevenue, dailyRevenueSummary,
   contentRegistry, contentInvoices, contentVersions, contentFlags, contentAnalytics, trackingSequences,
   type ContentRegistry, type InsertContentRegistry,
   type ContentInvoice, type InsertContentInvoice,
@@ -61,7 +62,11 @@ import {
   type RevenueSplit, type InsertRevenueSplit,
   type ExpertTip, type InsertExpertTip,
   type ExpertReferral, type InsertExpertReferral,
-  type AffiliateEarning, type InsertAffiliateEarning
+  type AffiliateEarning, type InsertAffiliateEarning,
+  type ProviderEarning, type InsertProviderEarning,
+  type ProviderPayout, type InsertProviderPayout,
+  type PlatformRevenue, type InsertPlatformRevenue,
+  type DailyRevenueSummary, type InsertDailyRevenueSummary
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -379,6 +384,31 @@ export interface IStorage {
   getAffiliateEarnings(expertId: string): Promise<AffiliateEarning[]>;
   createAffiliateEarning(earning: InsertAffiliateEarning): Promise<AffiliateEarning>;
   getAffiliateEarningsSummary(expertId: string): Promise<{ total: number; pending: number; confirmed: number; paid: number }>;
+  
+  // Provider Earnings
+  getProviderEarnings(providerId: string): Promise<ProviderEarning[]>;
+  getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }>;
+  createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning>;
+  
+  // Provider Payouts
+  getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
+  createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout>;
+  
+  // Platform Revenue
+  recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
+  getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]>;
+  getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
+    totalGross: number;
+    totalPlatformFee: number;
+    totalNet: number;
+    totalExpertEarnings: number;
+    totalProviderEarnings: number;
+    bySource: Record<string, number>;
+  }>;
+  
+  // Daily Revenue Summary
+  getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined>;
+  updateDailyRevenueSummary(date: string, updates: Partial<InsertDailyRevenueSummary>): Promise<DailyRevenueSummary>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -937,6 +967,45 @@ export class DatabaseStorage implements IStorage {
       .set(updates)
       .where(eq(serviceBookings.id, id))
       .returning();
+    
+    if (updated && status === "completed") {
+      const grossAmount = parseFloat(updated.totalAmount || '0');
+      const platformFee = parseFloat(updated.platformFee || '0');
+      const providerEarningsAmount = parseFloat(updated.providerEarnings || '0');
+      
+      // Record platform revenue if there's a platform fee
+      if (platformFee > 0) {
+        await this.recordPlatformRevenue({
+          sourceType: 'booking_commission',
+          sourceId: updated.id,
+          trackingNumber: updated.trackingNumber || undefined,
+          grossAmount: String(grossAmount),
+          platformFee: String(platformFee),
+          netAmount: String(platformFee * 0.97),
+          processingFees: String(platformFee * 0.03),
+          providerId: updated.providerId,
+          providerEarnings: String(providerEarningsAmount),
+          description: `Booking commission from ${updated.trackingNumber || id}`,
+          status: 'recorded',
+          transactionDate: new Date(),
+        });
+      }
+      
+      // Create provider earning record only if amount > 0
+      if (providerEarningsAmount > 0) {
+        await this.createProviderEarning({
+          providerId: updated.providerId,
+          type: 'service_booking',
+          amount: String(providerEarningsAmount),
+          sourceType: 'booking',
+          sourceId: updated.id,
+          trackingNumber: updated.trackingNumber || undefined,
+          description: `Earnings from booking ${updated.trackingNumber || id}`,
+          status: 'pending',
+        });
+      }
+    }
+    
     return updated;
   }
 
@@ -2083,6 +2152,50 @@ export class DatabaseStorage implements IStorage {
     // Update template sales count
     await db.execute(`UPDATE expert_templates SET sales_count = sales_count + 1 WHERE id = '${purchase.templateId}'`);
     
+    // Record platform revenue for template sale
+    const grossAmount = parseFloat(newPurchase.price || '0');
+    const platformFee = parseFloat(newPurchase.platformFee || '0');
+    const expertEarningsAmount = parseFloat(newPurchase.expertEarnings || '0');
+    
+    if (newPurchase.status === 'completed') {
+      // Get template tracking number
+      const [template] = await db.select({ trackingNumber: expertTemplates.trackingNumber })
+        .from(expertTemplates)
+        .where(eq(expertTemplates.id, purchase.templateId))
+        .limit(1);
+      
+      // Record platform revenue if there's a platform fee
+      if (platformFee > 0) {
+        await this.recordPlatformRevenue({
+          sourceType: 'template_commission',
+          sourceId: newPurchase.id,
+          trackingNumber: template?.trackingNumber || undefined,
+          grossAmount: String(grossAmount),
+          platformFee: String(platformFee),
+          netAmount: String(platformFee * 0.97),
+          processingFees: String(platformFee * 0.03),
+          expertId: newPurchase.expertId || undefined,
+          expertEarnings: String(expertEarningsAmount),
+          description: `Template sale commission`,
+          status: 'recorded',
+          transactionDate: new Date(),
+        });
+      }
+      
+      // Create expert earning record only if amount > 0
+      if (newPurchase.expertId && expertEarningsAmount > 0) {
+        await this.createExpertEarning({
+          expertId: newPurchase.expertId,
+          type: 'template_sale',
+          amount: String(expertEarningsAmount),
+          referenceId: newPurchase.id,
+          referenceType: 'template_purchase',
+          description: `Template sale earnings`,
+          status: 'pending',
+        });
+      }
+    }
+    
     return newPurchase;
   }
 
@@ -2173,22 +2286,56 @@ export class DatabaseStorage implements IStorage {
     const platformFee = tipAmount * platformPct;
     const expertAmount = tipAmount - platformFee;
 
+    // Generate tracking number for content registry
+    const trackingNumber = await this.generateTrackingNumber('TRV');
+
     const [newTip] = await db.insert(expertTips).values({
       ...tip,
+      trackingNumber,
       platformFee: String(platformFee),
       expertAmount: String(expertAmount),
     }).returning();
 
-    // Also create an expert earning record
-    await this.createExpertEarning({
-      expertId: tip.expertId,
-      type: 'tip',
-      amount: String(expertAmount),
-      referenceId: newTip.id,
-      referenceType: 'expert_tip',
-      description: tip.message ? `Tip: ${tip.message.substring(0, 50)}` : 'Tip from traveler',
-      status: 'available',
+    // Auto-register in content tracking system
+    await this.registerContent({
+      trackingNumber,
+      contentType: 'other',  // Using 'other' for tips since 'tip' is not in content type enum
+      contentId: newTip.id,
+      ownerId: tip.expertId,
+      title: `Tip from traveler`,
+      status: 'published',
     });
+
+    // Create expert earning record only if amount > 0
+    if (expertAmount > 0) {
+      await this.createExpertEarning({
+        expertId: tip.expertId,
+        type: 'tip',
+        amount: String(expertAmount),
+        referenceId: newTip.id,
+        referenceType: 'expert_tip',
+        description: tip.message ? `Tip: ${tip.message.substring(0, 50)}` : 'Tip from traveler',
+        status: 'available',
+      });
+    }
+
+    // Record platform revenue from tip commission with tracking number
+    if (platformFee > 0) {
+      await this.recordPlatformRevenue({
+        sourceType: 'tip_commission',
+        sourceId: newTip.id,
+        trackingNumber,
+        grossAmount: String(tipAmount),
+        platformFee: String(platformFee),
+        netAmount: String(platformFee * 0.97),
+        processingFees: String(platformFee * 0.03),
+        expertId: tip.expertId,
+        expertEarnings: String(expertAmount),
+        description: `Tip commission from ${tip.travelerId || 'traveler'}`,
+        status: 'recorded',
+        transactionDate: new Date(),
+      });
+    }
 
     return newTip;
   }
@@ -2274,6 +2421,131 @@ export class DatabaseStorage implements IStorage {
       confirmed: earnings.filter(e => e.status === 'confirmed').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
       paid: earnings.filter(e => e.status === 'paid').reduce((sum, e) => sum + parseFloat(e.expertShare || '0'), 0),
     };
+  }
+
+  // === Provider Earnings & Payouts ===
+  
+  async getProviderEarnings(providerId: string): Promise<ProviderEarning[]> {
+    return await db.select().from(providerEarnings).where(eq(providerEarnings.providerId, providerId)).orderBy(desc(providerEarnings.createdAt));
+  }
+
+  async getProviderEarningsSummary(providerId: string): Promise<{ total: number; pending: number; available: number; paidOut: number }> {
+    const earnings = await this.getProviderEarnings(providerId);
+    
+    return {
+      total: earnings.reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      pending: earnings.filter(e => e.status === 'pending').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      available: earnings.filter(e => e.status === 'available').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+      paidOut: earnings.filter(e => e.status === 'paid_out').reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0),
+    };
+  }
+
+  async createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning> {
+    const [newEarning] = await db.insert(providerEarnings).values(earning).returning();
+    return newEarning;
+  }
+
+  async getProviderPayouts(providerId: string): Promise<ProviderPayout[]> {
+    return await db.select().from(providerPayouts).where(eq(providerPayouts.providerId, providerId)).orderBy(desc(providerPayouts.requestedAt));
+  }
+
+  async createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout> {
+    const [newPayout] = await db.insert(providerPayouts).values(payout).returning();
+    return newPayout;
+  }
+
+  // === Platform Revenue ===
+  
+  async recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue> {
+    const [newRevenue] = await db.insert(platformRevenue).values(revenue).returning();
+    
+    // Update daily summary
+    const date = new Date(revenue.transactionDate || new Date()).toISOString().split('T')[0];
+    await this.updateDailyRevenueSummary(date, {
+      totalGross: String(parseFloat(revenue.grossAmount) || 0),
+      totalPlatformFee: String(parseFloat(revenue.platformFee) || 0),
+      totalNet: String(parseFloat(revenue.netAmount) || 0),
+    });
+    
+    return newRevenue;
+  }
+
+  async getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]> {
+    let query = db.select().from(platformRevenue);
+    
+    const conditions = [];
+    if (filters?.sourceType) {
+      conditions.push(eq(platformRevenue.sourceType, filters.sourceType));
+    }
+    if (filters?.startDate) {
+      conditions.push(sql`${platformRevenue.transactionDate} >= ${filters.startDate}`);
+    }
+    if (filters?.endDate) {
+      conditions.push(sql`${platformRevenue.transactionDate} <= ${filters.endDate}`);
+    }
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+    
+    return await query.orderBy(desc(platformRevenue.transactionDate));
+  }
+
+  async getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
+    totalGross: number;
+    totalPlatformFee: number;
+    totalNet: number;
+    totalExpertEarnings: number;
+    totalProviderEarnings: number;
+    bySource: Record<string, number>;
+  }> {
+    const revenues = await this.getPlatformRevenue({ startDate, endDate });
+    
+    const bySource: Record<string, number> = {};
+    for (const r of revenues) {
+      const source = r.sourceType || 'other';
+      bySource[source] = (bySource[source] || 0) + parseFloat(r.platformFee || '0');
+    }
+    
+    return {
+      totalGross: revenues.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
+      totalPlatformFee: revenues.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
+      totalNet: revenues.reduce((sum, r) => sum + parseFloat(r.netAmount || '0'), 0),
+      totalExpertEarnings: revenues.reduce((sum, r) => sum + parseFloat(r.expertEarnings || '0'), 0),
+      totalProviderEarnings: revenues.reduce((sum, r) => sum + parseFloat(r.providerEarnings || '0'), 0),
+      bySource,
+    };
+  }
+
+  async getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined> {
+    const [summary] = await db.select().from(dailyRevenueSummary).where(eq(dailyRevenueSummary.date, date));
+    return summary;
+  }
+
+  async updateDailyRevenueSummary(date: string, updates: Partial<InsertDailyRevenueSummary>): Promise<DailyRevenueSummary> {
+    const existing = await this.getDailyRevenueSummary(date);
+    
+    if (existing) {
+      const [updated] = await db.update(dailyRevenueSummary)
+        .set({
+          ...updates,
+          totalGross: String(parseFloat(existing.totalGross || '0') + parseFloat(updates.totalGross || '0')),
+          totalPlatformFee: String(parseFloat(existing.totalPlatformFee || '0') + parseFloat(updates.totalPlatformFee || '0')),
+          totalNet: String(parseFloat(existing.totalNet || '0') + parseFloat(updates.totalNet || '0')),
+          transactionCount: (existing.transactionCount || 0) + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(dailyRevenueSummary.date, date))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(dailyRevenueSummary).values({
+        date,
+        ...updates,
+        transactionCount: 1,
+      }).returning();
+      return created;
+    }
   }
 
   // === Content Tracking System ===

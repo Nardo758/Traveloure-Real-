@@ -9346,4 +9346,180 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to get API pricing info", error: error.message });
     }
   });
+
+  // === Revenue Tracking Endpoints ===
+
+  // Admin unified revenue dashboard
+  app.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { revenueTrackingService } = await import('./services/revenue-tracking.service');
+      const dashboard = await revenueTrackingService.getUnifiedDashboard();
+      res.json(dashboard);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get revenue dashboard", error: error.message });
+    }
+  });
+
+  // Platform revenue summary with filters
+  app.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const startDate = req.query.startDate ? new Date(String(req.query.startDate)) : undefined;
+      const endDate = req.query.endDate ? new Date(String(req.query.endDate)) : undefined;
+      
+      const summary = await storage.getPlatformRevenueSummary(startDate, endDate);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get revenue summary", error: error.message });
+    }
+  });
+
+  // Platform revenue transactions list
+  app.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const startDate = req.query.startDate ? new Date(String(req.query.startDate)) : undefined;
+      const endDate = req.query.endDate ? new Date(String(req.query.endDate)) : undefined;
+      const sourceType = req.query.sourceType ? String(req.query.sourceType) : undefined;
+      
+      const transactions = await storage.getPlatformRevenue({ startDate, endDate, sourceType });
+      res.json(transactions);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get revenue transactions", error: error.message });
+    }
+  });
+
+  // Revenue report by content tracking number
+  app.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { revenueTrackingService } = await import('./services/revenue-tracking.service');
+      const report = await revenueTrackingService.getContentRevenueReport(req.params.trackingNumber);
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get content revenue report", error: error.message });
+    }
+  });
+
+  // Provider earnings endpoints
+  app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user?.claims?.metadata?.id) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const earnings = await storage.getProviderEarnings(user.claims.metadata.id);
+      res.json(earnings);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get provider earnings", error: error.message });
+    }
+  });
+
+  app.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user?.claims?.metadata?.id) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const summary = await storage.getProviderEarningsSummary(user.claims.metadata.id);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get provider earnings summary", error: error.message });
+    }
+  });
+
+  app.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user?.claims?.metadata?.id) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const { revenueTrackingService } = await import('./services/revenue-tracking.service');
+      const details = await revenueTrackingService.getProviderRevenueDetails(user.claims.metadata.id);
+      res.json(details);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get provider earnings details", error: error.message });
+    }
+  });
+
+  // Provider payout requests
+  app.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user?.claims?.metadata?.id) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const payouts = await storage.getProviderPayouts(user.claims.metadata.id);
+      res.json(payouts);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get provider payouts", error: error.message });
+    }
+  });
+
+  app.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user?.claims?.metadata?.id) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const { amount, payoutMethod } = req.body;
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Invalid payout amount" });
+      }
+
+      const summary = await storage.getProviderEarningsSummary(user.claims.metadata.id);
+      if (amount > summary.available) {
+        return res.status(400).json({ error: "Insufficient available balance" });
+      }
+
+      const payout = await storage.createProviderPayout({
+        providerId: user.claims.metadata.id,
+        amount: String(amount),
+        payoutMethod: payoutMethod || 'bank_transfer',
+        status: 'pending',
+      });
+      
+      res.json(payout);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to request payout", error: error.message });
+    }
+  });
+
+  // Expert earnings details endpoint
+  app.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user?.claims?.metadata?.id) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      const { revenueTrackingService } = await import('./services/revenue-tracking.service');
+      const details = await revenueTrackingService.getExpertRevenueDetails(user.claims.metadata.id);
+      res.json(details);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get expert earnings details", error: error.message });
+    }
+  });
 }
