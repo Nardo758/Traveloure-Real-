@@ -3406,6 +3406,7 @@ export const revenueSplits = pgTable("revenue_splits", {
 // Expert tips - travelers can tip experts after service
 export const expertTips = pgTable("expert_tips", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   travelerId: varchar("traveler_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
@@ -3492,6 +3493,143 @@ export type ExpertReferral = typeof expertReferrals.$inferSelect;
 export type InsertExpertReferral = z.infer<typeof insertExpertReferralSchema>;
 export type AffiliateEarning = typeof affiliateEarnings.$inferSelect;
 export type InsertAffiliateEarning = z.infer<typeof insertAffiliateEarningSchema>;
+
+// === Provider Earnings & Payouts ===
+
+// Provider earnings ledger - tracks all provider income
+export const providerEarnings = pgTable("provider_earnings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(), // service_booking, refund, adjustment
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  sourceType: varchar("source_type", { length: 50 }), // booking, refund
+  sourceId: varchar("source_id"), // Reference to booking or other source
+  trackingNumber: varchar("tracking_number", { length: 20 }), // Link to content registry
+  description: text("description"),
+  status: varchar("status", { length: 20 }).default("pending"), // pending, available, paid_out
+  availableAt: timestamp("available_at"), // When funds become available for payout
+  paidAt: timestamp("paid_at"),
+  payoutId: varchar("payout_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Provider payouts - tracks payout requests
+export const providerPayouts = pgTable("provider_payouts", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  payoutMethod: varchar("payout_method", { length: 50 }), // bank_transfer, paypal, stripe
+  status: varchar("status", { length: 20 }).default("pending"), // pending, processing, completed, failed
+  payoutReference: varchar("payout_reference", { length: 100 }), // External reference
+  notes: text("notes"),
+  requestedAt: timestamp("requested_at").defaultNow(),
+  processedAt: timestamp("processed_at"),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertProviderEarningSchema = createInsertSchema(providerEarnings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertProviderPayoutSchema = createInsertSchema(providerPayouts).omit({
+  id: true,
+  requestedAt: true,
+});
+
+export type ProviderEarning = typeof providerEarnings.$inferSelect;
+export type InsertProviderEarning = z.infer<typeof insertProviderEarningSchema>;
+export type ProviderPayout = typeof providerPayouts.$inferSelect;
+export type InsertProviderPayout = z.infer<typeof insertProviderPayoutSchema>;
+
+// === Platform Revenue Tracking ===
+
+// Revenue source types for platform earnings
+export const revenueSourceTypes = ["booking_commission", "template_commission", "affiliate_commission", "tip_commission", "subscription", "advertising", "premium_listing", "other"] as const;
+export type RevenueSourceType = typeof revenueSourceTypes[number];
+
+// Platform revenue - consolidated platform earnings linked to content tracking
+export const platformRevenue = pgTable("platform_revenue", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sourceType: varchar("source_type", { length: 50 }).notNull(), // booking_commission, template_commission, etc.
+  sourceId: varchar("source_id"), // Reference to booking, template purchase, etc.
+  trackingNumber: varchar("tracking_number", { length: 20 }), // Link to content registry
+  
+  // Revenue amounts
+  grossAmount: decimal("gross_amount", { precision: 10, scale: 2 }).notNull(), // Total transaction value
+  platformFee: decimal("platform_fee", { precision: 10, scale: 2 }).notNull(), // Platform's cut
+  netAmount: decimal("net_amount", { precision: 10, scale: 2 }).notNull(), // Amount after processing fees
+  processingFees: decimal("processing_fees", { precision: 10, scale: 2 }).default("0"), // Payment processor fees
+  
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  
+  // Stakeholder breakdown
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "set null" }),
+  expertEarnings: decimal("expert_earnings", { precision: 10, scale: 2 }).default("0"),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "set null" }),
+  providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }).default("0"),
+  
+  // Metadata
+  description: text("description"),
+  metadata: jsonb("metadata").default({}),
+  
+  // Status and timing
+  status: varchar("status", { length: 20 }).default("recorded"), // recorded, reconciled, disputed
+  transactionDate: timestamp("transaction_date").defaultNow(),
+  reconciliationDate: timestamp("reconciliation_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Daily revenue summary for dashboard analytics
+export const dailyRevenueSummary = pgTable("daily_revenue_summary", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  date: date("date").notNull().unique(),
+  
+  // Platform totals
+  totalGross: decimal("total_gross", { precision: 12, scale: 2 }).default("0"),
+  totalPlatformFee: decimal("total_platform_fee", { precision: 12, scale: 2 }).default("0"),
+  totalProcessingFees: decimal("total_processing_fees", { precision: 12, scale: 2 }).default("0"),
+  totalNet: decimal("total_net", { precision: 12, scale: 2 }).default("0"),
+  
+  // Breakdown by source
+  bookingRevenue: decimal("booking_revenue", { precision: 12, scale: 2 }).default("0"),
+  templateRevenue: decimal("template_revenue", { precision: 12, scale: 2 }).default("0"),
+  affiliateRevenue: decimal("affiliate_revenue", { precision: 12, scale: 2 }).default("0"),
+  tipRevenue: decimal("tip_revenue", { precision: 12, scale: 2 }).default("0"),
+  otherRevenue: decimal("other_revenue", { precision: 12, scale: 2 }).default("0"),
+  
+  // Stakeholder payouts
+  totalExpertEarnings: decimal("total_expert_earnings", { precision: 12, scale: 2 }).default("0"),
+  totalProviderEarnings: decimal("total_provider_earnings", { precision: 12, scale: 2 }).default("0"),
+  
+  // Transaction counts
+  transactionCount: integer("transaction_count").default(0),
+  bookingCount: integer("booking_count").default(0),
+  templateSalesCount: integer("template_sales_count").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPlatformRevenueSchema = createInsertSchema(platformRevenue).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDailyRevenueSummarySchema = createInsertSchema(dailyRevenueSummary).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type PlatformRevenue = typeof platformRevenue.$inferSelect;
+export type InsertPlatformRevenue = z.infer<typeof insertPlatformRevenueSchema>;
+export type DailyRevenueSummary = typeof dailyRevenueSummary.$inferSelect;
+export type InsertDailyRevenueSummary = z.infer<typeof insertDailyRevenueSummarySchema>;
 
 // === Security & Audit Logging ===
 
