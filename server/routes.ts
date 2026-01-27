@@ -8765,7 +8765,7 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // Register new content
+  // Register new content (manual registration via API)
   app.post("/api/admin/content/register", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
@@ -8779,7 +8779,11 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ message: "contentType and contentId are required" });
       }
 
+      // Auto-generate tracking number for manual API registration
+      const trackingNumber = await storage.generateTrackingNumber('TRV');
+
       const content = await storage.registerContent({
+        trackingNumber,
         contentType,
         contentId,
         ownerId,
