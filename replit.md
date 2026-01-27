@@ -75,6 +75,11 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - Database tables: `content_registry`, `content_invoices`, `content_versions`, `content_flags`, `content_analytics`, `tracking_sequences`
   - Admin UI at `/admin/content-tracking` with tabs: Registry, Moderation, Invoices, Analytics
   - API endpoints: `/api/admin/content/registry`, `/api/admin/content/moderation/queue`, `/api/admin/content/flags/pending`, etc. (admin-only access)
+  - **Automatic Content Registration**: All content creation points now auto-generate tracking numbers and register with the content_registry:
+    - createTrip → trip, createGeneratedItinerary → itinerary, createProviderService → service
+    - createServiceBooking → booking, createServiceReview → review, createExpertTemplate → template
+    - createUserExperience → experience, createChat → chat_message
+  - Tracking numbers are stored in both the content record and the content_registry for bidirectional lookup
 
 ### System Design Choices
 - **Modularity**: Codebase organized for clear separation of concerns.
