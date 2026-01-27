@@ -97,6 +97,10 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - **Anthropic Claude**: For empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice.
   - **AI Orchestrator**: Routes requests to the appropriate AI provider.
 - **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence daily.
+  - Scheduler: Runs every 24 hours, starts 5 minutes after server startup
+  - Cache Scheduler: Integrated with main cache scheduler for unified refresh (hotels, activities, flights, Fever, TravelPulse)
+  - Manual refresh: `/api/travelpulse/ai/refresh` (single city), `/api/travelpulse/ai/refresh-all` (all stale cities)
+  - Status: `/api/travelpulse/ai/status` for scheduler state
 - **Content Enrichment System**: Merges AI-generated recommendations with booking/affiliate data.
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Comprehensive travel content including:
