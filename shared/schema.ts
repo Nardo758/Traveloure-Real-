@@ -3664,6 +3664,24 @@ export const aiUsageLogs = pgTable("ai_usage_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// External API Usage Logs - Track API calls and costs for non-AI providers (Amadeus, etc.)
+export const apiUsageLogs = pgTable("api_usage_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: varchar("provider", { length: 30 }).notNull(), // amadeus, viator, fever, serp, etc.
+  endpoint: varchar("endpoint", { length: 100 }).notNull(), // flight_search, hotel_search, poi, etc.
+  operation: varchar("operation", { length: 50 }).notNull(), // search, get, list, etc.
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  requestCount: integer("request_count").notNull().default(1), // Number of API calls (usually 1)
+  estimatedCostCents: integer("estimated_cost_cents").notNull().default(0), // Cost in cents
+  costPerCallCents: integer("cost_per_call_cents").default(0), // Rate used in cents (e.g., 0.3 cents = $0.003)
+  responseTimeMs: integer("response_time_ms").default(0),
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  resultCount: integer("result_count").default(0), // Number of results returned
+  metadata: jsonb("metadata").default({}), // Additional context (city, search params, etc.)
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Tracking number sequences for generating unique IDs
 export const trackingSequences = pgTable("tracking_sequences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
