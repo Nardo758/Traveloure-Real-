@@ -20,6 +20,7 @@ import {
   Calendar,
   Sparkles
 } from "lucide-react";
+import { ExpertServiceRecommendations } from "@/components/expert/service-recommendations";
 
 interface AnalyticsDashboard {
   expertProfile: {
@@ -314,13 +315,18 @@ export default function ExpertAnalytics() {
               </CardContent>
             </Card>
 
-            <Tabs defaultValue="funnel" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+            <Tabs defaultValue="opportunities" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+                <TabsTrigger value="opportunities" data-testid="tab-opportunities">Opportunities</TabsTrigger>
                 <TabsTrigger value="funnel" data-testid="tab-funnel">Conversion Funnel</TabsTrigger>
                 <TabsTrigger value="revenue" data-testid="tab-revenue">Revenue by Service</TabsTrigger>
                 <TabsTrigger value="market" data-testid="tab-market">Market Intelligence</TabsTrigger>
                 <TabsTrigger value="lifetime" data-testid="tab-lifetime">Client Value</TabsTrigger>
               </TabsList>
+
+              <TabsContent value="opportunities">
+                <ExpertServiceRecommendations />
+              </TabsContent>
 
               <TabsContent value="funnel">
                 <Card className="border">

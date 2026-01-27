@@ -3371,6 +3371,193 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // === Service Recommendation Engine API Endpoints ===
+
+  // Get service recommendations for experts based on TravelPulse trends
+  app.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      // Get expert's profile to find their markets/destinations
+      const expertProfile = await storage.getLocalExpertForm(userId);
+      const expertDestinations = (expertProfile?.destinations as string[]) || [];
+      const expertCity = expertProfile?.city;
+      
+      // Build cities list from expert's markets
+      const cities = expertDestinations.length > 0 
+        ? expertDestinations 
+        : expertCity ? [expertCity] : [];
+      
+      if (cities.length === 0) {
+        return res.json({ 
+          recommendations: [],
+          message: "Set your destination markets in your expert profile to receive recommendations" 
+        });
+      }
+
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const recommendations = await serviceRecommendationEngine.getExpertRecommendations(userId, cities, limit);
+      
+      res.json({ recommendations });
+    } catch (err) {
+      console.error("Error fetching expert recommendations:", err);
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  // Get service recommendations for providers
+  app.get("/api/recommendations/provider", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      // Get provider's service locations
+      const services = await storage.getProviderServicesByStatus(userId);
+      const locations = [...new Set(services.map(s => s.location).filter(Boolean))] as string[];
+      const location = locations[0] || (req.query.city as string);
+      
+      if (!location) {
+        return res.json({ 
+          recommendations: [],
+          message: "Create a service or specify a city to receive recommendations" 
+        });
+      }
+
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const recommendations = await serviceRecommendationEngine.getProviderRecommendations(userId, location, limit);
+      
+      res.json({ recommendations, location });
+    } catch (err) {
+      console.error("Error fetching provider recommendations:", err);
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  // Get service recommendations for users (trip planning)
+  app.get("/api/recommendations/user", async (req, res) => {
+    try {
+      const city = req.query.city as string | undefined;
+      const experienceType = req.query.experienceType as string | undefined;
+      const preferences = req.query.preferences ? (req.query.preferences as string).split(",") : undefined;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const userId = (req.user as any)?.claims?.sub || "anonymous";
+      
+      // If no city provided, return trending destinations as recommendations
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      
+      if (!city) {
+        // Return general trending recommendations without city filter
+        const recommendations = await serviceRecommendationEngine.getTrendingRecommendations(experienceType, limit);
+        return res.json({ recommendations, message: "Showing trending destinations" });
+      }
+
+      const recommendations = await serviceRecommendationEngine.getUserRecommendations(
+        userId, 
+        city, 
+        preferences || (experienceType ? [experienceType] : undefined), 
+        limit
+      );
+      
+      res.json({ recommendations, city });
+    } catch (err) {
+      console.error("Error fetching user recommendations:", err);
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  // Get market intelligence for a city
+  app.get("/api/recommendations/market-intelligence/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const intelligence = await serviceRecommendationEngine.getMarketIntelligence(city);
+      
+      res.json(intelligence);
+    } catch (err) {
+      console.error("Error fetching market intelligence:", err);
+      res.status(500).json({ message: "Failed to fetch market intelligence" });
+    }
+  });
+
+  // Get seasonal opportunities
+  app.get("/api/recommendations/seasonal/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+      
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const opportunities = await serviceRecommendationEngine.getSeasonalOpportunities(city, month);
+      
+      res.json({ opportunities, city, month: month || new Date().getMonth() + 1 });
+    } catch (err) {
+      console.error("Error fetching seasonal opportunities:", err);
+      res.status(500).json({ message: "Failed to fetch seasonal opportunities" });
+    }
+  });
+
+  // Refresh demand signals for a city (authenticated users only for now)
+  app.post("/api/recommendations/refresh/:city", isAuthenticated, async (req, res) => {
+    try {
+      const { city } = req.params;
+      const country = req.query.country as string;
+      
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      const count = await serviceRecommendationEngine.refreshDemandSignalsForCity(city);
+      
+      res.json({ message: `Generated ${count} demand signals for ${city}`, count });
+    } catch (err) {
+      console.error("Error refreshing demand signals:", err);
+      res.status(500).json({ message: "Failed to refresh demand signals" });
+    }
+  });
+
+  // Record recommendation conversion (when user acts on a recommendation)
+  app.post("/api/recommendations/:id/convert", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = (req.user as any).claims.sub;
+      
+      // Validate request body
+      const conversionSchema = z.object({
+        conversionType: z.string().min(1, "Conversion type is required"),
+        resultId: z.string().optional(),
+        revenueGenerated: z.number().optional(),
+      });
+      
+      const validatedBody = conversionSchema.safeParse(req.body);
+      if (!validatedBody.success) {
+        return res.status(400).json({ message: "Invalid request body", errors: validatedBody.error.errors });
+      }
+      
+      const { conversionType, resultId, revenueGenerated } = validatedBody.data;
+      
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      await serviceRecommendationEngine.recordConversion(id, userId, conversionType, resultId, revenueGenerated);
+      
+      res.json({ message: "Conversion recorded" });
+    } catch (err) {
+      console.error("Error recording conversion:", err);
+      res.status(500).json({ message: "Failed to record conversion" });
+    }
+  });
+
+  // Dismiss a recommendation
+  app.post("/api/recommendations/:id/dismiss", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const { serviceRecommendationEngine } = await import("./services/service-recommendation-engine.service");
+      await serviceRecommendationEngine.dismissRecommendation(id);
+      
+      res.json({ message: "Recommendation dismissed" });
+    } catch (err) {
+      console.error("Error dismissing recommendation:", err);
+      res.status(500).json({ message: "Failed to dismiss recommendation" });
+    }
+  });
+
   // Get provider analytics dashboard
   app.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {

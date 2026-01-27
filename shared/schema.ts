@@ -3741,3 +3741,158 @@ export type InsertContentAnalytics = z.infer<typeof insertContentAnalyticsSchema
 export type TrackingSequence = typeof trackingSequences.$inferSelect;
 export type AiUsageLog = typeof aiUsageLogs.$inferSelect;
 export type InsertAiUsageLog = z.infer<typeof insertAiUsageLogSchema>;
+
+// === Service Recommendation Engine ===
+// Powered by TravelPulse trend analysis for users, experts, and providers
+
+export const recommendationTypeEnum = ["user", "expert", "provider"] as const;
+export const recommendationStatusEnum = ["active", "dismissed", "converted", "expired"] as const;
+export const demandLevelEnum = ["low", "moderate", "high", "very_high", "trending"] as const;
+
+// Service demand signals derived from TravelPulse trends
+export const serviceDemandSignals = pgTable("service_demand_signals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  serviceType: varchar("service_type", { length: 100 }).notNull(), // e.g., "food_tour", "airport_transfer", "photography"
+  categorySlug: varchar("category_slug", { length: 100 }), // Links to expert/provider categories
+  demandLevel: varchar("demand_level", { length: 20 }).notNull().$type<typeof demandLevelEnum[number]>(),
+  demandScore: integer("demand_score").notNull().default(0), // 0-1000
+  trendDirection: varchar("trend_direction", { length: 10 }).$type<"up" | "down" | "stable">().default("stable"),
+  trendVelocity: integer("trend_velocity").default(0), // Rate of change
+  searchVolume: integer("search_volume").default(0), // Estimated searches
+  supplyGap: integer("supply_gap").default(0), // Demand - Supply score
+  averagePrice: decimal("average_price", { precision: 10, scale: 2 }),
+  priceTrend: varchar("price_trend", { length: 10 }).$type<"rising" | "falling" | "stable">(),
+  seasonalPeak: jsonb("seasonal_peak").default([]), // Months with peak demand
+  triggerEvents: jsonb("trigger_events").default([]), // Events driving demand
+  relatedTrends: jsonb("related_trends").default([]), // Related TravelPulse trends
+  dataSource: varchar("data_source", { length: 50 }).default("travelpulse"), // travelpulse, user_behavior, booking_data
+  confidenceScore: integer("confidence_score").default(80), // 0-100
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Recommendations generated for users, experts, and providers
+export const serviceRecommendations = pgTable("service_recommendations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  targetType: varchar("target_type", { length: 20 }).notNull().$type<typeof recommendationTypeEnum[number]>(),
+  targetId: varchar("target_id"), // userId, expertId, or providerId (null for general recommendations)
+  demandSignalId: varchar("demand_signal_id").references(() => serviceDemandSignals.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  opportunityScore: integer("opportunity_score").notNull().default(0), // 0-100
+  potentialRevenue: decimal("potential_revenue", { precision: 10, scale: 2 }), // Estimated revenue
+  competitionLevel: varchar("competition_level", { length: 20 }).$type<"low" | "medium" | "high">(),
+  actionItems: jsonb("action_items").default([]), // Steps to capitalize
+  supportingData: jsonb("supporting_data").default({}), // TravelPulse data supporting the recommendation
+  status: varchar("status", { length: 20 }).notNull().default("active").$type<typeof recommendationStatusEnum[number]>(),
+  dismissedAt: timestamp("dismissed_at"),
+  convertedAt: timestamp("converted_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Track which recommendations were acted upon (for ML improvement)
+export const recommendationConversions = pgTable("recommendation_conversions", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  recommendationId: varchar("recommendation_id").notNull().references(() => serviceRecommendations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  conversionType: varchar("conversion_type", { length: 50 }).notNull(), // service_created, booking_made, template_used
+  resultId: varchar("result_id"), // ID of the created service/booking
+  revenueGenerated: decimal("revenue_generated", { precision: 10, scale: 2 }),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Service gap analysis - what's missing in a market
+export const serviceGapAnalysis = pgTable("service_gap_analysis", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  currentSupplyCount: integer("current_supply_count").default(0), // Number of providers offering this
+  estimatedDemand: integer("estimated_demand").default(0), // Based on TravelPulse
+  gapScore: integer("gap_score").notNull().default(0), // 0-100, higher = bigger gap
+  priceRangeGap: jsonb("price_range_gap").default({}), // { budget: 0, midrange: 50, luxury: 80 }
+  qualityGap: integer("quality_gap").default(0), // Average rating vs benchmark
+  availabilityGap: integer("availability_gap").default(0), // Booking availability issues
+  languageGaps: jsonb("language_gaps").default([]), // Languages not well served
+  specializationGaps: jsonb("specialization_gaps").default([]), // Niches not covered
+  competitorAnalysis: jsonb("competitor_analysis").default({}),
+  opportunityDescription: text("opportunity_description"),
+  recommendedActions: jsonb("recommended_actions").default([]),
+  lastAnalyzedAt: timestamp("last_analyzed_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Seasonal opportunity calendar for proactive recommendations
+export const seasonalOpportunities = pgTable("seasonal_opportunities", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  city: varchar("city", { length: 100 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  month: integer("month").notNull(), // 1-12
+  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  opportunityType: varchar("opportunity_type", { length: 50 }).notNull(), // peak_demand, event_driven, weather_optimal
+  eventName: varchar("event_name", { length: 255 }), // If event-driven
+  demandMultiplier: decimal("demand_multiplier", { precision: 4, scale: 2 }).default("1.0"), // 1.5x, 2x demand
+  pricingOpportunity: varchar("pricing_opportunity", { length: 20 }).$type<"premium" | "normal" | "discount">(),
+  leadTimeWeeks: integer("lead_time_weeks").default(4), // How early to prepare
+  preparationTips: jsonb("preparation_tips").default([]),
+  historicalPerformance: jsonb("historical_performance").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Indexes for efficient queries
+// CREATE INDEX idx_demand_signals_city ON service_demand_signals(city);
+// CREATE INDEX idx_demand_signals_type ON service_demand_signals(service_type);
+// CREATE INDEX idx_recommendations_target ON service_recommendations(target_type, target_id);
+// CREATE INDEX idx_gap_analysis_city ON service_gap_analysis(city);
+
+// Service Recommendation Engine schemas and types
+export const insertServiceDemandSignalSchema = createInsertSchema(serviceDemandSignals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertServiceRecommendationSchema = createInsertSchema(serviceRecommendations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertRecommendationConversionSchema = createInsertSchema(recommendationConversions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertServiceGapAnalysisSchema = createInsertSchema(serviceGapAnalysis).omit({
+  id: true,
+  createdAt: true,
+  lastAnalyzedAt: true,
+});
+
+export const insertSeasonalOpportunitySchema = createInsertSchema(seasonalOpportunities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type ServiceDemandSignal = typeof serviceDemandSignals.$inferSelect;
+export type InsertServiceDemandSignal = z.infer<typeof insertServiceDemandSignalSchema>;
+export type ServiceRecommendation = typeof serviceRecommendations.$inferSelect;
+export type InsertServiceRecommendation = z.infer<typeof insertServiceRecommendationSchema>;
+export type RecommendationConversion = typeof recommendationConversions.$inferSelect;
+export type InsertRecommendationConversion = z.infer<typeof insertRecommendationConversionSchema>;
+export type ServiceGapAnalysis = typeof serviceGapAnalysis.$inferSelect;
+export type InsertServiceGapAnalysis = z.infer<typeof insertServiceGapAnalysisSchema>;
+export type SeasonalOpportunity = typeof seasonalOpportunities.$inferSelect;
+export type InsertSeasonalOpportunity = z.infer<typeof insertSeasonalOpportunitySchema>;

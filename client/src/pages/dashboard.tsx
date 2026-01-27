@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { format, differenceInDays } from "date-fns";
+import { UserTemplateRecommendations } from "@/components/user/template-recommendations";
 
 const eventTypeIcons: Record<string, any> = {
   vacation: Plane,
@@ -327,6 +328,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Trending Recommendations */}
+        <UserTemplateRecommendations />
       </div>
     </DashboardLayout>
   );

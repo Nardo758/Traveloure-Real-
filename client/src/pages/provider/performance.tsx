@@ -14,6 +14,7 @@ import {
   ArrowUpRight,
   Calendar
 } from "lucide-react";
+import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
 
 interface ProviderAnalytics {
   summary: {
@@ -266,6 +267,8 @@ export default function ProviderPerformance() {
                 )}
               </CardContent>
             </Card>
+
+            <ProviderServiceRecommendations />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Card>
