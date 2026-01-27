@@ -1,4 +1,5 @@
 import Amadeus from 'amadeus';
+import { apiUsageService } from './api-usage.service';
 
 const amadeus = new Amadeus({
   clientId: process.env.AMADEUS_API_KEY!,
@@ -223,6 +224,7 @@ export interface SafetySearchParams {
 
 export class AmadeusService {
   async searchFlights(params: FlightSearchParams): Promise<FlightOffer[]> {
+    const startTime = Date.now();
     try {
       const response = await amadeus.shopping.flightOffersSearch.get({
         originLocationCode: params.originLocationCode,
@@ -238,18 +240,37 @@ export class AmadeusService {
         max: params.max || 10,
       });
 
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('flight_offers_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { origin: params.originLocationCode, destination: params.destinationLocationCode },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('flight_offers_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail || 'Flight search failed',
+      });
       console.error('Amadeus flight search error:', error?.response?.body || error);
       throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Flight search failed');
     }
   }
 
   async searchHotels(params: HotelSearchParams): Promise<HotelOffer[]> {
+    const startTime = Date.now();
     try {
       // First, get hotel list by city
       const hotelListResponse = await amadeus.referenceData.locations.hotels.byCity.get({
         cityCode: params.cityCode,
+      });
+      await apiUsageService.logAmadeusCall('hotel_list', 'list', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: hotelListResponse.data?.length || 0,
+        metadata: { cityCode: params.cityCode },
       });
 
       const hotelIds = hotelListResponse.data?.slice(0, 20).map((h: any) => h.hotelId) || [];
@@ -259,6 +280,7 @@ export class AmadeusService {
       }
 
       // Then get offers for those hotels
+      const offersStartTime = Date.now();
       const offersResponse = await amadeus.shopping.hotelOffersSearch.get({
         hotelIds: hotelIds.join(','),
         checkInDate: params.checkInDate,
@@ -268,40 +290,79 @@ export class AmadeusService {
         currency: params.currency || 'USD',
       });
 
-      return offersResponse.data || [];
+      const results = offersResponse.data || [];
+      await apiUsageService.logAmadeusCall('hotel_offers', 'search', {
+        responseTimeMs: Date.now() - offersStartTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { cityCode: params.cityCode, hotelCount: hotelIds.length },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('hotel_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail || 'Hotel search failed',
+      });
       console.error('Amadeus hotel search error:', error?.response?.body || error);
       throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Hotel search failed');
     }
   }
 
   async searchAirportsByKeyword(keyword: string): Promise<any[]> {
+    const startTime = Date.now();
     try {
       const response = await amadeus.referenceData.locations.get({
         keyword: keyword,
         subType: 'AIRPORT,CITY',
       });
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('airport_city_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { keyword },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('airport_city_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail || 'Location search failed',
+      });
       console.error('Amadeus location search error:', error?.response?.body || error);
       throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Location search failed');
     }
   }
 
   async searchCitiesByKeyword(keyword: string): Promise<any[]> {
+    const startTime = Date.now();
     try {
       const response = await amadeus.referenceData.locations.get({
         keyword: keyword,
         subType: 'CITY',
       });
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('airport_city_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { keyword, type: 'city' },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('airport_city_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail || 'City search failed',
+      });
       console.error('Amadeus city search error:', error?.response?.body || error);
       throw new Error(error?.response?.body?.errors?.[0]?.detail || 'City search failed');
     }
   }
 
   async searchPointsOfInterest(params: POISearchParams): Promise<PointOfInterest[]> {
+    const startTime = Date.now();
     try {
       const queryParams: any = {
         latitude: params.latitude,
@@ -314,8 +375,20 @@ export class AmadeusService {
       }
 
       const response = await (amadeus.referenceData.locations as any).pointsOfInterest.get(queryParams);
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('poi_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { latitude: params.latitude, longitude: params.longitude },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('poi_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: error?.response?.statusCode === 404,
+        errorMessage: error?.response?.statusCode !== 404 ? (error?.response?.body?.errors?.[0]?.detail || 'POI search failed') : undefined,
+      });
       console.error('Amadeus POI search error:', error?.response?.body || error);
       if (error?.response?.statusCode === 404) {
         return [];
@@ -325,24 +398,49 @@ export class AmadeusService {
   }
 
   async getPointOfInterestById(poiId: string): Promise<PointOfInterest | null> {
+    const startTime = Date.now();
     try {
       const response = await (amadeus.referenceData.locations as any).pointOfInterest(poiId).get();
+      await apiUsageService.logAmadeusCall('poi_by_id', 'get', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: response.data ? 1 : 0,
+        metadata: { poiId },
+      });
       return response.data || null;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('poi_by_id', 'get', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail,
+      });
       console.error('Amadeus POI get error:', error?.response?.body || error);
       return null;
     }
   }
 
   async searchActivities(params: ActivitySearchParams): Promise<Activity[]> {
+    const startTime = Date.now();
     try {
       const response = await (amadeus.shopping as any).activities.get({
         latitude: params.latitude,
         longitude: params.longitude,
         radius: params.radius || 20,
       });
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('activities_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { latitude: params.latitude, longitude: params.longitude },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('activities_search', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: error?.response?.statusCode === 404,
+        errorMessage: error?.response?.statusCode !== 404 ? (error?.response?.body?.errors?.[0]?.detail || 'Activities search failed') : undefined,
+      });
       console.error('Amadeus activities search error:', error?.response?.body || error);
       if (error?.response?.statusCode === 404) {
         return [];
@@ -352,16 +450,29 @@ export class AmadeusService {
   }
 
   async getActivityById(activityId: string): Promise<Activity | null> {
+    const startTime = Date.now();
     try {
       const response = await (amadeus.shopping as any).activity(activityId).get();
+      await apiUsageService.logAmadeusCall('activity_by_id', 'get', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: response.data ? 1 : 0,
+        metadata: { activityId },
+      });
       return response.data || null;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('activity_by_id', 'get', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail,
+      });
       console.error('Amadeus activity get error:', error?.response?.body || error);
       return null;
     }
   }
 
   async searchTransfers(params: TransferSearchParams): Promise<TransferOffer[]> {
+    const startTime = Date.now();
     try {
       const requestBody: any = {
         startLocationCode: params.startLocationCode,
@@ -381,8 +492,21 @@ export class AmadeusService {
       }
 
       const response = await (amadeus.shopping as any).transferOffers.post(JSON.stringify(requestBody));
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('transfer_offers', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { startLocationCode: params.startLocationCode, transferType: params.transferType },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('transfer_offers', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: error?.response?.statusCode === 404 || error?.response?.statusCode === 400,
+        errorMessage: (error?.response?.statusCode !== 404 && error?.response?.statusCode !== 400) 
+          ? (error?.response?.body?.errors?.[0]?.detail || 'Transfers search failed') : undefined,
+      });
       console.error('Amadeus transfers search error:', error?.response?.body || error);
       if (error?.response?.statusCode === 404 || error?.response?.statusCode === 400) {
         return [];
@@ -392,14 +516,27 @@ export class AmadeusService {
   }
 
   async getSafetyRatings(params: SafetySearchParams): Promise<SafetyRating[]> {
+    const startTime = Date.now();
     try {
       const response = await (amadeus as any).safety.safetyRatedLocations.get({
         latitude: params.latitude,
         longitude: params.longitude,
         radius: params.radius || 5,
       });
-      return response.data || [];
+      const results = response.data || [];
+      await apiUsageService.logAmadeusCall('safety_rated_locations', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: results.length,
+        metadata: { latitude: params.latitude, longitude: params.longitude },
+      });
+      return results;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('safety_rated_locations', 'search', {
+        responseTimeMs: Date.now() - startTime,
+        success: error?.response?.statusCode === 404,
+        errorMessage: error?.response?.statusCode !== 404 ? (error?.response?.body?.errors?.[0]?.detail || 'Safety ratings search failed') : undefined,
+      });
       console.error('Amadeus safety search error:', error?.response?.body || error);
       if (error?.response?.statusCode === 404) {
         return [];
@@ -409,10 +546,22 @@ export class AmadeusService {
   }
 
   async getSafetyRatingById(locationId: string): Promise<SafetyRating | null> {
+    const startTime = Date.now();
     try {
       const response = await (amadeus as any).safety.safetyRatedLocation(locationId).get();
+      await apiUsageService.logAmadeusCall('safety_rated_locations', 'get', {
+        responseTimeMs: Date.now() - startTime,
+        success: true,
+        resultCount: response.data ? 1 : 0,
+        metadata: { locationId },
+      });
       return response.data || null;
     } catch (error: any) {
+      await apiUsageService.logAmadeusCall('safety_rated_locations', 'get', {
+        responseTimeMs: Date.now() - startTime,
+        success: false,
+        errorMessage: error?.response?.body?.errors?.[0]?.detail,
+      });
       console.error('Amadeus safety get error:', error?.response?.body || error);
       return null;
     }
