@@ -10,6 +10,9 @@ const STALE_THRESHOLD_HOURS = 20; // Consider data stale after 20 hours (refresh
 const BATCH_SIZE = 5; // Process items in batches to avoid overwhelming APIs
 const BATCH_DELAY_MS = 2000; // Delay between batches
 
+// Note: TravelPulse city intelligence has its own dedicated scheduler (travelpulse-scheduler.service.ts)
+// to avoid duplicate API calls and manage Grok AI rate limits separately
+
 interface CacheRefreshStats {
   hotelsRefreshed: number;
   activitiesRefreshed: number;
@@ -100,6 +103,9 @@ class CacheSchedulerService {
       const feverResult = await this.refreshStaleFeverEvents();
       stats.feverEventsRefreshed = feverResult.refreshed;
       stats.errors.push(...feverResult.errors);
+
+      // Note: TravelPulse city intelligence is refreshed by its dedicated scheduler
+      // (travelpulse-scheduler.service.ts) to manage Grok AI rate limits separately
 
       // Clean up expired cache entries
       await cacheService.cleanupExpiredCache();
