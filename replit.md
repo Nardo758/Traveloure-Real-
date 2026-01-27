@@ -96,6 +96,12 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
   - **Grok (xAI)**: For expert matching, real-time intelligence, content generation, autonomous itinerary building, and city intelligence.
   - **Anthropic Claude**: For empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice.
   - **AI Orchestrator**: Routes requests to the appropriate AI provider.
+- **AI Cost Tracking System**: Platform-wide AI usage monitoring and cost analytics.
+  - Database table: `ai_usage_logs` tracking provider, model, operation, tokens, costs, response times
+  - xAI Pricing (Jan 2026): Grok-2 ($2/1M input, $10/1M output), Grok-4.1 Fast ($0.20/$0.50)
+  - Auto-logging: Each Grok API call automatically logs usage stats
+  - Admin Dashboard: `/admin/ai-costs` with cost summaries, daily usage charts, operation breakdown
+  - API endpoints: `/api/admin/ai-usage/summary`, `/api/admin/ai-usage/daily`, `/api/admin/ai-usage/logs`, `/api/admin/ai-usage/pricing`
 - **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence daily.
   - Scheduler: Runs every 24 hours, starts 5 minutes after server startup
   - Cache Scheduler: Integrated with main cache scheduler for unified refresh (hotels, activities, flights, Fever, TravelPulse)

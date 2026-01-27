@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { aiUsageService } from "./ai-usage.service";
 
 // xAI Grok service using OpenAI-compatible API
 // Reference: blueprint:javascript_xai
@@ -231,6 +232,26 @@ class GrokService {
       inputRate: costInfo.inputRate,
       outputRate: costInfo.outputRate,
     };
+  }
+
+  private async logUsage(
+    operation: string,
+    usage: GrokUsageStats,
+    metadata?: Record<string, unknown>,
+    success: boolean = true,
+    errorMessage?: string,
+    responseTimeMs?: number
+  ): Promise<void> {
+    aiUsageService.logUsage({
+      provider: 'grok',
+      model: GROK_MODEL,
+      operation,
+      usage,
+      metadata,
+      success,
+      errorMessage,
+      responseTimeMs,
+    });
   }
 
   async matchExpertToTraveler(request: ExpertMatchRequest): Promise<{ result: ExpertMatchResult; usage: GrokUsageStats }> {
@@ -770,9 +791,13 @@ Provide current, real-world data based on your knowledge. Include seasonal patte
       const result = JSON.parse(content) as CityIntelligenceResult;
       const usage = this.extractUsageStats(response);
 
+      this.logUsage('city_intelligence', usage, { cityName, country }, true);
+
       return { result, usage };
     } catch (error: any) {
       console.error("Grok city intelligence error:", error);
+      const errorUsage: GrokUsageStats = { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
+      this.logUsage('city_intelligence', errorUsage, { cityName, country }, false, error.message);
       throw new Error(`City intelligence generation failed: ${error.message}`);
     }
   }
