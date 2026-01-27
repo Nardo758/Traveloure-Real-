@@ -27,7 +27,10 @@ export interface GrokUsageStats {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-  estimatedCost: number;
+  estimatedCost: number; // Cost in dollars (backward compatible)
+  costCents?: number; // Cost in cents for precision
+  inputRate?: number; // Cents per 1M tokens used
+  outputRate?: number; // Cents per 1M tokens used
 }
 
 export interface ExpertMatchRequest {
@@ -194,20 +197,39 @@ export interface AutonomousItineraryResult {
 }
 
 class GrokService {
-  private calculateCost(promptTokens: number, completionTokens: number): number {
-    // Grok-2 pricing: $5 per 1M input tokens, $10 per 1M output tokens
-    const inputCost = (promptTokens / 1000000) * 5;
-    const outputCost = (completionTokens / 1000000) * 10;
-    return inputCost + outputCost;
+  // xAI Pricing (Jan 2026):
+  // Grok-4.1 Fast: $0.20/1M input, $0.50/1M output
+  // Grok-4: $3.00/1M input, $15.00/1M output  
+  // Grok-2 Vision: $2.00/1M input, $10.00/1M output
+  public static readonly PRICING = {
+    'grok-2': { input: 200, output: 1000 }, // cents per 1M tokens
+    'grok-2-vision': { input: 200, output: 1000 },
+    'grok-4': { input: 300, output: 1500 },
+    'grok-4.1-fast': { input: 20, output: 50 },
+  } as const;
+
+  private calculateCost(promptTokens: number, completionTokens: number, model: string = 'grok-2'): { costCents: number; inputRate: number; outputRate: number } {
+    const pricing = GrokService.PRICING[model as keyof typeof GrokService.PRICING] || GrokService.PRICING['grok-2'];
+    const inputCostCents = (promptTokens / 1000000) * pricing.input;
+    const outputCostCents = (completionTokens / 1000000) * pricing.output;
+    return {
+      costCents: Math.round((inputCostCents + outputCostCents) * 100) / 100,
+      inputRate: pricing.input,
+      outputRate: pricing.output,
+    };
   }
 
-  private extractUsageStats(response: OpenAI.Chat.Completions.ChatCompletion): GrokUsageStats {
+  private extractUsageStats(response: OpenAI.Chat.Completions.ChatCompletion, model: string = 'grok-2'): GrokUsageStats {
     const usage = response.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+    const costInfo = this.calculateCost(usage.prompt_tokens, usage.completion_tokens, model);
     return {
       promptTokens: usage.prompt_tokens,
       completionTokens: usage.completion_tokens,
       totalTokens: usage.total_tokens,
-      estimatedCost: this.calculateCost(usage.prompt_tokens, usage.completion_tokens),
+      estimatedCost: costInfo.costCents / 100, // Convert cents to dollars for backward compatibility
+      costCents: costInfo.costCents,
+      inputRate: costInfo.inputRate,
+      outputRate: costInfo.outputRate,
     };
   }
 

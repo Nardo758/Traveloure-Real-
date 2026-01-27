@@ -3644,6 +3644,26 @@ export const contentAnalytics = pgTable("content_analytics", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// AI Usage Logs - Track API calls and costs for all AI providers
+export const aiUsageLogs = pgTable("ai_usage_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: varchar("provider", { length: 20 }).notNull(), // grok, anthropic, openai
+  model: varchar("model", { length: 50 }).notNull(), // grok-2, claude-3-sonnet, etc.
+  operation: varchar("operation", { length: 50 }).notNull(), // city_intelligence, expert_match, chat, etc.
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  promptTokens: integer("prompt_tokens").notNull().default(0),
+  completionTokens: integer("completion_tokens").notNull().default(0),
+  totalTokens: integer("total_tokens").notNull().default(0),
+  estimatedCostCents: integer("estimated_cost_cents").notNull().default(0), // Cost in cents for precision
+  inputCostPerMillion: integer("input_cost_per_million").default(0), // Rate used in cents
+  outputCostPerMillion: integer("output_cost_per_million").default(0), // Rate used in cents
+  responseTimeMs: integer("response_time_ms").default(0),
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata").default({}), // Additional context (city, request type, etc.)
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Tracking number sequences for generating unique IDs
 export const trackingSequences = pgTable("tracking_sequences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -3683,6 +3703,12 @@ export const insertContentAnalyticsSchema = createInsertSchema(contentAnalytics)
   createdAt: true,
 });
 
+// AI Usage schema exports
+export const insertAiUsageLogSchema = createInsertSchema(aiUsageLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Type exports
 export type ContentRegistry = typeof contentRegistry.$inferSelect;
 export type InsertContentRegistry = z.infer<typeof insertContentRegistrySchema>;
@@ -3695,3 +3721,5 @@ export type InsertContentFlag = z.infer<typeof insertContentFlagSchema>;
 export type ContentAnalytics = typeof contentAnalytics.$inferSelect;
 export type InsertContentAnalytics = z.infer<typeof insertContentAnalyticsSchema>;
 export type TrackingSequence = typeof trackingSequences.$inferSelect;
+export type AiUsageLog = typeof aiUsageLogs.$inferSelect;
+export type InsertAiUsageLog = z.infer<typeof insertAiUsageLogSchema>;
