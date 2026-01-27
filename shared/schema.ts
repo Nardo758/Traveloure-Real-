@@ -3673,6 +3673,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "custom_venue",
   "contract",
   "media",
+  "tip",
   "other"
 ]);
 

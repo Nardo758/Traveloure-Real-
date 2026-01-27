@@ -61,8 +61,9 @@ class RevenueTrackingService {
     const platformPercentage = parseFloat(revenueSplit?.platformPercentage || '10') / 100;
     
     const platformFee = event.grossAmount * platformPercentage;
-    const processingFeeRate = 0.029 + 0.30 / event.grossAmount;
-    const processingFees = event.grossAmount * processingFeeRate;
+    // Use consistent 3% processing fee rate across all revenue calculations
+    const processingFeeRate = 0.03;
+    const processingFees = platformFee * processingFeeRate;
     const netAmount = platformFee - processingFees;
 
     await storage.recordPlatformRevenue({
