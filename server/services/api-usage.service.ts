@@ -17,43 +17,44 @@ export interface ApiUsageLogParams {
   metadata?: Record<string, any>;
 }
 
-// Amadeus Self-Service API pricing (cents per call)
+// Amadeus Self-Service API pricing (tenths of cents per call, i.e. $0.001 = 1)
 // Based on https://developers.amadeus.com/pricing (Jan 2026)
-export const AMADEUS_PRICING = {
+// Stored as tenths of cents for precision, converted to cents on display
+export const AMADEUS_PRICING_TENTHS = {
   // Flight APIs - $0.003-$0.01 per call
-  flight_offers_search: 0.3, // $0.003
-  flight_offers_price: 0.5,
-  flight_create_orders: 1.0,
-  flight_order_management: 0.3,
-  seatmap_display: 0.5,
+  flight_offers_search: 3, // $0.003 = 0.3 cents = 3 tenths
+  flight_offers_price: 5,
+  flight_create_orders: 10,
+  flight_order_management: 3,
+  seatmap_display: 5,
   
   // Hotel APIs - $0.003-$0.02 per call
-  hotel_list: 0.3, // $0.003
-  hotel_search: 0.5,
-  hotel_offers: 1.0,
-  hotel_booking: 2.0,
+  hotel_list: 3, // $0.003 = 0.3 cents = 3 tenths
+  hotel_search: 5,
+  hotel_offers: 10,
+  hotel_booking: 20,
   
   // Location/Reference APIs - typically free or very low cost
-  airport_city_search: 0.1,
-  airline_lookup: 0.1,
+  airport_city_search: 1,
+  airline_lookup: 1,
   
   // Points of Interest - $0.003-$0.01 per call
-  poi_search: 0.3,
-  poi_by_id: 0.3,
+  poi_search: 3,
+  poi_by_id: 3,
   
   // Activities - $0.01-$0.02 per call
-  activities_search: 1.0,
-  activity_by_id: 0.5,
+  activities_search: 10,
+  activity_by_id: 5,
   
   // Transfers - $0.01-$0.02 per call
-  transfer_offers: 1.0,
-  transfer_order: 2.0,
+  transfer_offers: 10,
+  transfer_order: 20,
   
   // Safety ratings - $0.003 per call
-  safety_rated_locations: 0.3,
+  safety_rated_locations: 3,
   
   // Default for unknown endpoints
-  default: 0.5,
+  default: 5,
 } as const;
 
 export class ApiUsageService {
@@ -80,7 +81,7 @@ export class ApiUsageService {
   }
 
   async logAmadeusCall(
-    endpoint: keyof typeof AMADEUS_PRICING | string,
+    endpoint: keyof typeof AMADEUS_PRICING_TENTHS | string,
     operation: string,
     options: {
       userId?: string;
@@ -91,15 +92,17 @@ export class ApiUsageService {
       metadata?: Record<string, any>;
     } = {}
   ): Promise<void> {
-    const costPerCallCents = AMADEUS_PRICING[endpoint as keyof typeof AMADEUS_PRICING] || AMADEUS_PRICING.default;
+    // Get cost in tenths of cents - store as-is for precision
+    // estimatedCostCents actually stores TENTHS of cents for external APIs
+    const costTenths = AMADEUS_PRICING_TENTHS[endpoint as keyof typeof AMADEUS_PRICING_TENTHS] || AMADEUS_PRICING_TENTHS.default;
     
     await this.logApiCall({
       provider: 'amadeus',
       endpoint,
       operation,
       userId: options.userId,
-      estimatedCostCents: Math.round(costPerCallCents),
-      costPerCallCents: Math.round(costPerCallCents * 100) / 100,
+      estimatedCostCents: costTenths, // Actually tenths of cents for precision
+      costPerCallCents: costTenths, // Same value for reference
       responseTimeMs: options.responseTimeMs,
       success: options.success,
       errorMessage: options.errorMessage,
@@ -153,8 +156,8 @@ export class ApiUsageService {
 
     return {
       totalCalls,
-      totalCostCents,
-      totalCostDollars: totalCostCents / 100,
+      totalCostCents, // Note: For Amadeus, this is actually tenths of cents
+      totalCostDollars: totalCostCents / 1000, // Divide by 1000 since stored as tenths of cents
       byProvider,
       byEndpoint,
       averageResponseTimeMs: logs.length > 0 ? Math.round(totalResponseTime / logs.length) : 0,
@@ -229,11 +232,17 @@ export class ApiUsageService {
     }>;
     lastUpdated: string;
   } {
+    // Convert tenths of cents to display format (dollars per call)
+    const amadeusEndpoints: Record<string, number> = {};
+    for (const [endpoint, tenths] of Object.entries(AMADEUS_PRICING_TENTHS)) {
+      amadeusEndpoints[endpoint] = tenths; // Keep as tenths for display, UI will format
+    }
+    
     return {
       providers: {
         amadeus: {
-          endpoints: AMADEUS_PRICING,
-          note: 'Amadeus Self-Service API pricing (cents per call). Free tier: 1,000-10,000 calls/month depending on endpoint.',
+          endpoints: amadeusEndpoints,
+          note: 'Amadeus Self-Service API pricing (tenths of cents per call, i.e. 3 = $0.003). Free tier: 1,000-10,000 calls/month depending on endpoint.',
         },
       },
       lastUpdated: '2026-01',
