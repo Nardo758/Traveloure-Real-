@@ -644,6 +644,7 @@ export const submitItineraryFeedbacks = pgTable("submit_itinerary_feedbacks", {
 
 export const userAndExpertChats = pgTable("user_and_expert_chats", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   senderId: varchar("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   receiverId: varchar("receiver_id").references(() => users.id, { onDelete: "cascade" }),
   contractId: varchar("contract_id").references(() => userAndExpertContracts.id, { onDelete: "cascade" }),
@@ -911,6 +912,7 @@ export const influencerCuratedContent = pgTable("influencer_curated_content", {
 
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  trackingNumber: varchar("tracking_number", { length: 20 }).unique(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   experienceTypeId: varchar("experience_type_id").notNull().references(() => experienceTypes.id, { onDelete: "cascade" }),
   title: varchar("title", { length: 255 }),
