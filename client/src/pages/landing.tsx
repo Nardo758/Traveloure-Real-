@@ -435,7 +435,7 @@ export default function LandingPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
+                  <div className="flex flex-wrap gap-2.5 max-h-[360px] overflow-y-auto pr-1 scrollbar-thin">
                     {experienceTemplates.map((cat, index) => (
                       <motion.div
                         key={cat.label}
@@ -445,12 +445,11 @@ export default function LandingPage() {
                       >
                         <Link href={`/experiences/${cat.slug}`}>
                           <Button
-                            size="sm"
                             variant="outline"
-                            className="bg-white/10 border-white/30 text-white gap-1.5 text-xs"
+                            className="bg-white/10 border-white/30 text-white gap-2"
                             data-testid={`button-category-${cat.slug}`}
                           >
-                            <cat.icon className={cn("w-3.5 h-3.5", cat.color)} />
+                            <cat.icon className={cn("w-4 h-4", cat.color)} />
                             {cat.label}
                           </Button>
                         </Link>
@@ -509,7 +508,7 @@ export default function LandingPage() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.5 }}
-                className="grid grid-cols-2 gap-3"
+                className="grid grid-cols-2 gap-2"
               >
                 {keyFeatures.map((feature, index) => (
                   <motion.div
@@ -520,17 +519,16 @@ export default function LandingPage() {
                   >
                     <Link href={feature.href}>
                       <div 
-                        className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-4 hover-elevate cursor-pointer group h-full"
+                        className="bg-white/10 backdrop-blur-md border border-white/20 rounded-lg p-3 hover-elevate cursor-pointer group h-full"
                         data-testid={`link-feature-${feature.label.toLowerCase().replace(/\s+/g, '-')}`}
                       >
                         <div className={cn(
-                          "w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center mb-2 shadow-md",
+                          "w-8 h-8 rounded-md bg-gradient-to-br flex items-center justify-center mb-1.5 shadow-md",
                           feature.gradient
                         )}>
-                          <feature.icon className="w-4 h-4 text-white" />
+                          <feature.icon className="w-3.5 h-3.5 text-white" />
                         </div>
-                        <span className="text-sm font-semibold text-white block mb-1">{feature.label}</span>
-                        <p className="text-xs text-white/70 line-clamp-2">{feature.description}</p>
+                        <span className="text-xs font-semibold text-white block">{feature.label}</span>
                       </div>
                     </Link>
                   </motion.div>
