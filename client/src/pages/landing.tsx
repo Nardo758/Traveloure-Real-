@@ -79,31 +79,81 @@ const faqItems = [
   {
     id: "ai-plan",
     title: "Let Our AI Plan Your Trip",
-    content: "Our advanced AI analyzes your preferences, budget, and travel style to create personalized itineraries. From suggesting hidden gems to optimizing your schedule, our AI ensures every moment of your trip is perfectly planned.",
+    content: (
+      <div className="space-y-3">
+        <p>Our advanced AI analyzes your preferences, budget, and travel style to create personalized itineraries tailored just for you.</p>
+        <ul className="list-disc list-inside space-y-1.5 text-sm">
+          <li><strong>Smart Itinerary Building:</strong> Tell us your dates, interests, and budget—our AI crafts day-by-day plans in seconds</li>
+          <li><strong>Hidden Gem Discovery:</strong> Powered by real traveler data and local insights to find spots tourists often miss</li>
+          <li><strong>Schedule Optimization:</strong> Routes are automatically optimized to save you time and reduce transit hassles</li>
+          <li><strong>Real-time Adjustments:</strong> Plans adapt to weather, closures, and your changing preferences</li>
+        </ul>
+      </div>
+    ),
     icon: Bot,
   },
   {
     id: "experts",
     title: "Travel Experts To Help",
-    content: "Connect with verified local experts who know their destinations inside out. They provide authentic recommendations, handle logistics, and offer real-time support throughout your journey.",
+    content: (
+      <div className="space-y-3">
+        <p>Connect with verified local experts who know their destinations inside out. They provide authentic recommendations, handle logistics, and offer real-time support.</p>
+        <ul className="list-disc list-inside space-y-1.5 text-sm">
+          <li><strong>Verified Locals:</strong> Every expert is vetted for deep destination knowledge and excellent communication</li>
+          <li><strong>Direct Chat:</strong> Message your expert anytime for tips, restaurant bookings, or last-minute changes</li>
+          <li><strong>Personalized Guidance:</strong> Get custom recommendations based on your travel style—foodie, adventure, culture, or relaxation</li>
+          <li><strong>On-Trip Support:</strong> Your expert is available throughout your journey for real-time assistance</li>
+        </ul>
+      </div>
+    ),
     icon: UserCheck,
   },
   {
     id: "ai-optimization",
     title: "AI Optimization - Perfectly Tailored For You",
-    content: "Our AI continuously learns from your preferences and feedback to refine recommendations. It optimizes routes, timing, and activities to match your unique travel style.",
+    content: (
+      <div className="space-y-3">
+        <p>Our AI continuously learns from your preferences and feedback to refine recommendations and optimize every aspect of your trip.</p>
+        <ul className="list-disc list-inside space-y-1.5 text-sm">
+          <li><strong>Route Intelligence:</strong> Multi-stop journeys are optimized for the shortest travel time and best connections</li>
+          <li><strong>Budget Tracking:</strong> AI monitors your spending and suggests alternatives to stay within budget</li>
+          <li><strong>Activity Matching:</strong> Recommendations improve as you rate and interact with suggestions</li>
+          <li><strong>Transportation Analysis:</strong> Compare flights, trains, and drives with real-time pricing and duration</li>
+        </ul>
+      </div>
+    ),
     icon: Sparkles,
   },
   {
     id: "destinations",
     title: "Discover New Destinations",
-    content: "Explore curated destinations handpicked by our experts and AI. From trending hotspots to off-the-beaten-path adventures, find your next perfect getaway.",
+    content: (
+      <div className="space-y-3">
+        <p>Explore curated destinations handpicked by our experts and AI. From trending hotspots to off-the-beaten-path adventures, find your next perfect getaway.</p>
+        <ul className="list-disc list-inside space-y-1.5 text-sm">
+          <li><strong>Trending Cities:</strong> See where other travelers are heading with live crowd and pricing data</li>
+          <li><strong>Hidden Gems:</strong> Discover authentic local secrets powered by our AI discovery system</li>
+          <li><strong>Experience Templates:</strong> Browse 20+ experience types—from romantic getaways to corporate retreats</li>
+          <li><strong>Seasonal Insights:</strong> Know the best time to visit with weather, festival, and price trend data</li>
+        </ul>
+      </div>
+    ),
     icon: Globe,
   },
   {
     id: "partner",
     title: "Partner With Us",
-    content: "Join our network of travel experts, service providers, and local guides. Grow your business while helping travelers create unforgettable experiences.",
+    content: (
+      <div className="space-y-3">
+        <p>Join our network of travel experts, service providers, and local guides. Grow your business while helping travelers create unforgettable experiences.</p>
+        <ul className="list-disc list-inside space-y-1.5 text-sm">
+          <li><strong>Travel Experts:</strong> Share your destination expertise and earn by helping travelers plan their trips</li>
+          <li><strong>Service Providers:</strong> List your hotels, tours, restaurants, and activities to reach global travelers</li>
+          <li><strong>AI-Powered Tools:</strong> Access our suite of expert tools including AI assistants and revenue optimization</li>
+          <li><strong>Flexible Earnings:</strong> Set your own rates and work on your schedule with full earnings transparency</li>
+        </ul>
+      </div>
+    ),
     icon: Users,
   },
 ];
