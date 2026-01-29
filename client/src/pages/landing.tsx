@@ -541,33 +541,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Horizontal Features Bar */}
-      <section className="py-6 bg-muted dark:bg-muted/50 border-y border-border">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap justify-center items-center gap-6 md:gap-10">
-            {platformBenefits.map((benefit, idx) => (
-              <motion.div
-                key={benefit.label}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.1 }}
-                className="flex items-center gap-3"
-                data-testid={`benefit-${idx}`}
-              >
-                <div className="w-10 h-10 rounded-xl bg-[#FF385C]/10 dark:bg-[#FF385C]/20 flex items-center justify-center">
-                  <benefit.icon className="w-5 h-5 text-[#FF385C]" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-foreground">{benefit.value}</p>
-                  <p className="text-xs text-muted-foreground">{benefit.label}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Choose Your Experience Section */}
       <section className="py-16 lg:py-20 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700">
         <div className="container mx-auto px-4 max-w-5xl">
