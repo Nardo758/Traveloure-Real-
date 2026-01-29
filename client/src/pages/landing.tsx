@@ -165,76 +165,32 @@ const faqItems = [
 
 const impactStats = [
   { 
-    value: "102,530", 
-    label: "Travelers Worldwide", 
-    trend: "+23%",
-    statusLabel: "Live",
-    statusColor: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400",
-    icon: Users,
+    value: "8M+", 
+    label: "Trips Planned", 
+    description: "Join the millions who've seamlessly planned their journeys—from weekend getaways to month-long adventures.",
+    icon: MapPin,
     color: "text-[#FF385C]"
   },
   { 
-    value: "487", 
-    label: "Active Consultations", 
-    trend: null,
-    statusLabel: "Live",
-    statusColor: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400",
-    icon: Activity,
+    value: "500K+", 
+    label: "Custom Itineraries", 
+    description: "Unique, tailored itineraries built using real-time preferences—no two plans are the same.",
+    icon: Calendar,
     color: "text-emerald-500"
   },
   { 
-    value: "1,247", 
-    label: "Bookings This Week", 
-    trend: "+15%",
-    statusLabel: "Growing",
-    statusColor: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
-    icon: Calendar,
+    value: "$500+", 
+    label: "Average Savings", 
+    description: "AI-route optimization and bundled planning reduce spend dramatically on multi-destination travel.",
+    icon: Zap,
     color: "text-violet-500"
   },
   { 
-    value: "$1.2M+", 
-    label: "Protected Value", 
-    trend: null,
-    statusLabel: "Secured",
-    statusColor: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
-    icon: Shield,
-    color: "text-amber-500"
-  },
-  { 
-    value: "160+", 
-    label: "Verified Experts", 
-    trend: null,
-    statusLabel: "Vetted",
-    statusColor: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400",
-    icon: CheckCircle2,
-    color: "text-purple-500"
-  },
-  { 
-    value: "4.8★", 
-    label: "Average Rating", 
-    trend: null,
-    statusLabel: "Quality",
-    statusColor: "bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400",
+    value: "33K+", 
+    label: "5-Star Reviews", 
+    description: "With tens of thousands of 5-star reviews, our platform is trusted by travelers worldwide.",
     icon: Star,
-    color: "text-rose-500"
-  },
-  { 
-    value: "8", 
-    label: "Strategic Markets", 
-    trend: null,
-    statusLabel: "Global",
-    statusColor: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400",
-    icon: Globe,
-    color: "text-cyan-500"
-  },
-  { 
-    value: "24-48hr", 
-    label: "Response Time", 
-    trend: null,
-    statusLabel: "Fast",
-    statusColor: "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400",
-    icon: Clock,
-    color: "text-orange-500"
+    color: "text-amber-500"
   },
 ];
 
