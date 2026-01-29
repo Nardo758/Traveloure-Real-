@@ -31,6 +31,9 @@ interface City {
   tip: string;
   trendingCount: number;
   gemsCount: number;
+  heatScore: number;
+  activeBookings: number;
+  isHot?: boolean;
 }
 
 const cities: City[] = [
@@ -54,6 +57,9 @@ const cities: City[] = [
     tip: 'Book mid-week stays for November to save up to 15% on hotels before holiday season spikes.',
     trendingCount: 38,
     gemsCount: 19,
+    heatScore: 94,
+    activeBookings: 18,
+    isHot: true,
   },
   {
     id: '2',
@@ -75,6 +81,9 @@ const cities: City[] = [
     tip: 'Look for midweek deals in late January for lower hotel rates after holiday season.',
     trendingCount: 42,
     gemsCount: 9,
+    heatScore: 92,
+    activeBookings: 24,
+    isHot: true,
   },
   {
     id: '3',
@@ -96,6 +105,9 @@ const cities: City[] = [
     tip: 'Book early for November to avoid peak autumn foliage price spikes.',
     trendingCount: 47,
     gemsCount: 23,
+    heatScore: 96,
+    activeBookings: 31,
+    isHot: true,
   },
   {
     id: '4',
@@ -117,6 +129,8 @@ const cities: City[] = [
     tip: 'Book early for November to avoid peak holiday price spikes.',
     trendingCount: 48,
     gemsCount: 21,
+    heatScore: 89,
+    activeBookings: 14,
   },
   {
     id: '5',
@@ -138,6 +152,8 @@ const cities: City[] = [
     tip: 'Early booking discounts available for spring riads.',
     trendingCount: 26,
     gemsCount: 28,
+    heatScore: 85,
+    activeBookings: 8,
   },
   {
     id: '6',
@@ -159,6 +175,8 @@ const cities: City[] = [
     tip: 'Early bird deals for November festival season available now.',
     trendingCount: 44,
     gemsCount: 42,
+    heatScore: 88,
+    activeBookings: 19,
   },
   {
     id: '7',
@@ -180,6 +198,8 @@ const cities: City[] = [
     tip: 'Book early for summer (Dec-Feb) to avoid peak pricing spikes.',
     trendingCount: 33,
     gemsCount: 18,
+    heatScore: 86,
+    activeBookings: 11,
   },
   {
     id: '8',
@@ -201,6 +221,9 @@ const cities: City[] = [
     tip: 'Book early for November to avoid holiday price spikes.',
     trendingCount: 51,
     gemsCount: 15,
+    heatScore: 91,
+    activeBookings: 27,
+    isHot: true,
   },
 ];
 
@@ -287,13 +310,42 @@ export function TrendingCities() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                     
-                    <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
-                      <span className="px-3 py-1 rounded-lg bg-[#FF385C] text-white text-sm font-bold flex items-center gap-1">
-                        <ArrowDownRight className="w-3 h-3" />
-                        ${city.price}
+                    {/* Heat Score Badge */}
+                    <div 
+                      className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
+                      data-testid={`badge-heat-score-${city.id}`}
+                    >
+                      <span className={cn(
+                        "text-lg font-bold",
+                        city.heatScore >= 90 ? "text-[#FF385C]" : city.heatScore >= 85 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+                      )}>
+                        {city.heatScore}
                       </span>
+                    </div>
+                    
+                    <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
+                      {city.isHot ? (
+                        <span 
+                          className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                          data-testid={`badge-hot-${city.id}`}
+                        >
+                          <Zap className="w-3 h-3 fill-white" />
+                          Hot
+                        </span>
+                      ) : (
+                        <span 
+                          className="px-2.5 py-1 rounded-lg bg-amber-500 dark:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                          data-testid={`badge-trending-${city.id}`}
+                        >
+                          <TrendingUp className="w-3 h-3" />
+                          Trending
+                        </span>
+                      )}
                       {city.travelers > 0 && (
-                        <span className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-[#FF385C] text-xs font-medium flex items-center gap-1">
+                        <span 
+                          className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1 shadow-sm"
+                          data-testid={`badge-travelers-${city.id}`}
+                        >
                           <Users className="w-3 h-3" />
                           {city.travelers.toLocaleString()}
                         </span>
@@ -369,14 +421,18 @@ export function TrendingCities() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <TrendingUp className="w-3 h-3" />
-                        {city.trendingCount} trending
+                    <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border" data-testid={`stats-footer-${city.id}`}>
+                      <div className="flex items-center gap-1" data-testid={`stat-active-${city.id}`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        {city.activeBookings} active
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Gem className="w-3 h-3" />
-                        {city.gemsCount} gems
+                      <div className="flex items-center gap-1" data-testid={`stat-trending-${city.id}`}>
+                        <TrendingUp className="w-3 h-3" />
+                        {city.trendingCount}
+                      </div>
+                      <div className="flex items-center gap-1" data-testid={`stat-gems-${city.id}`}>
+                        <Gem className="w-3 h-3 text-purple-500 dark:text-purple-400" />
+                        {city.gemsCount}
                       </div>
                     </div>
                   </div>
@@ -395,7 +451,7 @@ export function TrendingCities() {
           <Link href="/discover">
             <Button 
               size="lg" 
-              className="bg-[#FF385C] hover:bg-[#E31C5F] text-white font-semibold px-8"
+              className="bg-[#FF385C] text-white font-semibold px-8"
               data-testid="button-explore-all-cities"
             >
               Explore All Destinations

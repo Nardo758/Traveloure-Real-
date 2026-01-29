@@ -165,56 +165,121 @@ const faqItems = [
 
 const impactStats = [
   { 
-    value: "8M+", 
-    label: "Trips Planned", 
-    description: "Join the millions who've seamlessly planned their journeys—from weekend getaways to month-long adventures.",
-    icon: MapPin,
+    value: "102,530", 
+    label: "Travelers Worldwide", 
+    trend: "+23%",
+    statusLabel: "Live",
+    statusColor: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400",
+    icon: Users,
     color: "text-[#FF385C]"
   },
   { 
-    value: "500K+", 
-    label: "Custom Itineraries", 
-    description: "Unique, tailored itineraries built using real-time preferences—no two plans are the same.",
-    icon: Calendar,
+    value: "487", 
+    label: "Active Consultations", 
+    trend: null,
+    statusLabel: "Live",
+    statusColor: "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400",
+    icon: Activity,
     color: "text-emerald-500"
   },
   { 
-    value: "$500+", 
-    label: "Average Savings", 
-    description: "AI-route optimization and bundled planning reduce spend dramatically on multi-destination travel.",
-    icon: Zap,
+    value: "1,247", 
+    label: "Bookings This Week", 
+    trend: "+15%",
+    statusLabel: "Growing",
+    statusColor: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+    icon: Calendar,
     color: "text-violet-500"
   },
   { 
-    value: "33K+", 
-    label: "5-Star Reviews", 
-    description: "With tens of thousands of 5-star reviews, our platform is trusted by travelers worldwide.",
-    icon: Star,
+    value: "$1.2M+", 
+    label: "Protected Value", 
+    trend: null,
+    statusLabel: "Secured",
+    statusColor: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
+    icon: Shield,
     color: "text-amber-500"
+  },
+  { 
+    value: "160+", 
+    label: "Verified Experts", 
+    trend: null,
+    statusLabel: "Vetted",
+    statusColor: "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400",
+    icon: CheckCircle2,
+    color: "text-purple-500"
+  },
+  { 
+    value: "4.8★", 
+    label: "Average Rating", 
+    trend: null,
+    statusLabel: "Quality",
+    statusColor: "bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400",
+    icon: Star,
+    color: "text-rose-500"
+  },
+  { 
+    value: "8", 
+    label: "Strategic Markets", 
+    trend: null,
+    statusLabel: "Global",
+    statusColor: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400",
+    icon: Globe,
+    color: "text-cyan-500"
+  },
+  { 
+    value: "24-48hr", 
+    label: "Response Time", 
+    trend: null,
+    statusLabel: "Fast",
+    statusColor: "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400",
+    icon: Clock,
+    color: "text-orange-500"
   },
 ];
 
 const testimonials = [
   { 
-    text: "The travel expert recommendations made our trip to Portugal truly special. We discovered places we would have never found on our own!", 
+    text: "Sofia helped us navigate Porto wine country and saved us $2,400 on venue negotiations. Her local connections got us exclusive tastings we never could have found ourselves!", 
     author: "Sarah Johnson", 
     location: "New York, USA",
     rating: 5,
-    avatar: "SJ"
+    avatar: "SJ",
+    destination: "Porto, Portugal",
+    tripType: "Anniversary Trip",
+    expertName: "Sofia Costa",
+    expertHeatScore: 92,
+    valueSaved: "$2,400",
+    expertRate: "$65/hr",
+    tripImage: "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=400&q=80"
   },
   { 
-    text: "The AI itinerary planning saved me hours of research. It perfectly balanced tourist spots with authentic local experiences.", 
+    text: "Hiroshi's insider knowledge of Kyoto transformed our cherry blossom trip. We visited secret gardens at sunrise before any tourists arrived. Truly magical!", 
     author: "David Chen", 
     location: "Toronto, Canada",
     rating: 5,
-    avatar: "DC"
+    avatar: "DC",
+    destination: "Kyoto, Japan",
+    tripType: "Cultural Travel",
+    expertName: "Hiroshi Tanaka",
+    expertHeatScore: 94,
+    valueSaved: "$1,800",
+    expertRate: "$120/hr",
+    tripImage: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=400&q=80"
   },
   { 
-    text: "As someone who was unsure where to go, the 'Help Me Decide' feature was a game-changer. I ended up with the perfect vacation!", 
+    text: "Priya made our Mumbai wedding seamless. She coordinated 12 vendors, saved us 3 weeks of planning, and the ceremony was absolutely perfect. Worth every penny!", 
     author: "Maria Rodriguez", 
     location: "Madrid, Spain",
     rating: 5,
-    avatar: "MR"
+    avatar: "MR",
+    destination: "Mumbai, India",
+    tripType: "Wedding Planning",
+    expertName: "Priya Sharma",
+    expertHeatScore: 96,
+    valueSaved: "$3,200",
+    expertRate: "$85/hr",
+    tripImage: "https://images.unsplash.com/photo-1529253355930-ddbe423a2ac7?w=400&q=80"
   },
 ];
 
@@ -465,11 +530,20 @@ export default function LandingPage() {
             viewport={{ once: true }}
             className="mb-12"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-              Our <span className="text-[#FF385C]">Impact</span> In Numbers
-            </h2>
-            <p className="text-muted-foreground mt-2 max-w-xl">
-              Trusted by travelers worldwide for seamless trip planning experiences
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+                <Activity className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground">
+                Platform <span className="text-[#FF385C]">Intelligence</span>
+              </h2>
+              <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                Live
+              </span>
+            </div>
+            <p className="text-muted-foreground max-w-xl">
+              Real-time collective intelligence from travelers worldwide
             </p>
           </motion.div>
           
@@ -478,7 +552,7 @@ export default function LandingPage() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+            className="grid grid-cols-2 md:grid-cols-4 gap-4"
           >
             {impactStats.map((stat, idx) => (
               <motion.div
@@ -486,13 +560,25 @@ export default function LandingPage() {
                 variants={itemVariants}
               >
                 <Card className="h-full border border-border bg-card dark:bg-card shadow-card hover:shadow-card-hover transition-all duration-300" data-testid={`card-stat-${idx}`}>
-                  <CardContent className="p-6">
-                    <div className={cn("w-12 h-12 rounded-xl bg-muted dark:bg-muted flex items-center justify-center mb-4", stat.color)}>
-                      <stat.icon className="w-6 h-6" />
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className={cn("w-10 h-10 rounded-xl bg-muted dark:bg-muted flex items-center justify-center", stat.color)}>
+                        <stat.icon className="w-5 h-5" />
+                      </div>
+                      <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium", stat.statusColor)}>
+                        {stat.statusLabel}
+                      </span>
                     </div>
-                    <p className={cn("text-4xl font-bold mb-1", stat.color)}>{stat.value}</p>
-                    <p className="text-sm font-semibold text-foreground mb-2">{stat.label}</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{stat.description}</p>
+                    <div className="flex items-baseline gap-2">
+                      <p className={cn("text-2xl font-bold", stat.color)}>{stat.value}</p>
+                      {stat.trend && (
+                        <span className="text-xs font-medium text-emerald-500 flex items-center">
+                          <TrendingUp className="w-3 h-3 mr-0.5" />
+                          {stat.trend}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -509,11 +595,16 @@ export default function LandingPage() {
             viewport={{ once: true }}
             className="mb-12"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-              Customer <span className="text-emerald-500">Success</span> Stories
-            </h2>
-            <p className="text-muted-foreground mt-2">
-              Hear from travelers who have transformed their travel experiences
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
+                <Award className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground">
+                Success <span className="text-emerald-500">Stories</span>
+              </h2>
+            </div>
+            <p className="text-muted-foreground">
+              Real results from <span className="font-semibold text-foreground">102,530+</span> travelers worldwide
             </p>
           </motion.div>
           
@@ -530,11 +621,25 @@ export default function LandingPage() {
                 variants={itemVariants}
               >
                 <Card className="h-full border border-border bg-background dark:bg-muted/50 shadow-card hover:shadow-card-hover transition-all duration-300 relative overflow-hidden" data-testid={`card-testimonial-${idx}`}>
-                  <div className="absolute top-4 right-4 text-muted-foreground/20">
-                    <Quote className="w-12 h-12" />
+                  {/* Trip Image Header */}
+                  <div className="relative h-32 overflow-hidden">
+                    <img 
+                      src={testimonial.tripImage} 
+                      alt={testimonial.destination}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                    <div className="absolute bottom-2 left-3 right-3">
+                      <span className="text-white text-xs font-medium">{testimonial.tripType}</span>
+                      <div className="flex items-center gap-1 text-white/90 text-sm font-semibold">
+                        <MapPin className="w-3 h-3" />
+                        {testimonial.destination}
+                      </div>
+                    </div>
                   </div>
-                  <CardContent className="p-6 relative">
-                    <div className="flex gap-1 mb-4">
+                  
+                  <CardContent className="p-5 relative">
+                    <div className="flex gap-1 mb-3">
                       {[1, 2, 3, 4, 5].map((star) => (
                         <Star 
                           key={star} 
@@ -548,26 +653,76 @@ export default function LandingPage() {
                       ))}
                     </div>
                     
-                    <p className="text-sm text-foreground leading-relaxed mb-6">
+                    <p className="text-sm text-foreground leading-relaxed mb-4 line-clamp-4">
                       "{testimonial.text}"
                     </p>
                     
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center text-white font-semibold text-sm shadow-lg">
+                    {/* Expert & Value Info */}
+                    <div className="bg-muted dark:bg-muted/50 rounded-xl p-3 mb-4" data-testid={`expert-info-${idx}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-muted-foreground">Expert consulted</span>
+                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Verified
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-semibold text-foreground" data-testid={`expert-name-${idx}`}>{testimonial.expertName}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-[#FF385C]/10 text-[#FF385C] text-xs font-bold" data-testid={`expert-score-${idx}`}>
+                            {testimonial.expertHeatScore}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground" data-testid={`expert-rate-${idx}`}>{testimonial.expertRate}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Value Saved Badge */}
+                    <div className="flex items-center justify-between mb-4 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg" data-testid={`value-saved-${idx}`}>
+                      <span className="text-xs text-emerald-700 dark:text-emerald-300">Value gained</span>
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{testimonial.valueSaved}</span>
+                    </div>
+                    
+                    {/* Author */}
+                    <div className="flex items-center gap-3 pt-3 border-t border-border">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center text-white font-semibold text-sm shadow-lg">
                         {testimonial.avatar}
                       </div>
                       <div>
                         <p className="font-semibold text-foreground text-sm">{testimonial.author}</p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {testimonial.location}
-                        </p>
+                        <p className="text-xs text-muted-foreground">{testimonial.location}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
             ))}
+          </motion.div>
+          
+          {/* Platform Stats Bar */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-muted dark:bg-muted/50 rounded-2xl"
+            data-testid="platform-stats-bar"
+          >
+            <div className="text-center" data-testid="stat-avg-rating">
+              <p className="text-2xl font-bold text-[#FF385C]">4.9/5</p>
+              <p className="text-xs text-muted-foreground">Average Rating</p>
+            </div>
+            <div className="text-center" data-testid="stat-reviews">
+              <p className="text-2xl font-bold text-foreground">50K+</p>
+              <p className="text-xs text-muted-foreground">Reviews</p>
+            </div>
+            <div className="text-center" data-testid="stat-recommend">
+              <p className="text-2xl font-bold text-emerald-500 dark:text-emerald-400">98%</p>
+              <p className="text-xs text-muted-foreground">Would Recommend</p>
+            </div>
+            <div className="text-center" data-testid="stat-travelers">
+              <p className="text-2xl font-bold text-foreground">2M+</p>
+              <p className="text-xs text-muted-foreground">Happy Travelers</p>
+            </div>
           </motion.div>
         </div>
       </section>
