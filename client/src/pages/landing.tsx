@@ -80,6 +80,123 @@ const keyFeatures = [
   { icon: Globe, label: "Discover", description: "Browse curated experiences from around the world", href: "/discover", gradient: "from-ocean-500 to-ocean-600" },
 ];
 
+// Horizontal features bar data
+const platformBenefits = [
+  { icon: Bot, label: "AI-Powered Planning", value: "Smart" },
+  { icon: Users, label: "Local Experts", value: "160+" },
+  { icon: Zap, label: "Real-Time Intel", value: "Live" },
+  { icon: Shield, label: "Money-Back Guarantee", value: "100%" },
+  { icon: Globe, label: "Global Markets", value: "8" },
+];
+
+// Experience Categories data
+const experienceCategories = [
+  { 
+    icon: Plane, 
+    label: "Travel", 
+    description: "Plan your next adventure",
+    image: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=80",
+    trending: 89,
+    expertRates: "$75-120/hr",
+    hiddenGems: 247,
+    slug: "travel",
+    color: "text-blue-500",
+    bgColor: "bg-blue-500"
+  },
+  { 
+    icon: Heart, 
+    label: "Weddings", 
+    description: "Plan the perfect day",
+    image: "https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80",
+    trending: 34,
+    expertRates: "$85-150/hr",
+    hiddenGems: 67,
+    slug: "wedding",
+    color: "text-pink-500",
+    bgColor: "bg-pink-500"
+  },
+  { 
+    icon: Gem, 
+    label: "Proposals", 
+    description: "Make it unforgettable",
+    image: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=600&q=80",
+    trending: 23,
+    expertRates: "$500-2,500",
+    hiddenGems: 89,
+    slug: "proposal",
+    color: "text-purple-500",
+    bgColor: "bg-purple-500"
+  },
+  { 
+    icon: PartyPopper, 
+    label: "Celebrations", 
+    description: "Mark special moments",
+    image: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80",
+    trending: 45,
+    expertRates: "$200-1,500",
+    hiddenGems: 134,
+    slug: "celebrations",
+    color: "text-orange-500",
+    bgColor: "bg-orange-500"
+  },
+  { 
+    icon: Sparkles, 
+    label: "Date Nights", 
+    description: "Plan something special",
+    image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80",
+    trending: 67,
+    expertRates: "$50-300",
+    hiddenGems: 289,
+    slug: "date-night",
+    color: "text-red-500",
+    bgColor: "bg-red-500"
+  },
+  { 
+    icon: Building2, 
+    label: "Corporate", 
+    description: "Team building & events",
+    image: "https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=600&q=80",
+    trending: 12,
+    expertRates: "Custom quote",
+    hiddenGems: 45,
+    slug: "corporate-events",
+    color: "text-slate-600 dark:text-slate-400",
+    bgColor: "bg-slate-600"
+  },
+];
+
+// How It Works steps
+const howItWorksSteps = [
+  {
+    step: 1,
+    title: "Share Your Vision",
+    description: "Tell us about your dream experience — destination, dates, budget, and preferences.",
+    icon: Heart,
+    color: "from-[#FF385C] to-[#FF6B6B]"
+  },
+  {
+    step: 2,
+    title: "Get Matched",
+    description: "Our AI matches you with verified local experts who specialize in your experience type.",
+    icon: Users,
+    color: "from-emerald-500 to-teal-500"
+  },
+  {
+    step: 3,
+    title: "Plan Together",
+    description: "Collaborate with your expert using AI tools, real-time intel, and insider knowledge.",
+    icon: Sparkles,
+    color: "from-violet-500 to-purple-500"
+  },
+  {
+    step: 4,
+    title: "Experience It",
+    description: "Enjoy your perfectly planned experience with on-trip support when you need it.",
+    icon: Star,
+    color: "from-amber-500 to-orange-500"
+  },
+];
+
 const faqItems = [
   {
     id: "ai-plan",
@@ -424,57 +541,175 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <TrendingCities />
+      {/* Horizontal Features Bar */}
+      <section className="py-6 bg-muted dark:bg-muted/50 border-y border-border">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-wrap justify-center items-center gap-6 md:gap-10">
+            {platformBenefits.map((benefit, idx) => (
+              <motion.div
+                key={benefit.label}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.1 }}
+                className="flex items-center gap-3"
+                data-testid={`benefit-${idx}`}
+              >
+                <div className="w-10 h-10 rounded-xl bg-[#FF385C]/10 dark:bg-[#FF385C]/20 flex items-center justify-center">
+                  <benefit.icon className="w-5 h-5 text-[#FF385C]" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-foreground">{benefit.value}</p>
+                  <p className="text-xs text-muted-foreground">{benefit.label}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-      <section className="py-16 lg:py-20 bg-card dark:bg-card">
-        <div className="container mx-auto px-4 max-w-4xl">
+      {/* Experience Categories Section */}
+      <section className="py-16 lg:py-20 bg-background">
+        <div className="container mx-auto px-4 max-w-6xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-10"
+            className="text-center mb-12"
           >
             <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-              How <span className="text-[#FF385C]">Traveloure</span> Works
+              What Are You <span className="text-[#FF385C]">Planning?</span>
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Discover everything our platform offers to make your travel planning seamless
+              Each category has curated experts, trending destinations, and real-time pricing intelligence
             </p>
           </motion.div>
 
-          <Accordion type="single" collapsible className="w-full space-y-3">
-            {faqItems.map((item, index) => (
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6"
+          >
+            {experienceCategories.map((category, idx) => (
               <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
+                key={category.slug}
+                variants={itemVariants}
               >
-                <AccordionItem 
-                  value={item.id} 
-                  className="border border-border rounded-xl overflow-hidden bg-background dark:bg-muted/50 shadow-sm"
-                >
-                  <AccordionTrigger 
-                    className="text-left text-foreground font-medium py-5 px-5 hover:no-underline hover:bg-muted/50 transition-colors gap-3 flex-wrap"
-                    data-testid={`accordion-trigger-${item.id}`}
-                  >
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="w-9 h-9 rounded-lg bg-[#FF385C]/10 dark:bg-[#FF385C]/20 flex items-center justify-center flex-shrink-0">
-                        <item.icon className="w-4 h-4 text-[#FF385C]" />
+                <Link href={`/experiences/${category.slug}`}>
+                  <Card className="h-full border border-border bg-card overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 group cursor-pointer" data-testid={`card-category-${category.slug}`}>
+                    <div className="relative h-32 md:h-40 overflow-hidden">
+                      <img 
+                        src={category.image} 
+                        alt={category.label}
+                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                      <div className="absolute top-3 left-3">
+                        <span className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3 text-[#FF385C]" />
+                          {category.trending} trending
+                        </span>
                       </div>
-                      <span>{item.title}</span>
                     </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="text-muted-foreground px-5 pb-5 pt-0">
-                    <div className="pl-12">
-                      {item.content}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", category.bgColor)}>
+                          <category.icon className="w-4 h-4 text-white" />
+                        </div>
+                        <h3 className="text-lg font-bold text-foreground">{category.label}</h3>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-3">{category.description}</p>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border">
+                        <div>
+                          <span className="text-foreground font-medium">Expert rates</span>
+                          <p>{category.expertRates}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-foreground font-medium">Hidden gems</span>
+                          <p>{category.hiddenGems}</p>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        className="w-full mt-4 bg-[#FF385C] text-white"
+                        data-testid={`button-explore-${category.slug}`}
+                      >
+                        Explore
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Link>
               </motion.div>
             ))}
-          </Accordion>
+          </motion.div>
+        </div>
+      </section>
+
+      <TrendingCities />
+
+      {/* How It Works Section */}
+      <section className="py-16 lg:py-20 bg-card dark:bg-card">
+        <div className="container mx-auto px-4 max-w-5xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-12"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
+              How It <span className="text-[#FF385C]">Works</span>
+            </h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              From dream to reality in four simple steps
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
+            {/* Connecting line (desktop only) */}
+            <div className="hidden lg:block absolute top-16 left-[12%] right-[12%] h-0.5 bg-gradient-to-r from-[#FF385C] via-emerald-500 via-violet-500 to-amber-500 opacity-30" />
+            
+            {howItWorksSteps.map((step, idx) => (
+              <motion.div
+                key={step.step}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: idx * 0.15 }}
+                className="relative"
+              >
+                <Card className="h-full border border-border bg-background dark:bg-muted/50 shadow-card hover:shadow-card-hover transition-all duration-300 text-center" data-testid={`card-step-${step.step}`}>
+                  <CardContent className="p-6">
+                    <div className={cn(
+                      "w-14 h-14 rounded-2xl bg-gradient-to-br flex items-center justify-center mx-auto mb-4 shadow-lg",
+                      step.color
+                    )}>
+                      <step.icon className="w-7 h-7 text-white" />
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center mx-auto mb-3 text-sm font-bold text-muted-foreground">
+                      {step.step}
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground mb-2">{step.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mt-10"
+          >
+            <Link href="/ai-assistant">
+              <Button size="lg" className="bg-[#FF385C] text-white font-semibold px-8" data-testid="button-get-started-how">
+                Get Started <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </Link>
+          </motion.div>
         </div>
       </section>
 
