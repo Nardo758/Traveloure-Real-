@@ -568,20 +568,25 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Experience Categories Section */}
-      <section className="py-16 lg:py-20 bg-background">
-        <div className="container mx-auto px-4 max-w-6xl">
+      {/* Choose Your Experience Section */}
+      <section className="py-16 lg:py-20 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700">
+        <div className="container mx-auto px-4 max-w-5xl">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="text-center mb-12"
+            className="text-center mb-10"
           >
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-              What Are You <span className="text-[#FF385C]">Planning?</span>
-            </h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              Each category has curated experts, trending destinations, and real-time pricing intelligence
+            <div className="flex items-center justify-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white">
+                Choose Your Experience
+              </h2>
+            </div>
+            <p className="text-white/80 max-w-xl mx-auto">
+              Start planning with our templates. Choose your experience type to get personalized recommendations.
             </p>
           </motion.div>
 
@@ -590,56 +595,22 @@ export default function LandingPage() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6"
+            className="flex flex-wrap justify-center gap-3"
           >
-            {experienceCategories.map((category, idx) => (
+            {experienceTemplates.map((cat, index) => (
               <motion.div
-                key={category.slug}
+                key={cat.label}
                 variants={itemVariants}
               >
-                <Link href={`/experiences/${category.slug}`}>
-                  <Card className="h-full border border-border bg-card overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-300 group cursor-pointer" data-testid={`card-category-${category.slug}`}>
-                    <div className="relative h-32 md:h-40 overflow-hidden">
-                      <img 
-                        src={category.image} 
-                        alt={category.label}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                      <div className="absolute top-3 left-3">
-                        <span className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3 text-[#FF385C]" />
-                          {category.trending} trending
-                        </span>
-                      </div>
-                    </div>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", category.bgColor)}>
-                          <category.icon className="w-4 h-4 text-white" />
-                        </div>
-                        <h3 className="text-lg font-bold text-foreground">{category.label}</h3>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-3">{category.description}</p>
-                      <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border">
-                        <div>
-                          <span className="text-foreground font-medium">Expert rates</span>
-                          <p>{category.expertRates}</p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-foreground font-medium">Hidden gems</span>
-                          <p>{category.hiddenGems}</p>
-                        </div>
-                      </div>
-                      <Button 
-                        size="sm" 
-                        className="w-full mt-4 bg-[#FF385C] text-white"
-                        data-testid={`button-explore-${category.slug}`}
-                      >
-                        Explore
-                      </Button>
-                    </CardContent>
-                  </Card>
+                <Link href={`/experiences/${cat.slug}`}>
+                  <Button
+                    variant="outline"
+                    className="bg-white/10 border-white/30 text-white gap-2"
+                    data-testid={`button-exp-${cat.slug}`}
+                  >
+                    <cat.icon className={cn("w-4 h-4", cat.color)} />
+                    {cat.label}
+                  </Button>
                 </Link>
               </motion.div>
             ))}
