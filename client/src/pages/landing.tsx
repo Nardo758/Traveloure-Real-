@@ -508,7 +508,7 @@ export default function LandingPage() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
           >
             {impactStats.map((stat, idx) => (
               <motion.div
@@ -516,25 +516,13 @@ export default function LandingPage() {
                 variants={itemVariants}
               >
                 <Card className="h-full border border-border bg-card dark:bg-card shadow-card hover:shadow-card-hover transition-all duration-300" data-testid={`card-stat-${idx}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className={cn("w-10 h-10 rounded-xl bg-muted dark:bg-muted flex items-center justify-center", stat.color)}>
-                        <stat.icon className="w-5 h-5" />
-                      </div>
-                      <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium", stat.statusColor)}>
-                        {stat.statusLabel}
-                      </span>
+                  <CardContent className="p-6">
+                    <div className={cn("w-12 h-12 rounded-xl bg-muted dark:bg-muted flex items-center justify-center mb-4", stat.color)}>
+                      <stat.icon className="w-6 h-6" />
                     </div>
-                    <div className="flex items-baseline gap-2">
-                      <p className={cn("text-2xl font-bold", stat.color)}>{stat.value}</p>
-                      {stat.trend && (
-                        <span className="text-xs font-medium text-emerald-500 flex items-center">
-                          <TrendingUp className="w-3 h-3 mr-0.5" />
-                          {stat.trend}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
+                    <p className={cn("text-4xl font-bold mb-1", stat.color)}>{stat.value}</p>
+                    <p className="text-sm font-semibold text-foreground mb-2">{stat.label}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{stat.description}</p>
                   </CardContent>
                 </Card>
               </motion.div>
