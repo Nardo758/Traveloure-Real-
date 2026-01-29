@@ -417,49 +417,51 @@ export default function LandingPage() {
             </p>
           </motion.div>
 
+          {/* Choose Your Experience - Full Width */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="max-w-5xl mx-auto mb-8"
+          >
+            <Card className="bg-white/10 backdrop-blur-lg border-white/20 shadow-2xl">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center shadow-lg">
+                    <Sparkles className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Choose Your Experience</h3>
+                    <p className="text-sm text-white/70">Start planning with our templates</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2.5 justify-center">
+                  {experienceTemplates.map((cat, index) => (
+                    <motion.div
+                      key={cat.label}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.4 + index * 0.02 }}
+                    >
+                      <Link href={`/experiences/${cat.slug}`}>
+                        <Button
+                          variant="outline"
+                          className="bg-white/10 border-white/30 text-white gap-2"
+                          data-testid={`button-category-${cat.slug}`}
+                        >
+                          <cat.icon className={cn("w-4 h-4", cat.color)} />
+                          {cat.label}
+                        </Button>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-            >
-              <Card className="bg-white/10 backdrop-blur-lg border-white/20 h-full shadow-2xl">
-                <CardContent className="p-6">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center shadow-lg">
-                      <Sparkles className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Choose Your Experience</h3>
-                      <p className="text-sm text-white/70">Start planning with our templates</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2.5 max-h-[360px] overflow-y-auto pr-1 scrollbar-thin">
-                    {experienceTemplates.map((cat, index) => (
-                      <motion.div
-                        key={cat.label}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.4 + index * 0.02 }}
-                      >
-                        <Link href={`/experiences/${cat.slug}`}>
-                          <Button
-                            variant="outline"
-                            className="bg-white/10 border-white/30 text-white gap-2"
-                            data-testid={`button-category-${cat.slug}`}
-                          >
-                            <cat.icon className={cn("w-4 h-4", cat.color)} />
-                            {cat.label}
-                          </Button>
-                        </Link>
-                      </motion.div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
             <div className="flex flex-col gap-5">
               <motion.div
                 initial={{ opacity: 0, x: 30 }}
