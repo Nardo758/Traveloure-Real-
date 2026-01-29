@@ -6,6 +6,11 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (January 2026)
+- **Landing Page Redesign**: Complete visual overhaul with Framer Motion animations, improved hero section with gradient text, modernized experience templates, updated stats/testimonials/FAQ sections
+- **TrendingCities Component**: New section showing popular travel destinations with live updates toggle, category tags, pricing, traveler counts, and actionable travel tips
+- **Design System Compliance**: Removed custom hover classes from Button components (relying on built-in behavior), added comprehensive data-testid attributes for testing, proper hover-elevate utility usage for non-button elements
+
 ## System Architecture
 
 ### UI/UX Decisions
