@@ -436,7 +436,7 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2.5 justify-center">
+                <div className="flex flex-wrap gap-2.5">
                   {experienceTemplates.map((cat, index) => (
                     <motion.div
                       key={cat.label}
