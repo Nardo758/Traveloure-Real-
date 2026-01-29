@@ -35,7 +35,12 @@ import {
   Quote,
   MapPin,
   Calendar,
-  Shield
+  Shield,
+  TrendingUp,
+  Activity,
+  CheckCircle2,
+  Clock,
+  Award
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
