@@ -541,56 +541,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Choose Your Experience Section */}
-      <section className="py-16 lg:py-20 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700">
-        <div className="container mx-auto px-4 max-w-5xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-10"
-          >
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-white" />
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold text-white">
-                Choose Your Experience
-              </h2>
-            </div>
-            <p className="text-white/80 max-w-xl mx-auto">
-              Start planning with our templates. Choose your experience type to get personalized recommendations.
-            </p>
-          </motion.div>
-
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="flex flex-wrap justify-center gap-3"
-          >
-            {experienceTemplates.map((cat, index) => (
-              <motion.div
-                key={cat.label}
-                variants={itemVariants}
-              >
-                <Link href={`/experiences/${cat.slug}`}>
-                  <Button
-                    variant="outline"
-                    className="bg-white/10 border-white/30 text-white gap-2"
-                    data-testid={`button-exp-${cat.slug}`}
-                  >
-                    <cat.icon className={cn("w-4 h-4", cat.color)} />
-                    {cat.label}
-                  </Button>
-                </Link>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
       <TrendingCities />
 
       {/* How It Works Section */}
