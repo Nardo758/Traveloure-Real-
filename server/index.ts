@@ -76,8 +76,34 @@ export function log(message: string, source = "express") {
   logger.info({ source }, message);
 }
 
+// Readiness state for database seeding
+let seedingComplete = false;
+let seedingStartTime: number | null = null;
+let seedingDurationMs: number | null = null;
+
+export function isSeedingComplete(): boolean {
+  return seedingComplete;
+}
+
+export function getSeedingStatus(): { complete: boolean; durationMs: number | null } {
+  return { complete: seedingComplete, durationMs: seedingDurationMs };
+}
+
+// Readiness endpoint for checking if seeding is complete
+app.get("/api/ready", (_req: Request, res: Response) => {
+  const status = getSeedingStatus();
+  if (status.complete) {
+    res.json({ ready: true, seedingDurationMs: status.durationMs });
+  } else {
+    res.status(503).json({ ready: false, message: "Database seeding in progress" });
+  }
+});
+
 // Run database seeding in background (non-blocking)
 async function runDatabaseSeeding() {
+  seedingStartTime = Date.now();
+  logger.info("Database seeding started");
+
   try {
     const result = await seedCategories();
     if (result.created > 0) {
@@ -132,7 +158,9 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed destination calendar");
   }
   
-  logger.info("Database seeding complete");
+  seedingDurationMs = Date.now() - seedingStartTime;
+  seedingComplete = true;
+  logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
 }
 
 (async () => {
