@@ -2152,7 +2152,9 @@ export class DatabaseStorage implements IStorage {
     const [newPurchase] = await db.insert(templatePurchases).values(purchase).returning();
     
     // Update template sales count
-    await db.execute(`UPDATE expert_templates SET sales_count = sales_count + 1 WHERE id = '${purchase.templateId}'`);
+    await db.update(expertTemplates)
+      .set({ salesCount: sql`${expertTemplates.salesCount} + 1` })
+      .where(eq(expertTemplates.id, purchase.templateId));
     
     // Record platform revenue for template sale
     const grossAmount = parseFloat(newPurchase.price || '0');
