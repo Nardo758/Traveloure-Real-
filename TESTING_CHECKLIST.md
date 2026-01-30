@@ -1,429 +1,508 @@
-# Testing Checklist - Design System Update
+# Testing Checklist for Discover Page Updates
 
-## Quick Start Testing
-
-### Start Development Server
-```bash
-cd /home/leon/Traveloure-Platform
-npm run dev
-```
-
-Then navigate to `http://localhost:5000` (or your configured port)
+**Date:** January 29, 2025  
+**Task:** Verify Discover page card design and data flows  
+**Status:** Ready for Testing
 
 ---
 
-## Visual Testing
+## 🎨 Visual Testing Checklist
 
-### ✅ ExperienceCard Component
+### ServiceCard Component Design
 
-**Test URL:** Landing page → "Popular Experiences" section
+#### Image Header (Height: 192px)
+- [ ] Image loads for each service
+- [ ] Gradient overlay visible (black 70% bottom → transparent top)
+- [ ] Hover effect scales image to 1.1x smoothly (700ms transition)
+- [ ] Image doesn't overflow rounded corners
 
-#### Desktop (1024px+)
-- [ ] Cards display in 3-column grid
-- [ ] All 6 experience cards visible
-- [ ] Images load and cover full height (192px)
-- [ ] Gradient overlay visible on images
-- [ ] Hot badge (red) appears on cards with trending ≥ 60
-- [ ] Trending score badge (top-right) displays correctly
-- [ ] Score colors: Red (90+), Orange (85-89), Amber (<85)
-- [ ] Icon badge with category color displays
-- [ ] Category tags (3 max + overflow) display
-- [ ] Expert rates display
-- [ ] Status indicator (Busy/Moderate/Quiet) shows with correct color
-- [ ] Tip section (green) displays
-- [ ] Stats footer shows: active count, trending, gems icons
-- [ ] Hover effect: image scales to 110%
-- [ ] Shadow elevates on hover
-- [ ] Cards link to `/experiences/{slug}`
+#### Badges - Top Right (Heat Score)
+- [ ] White rounded square badge (11x11, rounded-xl)
+- [ ] Score displays correctly (rating * 20)
+- [ ] Color coding works:
+  - [ ] Score ≥90: Red (#FF385C)
+  - [ ] Score 80-89: Orange
+  - [ ] Score <80: Amber
+- [ ] Badge has shadow and 95% opacity
 
-#### Tablet (768px-1024px)
-- [ ] Cards display in 2-column grid
-- [ ] All layout elements remain visible
-- [ ] Text doesn't overflow or truncate incorrectly
-- [ ] Touch targets are at least 44x44px
+#### Badges - Top Left (Hot/Trending)
+- [ ] "Hot" badge shows for services with rating ≥4.7 AND reviews ≥10
+  - [ ] Red background (#FF385C)
+  - [ ] White text and lightning icon (Zap)
+- [ ] "Top Expert" badge shows for rating ≥4.8 AND reviews ≥5 (if not "Hot")
+  - [ ] Amber background
+  - [ ] Trophy icon visible
+- [ ] Review count badge shows when reviews > 0
+  - [ ] White/90 background
+  - [ ] Gray text
+  - [ ] Users icon visible
 
-#### Mobile (320px-768px)
-- [ ] Cards display in 1-column grid
-- [ ] Cards stack vertically
-- [ ] All elements remain readable
-- [ ] Category tags wrap properly
-- [ ] Image maintains aspect ratio
-- [ ] Touch interactions work smoothly
+#### Title & Icon - Bottom of Image
+- [ ] Service name displays in white, bold, 20px font
+- [ ] Service name truncates properly (line-clamp-1)
+- [ ] Location shows with map pin icon
+- [ ] Location text is white/80 opacity
+- [ ] Verified checkmark shows for services with ≥3 reviews
+- [ ] Category icon displays in colored rounded square (48x48)
+- [ ] Icon container has shadow
 
-#### Dark Mode
-- [ ] Switch to dark mode (toggle in UI)
-- [ ] Card backgrounds darken appropriately
-- [ ] Text remains readable
-- [ ] Category tag colors adapt
-- [ ] Tip section adapts (green remains visible)
-- [ ] Border colors adapt
-- [ ] Shadows remain visible but appropriate
+#### Card Body (Padding: 16px)
+- [ ] Description text displays (muted color)
+- [ ] Description limited to 2 lines (line-clamp-2)
+- [ ] 12px bottom margin after description
 
----
+#### Category Tags
+- [ ] Category name shows in purple pill badge
+- [ ] Delivery timeframe shows in blue pill badge with clock icon
+- [ ] Tags wrap properly on mobile
+- [ ] 6px gap between tags
 
-### ✅ TestimonialCard Component
+#### Pricing & Status Section
+- [ ] Price displays large and bold ($XX)
+- [ ] "per service" helper text in green
+- [ ] Status badge shows with correct color:
+  - [ ] Rating ≥4.5: Orange "Busy"
+  - [ ] Rating 4.0-4.4: Yellow "Moderate"
+  - [ ] Rating <4.0: Green "Available"
+- [ ] Section wraps properly on mobile
 
-**Test URL:** Landing page → "Success Stories" section
+#### Service Tips (Shows when rating ≥4.5)
+- [ ] Emerald green background panel
+- [ ] Sparkles icon visible in green
+- [ ] Tip text displays correctly
+- [ ] Text limited to 2 lines (line-clamp-2)
+- [ ] Different tip for Top Expert vs regular high-rated
 
-#### Desktop (1024px+)
-- [ ] Cards display in 3-column grid
-- [ ] All 3 testimonial cards visible
-- [ ] Trip images load (128px height)
-- [ ] Gradient overlay on images
-- [ ] Trip type badge (top-left, white) visible
-- [ ] Destination with map pin visible on image
-- [ ] 5-star rating displays correctly (filled stars)
-- [ ] Testimonial text line-clamps at 4 lines
-- [ ] Expert info section has background
-- [ ] Expert name displays
-- [ ] Heat score badge (red) displays correctly
-- [ ] Verified checkmark (green) shows
-- [ ] Expert rate displays
-- [ ] Value saved section (green background) displays
-- [ ] Value amount is prominent
-- [ ] Author avatar (gradient with initials) displays
-- [ ] Author name and location display
-- [ ] Hover effect: shadow elevates
+#### Bottom Stats Row
+- [ ] Border separator at top
+- [ ] Star rating with filled amber star icon
+- [ ] Review count with Users icon
+- [ ] Delivery method with Compass icon (if present)
+- [ ] Stats spaced evenly
+- [ ] Text color is muted
 
-#### Tablet & Mobile
-- [ ] 2-column → 1-column responsive layout
-- [ ] All elements remain visible and readable
-- [ ] Text doesn't overflow
-- [ ] Touch targets work
-
-#### Dark Mode
-- [ ] Card backgrounds adapt
-- [ ] Text remains readable on images
-- [ ] Expert info section background adapts
-- [ ] Green accents remain visible
-- [ ] Value saved section remains prominent
+#### Add to Cart Button
+- [ ] Full width button
+- [ ] Shopping cart icon when not added
+- [ ] Check icon when added
+- [ ] Green background when added
+- [ ] Button disabled when adding
+- [ ] "Adding..." text shows during add
+- [ ] "Added" text shows after success
 
 ---
 
-### ✅ StatCard Component
+## 📱 Responsive Grid Testing
 
-**Test URL:** Landing page → "Platform Intelligence" section
+### Grid Layout Breakpoints
+- [ ] **Mobile (< 768px):** 1 column
+- [ ] **Tablet (768-1024px):** 2 columns
+- [ ] **Laptop (1024-1280px):** 3 columns
+- [ ] **Desktop (> 1280px):** 4 columns
+- [ ] Gap between cards: 24px (1.5rem)
+- [ ] Cards maintain aspect ratio at all sizes
+- [ ] Cards don't stretch or squish
 
-#### Desktop (1024px+)
-- [ ] Cards display in 4-column grid
-- [ ] All 4 stat cards visible
-- [ ] Icon displays with color
-- [ ] Icon has subtle glow effect
-- [ ] Value displays large and color-coded
-- [ ] Label displays below value
-- [ ] Description displays
-- [ ] Gradient bar at bottom visible
-- [ ] **Hover:** Icon scales to 110%
-- [ ] **Hover:** Glow effect intensifies
-- [ ] **Hover:** Shadow elevates
-
-#### Stats to Verify:
-1. **8M+ Trips Planned** - Red icon (MapPin)
-2. **500K+ Custom Itineraries** - Emerald icon (Calendar)
-3. **$500+ Average Savings** - Violet icon (Zap)
-4. **33K+ 5-Star Reviews** - Amber icon (Star)
-
-#### Tablet & Mobile
-- [ ] 2-column → 1-column responsive layout
-- [ ] All elements remain visible
-- [ ] Icons maintain size
-
-#### Dark Mode
-- [ ] Card backgrounds adapt
-- [ ] Icons remain colored
-- [ ] Text readable
-- [ ] Gradient bar visible
+### Card Sizing
+- [ ] Cards have equal height in same row
+- [ ] Flex column layout works (content at top, button at bottom)
+- [ ] No horizontal scrolling on any screen size
+- [ ] Padding consistent at all sizes
 
 ---
 
-## Functional Testing
+## 🌗 Dark Mode Testing
 
-### Links & Navigation
-- [ ] Experience cards link to `/experiences/{slug}`
-- [ ] Links are keyboard navigable (Tab key)
-- [ ] Links have visible focus states
-- [ ] Clicking cards navigates correctly
+### Background Colors
+- [ ] Card background: `bg-card dark:bg-card`
+- [ ] Border: `border border-border`
+- [ ] Shadows adjust for dark mode
 
-### Data Display
-- [ ] Trending scores are numbers (no "NaN" or undefined)
-- [ ] Expert rates display correctly
-- [ ] Active counts display as numbers
-- [ ] Hidden gems counts display
-- [ ] All testimonial data populates correctly
+### Text Colors
+- [ ] Service name: White (stays white in dark mode)
+- [ ] Description: Muted (adjusts for dark mode)
+- [ ] Price: Foreground (adjusts for dark mode)
+- [ ] Category tags: Proper dark variants
+- [ ] Tips background: `dark:bg-emerald-900/20`
+- [ ] Tips text: `dark:text-emerald-300`
 
----
+### Badge Colors (Dark Mode)
+- [ ] Heat score badge: `dark:bg-white/90`
+- [ ] Status badges: Dark variants (e.g., `dark:bg-orange-900/20`)
+- [ ] Category tags: Dark variants (e.g., `dark:bg-purple-900/30`)
 
-## Animation Testing
-
-### Page Load Animations
-- [ ] Cards fade in from bottom (y: 30 → 0)
-- [ ] Cards appear with staggered delay
-- [ ] Experience cards: 0.05s delay per card
-- [ ] Testimonials: 0.1s delay per card
-- [ ] Stats: 0.1s delay per card
-- [ ] Animations only play once (viewport: once: true)
-
-### Hover Animations
-- [ ] Experience cards: Image scales smoothly (700ms)
-- [ ] All cards: Shadow elevates (300ms)
-- [ ] Stat cards: Icon scales (300ms)
-- [ ] Stat cards: Glow intensifies (300ms)
-- [ ] No jank or stuttering
-
-### Reduced Motion
-- [ ] Open browser DevTools
-- [ ] Emulate "prefers-reduced-motion: reduce"
-- [ ] Verify animations are disabled/simplified
+### Hover Effects
+- [ ] Shadow increases on hover
+- [ ] Image scales smoothly
+- [ ] No color flickering
 
 ---
 
-## Responsive Testing
+## 🔌 API & Data Flow Testing
 
-### Breakpoints to Test
-```
-Mobile Small:  320px
-Mobile Large:  480px
-Tablet:        768px
-Desktop Small: 1024px
-Desktop Large: 1440px
-Wide:          1920px
-```
+### GET `/api/discover`
+1. **Basic Fetch**
+   - [ ] Navigate to `/discover`
+   - [ ] Services load and display
+   - [ ] No console errors
 
-### Grid Layouts by Breakpoint
-| Section | 320px | 768px | 1024px+ |
-|---------|-------|-------|---------|
-| Experiences | 1 col | 2 col | 3 col |
-| Testimonials | 1 col | 2 col | 3 col |
-| Stats | 1 col | 2 col | 4 col |
+2. **Search Query**
+   - [ ] Type in search box
+   - [ ] Wait for debounce (300ms)
+   - [ ] API called with `?q=...` parameter
+   - [ ] Results update
 
-### Test Each Breakpoint:
-- [ ] 320px: All content readable, no overflow
-- [ ] 480px: Cards scale appropriately
-- [ ] 768px: Grid switches to 2 columns
-- [ ] 1024px: Grid switches to 3/4 columns
-- [ ] 1440px: Cards maintain max-width
-- [ ] 1920px: Content centered, reasonable max-width
+3. **Category Filter**
+   - [ ] Select category from dropdown
+   - [ ] API called with `?categoryId=...` parameter
+   - [ ] Results filtered correctly
+
+4. **Location Filter**
+   - [ ] Type in location field
+   - [ ] API called with `?location=...` parameter
+   - [ ] Results filtered correctly
+
+5. **Price Range Filter**
+   - [ ] Set min price
+   - [ ] API called with `?minPrice=...` parameter
+   - [ ] Set max price
+   - [ ] API called with `?maxPrice=...` parameter
+   - [ ] Results filtered correctly
+
+6. **Rating Filter**
+   - [ ] Adjust rating slider
+   - [ ] API called with `?minRating=...` parameter
+   - [ ] Results filtered correctly
+
+7. **Sort Options**
+   - [ ] Select "Top Rated"
+   - [ ] Results re-order by rating descending
+   - [ ] Select "Price: Low to High"
+   - [ ] Results re-order by price ascending
+   - [ ] Select "Price: High to Low"
+   - [ ] Results re-order by price descending
+   - [ ] Select "Most Reviews"
+   - [ ] Results re-order by review count descending
+
+8. **Pagination**
+   - [ ] More than 12 results triggers pagination
+   - [ ] "Page X of Y" displays correctly
+   - [ ] Previous button disabled on page 1
+   - [ ] Next button disabled on last page
+   - [ ] Page navigation works
+   - [ ] API called with `?offset=...` parameter
+
+9. **No Results**
+   - [ ] Filter to impossible criteria
+   - [ ] "No services found" message displays
+   - [ ] Building icon shows
+   - [ ] "Clear Filters" button appears
+   - [ ] Clicking clears filters and shows results
+
+### POST `/api/discover/recommendations`
+1. **AI Recommendations**
+   - [ ] Click "AI Suggestions" button
+   - [ ] Button shows loading state (Loader2 icon spinning)
+   - [ ] API called with current search context
+   - [ ] Recommendations panel appears
+   - [ ] Recommended categories display as clickable badges
+   - [ ] Clicking category badge filters to that category
+   - [ ] Suggestions text displays
+   - [ ] Close button hides panel
+
+2. **Error Handling**
+   - [ ] If API key missing, shows error toast
+   - [ ] If invalid request, shows error message
+   - [ ] If network error, graceful degradation
+
+### GET `/api/service-categories`
+1. **Category Dropdown**
+   - [ ] Categories load on page mount
+   - [ ] "All categories" option present
+   - [ ] All categories listed
+   - [ ] Selecting category works
+
+2. **Active Filters Display**
+   - [ ] Selected category shows as badge
+   - [ ] Clicking X on badge removes filter
+   - [ ] "Clear all" button removes all filters
+
+### GET `/api/cart`
+1. **Cart Summary Bar**
+   - [ ] Only shows when cart has items
+   - [ ] Item count displays correctly
+   - [ ] Total price displays
+   - [ ] "View Cart" button links to `/cart`
+   - [ ] "Compare AI Alternatives" button present
+
+### POST `/api/cart`
+1. **Add to Cart**
+   - [ ] Click "Add to Cart" button
+   - [ ] Button shows "Adding..." during request
+   - [ ] Button changes to green "Added" after success
+   - [ ] Check icon replaces shopping cart icon
+   - [ ] Success toast notification appears
+   - [ ] Cart summary bar updates
+   - [ ] Item count increments
+   - [ ] Total updates
+
+2. **Add to Cart (No Auth)**
+   - [ ] Log out
+   - [ ] Click "Add to Cart"
+   - [ ] Error toast: "Sign in required"
+   - [ ] Redirect to login (optional)
+
+3. **Add to Cart Error**
+   - [ ] Simulate server error
+   - [ ] Error toast displays with message
+   - [ ] Button returns to "Add to Cart" state
+   - [ ] Cart state doesn't change
+
+### GET `/api/expert-templates`
+1. **Templates Tab**
+   - [ ] Switch to "Trip Packages" tab
+   - [ ] Expert templates section displays (if any exist)
+   - [ ] Template cards show:
+     - [ ] Cover image or placeholder
+     - [ ] Featured badge (if applicable)
+     - [ ] Price
+     - [ ] Destination with map pin
+     - [ ] Title
+     - [ ] Description (truncated)
+     - [ ] Duration
+     - [ ] Rating and review count (if > 0)
+     - [ ] Sales count (if > 0)
+     - [ ] Highlights (first 2, +X more)
+     - [ ] "View & Purchase" button
+   - [ ] Clicking card navigates to template detail
+   - [ ] "View All X Templates" button shows if > 6 templates
 
 ---
 
-## Browser Testing
+## 🧪 Expert & Experience Endpoints Testing
 
-### Chrome/Edge (Chromium)
-- [ ] All features work
-- [ ] Animations smooth
-- [ ] Gradients render correctly
-- [ ] Backdrop blur works
+### GET `/api/experts`
+- [ ] Expert cards display on experts page
+- [ ] Filtering by experience type works
 
-### Firefox
-- [ ] All features work
-- [ ] CSS Grid works
-- [ ] Gradients render
-- [ ] Animations smooth
+### GET `/api/experts/:id`
+- [ ] Clicking expert card navigates to detail page
+- [ ] Expert profile loads
+- [ ] 404 page shows for invalid expert ID
 
-### Safari (if available)
-- [ ] iOS Safari: Touch interactions work
-- [ ] Backdrop blur fallback (if unsupported)
-- [ ] Gradients render
-- [ ] Animations smooth
+### GET `/api/experts/:id/services`
+- [ ] Expert services tab displays
+- [ ] Services list loads
+- [ ] Empty state if no services
 
----
+### GET `/api/experts/:id/reviews`
+- [ ] Reviews tab displays
+- [ ] Currently shows empty state (placeholder)
+- [ ] No errors in console
 
-## Accessibility Testing
+### GET `/api/experience-types`
+- [ ] Experience type cards display on landing
+- [ ] All templates load
 
-### Keyboard Navigation
-- [ ] Tab through all cards in order
-- [ ] Focus states visible (outline/ring)
-- [ ] Enter key activates links
-- [ ] Shift+Tab navigates backwards
-- [ ] No keyboard traps
-
-### Screen Reader Testing (if available)
-- [ ] Cards announce as links
-- [ ] Images have alt text
-- [ ] Badges announce meaningful information
-- [ ] Heading structure is logical (h2 → h3 → h4)
-- [ ] Stats are announced correctly
-
-### Color Contrast (use browser DevTools)
-- [ ] Text on images passes WCAG AA (gradient ensures this)
-- [ ] Badge text passes WCAG AA
-- [ ] Heat scores on white background pass
-- [ ] All text colors pass contrast ratio 4.5:1 (normal text)
-- [ ] All text colors pass contrast ratio 3:1 (large text)
-
-### Focus Management
-- [ ] Focus visible on all interactive elements
-- [ ] Focus order matches visual order
-- [ ] No invisible focus states
+### GET `/api/experience-types/:slug`
+- [ ] Clicking experience card navigates to template page
+- [ ] Template detail loads by slug
+- [ ] 404 page shows for invalid slug
 
 ---
 
-## Performance Testing
+## ⚡ Performance Testing
 
 ### Page Load
-- [ ] Initial load time < 3 seconds (on fast connection)
-- [ ] Images lazy-load (check Network tab)
-- [ ] No layout shift (CLS < 0.1)
-- [ ] Smooth scrolling
+- [ ] Initial page load < 3 seconds
+- [ ] Services render progressively (skeletons first)
+- [ ] Images lazy load
+- [ ] No layout shift during load
 
-### Animation Performance
-- [ ] Open Chrome DevTools → Performance
-- [ ] Record interaction (hover, scroll)
-- [ ] Check for 60fps (green bars)
-- [ ] No long tasks (>50ms)
+### Interactions
+- [ ] Search debounce prevents excessive API calls
+- [ ] Filter changes trigger single API call
+- [ ] Add to cart responds immediately
+- [ ] Pagination smooth (no flash)
 
-### Memory
-- [ ] No memory leaks on navigation
-- [ ] Animations don't cause excessive repaints
-- [ ] Images release memory when out of viewport
-
----
-
-## Integration Testing
-
-### Data Flow
-- [ ] experienceCategories array loads correctly
-- [ ] All 6 experience categories render
-- [ ] testimonials array loads correctly
-- [ ] All 3 testimonials render
-- [ ] impactStats array loads correctly
-- [ ] All 4 stats render
-
-### Component Props
-- [ ] All required props are passed
-- [ ] Optional props (delay, isHot, etc.) work
-- [ ] TypeScript types are correct (no type errors)
-- [ ] Default values work (status defaults to "Moderate")
+### Images
+- [ ] Images optimized (WebP where supported)
+- [ ] Placeholder shows while loading
+- [ ] No broken image icons
+- [ ] Alt text present for accessibility
 
 ---
 
-## Visual Regression Testing
+## ♿ Accessibility Testing
 
-### Before/After Screenshots
-Take screenshots of:
-1. **Full landing page** (light mode)
-2. **Full landing page** (dark mode)
-3. **Experience Categories section** (close-up)
-4. **Testimonials section** (close-up)
-5. **Stats section** (close-up)
-6. **Mobile view** (320px width)
-7. **Tablet view** (768px width)
-8. **Hover states** (each card type)
+### Keyboard Navigation
+- [ ] Tab through all cards
+- [ ] Focus visible on all interactive elements
+- [ ] Enter key activates links and buttons
+- [ ] Escape closes filter panel (mobile)
 
-Compare against reference design to ensure:
-- [ ] Badge positioning matches
-- [ ] Colors match reference
-- [ ] Typography matches
-- [ ] Spacing matches
-- [ ] Shadows match
+### Screen Reader
+- [ ] Card titles announced
+- [ ] Prices announced
+- [ ] Rating announced as "X out of 5 stars"
+- [ ] Button states announced (disabled, loading)
+- [ ] Live region updates for search results
 
----
+### Color Contrast
+- [ ] Text readable on all backgrounds (WCAG AA)
+- [ ] Badge text readable (WCAG AA)
+- [ ] Focus indicators visible
+- [ ] Status indicators have sufficient contrast
 
-## Edge Cases
-
-### Long Text
-- [ ] Long experience names don't break layout
-- [ ] Long testimonials truncate correctly (line-clamp-4)
-- [ ] Long expert names don't overflow
-- [ ] Long tips truncate or wrap properly (line-clamp-3)
-
-### Missing Data
-- [ ] Cards render if optional props are missing
-- [ ] Default values display correctly
-- [ ] No JavaScript errors in console
-
-### Many Categories
-- [ ] Only 3 categories show + "+X" overflow badge
-- [ ] Overflow count calculates correctly
-
-### Zero Values
-- [ ] Zero active count: stat doesn't show or shows "0"
-- [ ] Zero trending: displays "0"
-- [ ] Zero gems: displays "0"
+### ARIA Labels
+- [ ] Buttons have proper labels
+- [ ] Test IDs present for testing
+- [ ] Loading states announced
+- [ ] Error messages announced
 
 ---
 
-## Production Readiness
+## 🐛 Error Scenarios
+
+### Network Errors
+- [ ] Service down: Shows error message
+- [ ] Timeout: Shows timeout message
+- [ ] 500 error: Shows generic error
+- [ ] Graceful degradation (partial data still displays)
+
+### Data Edge Cases
+- [ ] Service with no description: Shows placeholder
+- [ ] Service with no reviews: Hides rating section
+- [ ] Service with no category: Uses default icon
+- [ ] Service with no location: Shows "Remote"
+- [ ] Service with $0 price: Displays correctly
+- [ ] Service with very long name: Truncates properly
+
+### User Edge Cases
+- [ ] Empty search results: Shows helpful message
+- [ ] No services in database: Shows empty state
+- [ ] Logged out user: Cart features prompt login
+- [ ] Network offline: Shows offline message
+
+---
+
+## 📊 Browser Compatibility
+
+### Desktop Browsers
+- [ ] Chrome (latest)
+- [ ] Firefox (latest)
+- [ ] Safari (latest)
+- [ ] Edge (latest)
+
+### Mobile Browsers
+- [ ] iOS Safari
+- [ ] Android Chrome
+- [ ] Samsung Internet
+
+### Features to Test
+- [ ] CSS Grid layout
+- [ ] Flexbox layout
+- [ ] CSS animations (motion.div)
+- [ ] Image object-fit
+- [ ] Backdrop blur (filter panel)
+- [ ] CSS gradients
+
+---
+
+## 🚀 Pre-Production Checklist
 
 ### Code Quality
-- [ ] No console.log statements
-- [ ] No TypeScript errors (`npm run check`)
-- [ ] No ESLint warnings
-- [ ] No unused imports
-- [ ] Proper data-testid attributes present
+- [ ] No TypeScript errors
+- [ ] No console errors
+- [ ] No console warnings
+- [ ] Proper error boundaries
+- [ ] Loading states everywhere
+- [ ] Proper null checks
+
+### Performance
+- [ ] Lighthouse score > 90
+- [ ] First Contentful Paint < 2s
+- [ ] Largest Contentful Paint < 3s
+- [ ] No memory leaks (test with DevTools)
+
+### Security
+- [ ] No API keys exposed in client code
+- [ ] CSRF tokens for mutations
+- [ ] Input sanitization
+- [ ] SQL injection prevention (server-side)
 
 ### Documentation
-- [ ] README.md updated (if needed)
-- [ ] DESIGN_SYSTEM_UPDATE.md complete ✅
-- [ ] DESIGN_COMPARISON.md complete ✅
-- [ ] Component JSDoc comments (if required)
-
-### Git
-- [ ] Changes committed with descriptive message
-- [ ] No merge conflicts
-- [ ] Feature branch created (if using Git Flow)
+- [ ] API endpoints documented ✅ (See API_ENDPOINTS_VERIFICATION.md)
+- [ ] Component props documented
+- [ ] README updated
+- [ ] Changelog updated
 
 ---
 
-## Sign-Off
+## 🎯 Success Criteria
 
-### Developer Testing
-- [ ] All visual tests pass
-- [ ] All functional tests pass
-- [ ] All responsive tests pass
-- [ ] All accessibility tests pass
-- [ ] Performance is acceptable
-- [ ] Code reviewed (self or peer)
+### Must Have (P0)
+- ✅ All ServiceCard visual elements match landing page design
+- ✅ 4-column responsive grid layout
+- ✅ All API endpoints working
+- ✅ Dark mode fully functional
+- ✅ Mobile responsive
+- ✅ Add to cart working
+- ✅ Search and filters working
+- ✅ AI recommendations working
 
-### Stakeholder Review
-- [ ] Design team approves visual implementation
-- [ ] Product team approves functionality
-- [ ] UX team approves interactions
+### Should Have (P1)
+- ✅ Smooth animations
+- ✅ Proper error handling
+- ✅ Loading states
+- ✅ Accessibility features
+- ✅ Performance optimizations
 
-### Deployment
-- [ ] Staging deploy successful
-- [ ] Smoke tests on staging pass
-- [ ] Ready for production deployment
+### Nice to Have (P2)
+- Real service images (currently using stock images)
+- Expert reviews implementation (currently placeholder)
+- Blog/Careers/Press endpoints
+- Real-time trending data
 
 ---
 
-## Quick Test Commands
+## 📝 Testing Notes
 
+### To Run Tests:
 ```bash
-# Start dev server
+# 1. Start the development server
+cd /home/leon/Traveloure-Platform
+npm install
 npm run dev
 
-# TypeScript type check
-npm run check
+# 2. Open in browser
+# Navigate to: http://localhost:5000/discover
 
-# Build for production (if tsx is installed)
-npm run build
+# 3. Test with different user states
+# - Logged out
+# - Logged in as regular user
+# - Logged in as expert
 
-# Check bundle size
-npm run build && ls -lh dist/
+# 4. Test API endpoints directly
+curl http://localhost:5000/api/discover
+curl http://localhost:5000/api/service-categories
+curl http://localhost:5000/api/experts
+
+# 5. Test AI recommendations
+curl -X POST http://localhost:5000/api/discover/recommendations \
+  -H "Content-Type: application/json" \
+  -d '{"query":"wedding planning","destination":"Paris"}'
 ```
 
----
-
-## Known Issues / Future Work
-
-### To Address:
-- [ ] Image optimization (consider next/image or similar)
-- [ ] Loading states for cards
-- [ ] Error states for failed image loads
-- [ ] Skeleton loaders for initial render
-- [ ] API integration for dynamic data
-
-### Nice to Have:
-- [ ] Filter by category
-- [ ] Sort by trending/price
-- [ ] Favorites system
-- [ ] Compare experiences
-- [ ] Print styles
+### Testing Tools:
+- **Browser DevTools:** Network tab, Console, Elements
+- **React DevTools:** Component tree, Props inspection
+- **Lighthouse:** Performance audit
+- **axe DevTools:** Accessibility audit
+- **Postman/Insomnia:** API testing
 
 ---
 
-**Testing Started:** [Date]  
-**Testing Completed:** [Date]  
-**Tester:** [Name]  
-**Status:** [ ] Pass / [ ] Fail / [ ] Blocked
+**Checklist Created:** January 29, 2025  
+**Ready for Testing:** YES ✅  
+**Estimated Testing Time:** 2-3 hours for complete test coverage
