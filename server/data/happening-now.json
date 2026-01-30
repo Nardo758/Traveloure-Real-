@@ -1,0 +1,5 @@
+[
+  {"id":"077dd6da-ce72-4062-892d-3a117a6bab83","city":"Paris","eventType":"market","title":"Marché aux Puces de Vanves","description":"Authentic Parisian flea market with antiques","venue":"Avenue Marc Sangnier","crowdLevel":"moderate","entryFee":"Free","isLive":true},
+  {"id":"5f861087-5e45-4678-8916-0d80a39b58d8","city":"Tokyo","eventType":"festival","title":"Sakura Light-Up at Meguro River","description":"Evening illumination of cherry blossoms along the river","venue":"Meguro River","crowdLevel":"packed","entryFee":"Free","isLive":true},
+  {"id":"d960db4e-b061-4505-afdf-d27b0eecf809","city":"Barcelona","eventType":"performance","title":"Street Performance at La Boqueria","description":"Local flamenco dancers performing","venue":"La Boqueria Market","crowdLevel":"busy","entryFee":"Free","isLive":true}
+]
