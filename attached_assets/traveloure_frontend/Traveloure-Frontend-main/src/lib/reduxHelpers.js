@@ -1,4 +1,6 @@
 // Helper utilities for Redux slices to handle token expiration
+// ✅ SECURE VERSION - Uses NextAuth session instead of localStorage
+import { getSession } from 'next-auth/react'
 import { isTokenExpired, handleTokenExpiration } from './authUtils'
 
 /**
@@ -64,11 +66,23 @@ export const withTokenExpirationHandling = async (axiosCall, rejectWithValue) =>
 
 /**
  * Get auth headers for axios requests in Redux
- * @param {string} token - Access token (optional, will get from localStorage if not provided)
- * @returns {Object} - Headers object with Authorization
+ * ✅ SECURE: Gets token from NextAuth session instead of localStorage
+ * @param {string} token - Access token (optional, will get from session if not provided)
+ * @returns {Promise<Object>} - Headers object with Authorization
  */
-export const getReduxAuthHeaders = (token = null) => {
-  const accessToken = token || localStorage.getItem('accessToken')
-  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+export const getReduxAuthHeaders = async (token = null) => {
+  if (token) {
+    // If token is explicitly provided, use it
+    return { Authorization: `Bearer ${token}` }
+  }
+  
+  // ✅ SECURE: Get token from NextAuth session instead of localStorage
+  try {
+    const session = await getSession()
+    const accessToken = session?.backendData?.accessToken
+    return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
+  } catch (error) {
+    console.error('Error getting session for auth headers:', error)
+    return {}
+  }
 }
-
