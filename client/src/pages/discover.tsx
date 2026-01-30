@@ -963,48 +963,52 @@ export default function DiscoverPage() {
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
             <Tabs defaultValue="services" className="w-full">
-              <TabsList className="bg-card border p-1 mb-8 flex-wrap gap-1">
-                <TabsTrigger
-                  value="services"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-services"
-                >
-                  <Building2 className="w-4 h-4 mr-2" />
-                  Browse Services
-                </TabsTrigger>
-                <TabsTrigger
-                  value="packages"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-packages"
-                >
-                  <Globe className="w-4 h-4 mr-2" />
-                  Trip Packages
-                </TabsTrigger>
-                <TabsTrigger
-                  value="articles"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-articles"
-                >
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  Influencer Curated
-                </TabsTrigger>
-                <TabsTrigger
-                  value="events"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-events"
-                >
-                  <Ticket className="w-4 h-4 mr-2" />
-                  Upcoming Events
-                </TabsTrigger>
-                <TabsTrigger
-                  value="travelpulse"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-travelpulse"
-                >
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  TravelPulse
-                </TabsTrigger>
-              </TabsList>
+              <div className="relative mb-8">
+                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                  <TabsTrigger
+                    value="services"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-services"
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Browse </span>Services
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="packages"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-packages"
+                  >
+                    <Globe className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Trip </span>Packages
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="articles"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-articles"
+                  >
+                    <BookOpen className="w-4 h-4 mr-2" />
+                    <span className="hidden md:inline">Influencer </span>Curated
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="events"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-events"
+                  >
+                    <Ticket className="w-4 h-4 mr-2" />
+                    <span className="hidden lg:inline">Upcoming </span>Events
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="travelpulse"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-travelpulse"
+                  >
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    TravelPulse
+                  </TabsTrigger>
+                </TabsList>
+                {/* Scroll hint for mobile */}
+                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+              </div>
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
