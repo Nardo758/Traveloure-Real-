@@ -2,373 +2,248 @@ import { db } from "./db";
 import {
   travelPulseCalendarEvents,
   travelPulseCities,
-  travelPulseTrending,
   travelPulseHiddenGems,
   travelPulseLiveActivity,
   travelPulseHappeningNow,
 } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import { logger } from "./infrastructure";
+import * as fs from "fs";
+import * as path from "path";
 
-const calendarEventsData = [
-  {
-    id: "e2d8eca3-bc2f-4056-b92f-29e4739791f0",
-    eventName: "New Year's Day (Shogatsu)",
-    eventType: "holiday",
-    city: "tokyo",
-    startDate: new Date("2026-01-01"),
-    endDate: new Date("2026-01-03"),
-    crowdImpact: "extreme",
-    priceImpact: "surge",
-    crowdImpactPercent: 80,
-    description: "Japan's most important holiday, marked by family gatherings, temple visits, and traditional rituals. Many businesses and attractions are closed.",
-    affectedAreas: ["Meiji Jingu Shrine", "Senso-ji Temple", "Shinjuku", "Harajuku"],
-    tips: ["Book accommodations early as hotels fill up quickly", "Expect crowded temples and shrines for Hatsumode (first shrine visit)", "Public transport operates on holiday schedules"],
-    source: "grok",
-  },
-  {
-    id: "3bc773f3-e9fe-4612-95c3-54e7d3d6ccb9",
-    eventName: "Coming of Age Day (Seijin no Hi)",
-    eventType: "holiday",
-    city: "tokyo",
-    startDate: new Date("2026-01-12"),
-    endDate: new Date("2026-01-12"),
-    crowdImpact: "moderate",
-    priceImpact: "normal",
-    crowdImpactPercent: 30,
-    description: "A national holiday celebrating young adults turning 20, with ceremonies at local shrines and public venues. Many wear traditional kimonos.",
-    affectedAreas: ["Meiji Jingu Shrine", "Harajuku", "Shibuya"],
-    tips: ["Avoid major shrines during peak ceremony hours", "Great opportunity to see traditional Japanese attire in public"],
-    source: "grok",
-  },
-  {
-    id: "49a97b4c-2538-4006-bdef-2ca05dd962ec",
-    eventName: "Setsubun (Bean-Throwing Festival)",
-    eventType: "cultural",
-    city: "tokyo",
-    startDate: new Date("2026-02-03"),
-    endDate: new Date("2026-02-03"),
-    crowdImpact: "moderate",
-    priceImpact: "normal",
-    crowdImpactPercent: 25,
-    description: "A traditional event marking the start of spring, involving bean-throwing ceremonies to drive away evil spirits, held at temples and shrines.",
-    affectedAreas: ["Senso-ji Temple", "Zojo-ji Temple", "Kanda Myojin Shrine"],
-    tips: ["Arrive early for ceremonies as space is limited", "Be prepared for loud chants and crowded temple grounds"],
-    source: "grok",
-  },
-  {
-    id: "07c4ae41-4812-4891-abc4-a1cac0242cb3",
-    eventName: "National Foundation Day (Kenkoku Kinen no Hi)",
-    eventType: "holiday",
-    city: "tokyo",
-    startDate: new Date("2026-02-11"),
-    endDate: new Date("2026-02-11"),
-    crowdImpact: "low",
-    priceImpact: "normal",
-    crowdImpactPercent: 10,
-    description: "A national holiday commemorating the founding of Japan. Many locals take the day off, but major tourist activities remain unaffected.",
-    affectedAreas: ["General Tokyo Area"],
-    tips: ["Minimal impact on travel plans, but some government offices and businesses may be closed"],
-    source: "grok",
-  },
-  {
-    id: "049d5303-734d-406f-9722-88ac9aefa7e9",
-    eventName: "Tokyo Marathon",
-    eventType: "sporting",
-    city: "tokyo",
-    startDate: new Date("2026-03-01"),
-    endDate: new Date("2026-03-01"),
-    crowdImpact: "high",
-    priceImpact: "higher",
-    crowdImpactPercent: 50,
-    description: "One of the world's largest marathons, attracting thousands of runners and spectators. Major roads are closed for the event.",
-    affectedAreas: ["Shinjuku", "Tokyo Station", "Ginza", "Asakusa"],
-    tips: ["Avoid driving or planning travel along the marathon route", "Book hotels early as demand spikes", "Check public transport updates for disruptions"],
-    source: "grok",
-  },
-  {
-    id: "b0f4b4d5-f535-4285-903e-0445758f7cad",
-    eventName: "Paris Carnival",
-    eventType: "festival",
-    city: "paris",
-    startDate: new Date("2026-02-15"),
-    endDate: new Date("2026-02-15"),
-    crowdImpact: "moderate",
-    priceImpact: "normal",
-    crowdImpactPercent: 20,
-    description: "A vibrant street parade celebrating Carnival with costumes, music, and dance, typically held before Lent.",
-    affectedAreas: ["Central Paris", "Place de la République"],
-    tips: ["Expect road closures in central areas", "Book accommodations early if staying near parade routes"],
-    source: "grok",
-  },
-  {
-    id: "c3cb7f59-d4b7-48d0-9de3-eb559bcef5b0",
-    eventName: "Valentine's Day",
-    eventType: "holiday",
-    city: "paris",
-    startDate: new Date("2026-02-14"),
-    endDate: new Date("2026-02-14"),
-    crowdImpact: "high",
-    priceImpact: "higher",
-    crowdImpactPercent: 30,
-    description: "A popular day for romantic getaways in Paris, with many couples visiting iconic landmarks and dining out.",
-    affectedAreas: ["Eiffel Tower", "Montmartre", "Seine River cruises"],
-    tips: ["Reserve restaurants and romantic activities well in advance", "Avoid peak times at popular spots like the Eiffel Tower"],
-    source: "grok",
-  },
-  {
-    id: "2d01ba47-6260-4f2d-b752-fec5a8920097",
-    eventName: "Paris Fashion Week (Autumn/Winter)",
-    eventType: "cultural",
-    city: "paris",
-    startDate: new Date("2026-02-23"),
-    endDate: new Date("2026-03-03"),
-    crowdImpact: "moderate",
-    priceImpact: "higher",
-    crowdImpactPercent: 15,
-    description: "One of the biggest fashion events globally, attracting designers, models, and media to showcase Autumn/Winter collections.",
-    affectedAreas: ["Palais de Tokyo", "Louvre Area", "Champs-Élysées"],
-    tips: ["Expect increased traffic near event venues", "Hotel prices may rise in upscale districts"],
-    source: "grok",
-  },
-];
+function loadJsonData<T>(filename: string): T[] {
+  try {
+    const filePath = path.join(__dirname, "data", filename);
+    const data = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(data);
+  } catch (error) {
+    logger.warn({ filename, error }, "Could not load JSON data file");
+    return [];
+  }
+}
 
-const liveActivityData = [
-  {
-    id: "cbd7e15c-9bc4-495c-8b1b-949dd265c7d7",
-    city: "Tokyo",
-    placeName: "Shibuya Crossing",
-    activityType: "check_in",
-    activityText: "just checked in at the world's busiest intersection",
-    activityEmoji: "📍",
-    userName: "Sarah",
-    likesCount: 23,
-    occurredAt: new Date(),
-  },
-  {
-    id: "683f031c-61bf-4797-8f82-cd6518dd2461",
-    city: "Tokyo",
-    placeName: "Tsukiji Outer Market",
-    activityType: "discovery",
-    activityText: "found the best sushi spot locals won't tell you about",
-    activityEmoji: "🍣",
-    userName: "Mike",
-    likesCount: 45,
-    occurredAt: new Date(),
-  },
-  {
-    id: "7e8fafbc-c4c8-43f3-9177-11e7b066f9ae",
-    city: "Paris",
-    placeName: "Le Marais",
-    activityType: "photo",
-    activityText: "captured the magic of golden hour",
-    activityEmoji: "📸",
-    userName: "Emma",
-    likesCount: 67,
-    occurredAt: new Date(),
-  },
-  {
-    id: "5dbfecc7-086b-4c57-82f3-4dc9ff22a29b",
-    city: "Bali",
-    placeName: "Tegallalang",
-    activityType: "discovery",
-    activityText: "discovered a hidden cafe with jungle views",
-    activityEmoji: "🌴",
-    userName: "Alex",
-    likesCount: 34,
-    occurredAt: new Date(),
-  },
-  {
-    id: "d3c7ed11-8b3b-4b7e-a3d9-358ebeed24b8",
-    city: "New York",
-    placeName: "DUMBO",
-    activityType: "check_in",
-    activityText: "exploring Brooklyn's best views",
-    activityEmoji: "🌉",
-    userName: "James",
-    likesCount: 28,
-    occurredAt: new Date(),
-  },
-  {
-    id: "6af966e5-6e6a-433c-a4ff-c24b432d547e",
-    city: "Barcelona",
-    placeName: "El Born",
-    activityType: "review",
-    activityText: "best tapas experience of my life!",
-    activityEmoji: "🍷",
-    userName: "Sofia",
-    likesCount: 52,
-    occurredAt: new Date(),
-  },
-];
+interface CalendarEventData {
+  id: string;
+  event_name: string;
+  event_type: string;
+  city: string;
+  country?: string;
+  region?: string;
+  start_date: string;
+  end_date: string;
+  crowd_impact: string;
+  price_impact: string;
+  crowd_impact_percent: number;
+  description: string;
+  affected_areas: string[];
+  tips: string[];
+  source: string;
+  image_url?: string;
+}
 
-const hiddenGemsData = [
-  {
-    id: "d3de71ca-71b0-4681-9630-036d50991001",
-    city: "Tokyo",
-    country: "Japan",
-    placeName: "Yanaka Ginza",
-    placeType: "neighborhood",
-    localRating: "4.80",
-    touristMentions: 120,
-    localMentions: 2340,
-    gemScore: 92,
-    discoveryStatus: "emerging",
-    daysUntilMainstream: 45,
-    description: "Old-school Tokyo shopping street with authentic local vibe",
-    whyLocalsLoveIt: "Time capsule of Showa-era Tokyo with family-run shops",
-    bestFor: ["food", "photography", "culture"],
-    priceRange: "$",
-    imageUrl: "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=600",
-  },
-  {
-    id: "b93e744a-545d-4865-a20b-68c1c2603d38",
-    city: "Tokyo",
-    country: "Japan",
-    placeName: "Shimokitazawa",
-    placeType: "neighborhood",
-    localRating: "4.70",
-    touristMentions: 450,
-    localMentions: 3200,
-    gemScore: 85,
-    discoveryStatus: "emerging",
-    daysUntilMainstream: 30,
-    description: "Bohemian neighborhood with vintage shops and live music",
-    whyLocalsLoveIt: "Best vintage clothing and indie music scene in Tokyo",
-    bestFor: ["shopping", "nightlife", "music"],
-    priceRange: "$$",
-    imageUrl: "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=600",
-  },
-  {
-    id: "43f127a5-b683-45c2-9636-a1157543dcda",
-    city: "Paris",
-    country: "France",
-    placeName: "Canal Saint-Martin",
-    placeType: "neighborhood",
-    localRating: "4.60",
-    touristMentions: 890,
-    localMentions: 4500,
-    gemScore: 78,
-    discoveryStatus: "discovered",
-    daysUntilMainstream: 0,
-    description: "Trendy canal-side area with hip cafes and boutiques",
-    whyLocalsLoveIt: "Best Sunday brunch spots and people-watching",
-    bestFor: ["food", "photography", "walks"],
-    priceRange: "$$",
-    imageUrl: "https://images.unsplash.com/photo-1550340499-a6c60fc8287c?w=600",
-  },
-  {
-    id: "eaac0752-d7b5-41aa-a4d7-8ac18c91226c",
-    city: "Bali",
-    country: "Indonesia",
-    placeName: "Sidemen Valley",
-    placeType: "attraction",
-    localRating: "4.90",
-    touristMentions: 230,
-    localMentions: 1800,
-    gemScore: 94,
-    discoveryStatus: "hidden",
-    daysUntilMainstream: 90,
-    description: "Untouched rice terraces with Mount Agung views",
-    whyLocalsLoveIt: "What Ubud was 20 years ago, zero crowds",
-    bestFor: ["nature", "photography", "peace"],
-    priceRange: "$",
-    imageUrl: "https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=600",
-  },
-  {
-    id: "d8a7df94-8bd3-43ff-9fa0-3cc78bad14b0",
-    city: "New York",
-    country: "USA",
-    placeName: "Red Hook",
-    placeType: "neighborhood",
-    localRating: "4.50",
-    touristMentions: 340,
-    localMentions: 2100,
-    gemScore: 83,
-    discoveryStatus: "emerging",
-    daysUntilMainstream: 60,
-    description: "Brooklyn waterfront with art galleries and food vendors",
-    whyLocalsLoveIt: "Industrial charm meets foodie heaven",
-    bestFor: ["food", "art", "views"],
-    priceRange: "$$",
-    imageUrl: "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=600",
-  },
-];
+interface LiveActivityData {
+  id: string;
+  city: string;
+  placeName: string;
+  activityType: string;
+  activityText: string;
+  activityEmoji: string;
+  userName: string;
+  likesCount: number;
+}
 
-const happeningNowData = [
-  {
-    id: "5f861087-5e45-4678-8916-0d80a39b58d8",
-    city: "Tokyo",
-    eventType: "festival",
-    title: "Sakura Light-Up at Meguro River",
-    description: "Evening illumination of cherry blossoms along the river",
-    venue: "Meguro River",
-    crowdLevel: "packed",
-    entryFee: "Free",
-    isLive: true,
-    startsAt: new Date(),
-    endsAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
-  },
-  {
-    id: "077dd6da-ce72-4062-892d-3a117a6bab83",
-    city: "Paris",
-    eventType: "market",
-    title: "Marché aux Puces de Vanves",
-    description: "Authentic Parisian flea market with antiques",
-    venue: "Avenue Marc Sangnier",
-    crowdLevel: "moderate",
-    entryFee: "Free",
-    isLive: true,
-    startsAt: new Date(),
-    endsAt: new Date(Date.now() + 8 * 60 * 60 * 1000),
-  },
-  {
-    id: "d960db4e-b061-4505-afdf-d27b0eecf809",
-    city: "Barcelona",
-    eventType: "performance",
-    title: "Street Performance at La Boqueria",
-    description: "Local flamenco dancers performing",
-    venue: "La Boqueria Market",
-    crowdLevel: "busy",
-    entryFee: "Free",
-    isLive: true,
-    startsAt: new Date(),
-    endsAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
-  },
-];
+interface HiddenGemData {
+  id: string;
+  city: string;
+  country: string;
+  place_name: string;
+  place_type: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  local_rating?: number;
+  tourist_mentions?: number;
+  local_mentions?: number;
+  gem_score: number;
+  discovery_status: string;
+  days_until_mainstream?: number;
+  description: string;
+  why_locals_love_it: string;
+  best_for: string[];
+  price_range: string;
+  image_url?: string;
+}
+
+interface HappeningNowData {
+  id: string;
+  city: string;
+  eventType: string;
+  title: string;
+  description: string;
+  venue: string;
+  crowdLevel: string;
+  entryFee: string;
+  isLive: boolean;
+}
+
+interface CityData {
+  id: string;
+  city_name: string;
+  country: string;
+  country_code?: string;
+  region?: string;
+  timezone?: string;
+  latitude?: number;
+  longitude?: number;
+  pulse_score: number;
+  active_travelers: number;
+  trending_score: number;
+  crowd_level: string;
+  vibe_tags: string[];
+  current_highlight: string;
+  highlight_emoji?: string;
+  weather_score: number;
+  avg_hotel_price: number;
+  price_change: number;
+  price_trend: string;
+  deal_alert?: string;
+  total_trending_spots: number;
+  total_hidden_gems: number;
+  total_alerts: number;
+  image_url?: string;
+  thumbnail_url?: string;
+}
 
 export async function seedTravelPulseData(): Promise<{ created: number }> {
   let created = 0;
 
   try {
-    for (const event of calendarEventsData) {
+    const calendarEvents = loadJsonData<CalendarEventData>("calendar-events.json");
+    for (const event of calendarEvents) {
       const existing = await db.select().from(travelPulseCalendarEvents).where(eq(travelPulseCalendarEvents.id, event.id));
       if (existing.length === 0) {
-        await db.insert(travelPulseCalendarEvents).values(event);
+        await db.insert(travelPulseCalendarEvents).values({
+          id: event.id,
+          eventName: event.event_name,
+          eventType: event.event_type,
+          city: event.city,
+          country: event.country,
+          region: event.region,
+          startDate: new Date(event.start_date),
+          endDate: new Date(event.end_date),
+          crowdImpact: event.crowd_impact,
+          priceImpact: event.price_impact,
+          crowdImpactPercent: event.crowd_impact_percent,
+          description: event.description,
+          affectedAreas: event.affected_areas,
+          tips: event.tips,
+          source: event.source,
+          imageUrl: event.image_url,
+        });
         created++;
       }
     }
 
-    for (const activity of liveActivityData) {
+    const liveActivity = loadJsonData<LiveActivityData>("live-activity.json");
+    for (const activity of liveActivity) {
       const existing = await db.select().from(travelPulseLiveActivity).where(eq(travelPulseLiveActivity.id, activity.id));
       if (existing.length === 0) {
-        await db.insert(travelPulseLiveActivity).values(activity);
+        await db.insert(travelPulseLiveActivity).values({
+          id: activity.id,
+          city: activity.city,
+          placeName: activity.placeName,
+          activityType: activity.activityType,
+          activityText: activity.activityText,
+          activityEmoji: activity.activityEmoji,
+          userName: activity.userName,
+          likesCount: activity.likesCount,
+          occurredAt: new Date(),
+        });
         created++;
       }
     }
 
-    for (const gem of hiddenGemsData) {
+    const hiddenGems = loadJsonData<HiddenGemData>("hidden-gems.json");
+    for (const gem of hiddenGems) {
       const existing = await db.select().from(travelPulseHiddenGems).where(eq(travelPulseHiddenGems.id, gem.id));
       if (existing.length === 0) {
-        await db.insert(travelPulseHiddenGems).values(gem);
+        await db.insert(travelPulseHiddenGems).values({
+          id: gem.id,
+          city: gem.city,
+          country: gem.country,
+          placeName: gem.place_name,
+          placeType: gem.place_type,
+          address: gem.address,
+          latitude: gem.latitude?.toString(),
+          longitude: gem.longitude?.toString(),
+          localRating: gem.local_rating?.toString(),
+          touristMentions: gem.tourist_mentions || 0,
+          localMentions: gem.local_mentions || 0,
+          gemScore: gem.gem_score,
+          discoveryStatus: gem.discovery_status,
+          daysUntilMainstream: gem.days_until_mainstream,
+          description: gem.description,
+          whyLocalsLoveIt: gem.why_locals_love_it,
+          bestFor: gem.best_for,
+          priceRange: gem.price_range,
+          imageUrl: gem.image_url,
+        });
         created++;
       }
     }
 
-    for (const event of happeningNowData) {
+    const happeningNow = loadJsonData<HappeningNowData>("happening-now.json");
+    for (const event of happeningNow) {
       const existing = await db.select().from(travelPulseHappeningNow).where(eq(travelPulseHappeningNow.id, event.id));
       if (existing.length === 0) {
-        await db.insert(travelPulseHappeningNow).values(event);
+        await db.insert(travelPulseHappeningNow).values({
+          id: event.id,
+          city: event.city,
+          eventType: event.eventType,
+          title: event.title,
+          description: event.description,
+          venue: event.venue,
+          crowdLevel: event.crowdLevel,
+          entryFee: event.entryFee,
+          isLive: event.isLive,
+          startsAt: new Date(),
+          endsAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
+        });
+        created++;
+      }
+    }
+
+    const cities = loadJsonData<CityData>("cities.json");
+    for (const city of cities) {
+      const existing = await db.select().from(travelPulseCities).where(eq(travelPulseCities.id, city.id));
+      if (existing.length === 0) {
+        await db.insert(travelPulseCities).values({
+          id: city.id,
+          cityName: city.city_name,
+          country: city.country,
+          countryCode: city.country_code,
+          region: city.region,
+          timezone: city.timezone,
+          latitude: city.latitude?.toString(),
+          longitude: city.longitude?.toString(),
+          pulseScore: city.pulse_score,
+          activeTravelers: city.active_travelers,
+          trendingScore: city.trending_score,
+          crowdLevel: city.crowd_level,
+          vibeTags: city.vibe_tags,
+          currentHighlight: city.current_highlight,
+          highlightEmoji: city.highlight_emoji,
+          weatherScore: city.weather_score,
+          avgHotelPrice: city.avg_hotel_price?.toString(),
+          priceChange: city.price_change?.toString(),
+          priceTrend: city.price_trend,
+          dealAlert: city.deal_alert,
+          totalTrendingSpots: city.total_trending_spots,
+          totalHiddenGems: city.total_hidden_gems,
+          totalAlerts: city.total_alerts,
+          imageUrl: city.image_url,
+          thumbnailUrl: city.thumbnail_url,
+        });
         created++;
       }
     }
