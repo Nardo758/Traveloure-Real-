@@ -50,9 +50,12 @@ def get_future_weather(request):
     except ValueError:
         return JsonResponse({"error": "Invalid date format. Use YYYY-MM-DD"}, status=400)
 
-    # Fetch 5-day forecast data
-    url = f"{FORECAST_URL}?q={city}&appid={API_KEY}&units=metric"
-    response = requests.get(url)
+    # Fetch 5-day forecast data using params to safely encode user input
+    response = requests.get(
+        FORECAST_URL,
+        params={"q": city, "appid": API_KEY, "units": "metric"},
+        timeout=10
+    )
     data = response.json()
 
     if response.status_code == 200:
