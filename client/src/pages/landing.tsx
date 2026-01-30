@@ -4,6 +4,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { motion } from "framer-motion";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { TrendingCities } from "@/components/TrendingCities";
+import { ExperienceCard } from "@/components/ui/experience-card";
+import { TestimonialCard } from "@/components/ui/testimonial-card";
+import { StatCard } from "@/components/ui/stat-card";
 import { 
   ArrowRight,
   Rocket,
@@ -101,67 +104,120 @@ const experienceCategories = [
     hiddenGems: 247,
     slug: "travel",
     color: "text-blue-500",
-    bgColor: "bg-blue-500"
+    bgColor: "bg-blue-500",
+    categories: [
+      { label: 'Adventure', color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-100 dark:bg-emerald-900/30' },
+      { label: 'Cultural', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
+      { label: 'Foodie', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
+    ],
+    status: "Busy" as const,
+    tip: "AI-powered itineraries save 15+ hours of planning and find 30% more hidden gems than manual research.",
+    activeCount: 247,
+    isHot: true,
   },
   { 
     icon: Heart, 
     label: "Weddings", 
     description: "Plan the perfect day",
     image: "https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80",
-    trending: 34,
+    trending: 74,
     expertRates: "$85-150/hr",
     hiddenGems: 67,
     slug: "wedding",
     color: "text-pink-500",
-    bgColor: "bg-pink-500"
+    bgColor: "bg-pink-500",
+    categories: [
+      { label: 'Romantic', color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-100 dark:bg-rose-900/30' },
+      { label: 'Luxury', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
+      { label: 'Planning', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
+    ],
+    status: "Busy" as const,
+    tip: "Expert wedding planners negotiate vendor rates, saving couples $3,200 on average vs. booking directly.",
+    activeCount: 156,
+    isHot: true,
   },
   { 
     icon: Gem, 
     label: "Proposals", 
     description: "Make it unforgettable",
     image: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=600&q=80",
-    trending: 23,
+    trending: 68,
     expertRates: "$500-2,500",
     hiddenGems: 89,
     slug: "proposal",
     color: "text-purple-500",
-    bgColor: "bg-purple-500"
+    bgColor: "bg-purple-500",
+    categories: [
+      { label: 'Romantic', color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-100 dark:bg-rose-900/30' },
+      { label: 'Surprise', color: 'text-fuchsia-600 dark:text-fuchsia-400', bgColor: 'bg-fuchsia-100 dark:bg-fuchsia-900/30' },
+      { label: 'Luxury', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
+    ],
+    status: "Moderate" as const,
+    tip: "Local experts coordinate photographers, venues, and backups ensuring every detail is perfect on your big moment.",
+    activeCount: 45,
+    isHot: true,
   },
   { 
     icon: PartyPopper, 
     label: "Celebrations", 
     description: "Mark special moments",
     image: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80",
-    trending: 45,
+    trending: 62,
     expertRates: "$200-1,500",
     hiddenGems: 134,
     slug: "celebrations",
     color: "text-orange-500",
-    bgColor: "bg-orange-500"
+    bgColor: "bg-orange-500",
+    categories: [
+      { label: 'Party', color: 'text-pink-600 dark:text-pink-400', bgColor: 'bg-pink-100 dark:bg-pink-900/30' },
+      { label: 'Fun', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
+      { label: 'Social', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
+    ],
+    status: "Busy" as const,
+    tip: "Group celebration experts know the best private venues, activities, and packages for milestone events.",
+    activeCount: 189,
+    isHot: true,
   },
   { 
     icon: Sparkles, 
     label: "Date Nights", 
     description: "Plan something special",
     image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80",
-    trending: 67,
+    trending: 81,
     expertRates: "$50-300",
     hiddenGems: 289,
     slug: "date-night",
     color: "text-red-500",
-    bgColor: "bg-red-500"
+    bgColor: "bg-red-500",
+    categories: [
+      { label: 'Romantic', color: 'text-rose-600 dark:text-rose-400', bgColor: 'bg-rose-100 dark:bg-rose-900/30' },
+      { label: 'Foodie', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
+      { label: 'Fun', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
+    ],
+    status: "Moderate" as const,
+    tip: "Get insider access to reservation-only spots and surprise experiences that make dates unforgettable.",
+    activeCount: 312,
+    isHot: true,
   },
   { 
     icon: Building2, 
     label: "Corporate", 
     description: "Team building & events",
     image: "https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=600&q=80",
-    trending: 12,
+    trending: 52,
     expertRates: "Custom quote",
     hiddenGems: 45,
     slug: "corporate-events",
     color: "text-slate-600 dark:text-slate-400",
-    bgColor: "bg-slate-600"
+    bgColor: "bg-slate-600",
+    categories: [
+      { label: 'Business', color: 'text-slate-600 dark:text-slate-400', bgColor: 'bg-slate-100 dark:bg-slate-900/30' },
+      { label: 'Team Building', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
+      { label: 'Networking', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
+    ],
+    status: "Moderate" as const,
+    tip: "Corporate event specialists handle venue sourcing, catering coordination, and team activities from start to finish.",
+    activeCount: 78,
   },
 ];
 
@@ -543,6 +599,40 @@ export default function LandingPage() {
 
       <TrendingCities />
 
+      {/* Experience Categories Section */}
+      <section className="py-16 lg:py-20 bg-card dark:bg-card">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-12"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground">
+                Popular <span className="text-[#FF385C]">Experiences</span>
+              </h2>
+            </div>
+            <p className="text-muted-foreground max-w-xl">
+              Browse our most popular experience categories with expert guidance and AI-powered planning
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {experienceCategories.map((category, index) => (
+              <ExperienceCard
+                key={category.slug}
+                {...category}
+                delay={index * 0.05}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How It Works Section */}
       <section className="py-16 lg:py-20 bg-card dark:bg-card">
         <div className="container mx-auto px-4 max-w-5xl">
@@ -632,31 +722,15 @@ export default function LandingPage() {
             </p>
           </motion.div>
           
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
-          >
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {impactStats.map((stat, idx) => (
-              <motion.div
+              <StatCard
                 key={stat.label}
-                variants={itemVariants}
-              >
-                <Card className="h-full border border-border bg-card dark:bg-card shadow-card hover:shadow-card-hover transition-all duration-300" data-testid={`card-stat-${idx}`}>
-                  <CardContent className="p-6">
-                    <div className={cn("w-12 h-12 rounded-xl bg-muted dark:bg-muted flex items-center justify-center mb-4", stat.color)}>
-                      <stat.icon className="w-6 h-6" />
-                    </div>
-                    <p className={cn("text-4xl font-bold mb-1", stat.color)}>{stat.value}</p>
-                    <p className="text-sm font-semibold text-foreground mb-2">{stat.label}</p>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{stat.description}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                {...stat}
+                delay={idx * 0.1}
+              />
             ))}
-          </motion.div>
+          </div>
         </div>
       </section>
 
@@ -681,96 +755,15 @@ export default function LandingPage() {
             </p>
           </motion.div>
           
-          <motion.div 
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6"
-          >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((testimonial, idx) => (
-              <motion.div
+              <TestimonialCard
                 key={testimonial.author}
-                variants={itemVariants}
-              >
-                <Card className="h-full border border-border bg-background dark:bg-muted/50 shadow-card hover:shadow-card-hover transition-all duration-300 relative overflow-hidden" data-testid={`card-testimonial-${idx}`}>
-                  {/* Trip Image Header */}
-                  <div className="relative h-32 overflow-hidden">
-                    <img 
-                      src={testimonial.tripImage} 
-                      alt={testimonial.destination}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    <div className="absolute bottom-2 left-3 right-3">
-                      <span className="text-white text-xs font-medium">{testimonial.tripType}</span>
-                      <div className="flex items-center gap-1 text-white/90 text-sm font-semibold">
-                        <MapPin className="w-3 h-3" />
-                        {testimonial.destination}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <CardContent className="p-5 relative">
-                    <div className="flex gap-1 mb-3">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star 
-                          key={star} 
-                          className={cn(
-                            "w-4 h-4",
-                            star <= testimonial.rating 
-                              ? "text-amber-400 fill-amber-400" 
-                              : "text-muted-foreground/30"
-                          )} 
-                        />
-                      ))}
-                    </div>
-                    
-                    <p className="text-sm text-foreground leading-relaxed mb-4 line-clamp-4">
-                      "{testimonial.text}"
-                    </p>
-                    
-                    {/* Expert & Value Info */}
-                    <div className="bg-muted dark:bg-muted/50 rounded-xl p-3 mb-4" data-testid={`expert-info-${idx}`}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs text-muted-foreground">Expert consulted</span>
-                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Verified
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground" data-testid={`expert-name-${idx}`}>{testimonial.expertName}</span>
-                          <span className="px-1.5 py-0.5 rounded bg-[#FF385C]/10 text-[#FF385C] text-xs font-bold" data-testid={`expert-score-${idx}`}>
-                            {testimonial.expertHeatScore}
-                          </span>
-                        </div>
-                        <span className="text-xs text-muted-foreground" data-testid={`expert-rate-${idx}`}>{testimonial.expertRate}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Value Saved Badge */}
-                    <div className="flex items-center justify-between mb-4 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg" data-testid={`value-saved-${idx}`}>
-                      <span className="text-xs text-emerald-700 dark:text-emerald-300">Value gained</span>
-                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{testimonial.valueSaved}</span>
-                    </div>
-                    
-                    {/* Author */}
-                    <div className="flex items-center gap-3 pt-3 border-t border-border">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF385C] to-[#FF8E53] flex items-center justify-center text-white font-semibold text-sm shadow-lg">
-                        {testimonial.avatar}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-foreground text-sm">{testimonial.author}</p>
-                        <p className="text-xs text-muted-foreground">{testimonial.location}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                {...testimonial}
+                delay={idx * 0.1}
+              />
             ))}
-          </motion.div>
+          </div>
           
           {/* Platform Stats Bar */}
           <motion.div

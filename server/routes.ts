@@ -1539,6 +1539,31 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json(expert);
   });
 
+  // Get services offered by a specific expert (public)
+  app.get("/api/experts/:id/services", async (req, res) => {
+    try {
+      const expertId = req.params.id;
+      const services = await storage.getExpertSelectedServices(expertId);
+      res.json(services);
+    } catch (err) {
+      console.error("Error fetching expert services:", err);
+      res.json([]);
+    }
+  });
+
+  // Get reviews for a specific expert (public)
+  app.get("/api/experts/:id/reviews", async (req, res) => {
+    try {
+      const expertId = req.params.id;
+      // For now, return empty array - can be implemented with actual review system
+      // TODO: Implement storage.getExpertReviews(expertId)
+      res.json([]);
+    } catch (err) {
+      console.error("Error fetching expert reviews:", err);
+      res.json([]);
+    }
+  });
+
   // Get current expert's selected services (authenticated)
   app.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
