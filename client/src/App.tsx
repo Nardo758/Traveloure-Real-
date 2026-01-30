@@ -93,6 +93,7 @@ import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
 import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
 import ExpertTemplates from "@/pages/expert/templates";
+import ExpertContentStudio from "@/pages/expert/content-studio";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
@@ -348,6 +349,9 @@ function Router() {
       </Route>
       <Route path="/expert/templates">
         {() => <ProtectedRoute component={ExpertTemplates} />}
+      </Route>
+      <Route path="/expert/content-studio">
+        {() => <ProtectedRoute component={ExpertContentStudio} />}
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} />}

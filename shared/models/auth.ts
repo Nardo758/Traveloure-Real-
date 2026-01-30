@@ -31,6 +31,8 @@ export const users = pgTable("users", {
   privacyAcceptedAt: timestamp("privacy_accepted_at"),
   termsVersion: varchar("terms_version", { length: 20 }),
   privacyVersion: varchar("privacy_version", { length: 20 }),
+  instagramUserId: varchar("instagram_user_id"),
+  instagramAccessToken: varchar("instagram_access_token", { length: 512 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
