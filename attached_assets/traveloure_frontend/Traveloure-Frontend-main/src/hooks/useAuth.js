@@ -1,88 +1,55 @@
-import { useState, useEffect } from 'react'
-import { setupTokenExpirationListener, handleTokenExpiration, clearAuthData } from '../lib/authUtils'
+// ✅ SECURE VERSION - Uses NextAuth session instead of localStorage
+import { useSession, signOut } from 'next-auth/react'
+import { setupTokenExpirationListener, handleTokenExpiration } from '../lib/authUtils'
+import { useEffect } from 'react'
 
 export const useAuth = () => {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const { data: session, status } = useSession()
+  
+  const loading = status === 'loading'
+  const isAuthenticated = status === 'authenticated' && !!session?.backendData?.accessToken
+  const user = session?.user || session?.backendData?.user || null
 
   useEffect(() => {
-    const checkAuth = () => {
-      try {
-        const accessToken = localStorage.getItem('accessToken')
-        const userData = localStorage.getItem('userData')
-
-        if (accessToken && userData) {
-          const parsedUserData = JSON.parse(userData)
-          setUser(parsedUserData)
-          setIsAuthenticated(true)
-        } else {
-          setUser(null)
-          setIsAuthenticated(false)
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error)
-        setUser(null)
-        setIsAuthenticated(false)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    checkAuth()
-
-    // Listen for storage changes (in case tokens are updated in another tab)
-    const handleStorageChange = (e) => {
-      if (e.key === 'accessToken' || e.key === 'userData') {
-        checkAuth()
-      }
-    }
-
-    window.addEventListener('storage', handleStorageChange)
-    
     // Setup token expiration listener for cross-tab synchronization
     const cleanupTokenListener = setupTokenExpirationListener(() => {
-      setUser(null)
-      setIsAuthenticated(false)
+      // Token expired in another tab - sign out this tab too
+      signOut({ redirect: false })
     })
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange)
       if (cleanupTokenListener) cleanupTokenListener()
     }
   }, [])
 
+  // Login function - not typically needed since NextAuth handles this
+  // Kept for backward compatibility but should use NextAuth signIn instead
   const login = (accessToken, refreshToken, userData) => {
-    localStorage.setItem('accessToken', accessToken)
-    if (refreshToken) {
-      localStorage.setItem('refreshToken', refreshToken)
-    }
-    if (userData) {
-      localStorage.setItem('userData', JSON.stringify(userData))
-    }
-    setUser(userData)
-    setIsAuthenticated(true)
+    console.warn('⚠️ Direct login() is deprecated. Use NextAuth signIn() instead.')
+    // For compatibility, could trigger NextAuth session update here
   }
 
-  const logout = (redirect = true) => {
-    clearAuthData()
-    setUser(null)
-    setIsAuthenticated(false)
-    
-    // Optionally redirect after logout
-    if (redirect && typeof window !== 'undefined') {
-      const currentPath = window.location.pathname
-      // Use handleTokenExpiration for consistent redirect logic
-      handleTokenExpiration(currentPath, null)
+  // Logout using NextAuth
+  const logout = async (redirect = true) => {
+    try {
+      await signOut({ redirect: false })
+      
+      if (redirect && typeof window !== 'undefined') {
+        const currentPath = window.location.pathname
+        handleTokenExpiration(currentPath, signOut)
+      }
+    } catch (error) {
+      console.error('Logout error:', error)
     }
   }
 
+  // Get tokens from NextAuth session
   const getAccessToken = () => {
-    return localStorage.getItem('accessToken')
+    return session?.backendData?.accessToken || null
   }
 
   const getRefreshToken = () => {
-    return localStorage.getItem('refreshToken')
+    return session?.refreshToken || null
   }
 
   return {
@@ -93,11 +60,20 @@ export const useAuth = () => {
     logout,
     getAccessToken,
     getRefreshToken,
+    session, // Expose full session for advanced use cases
   }
 }
 
 // Export a standalone logout function that can be used outside of React components
-export const globalLogout = () => {
-  clearAuthData()
-  handleTokenExpiration()
-} 
+export const globalLogout = async () => {
+  try {
+    // Import dynamically to avoid issues in non-React contexts
+    const { signOut } = await import('next-auth/react')
+    await signOut({ redirect: false })
+    handleTokenExpiration()
+  } catch (error) {
+    console.error('Global logout error:', error)
+    // Fallback to just handling token expiration
+    handleTokenExpiration()
+  }
+}
