@@ -8,6 +8,7 @@ import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
+import { seedTravelPulseData } from "./seed-travelpulse";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -156,6 +157,15 @@ async function runDatabaseSeeding() {
     await seedDestinationCalendar();
   } catch (err) {
     logger.error({ err }, "Failed to seed destination calendar");
+  }
+
+  try {
+    const travelPulseResult = await seedTravelPulseData();
+    if (travelPulseResult.created > 0) {
+      logger.info({ count: travelPulseResult.created }, "Seeded TravelPulse XAI data");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed TravelPulse data");
   }
   
   seedingDurationMs = Date.now() - seedingStartTime;
