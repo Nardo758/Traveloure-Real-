@@ -1,11 +1,16 @@
 // API utility functions for authenticated requests
+// ✅ SECURE VERSION - Uses NextAuth session instead of localStorage
+import { getSession } from 'next-auth/react'
 import { isTokenExpired, handleTokenExpiration } from './authUtils'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
-// Get auth headers with access token
-export const getAuthHeaders = () => {
-  const accessToken = localStorage.getItem('accessToken')
+// Get auth headers with access token from NextAuth session
+export const getAuthHeaders = async () => {
+  // ✅ SECURE: Get token from NextAuth session instead of localStorage
+  const session = await getSession()
+  const accessToken = session?.backendData?.accessToken
+  
   return {
     'Content-Type': 'application/json',
     ...(accessToken && { 'Authorization': `Bearer ${accessToken}` })
@@ -15,7 +20,7 @@ export const getAuthHeaders = () => {
 // Make authenticated API request
 export const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`
-  const headers = getAuthHeaders()
+  const headers = await getAuthHeaders()
 
   const config = {
     ...options,
@@ -60,8 +65,10 @@ export const apiRequest = async (endpoint, options = {}) => {
                             url.includes('/auth/register/') ||
                             url.includes('/auth/refresh-token/')
       
-      // If it's not an auth endpoint and we have a refresh token, try to refresh
-      const refreshToken = localStorage.getItem('refreshToken')
+      // ✅ SECURE: Get refresh token from NextAuth session instead of localStorage
+      const session = await getSession()
+      const refreshToken = session?.refreshToken
+      
       if (!isAuthEndpoint && refreshToken) {
         try {
           const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh-token/`, {
@@ -76,7 +83,10 @@ export const apiRequest = async (endpoint, options = {}) => {
 
           if (refreshResponse.ok) {
             const refreshData = await refreshResponse.json()
-            localStorage.setItem('accessToken', refreshData.access)
+            
+            // ✅ SECURE: Do NOT store token in localStorage
+            // NextAuth will automatically update the session
+            console.log('✅ Token refreshed - NextAuth will update session automatically')
             
             // Retry the original request with new token
             const retryConfig = {
@@ -128,4 +138,4 @@ export const apiPut = (endpoint, data) => apiRequest(endpoint, {
   method: 'PUT', 
   body: JSON.stringify(data) 
 })
-export const apiDelete = (endpoint) => apiRequest(endpoint, { method: 'DELETE' }) 
+export const apiDelete = (endpoint) => apiRequest(endpoint, { method: 'DELETE' })
