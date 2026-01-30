@@ -2122,7 +2122,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async incrementTemplateView(id: string): Promise<void> {
-    await db.execute(`UPDATE expert_templates SET view_count = view_count + 1 WHERE id = '${id}'`);
+    await db.update(expertTemplates)
+      .set({ viewCount: sql`${expertTemplates.viewCount} + 1` })
+      .where(eq(expertTemplates.id, id));
   }
 
   // Template Purchases
