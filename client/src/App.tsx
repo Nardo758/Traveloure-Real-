@@ -108,6 +108,11 @@ import TransportationBookingPage from "@/pages/transportation-booking";
 import PrivacyPolicyPage from "@/pages/privacy";
 import TermsOfServicePage from "@/pages/terms";
 import AcceptTermsPage from "@/pages/accept-terms";
+import CareersPage from "@/pages/careers";
+import BlogPage from "@/pages/blog";
+import PressPage from "@/pages/press";
+import HelpPage from "@/pages/help";
+import ExpertDetailPage from "@/pages/expert-detail";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest }: any) {
@@ -163,6 +168,9 @@ function Router() {
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
       </Route>
+      <Route path="/experts/:id">
+        <ExpertDetailPage />
+      </Route>
       <Route path="/service-providers">
         <ServiceProvidersPage />
       </Route>
@@ -204,6 +212,21 @@ function Router() {
       </Route>
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
+      </Route>
+      <Route path="/careers">
+        <Layout><CareersPage /></Layout>
+      </Route>
+      <Route path="/blog">
+        <Layout><BlogPage /></Layout>
+      </Route>
+      <Route path="/press">
+        <Layout><PressPage /></Layout>
+      </Route>
+      <Route path="/help">
+        <Layout><HelpPage /></Layout>
+      </Route>
+      <Route path="/support">
+        <Layout><HelpPage /></Layout>
       </Route>
       <Route path="/privacy">
         <PrivacyPolicyPage />
