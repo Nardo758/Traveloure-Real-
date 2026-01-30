@@ -1,6 +1,9 @@
 // Centralized authentication utilities for handling token expiration and logout
 // ✅ SECURE VERSION - No localStorage token storage
 
+import { createLogger } from './logger'
+const logger = createLogger('Auth')
+
 // Global reference to NextAuth signOut function
 let globalSignOutFunction = null
 
@@ -11,7 +14,7 @@ let globalSignOutFunction = null
  */
 export const registerSignOut = (signOutFn) => {
   globalSignOutFunction = signOutFn
-  console.log('🔒 NextAuth signOut function registered')
+  logger.debug('NextAuth signOut function registered')
 }
 
 /**
@@ -159,7 +162,7 @@ export const getRedirectUrl = (currentPath) => {
  * NextAuth handles token cleanup automatically via signOut
  */
 export const clearAuthData = () => {
-  console.log('🔒 Clearing auth data via NextAuth signOut')
+  logger.auth('Clearing auth data via NextAuth signOut')
   
   // Clear any non-sensitive app-specific data from localStorage if needed
   // DO NOT store or remove tokens from localStorage
@@ -182,7 +185,7 @@ export const clearAuthData = () => {
  * @param {function} signOutCallback - NextAuth signOut function (optional, uses global if not provided)
  */
 export const handleTokenExpiration = async (currentPath = null, signOutCallback = null) => {
-  console.log('🔒 Token expired - logging out user')
+  logger.auth('Token expired - logging out user')
   
   // Clear authentication data (non-sensitive only)
   clearAuthData()
