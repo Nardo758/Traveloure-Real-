@@ -76,9 +76,8 @@ export function log(message: string, source = "express") {
   logger.info({ source }, message);
 }
 
-(async () => {
-  await registerRoutes(httpServer, app);
-  
+// Run database seeding in background (non-blocking)
+async function runDatabaseSeeding() {
   try {
     const result = await seedCategories();
     if (result.created > 0) {
@@ -132,6 +131,12 @@ export function log(message: string, source = "express") {
   } catch (err) {
     logger.error({ err }, "Failed to seed destination calendar");
   }
+  
+  logger.info("Database seeding complete");
+}
+
+(async () => {
+  await registerRoutes(httpServer, app);
 
   // Set up frontend serving before error handlers
   if (process.env.NODE_ENV === "production") {
@@ -155,8 +160,14 @@ export function log(message: string, source = "express") {
     () => {
       logger.info({ port }, "Server started");
       
+      // Start cache scheduler
       cacheSchedulerService.start();
       logger.info("Cache scheduler started");
+      
+      // Run database seeding in background AFTER server is listening
+      runDatabaseSeeding().catch(err => {
+        logger.error({ err }, "Background seeding failed");
+      });
     },
   );
 })();
