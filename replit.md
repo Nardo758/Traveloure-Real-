@@ -7,6 +7,8 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
+- **Content Creator Studio**: Complete content creation platform for travel experts with 10 content types (Travel Guide, Review, Top List, Photo Gallery, Video, Itinerary, Food Guide, Hotel Guide, Tips & Tricks, Travel Story). Features AI-powered title/description generation, hashtag suggestions, and destination intelligence.
+- **Instagram Business API Integration**: Full OAuth flow for Instagram Business/Creator accounts, single and carousel image publishing, AI-generated hashtags, 24-hour publishing limit tracking (100 posts/day), accessible via Content Studio.
 - **Landing Page Redesign**: Complete visual overhaul with Framer Motion animations, improved hero section with gradient text, modernized experience templates, updated stats/testimonials/FAQ sections
 - **TrendingCities Component**: New section showing popular travel destinations with live updates toggle, category tags, pricing, traveler counts, and actionable travel tips
 - **Design System Compliance**: Removed custom hover classes from Button components (relying on built-in behavior), added comprehensive data-testid attributes for testing, proper hover-elevate utility usage for non-button elements
