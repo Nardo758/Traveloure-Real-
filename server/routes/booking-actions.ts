@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import { stripePaymentService } from '../services/stripe-payment.service';
 
 const router = Router();
 
@@ -14,6 +15,51 @@ const router = Router();
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
 }
+
+/**
+ * POST /api/expert-requests/checkout
+ * Create Stripe checkout session for expert review service
+ */
+router.post('/expert-requests/checkout', async (req, res) => {
+  try {
+    const {
+      userId,
+      userEmail,
+      variantId,
+      comparisonId,
+      destination,
+      serviceType,
+      amount,
+      notes,
+    } = req.body;
+
+    if (!userId || !variantId || !comparisonId || !destination || !serviceType || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const successUrl = `${baseUrl}/expert-request-success?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${baseUrl}/itinerary/${comparisonId}`;
+
+    const session = await stripePaymentService.createExpertServiceCheckout(
+      userId,
+      userEmail || `user${userId}@traveloure.com`,
+      variantId,
+      comparisonId,
+      destination,
+      serviceType,
+      amount,
+      notes || '',
+      successUrl,
+      cancelUrl
+    );
+
+    res.json(session);
+  } catch (error: any) {
+    console.error('Expert checkout error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create checkout session' });
+  }
+});
 
 /**
  * POST /api/expert-requests

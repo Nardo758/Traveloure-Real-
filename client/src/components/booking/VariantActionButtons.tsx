@@ -106,36 +106,46 @@ export default function VariantActionButtons({
     return parts[0].trim().toLowerCase();
   };
 
-  // Handle Expert Review Submit
+  // Calculate total price for selected service tier
+  const calculateTotalPrice = (): number => {
+    return expertTiers[expertServiceType].price;
+  };
+
+  // Handle Expert Review Submit - Redirect to Stripe Checkout
   const handleExpertSubmit = async () => {
     setIsSubmittingExpert(true);
     try {
       const city = extractCity(comparison.destination);
+      const totalAmount = calculateTotalPrice();
       
-      const response = await fetch('/api/expert-requests', {
+      const response = await fetch('/api/expert-requests/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId,
+          userEmail,
           variantId: variant.id,
           comparisonId: comparison.id,
           destination: city,
-          requestType: expertServiceType,
-          expertFee: expertTiers[expertServiceType].price,
+          serviceType: expertServiceType,
+          amount: totalAmount,
           notes: expertNotes,
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to submit expert request');
+      if (!response.ok) throw new Error('Failed to create checkout session');
 
-      // Show success
-      alert(`Expert request submitted! Queue position will be shown in your dashboard.`);
-      setShowExpertModal(false);
-      setExpertNotes('');
+      const data = await response.json();
+      
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
     } catch (error) {
-      console.error('Expert request error:', error);
-      alert('Failed to submit expert request. Please try again.');
-    } finally {
+      console.error('Expert checkout error:', error);
+      alert('Failed to start checkout. Please try again.');
       setIsSubmittingExpert(false);
     }
   };
