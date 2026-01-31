@@ -244,10 +244,10 @@ export async function generateOptimizedItineraries(
         variantId: baselineVariant[0].id,
         metricKey: "relaxation_minutes",
         metricLabel: "Relaxation Time",
-        value: baselineEnhancedMetrics.timeAllocation.relaxation.toString(),
+        value: baselineEnhancedMetrics.relaxationMinutes.toString(),
         unit: "minutes",
         betterIsLower: false,
-        description: `${baselineEnhancedMetrics.timeAllocation.relaxation} minutes of wellness activities`,
+        description: `${baselineEnhancedMetrics.relaxationMinutes} minutes of wellness activities`,
       },
     ];
 
@@ -580,10 +580,10 @@ Respond with valid JSON in this exact format:
           variantId: newVariant.id,
           metricKey: "relaxation_minutes",
           metricLabel: "Relaxation Time",
-          value: enhancedMetrics.timeAllocation.relaxation.toString(),
+          value: enhancedMetrics.relaxationMinutes.toString(),
           unit: "minutes",
           betterIsLower: false,
-          description: `${enhancedMetrics.timeAllocation.relaxation} minutes of wellness activities`,
+          description: `${enhancedMetrics.relaxationMinutes} minutes of wellness activities`,
         },
       ];
 
