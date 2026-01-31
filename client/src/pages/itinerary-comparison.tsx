@@ -681,13 +681,12 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="justify-center">
                     <BookThisTripButton
                       variant={userVariant}
                       comparison={data.comparison}
                       userId={userId}
                       userEmail={userEmail}
-                      className="w-full"
                     />
                   </CardFooter>
                 </Card>
@@ -874,13 +873,12 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="justify-center">
                     <BookThisTripButton
                       variant={variant}
                       comparison={data.comparison}
                       userId={userId}
                       userEmail={userEmail}
-                      className="w-full"
                     />
                   </CardFooter>
                 </Card>
