@@ -615,11 +615,22 @@ export default function ItineraryComparisonPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Total Cost</span>
-                        <span className="text-xl font-bold">
-                          ${parseFloat(userVariant.totalCost || "0").toLocaleString()}
-                        </span>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Total Cost</span>
+                          <span className="text-xl font-bold">
+                            ${parseFloat(userVariant.totalCost || "0").toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {data.comparison.travelers || 1} traveler{(data.comparison.travelers || 1) > 1 ? 's' : ''}
+                          </span>
+                          <span>
+                            ${(parseFloat(userVariant.totalCost || "0") / (data.comparison.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
+                          </span>
+                        </div>
                       </div>
                       <Separator />
                       <div className="space-y-2">
@@ -774,11 +785,22 @@ export default function ItineraryComparisonPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Total Cost</span>
-                        <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                          ${parseFloat(variant.totalCost || "0").toLocaleString()}
-                        </span>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Total Cost</span>
+                          <span className="text-xl font-bold text-green-600 dark:text-green-400">
+                            ${parseFloat(variant.totalCost || "0").toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {data.comparison.travelers || 1} traveler{(data.comparison.travelers || 1) > 1 ? 's' : ''}
+                          </span>
+                          <span>
+                            ${(parseFloat(variant.totalCost || "0") / (data.comparison.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
+                          </span>
+                        </div>
                       </div>
 
                       {variant.metrics && variant.metrics.length > 0 && (
@@ -942,6 +964,9 @@ export default function ItineraryComparisonPage() {
                 <div className="text-right shrink-0 ml-4">
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                     ${parseFloat(modalVariant?.totalCost || "0").toLocaleString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    ${(parseFloat(modalVariant?.totalCost || "0") / (data?.comparison?.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {modalVariant?.items?.length} activities
