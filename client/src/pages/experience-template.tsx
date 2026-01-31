@@ -927,7 +927,7 @@ export default function ExperienceTemplatePage() {
       setTravelers(settings?.travelers ?? 2);
       setDetailsSubmitted(settings?.detailsSubmitted ?? false);
     }
-  }, [slug]);
+  }, [slug, destinationsFromQuery, destinationFromQuery, countryFromQuery]);
   
   // Persist search settings to sessionStorage whenever they change
   useEffect(() => {
