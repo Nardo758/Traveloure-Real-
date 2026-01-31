@@ -6421,22 +6421,22 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       if (!isMultiCity) {
         // Trigger optimization in background for single-destination trips
         generateOptimizedItineraries(
-        comparison.id,
-        userId,
-        baselineItems,
-        availableServices,
-        destination,
-        dates.start,
-        dates.end,
-        budget,
-        travelers
-      ).catch(err => {
-        console.error('Optimization error:', err);
-        db.update(itineraryComparisons)
-          .set({ status: 'failed' })
-          .where(eq(itineraryComparisons.id, comparison.id))
-          .catch(console.error);
-      });
+          comparison.id,
+          userId,
+          baselineItems,
+          availableServices,
+          destination,
+          dates.start,
+          dates.end,
+          budget,
+          travelers
+        ).catch(err => {
+          console.error('Optimization error:', err);
+          db.update(itineraryComparisons)
+            .set({ status: 'failed' })
+            .where(eq(itineraryComparisons.id, comparison.id))
+            .catch(console.error);
+        });
       } else {
         console.log('Skipping optimization for multi-city trip:', destination);
         // Mark comparison as complete (no optimization for multi-city)
