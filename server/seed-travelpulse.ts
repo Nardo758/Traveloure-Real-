@@ -6,21 +6,15 @@ import {
   travelPulseLiveActivity,
   travelPulseHappeningNow,
 } from "@shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "./infrastructure";
-import * as fs from "fs";
-import * as path from "path";
 
-function loadJsonData<T>(filename: string): T[] {
-  try {
-    const filePath = path.join(__dirname, "data", filename);
-    const data = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(data);
-  } catch (error) {
-    logger.warn({ filename, error }, "Could not load JSON data file");
-    return [];
-  }
-}
+// Import JSON data directly so it gets bundled with the code
+import calendarEventsData from "./data/calendar-events.json";
+import citiesData from "./data/cities.json";
+import hiddenGemsData from "./data/hidden-gems.json";
+import liveActivityData from "./data/live-activity.json";
+import happeningNowData from "./data/happening-now.json";
 
 interface CalendarEventData {
   id: string;
@@ -118,7 +112,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
   let created = 0;
 
   try {
-    const calendarEvents = loadJsonData<CalendarEventData>("calendar-events.json");
+    const calendarEvents = calendarEventsData as CalendarEventData[];
     for (const event of calendarEvents) {
       const existing = await db.select().from(travelPulseCalendarEvents).where(eq(travelPulseCalendarEvents.id, event.id));
       if (existing.length === 0) {
@@ -144,7 +138,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
       }
     }
 
-    const liveActivity = loadJsonData<LiveActivityData>("live-activity.json");
+    const liveActivity = liveActivityData as LiveActivityData[];
     for (const activity of liveActivity) {
       const existing = await db.select().from(travelPulseLiveActivity).where(eq(travelPulseLiveActivity.id, activity.id));
       if (existing.length === 0) {
@@ -163,7 +157,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
       }
     }
 
-    const hiddenGems = loadJsonData<HiddenGemData>("hidden-gems.json");
+    const hiddenGems = hiddenGemsData as HiddenGemData[];
     for (const gem of hiddenGems) {
       const existing = await db.select().from(travelPulseHiddenGems).where(eq(travelPulseHiddenGems.id, gem.id));
       if (existing.length === 0) {
@@ -192,7 +186,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
       }
     }
 
-    const happeningNow = loadJsonData<HappeningNowData>("happening-now.json");
+    const happeningNow = happeningNowData as HappeningNowData[];
     for (const event of happeningNow) {
       const existing = await db.select().from(travelPulseHappeningNow).where(eq(travelPulseHappeningNow.id, event.id));
       if (existing.length === 0) {
@@ -213,7 +207,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
       }
     }
 
-    const cities = loadJsonData<CityData>("cities.json");
+    const cities = citiesData as CityData[];
     for (const city of cities) {
       const existing = await db.select().from(travelPulseCities).where(eq(travelPulseCities.id, city.id));
       if (existing.length === 0) {
