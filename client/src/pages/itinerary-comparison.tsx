@@ -536,6 +536,41 @@ export default function ItineraryComparisonPage() {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              {/* Skeleton for user variant if still loading */}
+              {isGenerating && !userVariant && (
+                <Card className="border-dashed opacity-80">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-5 w-20" />
+                    </div>
+                    <Skeleton className="h-6 w-32 mt-2" />
+                    <Skeleton className="h-4 w-48 mt-1" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                      <Separator />
+                      <div className="flex items-center justify-center gap-3 py-6">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Building your plan...</span>
+                      </div>
+                      <div className="space-y-2">
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Skeleton className="h-9 w-full" />
+                  </CardFooter>
+                </Card>
+              )}
+
               {userVariant && (
                 <Card
                   className={cn(
@@ -645,6 +680,47 @@ export default function ItineraryComparisonPage() {
                     />
                   </CardFooter>
                 </Card>
+              )}
+
+              {/* Show skeleton placeholders for pending AI variants */}
+              {isGenerating && aiVariants.length < 2 && (
+                <>
+                  {Array.from({ length: 2 - aiVariants.length }).map((_, idx) => (
+                    <Card key={`skeleton-ai-${idx}`} className="border-dashed opacity-80">
+                      <CardHeader className="pt-6">
+                        <div className="flex items-center justify-between">
+                          <Skeleton className="h-5 w-24" />
+                        </div>
+                        <Skeleton className="h-6 w-40 mt-2" />
+                        <Skeleton className="h-4 w-56 mt-1" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between">
+                            <Skeleton className="h-4 w-20" />
+                            <Skeleton className="h-6 w-16" />
+                          </div>
+                          <Separator />
+                          <div className="flex items-center justify-center gap-3 py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">
+                              {idx === 0 ? "Finding best alternatives..." : "Optimizing for savings..."}
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-full" />
+                            <Skeleton className="h-8 w-full" />
+                          </div>
+                        </div>
+                      </CardContent>
+                      <CardFooter>
+                        <Skeleton className="h-9 w-full" />
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </>
               )}
 
               {aiVariants.map((variant, index) => (
