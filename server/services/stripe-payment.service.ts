@@ -35,12 +35,18 @@ class StripePaymentService {
       const userEmail = userRow.email || `user${userId}@traveloure.com`;
 
       // Create payment intent
+      // Stripe metadata values have 500 char limit, so truncate booking IDs if needed
+      const allBookingIds = bookings.map(b => b.id).join(',');
+      const truncatedBookingIds = allBookingIds.length > 490 
+        ? allBookingIds.substring(0, 490) + '...' 
+        : allBookingIds;
+      
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100), // Convert to cents
         currency: 'usd',
         metadata: {
           userId,
-          bookingIds: bookings.map(b => b.id).join(','),
+          bookingIds: truncatedBookingIds,
           isDeposit: isDeposit.toString(),
           bookingCount: bookings.length.toString(),
         },
