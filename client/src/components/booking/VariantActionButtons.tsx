@@ -507,28 +507,33 @@ export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptio
       }
     : null;
 
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
             size="icon"
             variant="ghost"
             onClick={(e) => e.stopPropagation()}
+            className="transition-transform duration-200"
+            style={{ transform: menuOpen ? 'scale(1.25)' : 'scale(1)' }}
             data-testid={`button-more-options-${variant.id}`}
           >
-            <MoreVertical className="w-4 h-4" />
+            <MoreVertical className={`transition-all duration-200 ${menuOpen ? 'w-5 h-5' : 'w-4 h-4'}`} />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="min-w-[180px]">
           <DropdownMenuItem
             onClick={(e) => {
               e.stopPropagation();
               setShowSaveModal(true);
             }}
+            className="py-3 text-sm"
             data-testid={`menu-save-later-${variant.id}`}
           >
-            <Bookmark className="w-4 h-4 mr-2" />
+            <Bookmark className="w-5 h-5 mr-3" />
             Save for Later
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -537,9 +542,10 @@ export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptio
               setShowShareModal(true);
               if (!shareLink) handleShare();
             }}
+            className="py-3 text-sm"
             data-testid={`menu-share-${variant.id}`}
           >
-            <Share2 className="w-4 h-4 mr-2" />
+            <Share2 className="w-5 h-5 mr-3" />
             Share
           </DropdownMenuItem>
         </DropdownMenuContent>
