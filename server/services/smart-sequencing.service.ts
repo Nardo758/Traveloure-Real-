@@ -689,3 +689,351 @@ export function getSequencingRulesDisplay() {
     category: rule.category
   }));
 }
+
+// Activity with sequencing metadata
+export interface SequencedActivity {
+  id?: string;
+  name: string;
+  serviceType: string;
+  startTime?: string;
+  endTime?: string;
+  duration?: number;
+  price?: number | string;
+  rating?: number | string;
+  location?: string;
+  dayNumber: number;
+  timeSlot?: string;
+  description?: string;
+  travelTimeFromPrevious?: number;
+  isReplacement?: boolean;
+  replacementReason?: string;
+}
+
+// Result of sequencing with methodology notes
+export interface SequencingResult {
+  activities: SequencedActivity[];
+  appliedRules: string[];
+  methodologyNotes: MethodologyNote[];
+  sequencingScore: number;
+}
+
+// Check if activity should come before another based on rules
+function shouldComeBefore(
+  activity1: SequencedActivity, 
+  activity2: SequencedActivity
+): { shouldSwap: boolean; ruleId?: string; reason?: string } {
+  const cat1 = mapServiceTypeToCategory(activity1.serviceType);
+  const cat2 = mapServiceTypeToCategory(activity2.serviceType);
+  const intensity1 = getActivityIntensity(activity1.serviceType);
+  const intensity2 = getActivityIntensity(activity2.serviceType);
+  
+  // Rule: Cultural activities in the morning (fresher mind, fewer crowds)
+  const culturalRule = SEQUENCING_RULES.find(r => r.id === 'cultural-morning');
+  if (culturalRule) {
+    const isCultural1 = culturalRule.triggerActivity.includes(cat1);
+    const isCultural2 = culturalRule.triggerActivity.includes(cat2);
+    if (isCultural2 && !isCultural1) {
+      return { shouldSwap: true, ruleId: 'cultural-morning', reason: 'Cultural activities perform better in morning hours' };
+    }
+  }
+  
+  // Rule: High intensity activities after rest/relaxation
+  const restBeforeAdventure = SEQUENCING_RULES.find(r => r.id === 'rest-before-adventure');
+  if (restBeforeAdventure) {
+    const isRelax1 = restBeforeAdventure.triggerActivity.includes(cat1);
+    const isAdventure2 = restBeforeAdventure.suggestedFollowUp.includes(cat2);
+    if (isRelax1 && isAdventure2) {
+      return { shouldSwap: false }; // Already in good order
+    }
+    const isRelax2 = restBeforeAdventure.triggerActivity.includes(cat1);
+    const isAdventure1 = restBeforeAdventure.suggestedFollowUp.includes(cat1);
+    if (isAdventure1 && isRelax2 && intensity1 >= 7) {
+      return { shouldSwap: true, ruleId: 'rest-before-adventure', reason: 'Rest before high-intensity adventure improves safety and enjoyment' };
+    }
+  }
+  
+  // Rule: Breakfast first
+  if (cat2 === 'breakfast' && cat1 !== 'breakfast') {
+    return { shouldSwap: true, ruleId: 'breakfast-first', reason: 'Start the day with breakfast' };
+  }
+  
+  // Rule: Dinner later, nightlife last
+  if (cat1 === 'dinner' && !['nightlife', 'entertainment', 'show', 'concert'].includes(cat2)) {
+    const time1 = activity1.startTime ? parseInt(activity1.startTime.split(':')[0]) : 12;
+    if (time1 < 18) {
+      return { shouldSwap: true, ruleId: 'dinner-timing', reason: 'Dinner scheduled for evening hours' };
+    }
+  }
+  if (cat1 === 'nightlife' && cat2 !== 'nightlife') {
+    return { shouldSwap: true, ruleId: 'nightlife-last', reason: 'Nightlife activities end the day' };
+  }
+  
+  // Rule: Spa/massage after adventure (recovery)
+  const spaRule = SEQUENCING_RULES.find(r => r.id === 'spa-after-adventure');
+  if (spaRule) {
+    const isAdventure1 = spaRule.triggerActivity.includes(cat1);
+    const isSpa2 = spaRule.suggestedFollowUp.includes(cat2);
+    if (isAdventure1 && isSpa2) {
+      return { shouldSwap: false }; // Good order: adventure then spa
+    }
+    const isAdventure2 = spaRule.triggerActivity.includes(cat2);
+    const isSpa1 = spaRule.suggestedFollowUp.includes(cat1);
+    if (isSpa1 && isAdventure2) {
+      return { shouldSwap: true, ruleId: 'spa-after-adventure', reason: 'Spa treatment more beneficial after physical exertion' };
+    }
+  }
+  
+  // Rule: Walking/sightseeing after meals
+  const walkAfterMeal = SEQUENCING_RULES.find(r => r.id === 'walk-after-heavy-meal');
+  if (walkAfterMeal) {
+    const isMeal1 = walkAfterMeal.triggerActivity.includes(cat1);
+    const isWalk2 = walkAfterMeal.suggestedFollowUp.includes(cat2);
+    if (isMeal1 && isWalk2) {
+      return { shouldSwap: false }; // Good order
+    }
+  }
+  
+  // Rule: Balance intensity throughout the day (alternate high/low)
+  if (intensity1 >= 7 && intensity2 >= 7) {
+    // Two high-intensity activities in a row - check if there's a pattern issue
+    return { shouldSwap: false }; // Let intensity balancing handle this
+  }
+  
+  return { shouldSwap: false };
+}
+
+// Calculate optimal time slots based on activity type
+function getOptimalTimeSlot(activity: SequencedActivity): { slot: string; startHour: number } {
+  const category = mapServiceTypeToCategory(activity.serviceType);
+  
+  // Breakfast: 7-9 AM
+  if (category === 'breakfast') return { slot: 'morning', startHour: 8 };
+  
+  // Cultural/Museum: Morning (9-12)
+  if (['museum', 'cultural', 'sightseeing'].includes(category)) return { slot: 'morning', startHour: 9 };
+  
+  // Lunch: 12-14
+  if (category === 'lunch') return { slot: 'afternoon', startHour: 12 };
+  
+  // Adventure: Late morning or early afternoon
+  if (['adventure', 'hiking', 'water_sports', 'climbing', 'skiing'].includes(category)) return { slot: 'morning', startHour: 10 };
+  
+  // Spa/Wellness: Afternoon
+  if (['spa', 'wellness', 'massage', 'yoga', 'meditation'].includes(category)) return { slot: 'afternoon', startHour: 14 };
+  
+  // Beach/Pool: Afternoon (avoid midday sun)
+  if (['beach', 'pool', 'relaxation'].includes(category)) return { slot: 'afternoon', startHour: 15 };
+  
+  // Shopping: Afternoon
+  if (['shopping', 'market'].includes(category)) return { slot: 'afternoon', startHour: 16 };
+  
+  // Dinner: Evening
+  if (['dinner', 'dining_heavy'].includes(category)) return { slot: 'evening', startHour: 19 };
+  
+  // Entertainment/Shows: Evening
+  if (['show', 'concert', 'entertainment'].includes(category)) return { slot: 'evening', startHour: 20 };
+  
+  // Nightlife: Night
+  if (category === 'nightlife') return { slot: 'evening', startHour: 22 };
+  
+  // Default: Use existing or midday
+  return { slot: activity.timeSlot || 'afternoon', startHour: 14 };
+}
+
+// Reorder activities within a day using smart sequencing rules
+export function reorderDayActivities(
+  activities: SequencedActivity[]
+): SequencingResult {
+  if (activities.length <= 1) {
+    return {
+      activities,
+      appliedRules: [],
+      methodologyNotes: [],
+      sequencingScore: 100
+    };
+  }
+  
+  const appliedRules: string[] = [];
+  let sequencedActivities = [...activities];
+  
+  // Step 1: Assign optimal time slots first
+  sequencedActivities = sequencedActivities.map(activity => {
+    const { slot, startHour } = getOptimalTimeSlot(activity);
+    const duration = activity.duration || 60;
+    const endHour = startHour + Math.ceil(duration / 60);
+    return {
+      ...activity,
+      timeSlot: slot,
+      startTime: activity.startTime || `${startHour.toString().padStart(2, '0')}:00`,
+      endTime: activity.endTime || `${endHour.toString().padStart(2, '0')}:00`
+    };
+  });
+  
+  // Step 2: Sort by optimal start time
+  sequencedActivities.sort((a, b) => {
+    const timeA = a.startTime ? parseInt(a.startTime.replace(':', '')) : 1200;
+    const timeB = b.startTime ? parseInt(b.startTime.replace(':', '')) : 1200;
+    return timeA - timeB;
+  });
+  
+  // Step 3: Apply pairwise sequencing rules (bubble sort style with rules)
+  let swapped = true;
+  let passes = 0;
+  const maxPasses = activities.length * 2; // Prevent infinite loops
+  
+  while (swapped && passes < maxPasses) {
+    swapped = false;
+    passes++;
+    
+    for (let i = 0; i < sequencedActivities.length - 1; i++) {
+      const result = shouldComeBefore(sequencedActivities[i], sequencedActivities[i + 1]);
+      if (result.shouldSwap && result.ruleId) {
+        // Swap activities
+        const temp = sequencedActivities[i];
+        sequencedActivities[i] = sequencedActivities[i + 1];
+        sequencedActivities[i + 1] = temp;
+        swapped = true;
+        
+        if (!appliedRules.includes(result.ruleId)) {
+          appliedRules.push(result.ruleId);
+        }
+      }
+    }
+  }
+  
+  // Step 4: Recalculate times with proper spacing
+  let currentTime = 8 * 60; // Start at 8 AM in minutes
+  sequencedActivities = sequencedActivities.map((activity, index) => {
+    const duration = activity.duration || 60;
+    const startHour = Math.floor(currentTime / 60);
+    const startMin = currentTime % 60;
+    const endMinutes = currentTime + duration;
+    const endHour = Math.floor(endMinutes / 60);
+    const endMin = endMinutes % 60;
+    
+    // Update current time with buffer
+    const buffer = index < sequencedActivities.length - 1 ? 30 : 0; // 30 min buffer between activities
+    currentTime = endMinutes + buffer;
+    
+    // Determine time slot based on start hour
+    let timeSlot = 'morning';
+    if (startHour >= 12 && startHour < 17) timeSlot = 'afternoon';
+    else if (startHour >= 17) timeSlot = 'evening';
+    
+    return {
+      ...activity,
+      startTime: `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`,
+      endTime: `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`,
+      timeSlot
+    };
+  });
+  
+  // Step 5: Generate methodology notes
+  const methodologyNotes: MethodologyNote[] = [];
+  
+  for (let i = 0; i < sequencedActivities.length; i++) {
+    const prev = i > 0 ? sequencedActivities[i - 1] : undefined;
+    const current = sequencedActivities[i];
+    const next = i < sequencedActivities.length - 1 ? sequencedActivities[i + 1] : undefined;
+    
+    const note = generateActivityNote(
+      { name: current.name, serviceType: current.serviceType, startTime: current.startTime },
+      prev ? { name: prev.name, serviceType: prev.serviceType, endTime: prev.endTime } : undefined,
+      next ? { name: next.name, serviceType: next.serviceType, startTime: next.startTime } : undefined
+    );
+    
+    if (note) {
+      methodologyNotes.push(note);
+    }
+  }
+  
+  // Add day-level notes
+  const dayNotes = generateDayNotes(sequencedActivities.map(a => ({
+    name: a.name,
+    serviceType: a.serviceType,
+    startTime: a.startTime,
+    endTime: a.endTime
+  })));
+  methodologyNotes.push(...dayNotes);
+  
+  // Calculate sequencing score
+  const rulesApplied = appliedRules.length;
+  const totalPossibleRules = SEQUENCING_RULES.length;
+  const intensityVariance = calculateIntensityVariance(sequencedActivities);
+  const sequencingScore = Math.min(100, 70 + (rulesApplied * 5) - (intensityVariance * 2));
+  
+  return {
+    activities: sequencedActivities,
+    appliedRules,
+    methodologyNotes,
+    sequencingScore: Math.max(0, Math.round(sequencingScore))
+  };
+}
+
+// Helper: Calculate variance in intensity (lower is better for pacing)
+function calculateIntensityVariance(activities: SequencedActivity[]): number {
+  if (activities.length < 2) return 0;
+  
+  const intensities = activities.map(a => getActivityIntensity(a.serviceType));
+  const mean = intensities.reduce((a, b) => a + b, 0) / intensities.length;
+  const variance = intensities.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / intensities.length;
+  
+  return Math.sqrt(variance);
+}
+
+// Reorder entire itinerary (all days)
+export function reorderItinerary(
+  items: SequencedActivity[]
+): { 
+  reorderedItems: SequencedActivity[]; 
+  allMethodologyNotes: MethodologyNote[]; 
+  overallScore: number;
+  appliedRulesCount: number;
+} {
+  // Group by day
+  const dayGroups: Record<number, SequencedActivity[]> = {};
+  for (const item of items) {
+    const day = item.dayNumber || 1;
+    if (!dayGroups[day]) dayGroups[day] = [];
+    dayGroups[day].push(item);
+  }
+  
+  // Reorder each day
+  const reorderedItems: SequencedActivity[] = [];
+  const allMethodologyNotes: MethodologyNote[] = [];
+  let totalScore = 0;
+  let totalAppliedRules = 0;
+  
+  const sortedDays = Object.keys(dayGroups).map(Number).sort((a, b) => a - b);
+  
+  for (const dayNum of sortedDays) {
+    const result = reorderDayActivities(dayGroups[dayNum]);
+    reorderedItems.push(...result.activities);
+    allMethodologyNotes.push(...result.methodologyNotes);
+    totalScore += result.sequencingScore;
+    totalAppliedRules += result.appliedRules.length;
+  }
+  
+  // Generate itinerary-level notes
+  const days = sortedDays.map(dayNum => ({
+    dayNumber: dayNum,
+    activities: dayGroups[dayNum].map(a => ({
+      name: a.name,
+      serviceType: a.serviceType,
+      startTime: a.startTime,
+      endTime: a.endTime
+    }))
+  }));
+  
+  const itineraryNotes = generateItineraryNotes(days);
+  allMethodologyNotes.push(...itineraryNotes);
+  
+  const overallScore = sortedDays.length > 0 ? Math.round(totalScore / sortedDays.length) : 100;
+  
+  return {
+    reorderedItems,
+    allMethodologyNotes,
+    overallScore,
+    appliedRulesCount: totalAppliedRules
+  };
+}

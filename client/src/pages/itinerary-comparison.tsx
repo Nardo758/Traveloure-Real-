@@ -39,6 +39,12 @@ import {
   Ticket,
   Users,
   Maximize2,
+  Scale,
+  Heart,
+  Gauge,
+  Palette,
+  ListOrdered,
+  Coffee,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -303,12 +309,36 @@ export default function ItineraryComparisonPage() {
         return Calendar;
       case "optimization_score":
         return Target;
+      case "balance_score":
+        return Scale;
+      case "wellness_score":
+        return Heart;
+      case "pace_score":
+        return Gauge;
+      case "diversity_score":
+        return Palette;
+      case "sequencing_score":
+        return ListOrdered;
+      case "relaxation_minutes":
+        return Coffee;
+      case "methodology_summary":
+        return Sparkles;
       default:
         return Zap;
     }
   };
 
   const getMetricColor = (metric: VariantMetric) => {
+    // Score-based metrics (higher is better)
+    const scoreMetrics = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score", "optimization_score"];
+    if (scoreMetrics.includes(metric.metricKey)) {
+      const value = parseFloat(metric.value) || 0;
+      if (value >= 80) return "text-green-600 dark:text-green-400";
+      if (value >= 60) return "text-yellow-600 dark:text-yellow-400";
+      return "text-orange-600 dark:text-orange-400";
+    }
+    
+    // Comparison-based metrics
     if (!metric.comparison) return "text-muted-foreground";
     if (metric.comparison === "saves" || metric.comparison === "better") {
       return "text-green-600 dark:text-green-400";
@@ -803,25 +833,64 @@ export default function ItineraryComparisonPage() {
                         </div>
                       </div>
 
-                      {variant.metrics && variant.metrics.length > 0 && (
-                        <>
-                          <Separator />
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-medium">Why it's better</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                              {variant.metrics.slice(0, 4).map((metric) => {
-                                const Icon = getMetricIcon(metric.metricKey);
-                                return (
-                                  <div key={metric.id} className="flex items-center gap-2">
-                                    <Icon className={cn("h-4 w-4", getMetricColor(metric))} />
-                                    <span className="text-xs truncate">{metric.description}</span>
-                                  </div>
-                                );
-                              })}
+                      {variant.metrics && variant.metrics.length > 0 && (() => {
+                        // Prioritize showing key comparison metrics
+                        const priorityOrder = ["total_cost", "average_rating", "relaxation_minutes", "travel_time"];
+                        const sequencingScores = ["balance_score", "wellness_score", "pace_score", "sequencing_score"];
+                        
+                        // Get priority metrics first, then fill with others
+                        const sortedMetrics = [...variant.metrics].sort((a, b) => {
+                          const aIdx = priorityOrder.indexOf(a.metricKey);
+                          const bIdx = priorityOrder.indexOf(b.metricKey);
+                          if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                          if (aIdx !== -1) return -1;
+                          if (bIdx !== -1) return 1;
+                          return 0;
+                        });
+                        
+                        // Get sequencing scores for the compact score display
+                        const scores = variant.metrics.filter(m => sequencingScores.includes(m.metricKey));
+                        const avgScore = scores.length > 0 
+                          ? Math.round(scores.reduce((sum, m) => sum + (parseFloat(m.value) || 0), 0) / scores.length)
+                          : null;
+                        
+                        return (
+                          <>
+                            <Separator />
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-medium">Why it's better</h4>
+                                {avgScore !== null && (
+                                  <Badge 
+                                    variant="outline" 
+                                    className={cn(
+                                      "text-xs",
+                                      avgScore >= 80 ? "border-green-500 text-green-600 dark:text-green-400" :
+                                      avgScore >= 60 ? "border-yellow-500 text-yellow-600 dark:text-yellow-400" :
+                                      "border-orange-500 text-orange-600 dark:text-orange-400"
+                                    )}
+                                    data-testid={`badge-traveloure-score-${variant.id}`}
+                                  >
+                                    <Sparkles className="h-3 w-3 mr-1" />
+                                    {avgScore} Traveloure Score
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                {sortedMetrics.slice(0, 4).map((metric) => {
+                                  const Icon = getMetricIcon(metric.metricKey);
+                                  return (
+                                    <div key={metric.id} className="flex items-center gap-2" data-testid={`card-metric-${metric.metricKey}`}>
+                                      <Icon className={cn("h-4 w-4", getMetricColor(metric))} />
+                                      <span className="text-xs truncate">{metric.description}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                          </div>
-                        </>
-                      )}
+                          </>
+                        );
+                      })()}
 
                       {variant.aiReasoning && (
                         <>
@@ -978,25 +1047,89 @@ export default function ItineraryComparisonPage() {
             <ScrollArea className="flex-1 px-6">
               <div className="py-4 space-y-6">
                 {/* Why it's better - Metrics */}
-                {modalVariant?.metrics && modalVariant.metrics.length > 0 && (
-                  <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-4 space-y-3">
-                    <h4 className="font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
-                      <TrendingUp className="h-4 w-4" />
-                      Why it's better
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      {modalVariant.metrics.map((metric) => {
-                        const Icon = getMetricIcon(metric.metricKey);
-                        return (
-                          <div key={metric.id} className="flex items-center gap-2">
-                            <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
-                            <span className="text-sm">{metric.description}</span>
+                {modalVariant?.metrics && modalVariant.metrics.length > 0 && (() => {
+                  // Separate core metrics from smart sequencing metrics
+                  const coreMetricKeys = ["total_cost", "average_rating", "travel_time", "free_time"];
+                  const sequencingMetricKeys = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score", "relaxation_minutes", "methodology_summary"];
+                  
+                  const coreMetrics = modalVariant.metrics.filter(m => coreMetricKeys.includes(m.metricKey));
+                  const sequencingMetrics = modalVariant.metrics.filter(m => sequencingMetricKeys.includes(m.metricKey));
+                  const otherMetrics = modalVariant.metrics.filter(m => !coreMetricKeys.includes(m.metricKey) && !sequencingMetricKeys.includes(m.metricKey));
+                  
+                  return (
+                    <div className="space-y-4">
+                      {/* Core Metrics */}
+                      {coreMetrics.length > 0 && (
+                        <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-4 space-y-3">
+                          <h4 className="font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
+                            <TrendingUp className="h-4 w-4" />
+                            Why it's better
+                          </h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {coreMetrics.map((metric) => {
+                              const Icon = getMetricIcon(metric.metricKey);
+                              return (
+                                <div key={metric.id} className="flex items-center gap-2" data-testid={`metric-${metric.metricKey}`}>
+                                  <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                                  <span className="text-sm">{metric.description}</span>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </div>
+                      )}
+                      
+                      {/* Smart Sequencing Metrics */}
+                      {sequencingMetrics.length > 0 && (
+                        <div className="bg-purple-50 dark:bg-purple-950/20 rounded-lg p-4 space-y-3">
+                          <h4 className="font-medium text-purple-800 dark:text-purple-200 flex items-center gap-2">
+                            <Sparkles className="h-4 w-4" />
+                            Smart Sequencing
+                          </h4>
+                          <div className="grid grid-cols-2 gap-3">
+                            {sequencingMetrics.map((metric) => {
+                              const Icon = getMetricIcon(metric.metricKey);
+                              const scoreValue = parseFloat(metric.value) || 0;
+                              const isScoreMetric = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score"].includes(metric.metricKey);
+                              return (
+                                <div key={metric.id} className="flex items-center gap-2" data-testid={`metric-${metric.metricKey}`}>
+                                  <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                                  <div className="flex-1 min-w-0">
+                                    {isScoreMetric ? (
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium">{Math.round(scoreValue)}</span>
+                                        <span className="text-xs text-muted-foreground truncate">{metric.description}</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-sm truncate">{metric.description}</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Other Metrics */}
+                      {otherMetrics.length > 0 && (
+                        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            {otherMetrics.map((metric) => {
+                              const Icon = getMetricIcon(metric.metricKey);
+                              return (
+                                <div key={metric.id} className="flex items-center gap-2" data-testid={`metric-${metric.metricKey}`}>
+                                  <Icon className={cn("h-4 w-4 shrink-0", getMetricColor(metric))} />
+                                  <span className="text-sm">{metric.description}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* AI Reasoning */}
                 {modalVariant?.aiReasoning && (

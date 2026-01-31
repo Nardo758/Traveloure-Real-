@@ -14,6 +14,12 @@ import {
   ProviderService,
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { 
+  reorderItinerary, 
+  calculateItineraryMetrics, 
+  SequencedActivity,
+  MethodologyNote 
+} from "./services/smart-sequencing.service";
 
 // Use Grok for faster optimization (xAI API with OpenAI-compatible interface)
 const GROK_MODEL = "grok-3";
@@ -127,6 +133,15 @@ export async function generateOptimizedItineraries(
       ? baselineItems.reduce((sum, item) => sum + (item.rating || 0), 0) / baselineItems.length
       : 0;
 
+    // Calculate baseline metrics without reordering (keep user's original order)
+    const baselineForMetrics = baselineItems.map(item => ({
+      serviceType: item.serviceType || 'sightseeing',
+      price: item.price,
+      duration: item.duration,
+      dayNumber: item.dayNumber || 1
+    }));
+    const baselineEnhancedMetrics = calculateItineraryMetrics(baselineForMetrics, travelers || 1);
+
     for (let i = 0; i < baselineItems.length; i++) {
       const item = baselineItems[i];
       await db.insert(itineraryVariantItems).values({
@@ -149,8 +164,96 @@ export async function generateOptimizedItineraries(
       .set({
         totalCost: baselineTotal.toString(),
         averageRating: baselineAvgRating.toFixed(2),
+        optimizationScore: Math.round((baselineEnhancedMetrics.balanceScore + baselineEnhancedMetrics.wellnessScore + baselineEnhancedMetrics.paceScore) / 3),
       })
       .where(eq(itineraryVariants.id, baselineVariant[0].id));
+
+    // Add baseline metrics for comparison
+    const baselineMetrics: InsertItineraryVariantMetric[] = [
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "total_cost",
+        metricLabel: "Total Cost",
+        value: baselineTotal.toString(),
+        unit: "USD",
+        betterIsLower: true,
+        description: `Your planned spending: $${baselineTotal.toFixed(0)}`,
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "average_rating",
+        metricLabel: "Average Rating",
+        value: baselineAvgRating.toFixed(2),
+        unit: "stars",
+        betterIsLower: false,
+        description: `Average rating: ${baselineAvgRating.toFixed(1)} stars`,
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "balance_score",
+        metricLabel: "Balance Score",
+        value: baselineEnhancedMetrics.balanceScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.balanceScore >= 80 
+          ? "Excellent mix of activity types" 
+          : baselineEnhancedMetrics.balanceScore >= 60
+          ? "Good variety of experiences"
+          : "Could benefit from more variety",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "wellness_score",
+        metricLabel: "Wellness Score",
+        value: baselineEnhancedMetrics.wellnessScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.wellnessScore >= 80
+          ? "Optimal balance of activity and relaxation"
+          : baselineEnhancedMetrics.wellnessScore >= 60
+          ? "Good recovery time included"
+          : "Consider adding relaxation activities",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "pace_score",
+        metricLabel: "Pace Score",
+        value: baselineEnhancedMetrics.paceScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.paceScore >= 80
+          ? "Well-paced itinerary"
+          : baselineEnhancedMetrics.paceScore >= 60
+          ? "Comfortable daily pace"
+          : "May feel rushed or sparse",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "diversity_score",
+        metricLabel: "Diversity Score",
+        value: baselineEnhancedMetrics.diversityScore.toString(),
+        unit: "points",
+        betterIsLower: false,
+        description: baselineEnhancedMetrics.diversityScore >= 80
+          ? "Rich variety of experience types"
+          : baselineEnhancedMetrics.diversityScore >= 60
+          ? "Good range of activities"
+          : "Consider diversifying activities",
+      },
+      {
+        variantId: baselineVariant[0].id,
+        metricKey: "relaxation_minutes",
+        metricLabel: "Relaxation Time",
+        value: baselineEnhancedMetrics.timeAllocation.relaxation.toString(),
+        unit: "minutes",
+        betterIsLower: false,
+        description: `${baselineEnhancedMetrics.timeAllocation.relaxation} minutes of wellness activities`,
+      },
+    ];
+
+    for (const metric of baselineMetrics) {
+      await db.insert(itineraryVariantMetrics).values(metric);
+    }
 
     const servicesList = availableServices.map((s) => ({
       id: s.id,
@@ -249,6 +352,52 @@ Respond with valid JSON in this exact format:
     for (let v = 0; v < aiResponse.variants.length; v++) {
       const variant = aiResponse.variants[v];
 
+      // Convert AI items to SequencedActivity format
+      const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
+        name: item.name,
+        serviceType: item.serviceType,
+        startTime: item.startTime,
+        endTime: item.endTime,
+        duration: item.duration,
+        price: item.price,
+        rating: item.rating,
+        location: item.location,
+        dayNumber: item.dayNumber,
+        timeSlot: item.timeSlot,
+        description: item.description,
+        travelTimeFromPrevious: item.travelTimeFromPrevious,
+        isReplacement: item.isReplacement,
+        replacementReason: item.replacementReason
+      }));
+
+      // Apply smart sequencing to reorder activities
+      const sequencingResult = reorderItinerary(activitiesForSequencing);
+      const reorderedItems = sequencingResult.reorderedItems;
+      const methodologyNotes = sequencingResult.allMethodologyNotes;
+      const sequencingScore = sequencingResult.overallScore;
+
+      // Calculate enhanced metrics
+      const enhancedMetrics = calculateItineraryMetrics(
+        reorderedItems.map(item => ({
+          serviceType: item.serviceType,
+          price: item.price,
+          duration: item.duration,
+          dayNumber: item.dayNumber
+        })),
+        travelers || 1
+      );
+
+      // Combine AI optimization score with sequencing score
+      const combinedOptimizationScore = Math.round(
+        (variant.metrics.optimizationScore * 0.6) + (sequencingScore * 0.4)
+      );
+
+      // Create enhanced reasoning with sequencing insights
+      const sequencingInsight = sequencingResult.appliedRulesCount > 0
+        ? ` Activities intelligently sequenced with ${sequencingResult.appliedRulesCount} wellness rules applied for optimal pacing and recovery.`
+        : '';
+      const enhancedReasoning = variant.reasoning + sequencingInsight;
+
       const [newVariant] = await db
         .insert(itineraryVariants)
         .values({
@@ -261,14 +410,20 @@ Respond with valid JSON in this exact format:
           totalTravelTime: variant.metrics.totalTravelTime,
           averageRating: variant.metrics.averageRating.toString(),
           freeTimeMinutes: variant.metrics.freeTimeMinutes,
-          optimizationScore: variant.metrics.optimizationScore,
-          aiReasoning: variant.reasoning,
+          optimizationScore: combinedOptimizationScore,
+          aiReasoning: enhancedReasoning,
           sortOrder: v + 1,
         })
         .returning();
 
-      for (let i = 0; i < variant.items.length; i++) {
-        const item = variant.items[i];
+      // Store reordered items with methodology notes in metadata
+      for (let i = 0; i < reorderedItems.length; i++) {
+        const item = reorderedItems[i];
+        // Find methodology notes for this activity
+        const activityNotes = methodologyNotes.filter(
+          n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
+        );
+        
         await db.insert(itineraryVariantItems).values({
           variantId: newVariant.id,
           dayNumber: item.dayNumber,
@@ -278,13 +433,14 @@ Respond with valid JSON in this exact format:
           name: item.name,
           description: item.description,
           serviceType: item.serviceType,
-          price: item.price.toString(),
-          rating: item.rating.toString(),
+          price: typeof item.price === 'number' ? item.price.toString() : item.price?.toString(),
+          rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
           location: item.location,
           duration: item.duration,
           travelTimeFromPrevious: item.travelTimeFromPrevious,
           isReplacement: item.isReplacement,
           replacementReason: item.replacementReason,
+          metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
           sortOrder: i,
         });
       }
@@ -349,12 +505,105 @@ Respond with valid JSON in this exact format:
           variantId: newVariant.id,
           metricKey: "optimization_score",
           metricLabel: "Optimization Score",
-          value: variant.metrics.optimizationScore.toString(),
+          value: combinedOptimizationScore.toString(),
           unit: "points",
           betterIsLower: false,
-          description: `Overall score: ${variant.metrics.optimizationScore}/100`,
+          description: `Overall score: ${combinedOptimizationScore}/100`,
+        },
+        // Smart Sequencing Metrics
+        {
+          variantId: newVariant.id,
+          metricKey: "balance_score",
+          metricLabel: "Balance Score",
+          value: enhancedMetrics.balanceScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.balanceScore >= 80 
+            ? "Excellent mix of activity types" 
+            : enhancedMetrics.balanceScore >= 60
+            ? "Good variety of experiences"
+            : "Could benefit from more variety",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "wellness_score",
+          metricLabel: "Wellness Score",
+          value: enhancedMetrics.wellnessScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.wellnessScore >= 80
+            ? "Optimal balance of activity and relaxation"
+            : enhancedMetrics.wellnessScore >= 60
+            ? "Good recovery time included"
+            : "Consider adding relaxation activities",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "pace_score",
+          metricLabel: "Pace Score",
+          value: enhancedMetrics.paceScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.paceScore >= 80
+            ? "Well-paced itinerary"
+            : enhancedMetrics.paceScore >= 60
+            ? "Comfortable daily pace"
+            : "May feel rushed or sparse",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "diversity_score",
+          metricLabel: "Diversity Score",
+          value: enhancedMetrics.diversityScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: enhancedMetrics.diversityScore >= 80
+            ? "Rich variety of experience types"
+            : enhancedMetrics.diversityScore >= 60
+            ? "Good range of activities"
+            : "Consider diversifying activities",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "sequencing_score",
+          metricLabel: "Sequencing Score",
+          value: sequencingScore.toString(),
+          unit: "points",
+          betterIsLower: false,
+          description: sequencingScore >= 80
+            ? "Optimally ordered for energy and wellness"
+            : sequencingScore >= 60
+            ? "Well-organized activity flow"
+            : "Standard activity ordering",
+        },
+        {
+          variantId: newVariant.id,
+          metricKey: "relaxation_minutes",
+          metricLabel: "Relaxation Time",
+          value: enhancedMetrics.timeAllocation.relaxation.toString(),
+          unit: "minutes",
+          betterIsLower: false,
+          description: `${enhancedMetrics.timeAllocation.relaxation} minutes of wellness activities`,
         },
       ];
+
+      // Store day-level and itinerary-level methodology notes as a summary metric
+      const dayNotes = methodologyNotes.filter(n => n.type === 'day');
+      const itineraryNotes = methodologyNotes.filter(n => n.type === 'itinerary');
+      
+      if (dayNotes.length > 0 || itineraryNotes.length > 0) {
+        metricsToInsert.push({
+          variantId: newVariant.id,
+          metricKey: "methodology_summary",
+          metricLabel: "Smart Sequencing Applied",
+          value: sequencingResult.appliedRulesCount.toString(),
+          unit: "rules",
+          betterIsLower: false,
+          description: dayNotes.length > 0 
+            ? dayNotes[0].note 
+            : (itineraryNotes.length > 0 ? itineraryNotes[0].note : "Activities sequenced for optimal flow"),
+        });
+      }
 
       for (const metric of metricsToInsert) {
         await db.insert(itineraryVariantMetrics).values(metric);
