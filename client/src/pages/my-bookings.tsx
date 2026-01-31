@@ -254,6 +254,14 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   Review
                 </Button>
               )}
+              {booking.tripId && (
+                <Button variant="outline" size="sm" asChild data-testid={`button-view-itinerary-${booking.id}`}>
+                  <Link href={`/my-itinerary/${booking.tripId}`}>
+                    <Package className="w-4 h-4 mr-1" />
+                    View Itinerary
+                  </Link>
+                </Button>
+              )}
               {booking.contractId && (
                 <Button variant="outline" size="sm" asChild data-testid={`button-view-contract-${booking.id}`}>
                   <Link href={`/contracts/${booking.contractId}`}>
