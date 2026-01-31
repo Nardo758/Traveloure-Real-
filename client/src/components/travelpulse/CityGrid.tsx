@@ -109,7 +109,8 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
   const handlePlanNow = (e: React.MouseEvent) => {
     e.stopPropagation();
     setPopoverOpen(false);
-    navigate(`/experiences?destination=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
+    // Navigate to AI Quick Start Itinerary page with city context
+    navigate(`/quick-start?destination=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
   };
 
   const handleAddToTrip = (e: React.MouseEvent) => {
