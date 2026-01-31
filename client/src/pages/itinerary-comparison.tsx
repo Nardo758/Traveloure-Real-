@@ -917,34 +917,6 @@ export default function ItineraryComparisonPage() {
               </Card>
             )}
 
-            <Card className="mt-6 border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
-              <CardContent className="p-6">
-                <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
-                    <Users className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-amber-800 dark:text-amber-200 mb-1">
-                      Let an Expert Book Everything
-                    </h3>
-                    <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
-                      Our travel experts can handle all bookings for your selected plan - hotels, activities, 
-                      ground transport, and event tickets. They'll coordinate everything and confirm details with you.
-                    </p>
-                    <Button 
-                      variant="outline"
-                      className="border-amber-300 hover:bg-amber-100 dark:border-amber-700 dark:hover:bg-amber-900/50"
-                      onClick={() => setShowExpertDialog(true)}
-                      data-testid="button-expert-booking"
-                    >
-                      <Users className="mr-2 h-4 w-4" />
-                      Request Expert Booking
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
           </>
         )}
 
