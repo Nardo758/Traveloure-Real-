@@ -43,6 +43,7 @@ import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, crea
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import instagramRoutes from "./routes/instagram";
 import bookingsRoutes from "./routes/bookings";
+import bookingActionsRoutes from "./routes/booking-actions";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -98,6 +99,9 @@ export async function registerRoutes(
 
   // Bookings API routes - Stripe payments, availability, pricing
   app.use("/api/bookings", bookingsRoutes);
+
+  // Booking Actions API routes - Expert Review, Save, Share
+  app.use("/api", bookingActionsRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
