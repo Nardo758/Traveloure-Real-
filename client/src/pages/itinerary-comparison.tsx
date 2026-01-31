@@ -467,144 +467,68 @@ export default function ItineraryComparisonPage() {
         {hasVariants && (
           <>
             {destination && (
-              <Card className="mb-6 border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20 dark:border-purple-800">
-                <CardHeader className="pb-3">
+              <Card className="mb-4 border-purple-200/50 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/10 dark:to-indigo-950/10 dark:border-purple-800/50">
+                <CardContent className="py-3 px-4">
                   <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center">
+                    <div className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shrink-0">
                       {travelPulseIntelligenceLoading ? (
-                        <Loader2 className="h-4 w-4 text-purple-600 dark:text-purple-400 animate-spin" />
+                        <Loader2 className="h-3 w-3 text-purple-600 dark:text-purple-400 animate-spin" />
                       ) : (
-                        <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                        <Sparkles className="h-3 w-3 text-purple-600 dark:text-purple-400" />
                       )}
                     </div>
-                    <div>
-                      <CardTitle className="text-base text-purple-800 dark:text-purple-200">
-                        AI-Powered Destination Intelligence
-                      </CardTitle>
-                      <CardDescription className="text-purple-600 dark:text-purple-400">
-                        Real-time insights for {destination} powered by xAI Grok
-                      </CardDescription>
-                    </div>
+                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                      Destination Intelligence
+                    </span>
+                    <span className="text-xs text-purple-600/70 dark:text-purple-400/70">
+                      {destination}
+                    </span>
+                    {travelPulseError && !travelPulseLoading && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        Intelligence unavailable
+                      </span>
+                    )}
                   </div>
-                </CardHeader>
-                <CardContent>
                   {travelPulseIntelligenceLoading && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="flex gap-3 mt-2 overflow-x-auto">
                       {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3 animate-pulse">
-                          <div className="h-4 w-20 bg-purple-200/50 dark:bg-purple-800/30 rounded mb-2" />
-                          <div className="h-6 w-12 bg-purple-200/50 dark:bg-purple-800/30 rounded" />
+                        <div key={i} className="bg-white/60 dark:bg-gray-900/40 rounded px-2 py-1 animate-pulse shrink-0">
+                          <div className="h-3 w-12 bg-purple-200/50 dark:bg-purple-800/30 rounded" />
                         </div>
                       ))}
                     </div>
                   )}
-                  {travelPulseError && !travelPulseLoading && (
-                    <div className="text-sm text-muted-foreground text-center py-4">
-                      Unable to load destination intelligence. Comparison data is still available below.
-                    </div>
-                  )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {travelPulseData?.city?.pulseScore && (
-                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Zap className="h-4 w-4 text-amber-500" />
-                          <span className="text-xs font-medium text-muted-foreground">Pulse Score</span>
-                        </div>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                            {travelPulseData.city.pulseScore}
-                          </span>
-                          <span className="text-xs text-muted-foreground">/100</span>
-                        </div>
+                  {travelPulseData?.city && (
+                    <div className="mt-3 pt-3 border-t border-purple-200/50 dark:border-purple-800/50">
+                      <div className="flex flex-wrap gap-3 text-xs">
+                        {travelPulseData.city.pulseScore && (
+                          <div className="flex items-center gap-1">
+                            <Zap className="h-3 w-3 text-amber-500" />
+                            <span className="text-muted-foreground">Pulse:</span>
+                            <span className="font-medium text-purple-700 dark:text-purple-300">{travelPulseData.city.pulseScore}/100</span>
+                          </div>
+                        )}
+                        {travelPulseData.city.trendingScore && (
+                          <div className="flex items-center gap-1">
+                            <TrendingUp className="h-3 w-3 text-green-500" />
+                            <span className="text-muted-foreground">Trending:</span>
+                            <span className="font-medium text-green-600 dark:text-green-400">{travelPulseData.city.trendingScore}/100</span>
+                          </div>
+                        )}
+                        {travelPulseData.city.crowdLevel && (
+                          <div className="flex items-center gap-1">
+                            <Users className="h-3 w-3 text-blue-500" />
+                            <span className="text-muted-foreground">Crowds:</span>
+                            <span className="font-medium capitalize text-blue-600 dark:text-blue-400">{travelPulseData.city.crowdLevel}</span>
+                          </div>
+                        )}
+                        {travelPulseData.city.aiBudgetEstimate && (
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3 text-emerald-500" />
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400 truncate max-w-32">{travelPulseData.city.aiBudgetEstimate}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {travelPulseData?.city?.trendingScore && (
-                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <TrendingUp className="h-4 w-4 text-green-500" />
-                          <span className="text-xs font-medium text-muted-foreground">Trending</span>
-                        </div>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-                            {travelPulseData.city.trendingScore}
-                          </span>
-                          <span className="text-xs text-muted-foreground">/100</span>
-                        </div>
-                      </div>
-                    )}
-                    {travelPulseData?.city?.crowdLevel && (
-                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Users className="h-4 w-4 text-blue-500" />
-                          <span className="text-xs font-medium text-muted-foreground">Crowd Level</span>
-                        </div>
-                        <span className="text-lg font-semibold capitalize text-blue-600 dark:text-blue-400">
-                          {travelPulseData.city.crowdLevel}
-                        </span>
-                      </div>
-                    )}
-                    {travelPulseData?.city?.aiBudgetEstimate && (
-                      <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <DollarSign className="h-4 w-4 text-emerald-500" />
-                          <span className="text-xs font-medium text-muted-foreground">Budget Estimate</span>
-                        </div>
-                        <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400 line-clamp-2">
-                          {travelPulseData.city.aiBudgetEstimate}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {(travelPulseData?.city?.aiTravelTips || travelPulseData?.city?.aiLocalInsights) && (
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {travelPulseData?.city?.aiTravelTips && (
-                        <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                          <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
-                            <Sparkles className="h-3 w-3" /> Travel Tips
-                          </h4>
-                          <p className="text-xs text-muted-foreground line-clamp-3">
-                            {travelPulseData.city.aiTravelTips}
-                          </p>
-                        </div>
-                      )}
-                      {travelPulseData?.city?.aiLocalInsights && (
-                        <div className="bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                          <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
-                            <MapPin className="h-3 w-3" /> Local Insights
-                          </h4>
-                          <p className="text-xs text-muted-foreground line-clamp-3">
-                            {travelPulseData.city.aiLocalInsights}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {trendingData?.experiences && trendingData.experiences.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
-                        <TrendingUp className="h-3 w-3" /> Trending Experiences
-                      </h4>
-                      <div className="flex flex-wrap gap-2">
-                        {trendingData.experiences.slice(0, 5).map((exp) => (
-                          <Badge key={exp.id} variant="secondary" className="bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300">
-                            {exp.name}
-                            {exp.trendingScore > 80 && <Zap className="h-3 w-3 ml-1 text-amber-500" />}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {travelPulseData?.city?.aiMustSeeAttractions && (
-                    <div className="mt-4 bg-white/60 dark:bg-gray-900/40 rounded-lg p-3">
-                      <h4 className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
-                        <Star className="h-3 w-3" /> Must-See Attractions
-                      </h4>
-                      <p className="text-xs text-muted-foreground">
-                        {travelPulseData.city.aiMustSeeAttractions}
-                      </p>
                     </div>
                   )}
                 </CardContent>
