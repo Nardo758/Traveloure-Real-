@@ -8,7 +8,7 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-12-18.acacia',
+  apiVersion: '2025-08-27.basil',
 });
 
 class StripePaymentService {
@@ -97,6 +97,13 @@ class StripePaymentService {
 
         case 'charge.refunded':
           await this.handleRefund(event.data.object as Stripe.Charge);
+          break;
+
+        case 'checkout.session.completed':
+          const session = event.data.object as Stripe.Checkout.Session;
+          if (session.metadata?.type === 'expert_service') {
+            await this.handleExpertServicePayment(session);
+          }
           break;
 
         default:
@@ -292,6 +299,99 @@ class StripePaymentService {
     } catch (error: any) {
       console.error('Error retrieving payment intent:', error);
       throw new Error(`Payment intent retrieval failed: ${error.message}`);
+    }
+  }
+  /**
+   * Create Stripe Checkout Session for Expert Review Service
+   */
+  async createExpertServiceCheckout(
+    userId: string,
+    userEmail: string,
+    variantId: number,
+    comparisonId: number,
+    destination: string,
+    serviceType: 'review' | 'review_and_book' | 'full_concierge',
+    amount: number,
+    notes: string,
+    successUrl: string,
+    cancelUrl: string
+  ) {
+    try {
+      const serviceTitles = {
+        review: 'Review Only',
+        review_and_book: 'Review & Book',
+        full_concierge: 'Full Concierge',
+      };
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `Expert ${serviceTitles[serviceType]} - ${destination}`,
+                description: `Travel expert service for your ${destination} trip`,
+              },
+              unit_amount: Math.round(amount * 100), // Convert to cents
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          type: 'expert_service',
+          userId,
+          variantId: variantId.toString(),
+          comparisonId: comparisonId.toString(),
+          destination,
+          serviceType,
+          notes: notes.substring(0, 450), // Stripe metadata limit
+        },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+
+      return {
+        sessionId: session.id,
+        url: session.url,
+      };
+    } catch (error: any) {
+      console.error('Stripe checkout session error:', error);
+      throw new Error(`Checkout session creation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle successful expert service payment (called from webhook)
+   */
+  async handleExpertServicePayment(session: Stripe.Checkout.Session) {
+    try {
+      const { userId, variantId, comparisonId, destination, serviceType, notes } = session.metadata || {};
+      
+      if (!userId || !variantId || !comparisonId) {
+        console.error('Missing metadata in expert service session');
+        return;
+      }
+
+      // Create the expert request now that payment is complete
+      await db.execute(sql`
+        INSERT INTO expert_requests (
+          user_id, variant_id, comparison_id, destination,
+          request_type, expert_fee, notes, status, payment_status,
+          stripe_session_id, created_at
+        ) VALUES (
+          ${userId}, ${parseInt(variantId)}, ${parseInt(comparisonId)}, ${destination},
+          ${serviceType}, ${(session.amount_total || 0) / 100}, ${notes || ''}, 'pending', 'paid',
+          ${session.id}, NOW()
+        )
+      `);
+
+      console.log(`Expert service payment completed for user ${userId}`);
+    } catch (error: any) {
+      console.error('Error handling expert service payment:', error);
+      throw error;
     }
   }
 }
