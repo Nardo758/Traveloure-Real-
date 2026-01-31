@@ -1638,16 +1638,20 @@ export default function ExperienceTemplatePage() {
                 <span className="text-muted-foreground">|</span>
                 <span data-testid="text-cart-total">${cartTotal.toLocaleString()}</span>
               </Button>
-              {/* AI Generate Itinerary Button - Opens Grok-powered AI Itinerary Builder */}
+              {/* Generate Itinerary Button - Creates comparison directly */}
               <Button
                 size="sm"
-                onClick={openAiItineraryBuilder}
-                disabled={!canGenerateItinerary}
+                onClick={createComparison}
+                disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
                 className="gap-1.5 bg-[#FF385C]"
                 data-testid="button-generate-ribbon"
               >
-                <Wand2 className="w-4 h-4" />
-                Generate Itinerary
+                {creatingComparison ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                {creatingComparison ? "Creating..." : "Generate Itinerary"}
               </Button>
             </div>
           </div>
@@ -2870,13 +2874,17 @@ export default function ExperienceTemplatePage() {
               {/* Mobile Generate Itinerary Button */}
               <Button
                 size="sm"
-                onClick={openAiItineraryBuilder}
-                disabled={!canGenerateItinerary}
+                onClick={createComparison}
+                disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
                 className="gap-1 px-2 bg-[#FF385C]"
                 data-testid="button-generate-ribbon-mobile"
               >
-                <Wand2 className="w-3 h-3" />
-                Generate
+                {creatingComparison ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
+                )}
+                {creatingComparison ? "..." : "Generate"}
               </Button>
             </div>
           </div>
