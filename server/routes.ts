@@ -42,6 +42,7 @@ import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import instagramRoutes from "./routes/instagram";
+import bookingsRoutes from "./routes/bookings";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -94,6 +95,9 @@ export async function registerRoutes(
 
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);
+
+  // Bookings API routes - Stripe payments, availability, pricing
+  app.use("/api/bookings", bookingsRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
