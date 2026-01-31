@@ -115,6 +115,7 @@ import BlogPage from "@/pages/blog";
 import PressPage from "@/pages/press";
 import HelpPage from "@/pages/help";
 import ExpertDetailPage from "@/pages/expert-detail";
+import QuickStartItinerary from "@/pages/quick-start-itinerary";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest }: any) {
@@ -259,6 +260,9 @@ function Router() {
       </Route>
       <Route path="/hidden-gems">
         <Layout><HiddenGemsPage /></Layout>
+      </Route>
+      <Route path="/quick-start">
+        {() => <Layout><ProtectedRoute component={QuickStartItinerary} /></Layout>}
       </Route>
       <Route path="/payment">
         <PaymentPage />
