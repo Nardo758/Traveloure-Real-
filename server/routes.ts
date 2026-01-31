@@ -6405,34 +6405,45 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         }));
       });
 
-      // Get available services for optimization
+      // Get available services for optimization (reduced to 30 for faster AI processing)
       const availableServices = await db
         .select()
         .from(providerServices)
         .where(eq(providerServices.status, 'active'))
-        .limit(100);
+        .limit(30);
 
       // Import optimizer
       const { generateOptimizedItineraries } = await import('./itinerary-optimizer');
 
-      // Trigger optimization in background
-      generateOptimizedItineraries(
-        comparison.id,
-        userId,
-        baselineItems,
-        availableServices,
-        destination,
-        dates.start,
-        dates.end,
-        budget,
-        travelers
-      ).catch(err => {
-        console.error('Optimization error:', err);
-        db.update(itineraryComparisons)
-          .set({ status: 'failed' })
-          .where(eq(itineraryComparisons.id, comparison.id))
-          .catch(console.error);
-      });
+      // Only optimize single-destination trips (multi-city is too complex)
+      const isMultiCity = destination.includes(';') || destination.includes(',') && destination.split(',').length > 2;
+      
+      if (!isMultiCity) {
+        // Trigger optimization in background for single-destination trips
+        generateOptimizedItineraries(
+          comparison.id,
+          userId,
+          baselineItems,
+          availableServices,
+          destination,
+          dates.start,
+          dates.end,
+          budget,
+          travelers
+        ).catch(err => {
+          console.error('Optimization error:', err);
+          db.update(itineraryComparisons)
+            .set({ status: 'failed' })
+            .where(eq(itineraryComparisons.id, comparison.id))
+            .catch(console.error);
+        });
+      } else {
+        console.log('Skipping optimization for multi-city trip:', destination);
+        // Mark comparison as complete (no optimization for multi-city)
+        await db.update(itineraryComparisons)
+          .set({ status: 'complete' })
+          .where(eq(itineraryComparisons.id, comparison.id));
+      }
 
       // Return comparison ID immediately (include 'id' for backwards compatibility)
       res.json({
