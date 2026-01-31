@@ -7,6 +7,15 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
+- **AI Quick Start Itinerary (Option 2)**: "Plan Now with AI" on TravelPulse city cards now generates an AI-powered itinerary using city intelligence (hidden gems, events, local insights). Features:
+  - Auto-fetches TravelPulse data to inform AI generation
+  - Day-by-day itinerary with activities, meals, transportation
+  - "Customize This Trip" navigates to full experience builder
+  - "Send to Expert" creates a trip record and connects users with local experts for refinement and bookable services
+  - Form validation for dates and destination
+- **Multi-City Trip Queue (Option 3)**: "Add to Multi-City Trip" queues destinations for batch planning. A floating indicator shows queued destinations with "Plan Trip with AI" functionality that pre-fills the experience template with all selected cities.
+- **Content Creator Studio**: Complete content creation platform for travel experts with 10 content types (Travel Guide, Review, Top List, Photo Gallery, Video, Itinerary, Food Guide, Hotel Guide, Tips & Tricks, Travel Story). Features AI-powered title/description generation, hashtag suggestions, and destination intelligence.
+- **Instagram Business API Integration**: Full OAuth flow for Instagram Business/Creator accounts, single and carousel image publishing, AI-generated hashtags, 24-hour publishing limit tracking (100 posts/day), accessible via Content Studio.
 - **Landing Page Redesign**: Complete visual overhaul with Framer Motion animations, improved hero section with gradient text, modernized experience templates, updated stats/testimonials/FAQ sections
 - **TrendingCities Component**: New section showing popular travel destinations with live updates toggle, category tags, pricing, traveler counts, and actionable travel tips
 - **Design System Compliance**: Removed custom hover classes from Button components (relying on built-in behavior), added comprehensive data-testid attributes for testing, proper hover-elevate utility usage for non-button elements

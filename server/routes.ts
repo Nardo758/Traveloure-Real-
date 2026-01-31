@@ -41,6 +41,7 @@ import { opportunityEngineService } from "./services/opportunity-engine.service"
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
+import instagramRoutes from "./routes/instagram";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -90,6 +91,9 @@ export async function registerRoutes(
   
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);
+
+  // Instagram API routes
+  app.use("/api/instagram", instagramRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
@@ -1537,6 +1541,31 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       return res.status(404).json({ message: "Expert not found" });
     }
     res.json(expert);
+  });
+
+  // Get services offered by a specific expert (public)
+  app.get("/api/experts/:id/services", async (req, res) => {
+    try {
+      const expertId = req.params.id;
+      const services = await storage.getExpertSelectedServices(expertId);
+      res.json(services);
+    } catch (err) {
+      console.error("Error fetching expert services:", err);
+      res.json([]);
+    }
+  });
+
+  // Get reviews for a specific expert (public)
+  app.get("/api/experts/:id/reviews", async (req, res) => {
+    try {
+      const expertId = req.params.id;
+      // For now, return empty array - can be implemented with actual review system
+      // TODO: Implement storage.getExpertReviews(expertId)
+      res.json([]);
+    } catch (err) {
+      console.error("Error fetching expert reviews:", err);
+      res.json([]);
+    }
   });
 
   // Get current expert's selected services (authenticated)
@@ -5712,6 +5741,111 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.json({ ...result, id: saved.id });
     } catch (error: any) {
       console.error("Grok autonomous itinerary error:", error);
+      res.status(500).json({ message: error.message || "Itinerary generation failed" });
+    }
+  });
+
+  // AI Quick Start Itinerary - Fetches city intelligence and generates itinerary
+  const quickStartItinerarySchema = z.object({
+    destination: z.string().min(1),
+    country: z.string().optional(),
+    dates: z.object({
+      start: z.string(),
+      end: z.string(),
+    }).optional(),
+    travelers: z.number().min(1).default(2),
+    interests: z.array(z.string()).default([]),
+    pacePreference: z.enum(["relaxed", "moderate", "packed"]).default("moderate"),
+  });
+
+  app.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = quickStartItinerarySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
+      }
+
+      const userId = (req.user as any).claims.sub;
+      const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
+
+      // Fetch city intelligence from TravelPulse
+      const cityIntelligence = await travelPulseService.getCityIntelligence(destination);
+      
+      // Build TravelPulse context for the AI
+      let travelPulseContext: any = undefined;
+      
+      if (cityIntelligence) {
+        const city = cityIntelligence.city;
+        travelPulseContext = {
+          pulseScore: city.pulseScore,
+          trendingScore: city.trendingScore,
+          crowdLevel: city.crowdLevel,
+          aiBudgetEstimate: city.aiBudgetEstimate,
+          aiTravelTips: city.aiTravelTips,
+          aiLocalInsights: city.aiLocalInsights,
+          aiMustSeeAttractions: city.aiMustSeeAttractions,
+          aiSeasonalHighlights: city.aiSeasonalHighlights,
+          aiUpcomingEvents: city.aiUpcomingEvents,
+          hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
+            name: g.name,
+            description: g.description,
+            gemScore: g.gemScore,
+          })),
+          happeningNow: cityIntelligence.happeningNow?.slice(0, 5).map((h: any) => ({
+            name: h.name,
+            type: h.type,
+          })),
+        };
+      }
+
+      // Generate default dates if not provided (3-day trip starting tomorrow)
+      const startDate = dates?.start || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const endDate = dates?.end || new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Generate itinerary with city intelligence context
+      const itineraryRequest = {
+        destination: country ? `${destination}, ${country}` : destination,
+        dates: { start: startDate, end: endDate },
+        travelers,
+        interests: interests.length > 0 ? interests : ["culture", "food", "nature"],
+        pacePreference,
+        travelPulseContext,
+      };
+
+      const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
+        userId,
+      });
+
+      // Store generated itinerary
+      const [saved] = await db.insert(aiGeneratedItineraries).values({
+        userId,
+        destination: itineraryRequest.destination,
+        startDate: itineraryRequest.dates.start,
+        endDate: itineraryRequest.dates.end,
+        title: result.title,
+        summary: result.summary,
+        totalEstimatedCost: result.totalEstimatedCost?.toString(),
+        itineraryData: result.dailyItinerary,
+        accommodationSuggestions: result.accommodationSuggestions || [],
+        packingList: result.packingList || [],
+        travelTips: result.travelTips || [],
+        provider: "grok",
+        status: "generated",
+      }).returning();
+
+      res.json({
+        ...result,
+        id: saved.id,
+        cityIntelligence: cityIntelligence ? {
+          pulseScore: cityIntelligence.city?.pulseScore,
+          trendingScore: cityIntelligence.city?.trendingScore,
+          hiddenGemsCount: cityIntelligence.hiddenGems?.length || 0,
+          happeningNowCount: cityIntelligence.happeningNow?.length || 0,
+          alertsCount: cityIntelligence.alerts?.length || 0,
+        } : null,
+      });
+    } catch (error: any) {
+      console.error("Quick start itinerary error:", error);
       res.status(500).json({ message: error.message || "Itinerary generation failed" });
     }
   });

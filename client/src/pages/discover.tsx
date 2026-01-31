@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -77,6 +77,7 @@ import { cn } from "@/lib/utils";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
+import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 
 type ServiceCategory = {
   id: string;
@@ -336,119 +337,228 @@ function ServiceCard({
   // Determine expert badges based on rating and review count
   const isTopExpert = rating >= 4.8 && reviewCount >= 5;
   const isVerified = reviewCount >= 3;
-  const isRising = rating >= 4.5 && reviewCount < 5 && reviewCount >= 1;
+  const isHot = rating >= 4.7 && reviewCount >= 10;
+  
+  // Generate mock image based on category
+  const getCategoryImage = (categorySlug: string) => {
+    const imageMap: Record<string, string> = {
+      "photography-videography": "https://images.unsplash.com/photo-1452587925148-ce544e77e70d?w=600&q=80",
+      "transportation-logistics": "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=600&q=80",
+      "food-culinary": "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=80",
+      "childcare-family": "https://images.unsplash.com/photo-1476703993599-0035a21b17a9?w=600&q=80",
+      "tours-experiences": "https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=600&q=80",
+      "personal-assistance": "https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=600&q=80",
+      "health-wellness": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=600&q=80",
+      "beauty-styling": "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=600&q=80",
+      "pets-animals": "https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=600&q=80",
+      "events-celebrations": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&q=80",
+      "technology-connectivity": "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=600&q=80",
+      "language-translation": "https://images.unsplash.com/photo-1523289333742-be1143f6b766?w=600&q=80",
+    };
+    return imageMap[categorySlug] || "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80";
+  };
+
+  const getStatusColor = (rating: number) => {
+    if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
+    if (rating >= 4.0) return { text: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
+    return { text: "text-green-500 dark:text-green-400", bg: "bg-green-50 dark:bg-green-900/20" };
+  };
+
+  const statusColor = getStatusColor(rating);
+  const heatScore = Math.round(rating * 20);
 
   return (
-    <Card className="hover-elevate h-full" data-testid={`card-service-${service.id}`}>
-      <CardContent className="p-4">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="group"
+    >
+      <div 
+        className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-500 border border-border h-full flex flex-col"
+        data-testid={`card-service-${service.id}`}
+      >
+        {/* Image Header with Overlay */}
         <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
-          <div className="flex gap-4 cursor-pointer">
-            <div className="relative w-16 h-16 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
-              <Icon className="w-8 h-8 text-muted-foreground" />
-              {isTopExpert && (
-                <div 
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow"
-                  data-testid={`icon-top-expert-${service.id}`}
+          <div className="relative h-48 overflow-hidden cursor-pointer">
+            <img
+              src={getCategoryImage(category?.slug || "")}
+              alt={service.serviceName}
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+            
+            {/* Heat Score Badge - Top Right */}
+            <div 
+              className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
+              data-testid={`badge-heat-score-${service.id}`}
+            >
+              <span className={cn(
+                "text-lg font-bold",
+                heatScore >= 90 ? "text-[#FF385C]" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+              )}>
+                {heatScore}
+              </span>
+            </div>
+            
+            {/* Hot/Trending Badge - Top Left */}
+            <div className="absolute top-3 left-3 flex items-center gap-2">
+              {isHot ? (
+                <span 
+                  className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                  data-testid={`badge-hot-${service.id}`}
                 >
-                  <Award className="w-3 h-3 text-primary-foreground" />
-                </div>
+                  <Zap className="w-3 h-3 fill-white" />
+                  Hot
+                </span>
+              ) : isTopExpert ? (
+                <span 
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 dark:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                  data-testid={`badge-top-expert-${service.id}`}
+                >
+                  <Trophy className="w-3 h-3" />
+                  Top Expert
+                </span>
+              ) : null}
+              {reviewCount > 0 && (
+                <span 
+                  className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1 shadow-sm"
+                  data-testid={`badge-reviews-${service.id}`}
+                >
+                  <Users className="w-3 h-3" />
+                  {reviewCount}
+                </span>
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
+
+            {/* Service Title & Icon */}
+            <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3">
+              <div className={cn(
+                "w-12 h-12 rounded-xl flex items-center justify-center shadow-lg",
+                category?.slug ? categoryIcons[category.slug] ? "bg-primary" : "bg-muted" : "bg-muted"
+              )}>
+                <Icon className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
                 <h3 
-                  className="font-semibold text-foreground truncate"
+                  className="text-xl font-bold text-white line-clamp-1"
                   data-testid={`text-service-name-${service.id}`}
                 >
                   {service.serviceName}
                 </h3>
-                {isVerified && (
-                  <CheckCircle 
-                    className="w-4 h-4 text-primary flex-shrink-0" 
-                    data-testid={`icon-verified-${service.id}`}
-                  />
-                )}
-              </div>
-              <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                {description}
-              </p>
-              <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground flex-wrap">
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2 text-white/80 text-sm">
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
+                  {isVerified && (
+                    <CheckCircle 
+                      className="w-3 h-3" 
+                      data-testid={`icon-verified-${service.id}`}
+                    />
+                  )}
                 </div>
-                {service.deliveryTimeframe && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    <span>{service.deliveryTimeframe}</span>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         </Link>
-        <div className="flex items-center justify-between mt-4 pt-3 border-t gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            {isTopExpert && (
-              <Badge variant="default" className="text-xs" data-testid={`badge-top-expert-${service.id}`}>
-                <Trophy className="w-3 h-3 mr-1" data-testid={`icon-trophy-${service.id}`} />
-                Top Expert
-              </Badge>
-            )}
-            {isRising && !isTopExpert && (
-              <Badge variant="default" className="text-xs" data-testid={`badge-rising-${service.id}`}>
-                <TrendingUp className="w-3 h-3 mr-1" data-testid={`icon-trending-${service.id}`} />
-                Rising Star
-              </Badge>
-            )}
+
+        {/* Card Content */}
+        <div className="p-4 flex-1 flex flex-col">
+          {/* Description */}
+          <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
+            {description}
+          </p>
+
+          {/* Category Tags */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {category && (
-              <Badge variant="secondary" className="text-xs" data-testid={`badge-category-${service.id}`}>
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
                 {category.name}
-              </Badge>
+              </span>
+            )}
+            {service.deliveryTimeframe && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {service.deliveryTimeframe}
+              </span>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-              <span className="font-medium" data-testid={`text-rating-${service.id}`}>
-                {rating.toFixed(1)}
-              </span>
-              <span className="text-muted-foreground text-sm">
-                ({reviewCount})
+
+          {/* Price and Status */}
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-foreground">${price.toFixed(0)}</span>
+              <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                per service
               </span>
             </div>
-            <div className="flex items-center gap-1 font-semibold">
-              <DollarSign className="w-4 h-4" />
-              <span data-testid={`text-price-${service.id}`}>${price.toFixed(0)}</span>
-            </div>
+            <span className={cn(
+              "text-xs font-medium px-2 py-0.5 rounded-full",
+              statusColor.text,
+              statusColor.bg
+            )}>
+              {rating >= 4.5 ? "Busy" : rating >= 4.0 ? "Moderate" : "Available"}
+            </span>
           </div>
+
+          {/* Service Tip */}
+          {rating >= 4.5 && (
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 mb-3">
+              <div className="flex items-start gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 line-clamp-2">
+                  {isTopExpert 
+                    ? "Highly rated expert with proven track record and excellent reviews."
+                    : "Quality service provider with consistent positive feedback from clients."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Stats Row */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border mt-auto" data-testid={`stats-footer-${service.id}`}>
+            <div className="flex items-center gap-1" data-testid={`stat-rating-${service.id}`}>
+              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+              <span className="font-medium">{rating.toFixed(1)}</span>
+            </div>
+            <div className="flex items-center gap-1" data-testid={`stat-reviews-${service.id}`}>
+              <Users className="w-3 h-3" />
+              {reviewCount}
+            </div>
+            {service.deliveryMethod && (
+              <div className="flex items-center gap-1">
+                <Compass className="w-3 h-3" />
+                {service.deliveryMethod}
+              </div>
+            )}
+          </div>
+
+          {/* Add to Cart Button */}
+          {onAddToCart && (
+            <Button
+              size="sm"
+              className={cn(
+                "w-full mt-3",
+                isAdded ? "bg-green-600 hover:bg-green-700" : ""
+              )}
+              onClick={() => onAddToCart(service.id)}
+              disabled={isAddingToCart || isAdded}
+              data-testid={`button-add-to-cart-${service.id}`}
+            >
+              {isAdded ? (
+                <>
+                  <Check className="w-4 h-4 mr-2" />
+                  Added
+                </>
+              ) : (
+                <>
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  {isAddingToCart ? "Adding..." : "Add to Cart"}
+                </>
+              )}
+            </Button>
+          )}
         </div>
-        {onAddToCart && (
-          <Button
-            size="sm"
-            className={cn(
-              "w-full mt-3",
-              isAdded ? "bg-green-600 hover:bg-green-700" : ""
-            )}
-            onClick={() => onAddToCart(service.id)}
-            disabled={isAddingToCart || isAdded}
-            data-testid={`button-add-to-cart-${service.id}`}
-          >
-            {isAdded ? (
-              <>
-                <Check className="w-4 h-4 mr-2" />
-                Added
-              </>
-            ) : (
-              <>
-                <ShoppingCart className="w-4 h-4 mr-2" />
-                {isAddingToCart ? "Adding..." : "Add to Cart"}
-              </>
-            )}
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+      </div>
+    </motion.div>
   );
 }
 
@@ -552,11 +662,25 @@ export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  
+  // Parse URL params for expert handoff context
+  const urlParams = new URLSearchParams(window.location.search);
+  const showExperts = urlParams.get("showExperts") === "true";
+  const expertHandoffDestination = urlParams.get("destination") || "";
+  const expertHandoffCountry = urlParams.get("country") || "";
+  const expertHandoffExperienceType = urlParams.get("experienceType") || "";
+  const expertHandoffTripId = urlParams.get("tripId") || "";
+  const expertHandoffStartDate = urlParams.get("startDate") || "";
+  const expertHandoffEndDate = urlParams.get("endDate") || "";
+  const isFromQuickStart = urlParams.get("source") === "quick-start";
+  
+  // Ref for experts section to scroll to
+  const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
   const [minPrice, setMinPrice] = useState(0);
@@ -574,6 +698,9 @@ export default function DiscoverPage() {
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
+  
+  // Expert handoff state
+  const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
 
   // Debounce search query
   useEffect(() => {
@@ -628,6 +755,29 @@ export default function DiscoverPage() {
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
   });
+  
+  // Experts query for handoff - fetch experts filtered by destination/experience type
+  const expertsApiUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (expertHandoffDestination) params.set("location", expertHandoffDestination);
+    if (expertHandoffExperienceType) params.set("experienceType", expertHandoffExperienceType);
+    const queryStr = params.toString();
+    return queryStr ? `/api/experts?${queryStr}` : "/api/experts";
+  }, [expertHandoffDestination, expertHandoffExperienceType]);
+  
+  const { data: matchedExperts = [], isLoading: expertsLoading } = useQuery<any[]>({
+    queryKey: [expertsApiUrl],
+    enabled: showExperts,
+  });
+  
+  // Auto-scroll to experts section when coming from quick-start
+  useEffect(() => {
+    if (showExperts && expertsSectionRef.current) {
+      setTimeout(() => {
+        expertsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 500);
+    }
+  }, [showExperts]);
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
@@ -799,7 +949,7 @@ export default function DiscoverPage() {
                     placeholder="Search services, destinations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-12"
+                    className="pl-10 h-12 text-foreground"
                     data-testid="input-search"
                   />
                 </div>
@@ -850,52 +1000,217 @@ export default function DiscoverPage() {
           </div>
         </section>
 
+        {/* Expert Handoff Banner - shown when coming from quick-start */}
+        {showExpertHandoffBanner && (
+          <section className="bg-gradient-to-r from-amber-500/10 to-primary/10 border-b py-4">
+            <div className="container mx-auto px-4 max-w-6xl">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col sm:flex-row items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      Your AI itinerary for {expertHandoffDestination}{expertHandoffCountry ? `, ${expertHandoffCountry}` : ""} is ready!
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {expertHandoffStartDate && expertHandoffEndDate
+                        ? `${expertHandoffStartDate} to ${expertHandoffEndDate} • `
+                        : ""}
+                      Connect with a local expert below to refine your trip
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowExpertHandoffBanner(false)}
+                  data-testid="button-dismiss-handoff-banner"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </motion.div>
+            </div>
+          </section>
+        )}
+
+        {/* Matched Experts Section - shown when coming from quick-start with showExperts */}
+        {showExperts && (
+          <section ref={expertsSectionRef} className="py-8 bg-muted/30">
+            <div className="container mx-auto px-4 max-w-6xl">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold" data-testid="text-matched-experts-title">
+                    Experts for {expertHandoffDestination}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Local experts who can help refine your itinerary and add bookable services
+                  </p>
+                </div>
+              </div>
+              
+              {expertsLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="overflow-hidden">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-12 w-12 rounded-full" />
+                          <div className="flex-1">
+                            <Skeleton className="h-4 w-32 mb-2" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : matchedExperts.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {matchedExperts.slice(0, 6).map((expert: any) => (
+                    <Card key={expert.id} className="overflow-hidden hover-elevate transition-all">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            {expert.profileImageUrl ? (
+                              <img
+                                src={expert.profileImageUrl}
+                                alt={expert.firstName || expert.username}
+                                className="h-12 w-12 rounded-full object-cover"
+                              />
+                            ) : (
+                              <Users className="h-6 w-6 text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium truncate">
+                              {expert.firstName} {expert.lastName || ""}
+                            </h3>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {expert.expertSpecialty || "Travel Expert"}
+                            </p>
+                            {expert.expertLocations && (
+                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                <MapPin className="h-3 w-3" />
+                                <span className="truncate">{expert.expertLocations}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3">
+                          {expert.averageRating && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Star className="h-3 w-3 mr-1" />
+                              {parseFloat(expert.averageRating).toFixed(1)}
+                            </Badge>
+                          )}
+                          {expert.isExpert && (
+                            <Badge variant="outline" className="text-xs">Verified Expert</Badge>
+                          )}
+                        </div>
+                        <Button
+                          className="w-full mt-3"
+                          size="sm"
+                          onClick={() => {
+                            const params = new URLSearchParams();
+                            if (expertHandoffTripId) params.set("tripId", expertHandoffTripId);
+                            params.set("source", "quick-start");
+                            setLocation(`/expert/${expert.id}?${params.toString()}`);
+                          }}
+                          data-testid={`button-connect-expert-${expert.id}`}
+                        >
+                          Connect
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="p-6 text-center">
+                    <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                    <h3 className="font-medium mb-1">No experts found for this location</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Try browsing all experts or adjusting your destination
+                    </p>
+                    <Button onClick={() => setLocation("/experts")} data-testid="button-browse-all-experts">
+                      Browse All Experts
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {matchedExperts.length > 6 && (
+                <div className="text-center mt-6">
+                  <Link href={`/experts?destination=${encodeURIComponent(expertHandoffDestination)}`}>
+                    <Button variant="outline" data-testid="button-view-all-experts">
+                      View All {matchedExperts.length} Experts
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
-            <Tabs defaultValue="services" className="w-full">
-              <TabsList className="bg-card border p-1 mb-8 flex-wrap gap-1">
-                <TabsTrigger
-                  value="services"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-services"
-                >
-                  <Building2 className="w-4 h-4 mr-2" />
-                  Browse Services
-                </TabsTrigger>
-                <TabsTrigger
-                  value="packages"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-packages"
-                >
-                  <Globe className="w-4 h-4 mr-2" />
-                  Trip Packages
-                </TabsTrigger>
-                <TabsTrigger
-                  value="articles"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-articles"
-                >
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  Influencer Curated
-                </TabsTrigger>
-                <TabsTrigger
-                  value="events"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-events"
-                >
-                  <Ticket className="w-4 h-4 mr-2" />
-                  Upcoming Events
-                </TabsTrigger>
-                <TabsTrigger
-                  value="travelpulse"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                  data-testid="tab-travelpulse"
-                >
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  TravelPulse
-                </TabsTrigger>
-              </TabsList>
+            <Tabs defaultValue="travelpulse" className="w-full">
+              <div className="relative mb-8">
+                <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+                  <TabsTrigger
+                    value="travelpulse"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-travelpulse"
+                  >
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    TravelPulse
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="articles"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-articles"
+                  >
+                    <BookOpen className="w-4 h-4 mr-2" />
+                    <span className="hidden md:inline">Influencer </span>Curated
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="events"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-events"
+                  >
+                    <Ticket className="w-4 h-4 mr-2" />
+                    <span className="hidden lg:inline">Travel </span>Events
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="packages"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-packages"
+                  >
+                    <Globe className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Trip </span>Packages
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="services"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-services"
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Browse </span>Services
+                  </TabsTrigger>
+                </TabsList>
+                {/* Scroll hint for mobile */}
+                <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none md:hidden" />
+              </div>
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
@@ -1126,14 +1441,14 @@ export default function DiscoverPage() {
 
                     {/* Services Grid */}
                     {servicesLoading ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {[1, 2, 3, 4, 5, 6].map((i) => (
-                          <Skeleton key={i} className="h-48" />
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                          <Skeleton key={i} className="h-96 rounded-2xl" />
                         ))}
                       </div>
                     ) : result?.services && result.services.length > 0 ? (
                       <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                           {result.services.map((service) => (
                             <ServiceCard
                               key={service.id}
@@ -1578,6 +1893,7 @@ export default function DiscoverPage() {
           </div>
         </section>
       </div>
+      <TripQueueIndicator />
     </Layout>
   );
 }

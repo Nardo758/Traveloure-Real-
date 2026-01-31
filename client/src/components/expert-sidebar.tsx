@@ -29,6 +29,7 @@ import {
   TrendingUp,
   Award,
   FileText,
+  Camera,
 } from "lucide-react";
 
 const menuItems = [
@@ -45,6 +46,7 @@ const menuItems = [
   { title: "Leaderboard", href: "/expert/leaderboard", icon: Award },
   { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
   { title: "Templates", href: "/expert/templates", icon: FileText },
+  { title: "Content Studio", href: "/expert/content-studio", icon: Camera },
   { title: "Profile", href: "/expert/profile", icon: User },
 ];
 

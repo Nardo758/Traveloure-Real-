@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
-import { useRoute, useLocation, Link } from "wouter";
+import { useRoute, useLocation, Link, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -778,6 +778,14 @@ export default function ExperienceTemplatePage() {
 
   const config = experienceConfigs[slug] || experienceConfigs.wedding;
   
+  // Read query params for pre-filled destination
+  const searchString = useSearch();
+  const queryParams = useMemo(() => new URLSearchParams(searchString), [searchString]);
+  const destinationFromQuery = queryParams.get("destination");
+  const destinationsFromQuery = queryParams.get("destinations"); // For multi-city
+  const countryFromQuery = queryParams.get("country");
+  const isMultiCity = queryParams.get("multiCity") === "true";
+  
   // Read persisted settings ONCE on initial render (SSR-safe, memoized)
   const initialSettings = useMemo(() => {
     if (typeof window === 'undefined') return null;
@@ -800,8 +808,19 @@ export default function ExperienceTemplatePage() {
     }
   };
   
-  // Initialize state from the single memoized read
-  const [destination, setDestination] = useState(initialSettings?.destination ?? "");
+  // Initialize state from query params first, then persisted settings
+  // For multi-city, combine all destinations into comma-separated string initially  
+  const getInitialDestination = () => {
+    if (destinationsFromQuery) {
+      return destinationsFromQuery; // Multi-city destinations
+    }
+    if (destinationFromQuery) {
+      return countryFromQuery ? `${destinationFromQuery}, ${countryFromQuery}` : destinationFromQuery;
+    }
+    return initialSettings?.destination ?? "";
+  };
+  
+  const [destination, setDestination] = useState(getInitialDestination);
   const [originCity, setOriginCity] = useState(initialSettings?.originCity ?? "");
   const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
   const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
@@ -865,8 +884,29 @@ export default function ExperienceTemplatePage() {
       const currentConfig = experienceConfigs[slug] || experienceConfigs.wedding;
       const defaultActiveTab = currentConfig.tabs[0]?.id || "venue";
       
+      // Priority: query params > sessionStorage trip queue > stored settings > defaults
+      // Check for destination from query params or sessionStorage (from Take me Here feature)
+      let destinationValue = settings?.destination ?? "";
+      
+      // First check query params
+      if (destinationsFromQuery) {
+        destinationValue = destinationsFromQuery;
+      } else if (destinationFromQuery) {
+        destinationValue = countryFromQuery ? `${destinationFromQuery}, ${countryFromQuery}` : destinationFromQuery;
+      }
+      
+      // If no query params, check sessionStorage for trip queue destinations
+      if (!destinationValue) {
+        const tripQueueDest = sessionStorage.getItem('tripQueueDestinations');
+        if (tripQueueDest) {
+          destinationValue = tripQueueDest;
+          // Clear after reading so it doesn't persist across unrelated navigations
+          sessionStorage.removeItem('tripQueueDestinations');
+        }
+      }
+      
       // Merge stored settings with defaults (defaults used for missing fields)
-      setDestination(settings?.destination ?? "");
+      setDestination(destinationValue);
       setOriginCity(settings?.originCity ?? "");
       setOriginCode(settings?.originCode ?? "");
       setStartDate(settings?.startDate ? new Date(settings.startDate) : undefined);
@@ -887,7 +927,7 @@ export default function ExperienceTemplatePage() {
       setTravelers(settings?.travelers ?? 2);
       setDetailsSubmitted(settings?.detailsSubmitted ?? false);
     }
-  }, [slug]);
+  }, [slug, destinationsFromQuery, destinationFromQuery, countryFromQuery]);
   
   // Persist search settings to sessionStorage whenever they change
   useEffect(() => {

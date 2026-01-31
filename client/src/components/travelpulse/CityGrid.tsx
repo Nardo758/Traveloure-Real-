@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendingUp,
@@ -18,9 +25,15 @@ import {
   Bell,
   Activity,
   Calendar,
+  Plane,
+  Plus,
+  Check,
+  Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CityDetailView } from "./CityDetailView";
+import { useTripQueue, QueuedCity } from "@/contexts/TripQueueContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface TravelPulseCity {
   id: string;
@@ -84,8 +97,50 @@ function getPulseGradient(score: number) {
 }
 
 function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => void }) {
+  const [, navigate] = useLocation();
+  const { addCity, removeCity, isInQueue } = useTripQueue();
+  const { toast } = useToast();
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  
   const priceChange = parseFloat(city.priceChange || "0");
   const vibeTags = Array.isArray(city.vibeTags) ? city.vibeTags : [];
+  const inQueue = isInQueue(city.id);
+
+  const handlePlanNow = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPopoverOpen(false);
+    // Navigate to AI Quick Start Itinerary page with city context
+    navigate(`/quick-start?destination=${encodeURIComponent(city.cityName)}&country=${encodeURIComponent(city.country)}`);
+  };
+
+  const handleAddToTrip = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPopoverOpen(false);
+    
+    if (inQueue) {
+      removeCity(city.id);
+      toast({
+        title: "Removed from trip",
+        description: `${city.cityName} has been removed from your trip queue.`,
+      });
+    } else {
+      const queuedCity: QueuedCity = {
+        id: city.id,
+        cityName: city.cityName,
+        country: city.country,
+        imageUrl: city.imageUrl,
+        pulseScore: city.pulseScore,
+        vibeTags: city.vibeTags,
+        totalHiddenGems: city.totalHiddenGems,
+        avgHotelPrice: city.avgHotelPrice,
+      };
+      addCity(queuedCity);
+      toast({
+        title: "Added to trip",
+        description: `${city.cityName} has been added to your trip queue.`,
+      });
+    }
+  };
 
   return (
     <motion.div
@@ -134,6 +189,15 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
               </Badge>
             )}
           </div>
+
+          {inQueue && (
+            <div className="absolute top-3 right-3">
+              <Badge className="bg-green-500 text-white border-0">
+                <Check className="h-3 w-3 mr-1" />
+                In Trip
+              </Badge>
+            </div>
+          )}
 
           <div className="absolute bottom-3 left-3 right-3">
             <h3 className="text-xl font-bold text-white mb-1" data-testid={`city-name-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}>{city.cityName}</h3>
@@ -214,6 +278,60 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
               <span>{city.totalHiddenGems} gems</span>
             </div>
           </div>
+
+          <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+            <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <Button 
+                className="w-full mt-2" 
+                size="sm"
+                data-testid={`button-take-me-here-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+              >
+                <Plane className="h-4 w-4 mr-2" />
+                Take me Here
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-3" align="center" onClick={(e) => e.stopPropagation()}>
+              <div className="space-y-2">
+                <h4 className="font-medium text-sm">Plan your trip to {city.cityName}</h4>
+                <div className="space-y-2">
+                  <Button 
+                    variant="default" 
+                    className="w-full justify-start" 
+                    size="sm"
+                    onClick={handlePlanNow}
+                    data-testid={`button-plan-now-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    <Wand2 className="h-4 w-4 mr-2" />
+                    Plan Now with AI
+                  </Button>
+                  <Button 
+                    variant={inQueue ? "secondary" : "outline"} 
+                    className="w-full justify-start" 
+                    size="sm"
+                    onClick={handleAddToTrip}
+                    data-testid={`button-add-to-trip-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {inQueue ? (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        Remove from Trip
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add to Multi-City Trip
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {inQueue 
+                    ? "This city is in your trip queue" 
+                    : "Add multiple cities and plan them together"}
+                </p>
+              </div>
+            </PopoverContent>
+          </Popover>
         </CardContent>
       </Card>
     </motion.div>

@@ -8,6 +8,7 @@ import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
+import { seedTravelPulseData } from "./seed-travelpulse";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import {
@@ -76,9 +77,34 @@ export function log(message: string, source = "express") {
   logger.info({ source }, message);
 }
 
-(async () => {
-  await registerRoutes(httpServer, app);
-  
+// Readiness state for database seeding
+let seedingComplete = false;
+let seedingStartTime: number | null = null;
+let seedingDurationMs: number | null = null;
+
+export function isSeedingComplete(): boolean {
+  return seedingComplete;
+}
+
+export function getSeedingStatus(): { complete: boolean; durationMs: number | null } {
+  return { complete: seedingComplete, durationMs: seedingDurationMs };
+}
+
+// Readiness endpoint for checking if seeding is complete
+app.get("/api/ready", (_req: Request, res: Response) => {
+  const status = getSeedingStatus();
+  if (status.complete) {
+    res.json({ ready: true, seedingDurationMs: status.durationMs });
+  } else {
+    res.status(503).json({ ready: false, message: "Database seeding in progress" });
+  }
+});
+
+// Run database seeding in background (non-blocking)
+async function runDatabaseSeeding() {
+  seedingStartTime = Date.now();
+  logger.info("Database seeding started");
+
   try {
     const result = await seedCategories();
     if (result.created > 0) {
@@ -133,6 +159,23 @@ export function log(message: string, source = "express") {
     logger.error({ err }, "Failed to seed destination calendar");
   }
 
+  try {
+    const travelPulseResult = await seedTravelPulseData();
+    if (travelPulseResult.created > 0) {
+      logger.info({ count: travelPulseResult.created }, "Seeded TravelPulse XAI data");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed TravelPulse data");
+  }
+  
+  seedingDurationMs = Date.now() - seedingStartTime;
+  seedingComplete = true;
+  logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
+}
+
+(async () => {
+  await registerRoutes(httpServer, app);
+
   // Set up frontend serving before error handlers
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
@@ -155,8 +198,14 @@ export function log(message: string, source = "express") {
     () => {
       logger.info({ port }, "Server started");
       
+      // Start cache scheduler
       cacheSchedulerService.start();
       logger.info("Cache scheduler started");
+      
+      // Run database seeding in background AFTER server is listening
+      runDatabaseSeeding().catch(err => {
+        logger.error({ err }, "Background seeding failed");
+      });
     },
   );
 })();

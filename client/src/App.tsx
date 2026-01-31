@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
+import { TripQueueProvider } from "@/contexts/TripQueueContext";
 
 import LandingPage from "@/pages/landing";
 import LandingMockups from "@/pages/landing-mockups";
@@ -93,6 +94,7 @@ import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
 import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
 import ExpertTemplates from "@/pages/expert/templates";
+import ExpertContentStudio from "@/pages/expert/content-studio";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
@@ -108,6 +110,12 @@ import TransportationBookingPage from "@/pages/transportation-booking";
 import PrivacyPolicyPage from "@/pages/privacy";
 import TermsOfServicePage from "@/pages/terms";
 import AcceptTermsPage from "@/pages/accept-terms";
+import CareersPage from "@/pages/careers";
+import BlogPage from "@/pages/blog";
+import PressPage from "@/pages/press";
+import HelpPage from "@/pages/help";
+import ExpertDetailPage from "@/pages/expert-detail";
+import QuickStartItinerary from "@/pages/quick-start-itinerary";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest }: any) {
@@ -163,6 +171,9 @@ function Router() {
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
       </Route>
+      <Route path="/experts/:id">
+        <ExpertDetailPage />
+      </Route>
       <Route path="/service-providers">
         <ServiceProvidersPage />
       </Route>
@@ -205,6 +216,21 @@ function Router() {
       <Route path="/features">
         <Layout><FeaturesPage /></Layout>
       </Route>
+      <Route path="/careers">
+        <Layout><CareersPage /></Layout>
+      </Route>
+      <Route path="/blog">
+        <Layout><BlogPage /></Layout>
+      </Route>
+      <Route path="/press">
+        <Layout><PressPage /></Layout>
+      </Route>
+      <Route path="/help">
+        <Layout><HelpPage /></Layout>
+      </Route>
+      <Route path="/support">
+        <Layout><HelpPage /></Layout>
+      </Route>
       <Route path="/privacy">
         <PrivacyPolicyPage />
       </Route>
@@ -234,6 +260,9 @@ function Router() {
       </Route>
       <Route path="/hidden-gems">
         <Layout><HiddenGemsPage /></Layout>
+      </Route>
+      <Route path="/quick-start">
+        {() => <Layout><ProtectedRoute component={QuickStartItinerary} /></Layout>}
       </Route>
       <Route path="/payment">
         <PaymentPage />
@@ -325,6 +354,9 @@ function Router() {
       </Route>
       <Route path="/expert/templates">
         {() => <ProtectedRoute component={ExpertTemplates} />}
+      </Route>
+      <Route path="/expert/content-studio">
+        {() => <ProtectedRoute component={ExpertContentStudio} />}
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} />}
@@ -497,10 +529,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <TripQueueProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </TripQueueProvider>
     </QueryClientProvider>
   );
 }
