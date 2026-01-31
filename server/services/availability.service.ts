@@ -4,6 +4,7 @@
  */
 
 import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 class AvailabilityService {
   /**
@@ -24,34 +25,34 @@ class AvailabilityService {
       }
 
       // Get provider's availability settings
-      const provider = await db.execute(
-        `SELECT capacity_per_day, instant_booking_enabled
-        FROM service_providers WHERE id = $1`,
-        [providerId]
-      );
+      const provider = await db.execute(sql`
+        SELECT capacity_per_day, instant_booking_enabled
+        FROM service_providers WHERE id = ${providerId}
+      `);
 
       if (!provider.rows || provider.rows.length === 0) {
         // Provider not found - for AI items this is expected, return true
         return true;
       }
 
-      const { capacity_per_day, instant_booking_enabled } = provider.rows[0];
+      const row = provider.rows[0] as { capacity_per_day: number; instant_booking_enabled: boolean };
+      const { capacity_per_day, instant_booking_enabled } = row;
 
       if (!instant_booking_enabled) {
         return false;
       }
 
       // Check existing bookings for this date
-      const bookings = await db.execute(
-        `SELECT SUM(travelers) as total_booked
+      const bookings = await db.execute(sql`
+        SELECT SUM(travelers) as total_booked
         FROM bookings
-        WHERE provider_id = $1
-          AND booking_date = $2
-          AND status NOT IN ('canceled', 'refunded')`,
-        [providerId, date]
-      );
+        WHERE provider_id = ${providerId}
+          AND booking_date = ${date}
+          AND status NOT IN ('canceled', 'refunded')
+      `);
 
-      const totalBooked = bookings.rows?.[0]?.total_booked || 0;
+      const bookingRow = bookings.rows?.[0] as { total_booked: number } | undefined;
+      const totalBooked = bookingRow?.total_booked || 0;
       const remainingCapacity = capacity_per_day - totalBooked;
 
       return remainingCapacity >= quantity;
@@ -71,27 +72,26 @@ class AvailabilityService {
     endDate: string
   ) {
     try {
-      const provider = await db.execute(
-        `SELECT capacity_per_day FROM service_providers WHERE id = $1`,
-        [providerId]
-      );
+      const provider = await db.execute(sql`
+        SELECT capacity_per_day FROM service_providers WHERE id = ${providerId}
+      `);
 
       if (!provider.rows || provider.rows.length === 0) {
         return [];
       }
 
-      const capacityPerDay = provider.rows[0].capacity_per_day;
+      const providerRow = provider.rows[0] as { capacity_per_day: number };
+      const capacityPerDay = providerRow.capacity_per_day;
 
       // Get bookings in date range
-      const bookings = await db.execute(
-        `SELECT booking_date, SUM(travelers) as total_booked
+      const bookings = await db.execute(sql`
+        SELECT booking_date, SUM(travelers) as total_booked
         FROM bookings
-        WHERE provider_id = $1
-          AND booking_date BETWEEN $2 AND $3
+        WHERE provider_id = ${providerId}
+          AND booking_date BETWEEN ${startDate} AND ${endDate}
           AND status NOT IN ('canceled', 'refunded')
-        GROUP BY booking_date`,
-        [providerId, startDate, endDate]
-      );
+        GROUP BY booking_date
+      `);
 
       // Build calendar
       const calendar = [];
@@ -101,7 +101,7 @@ class AvailabilityService {
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         const booking = bookings.rows?.find((b: any) => b.booking_date === dateStr);
-        const booked = booking?.total_booked || 0;
+        const booked = (booking as any)?.total_booked || 0;
 
         calendar.push({
           date: dateStr,
@@ -140,26 +140,22 @@ class AvailabilityService {
       // Create reservation
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
+      const expiresAtStr = expiresAt.toISOString();
 
-      const result = await db.execute(
-        `INSERT INTO capacity_reservations (
+      const result = await db.execute(sql`
+        INSERT INTO capacity_reservations (
           provider_id, user_id, date, time, quantity,
           expires_at, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-        [
-          providerId,
-          userId,
-          date,
-          time,
-          quantity,
-          expiresAt.toISOString(),
-        ]
-      );
+        ) VALUES (${providerId}, ${userId}, ${date}, ${time}, ${quantity}, ${expiresAtStr}, NOW())
+        RETURNING id
+      `);
+
+      const insertedRow = result.rows?.[0] as { id: string } | undefined;
 
       return {
         success: true,
-        reservationId: result.lastInsertRowid,
-        expiresAt: expiresAt.toISOString(),
+        reservationId: insertedRow?.id,
+        expiresAt: expiresAtStr,
       };
     } catch (error: any) {
       console.error('Reservation error:', error);
@@ -172,11 +168,11 @@ class AvailabilityService {
    */
   async releaseExpiredReservations() {
     try {
-      await db.execute(
-        `DELETE FROM capacity_reservations
+      await db.execute(sql`
+        DELETE FROM capacity_reservations
         WHERE expires_at < NOW()
-          AND status = 'active'`
-      );
+          AND status = 'active'
+      `);
     } catch (error) {
       console.error('Reservation cleanup error:', error);
     }
@@ -192,18 +188,17 @@ class AvailabilityService {
   ) {
     try {
       // Mark reservation as consumed
-      await db.execute(
-        `UPDATE capacity_reservations
+      await db.execute(sql`
+        UPDATE capacity_reservations
         SET status = 'consumed'
         WHERE id = (
           SELECT id FROM capacity_reservations
-          WHERE provider_id = $1
-            AND date = $2
+          WHERE provider_id = ${providerId}
+            AND date = ${date}
             AND status = 'active'
           LIMIT 1
-        )`,
-        [providerId, date]
-      );
+        )
+      `);
 
       return true;
     } catch (error) {
@@ -217,11 +212,10 @@ class AvailabilityService {
    */
   async restoreAvailability(bookingId: string) {
     try {
-      const booking = await db.execute(
-        `SELECT provider_id, booking_date, travelers
-        FROM bookings WHERE id = $1`,
-        [bookingId]
-      );
+      const booking = await db.execute(sql`
+        SELECT provider_id, booking_date, travelers
+        FROM bookings WHERE id = ${bookingId}
+      `);
 
       if (!booking.rows || booking.rows.length === 0) {
         return false;
@@ -246,12 +240,11 @@ class AvailabilityService {
     reason: string
   ) {
     try {
-      await db.execute(
-        `INSERT INTO blocked_dates (
+      await db.execute(sql`
+        INSERT INTO blocked_dates (
           provider_id, start_date, end_date, reason, created_at
-        ) VALUES ($1, $2, $3, $4, NOW())`,
-        [providerId, startDate, endDate, reason]
-      );
+        ) VALUES (${providerId}, ${startDate}, ${endDate}, ${reason}, NOW())
+      `);
 
       return true;
     } catch (error) {
@@ -265,12 +258,11 @@ class AvailabilityService {
    */
   async isDateBlocked(providerId: string, date: string): Promise<boolean> {
     try {
-      const blocked = await db.execute(
-        `SELECT id FROM blocked_dates
-        WHERE provider_id = $1
-          AND $2 BETWEEN start_date AND end_date`,
-        [providerId, date]
-      );
+      const blocked = await db.execute(sql`
+        SELECT id FROM blocked_dates
+        WHERE provider_id = ${providerId}
+          AND ${date} BETWEEN start_date AND end_date
+      `);
 
       return (blocked.rows?.length || 0) > 0;
     } catch (error) {
