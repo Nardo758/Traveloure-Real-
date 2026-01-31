@@ -224,12 +224,12 @@ Respond with valid JSON in this exact format:
       messages: [
         { 
           role: "system", 
-          content: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON." 
+          content: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits." 
         },
         { role: "user", content: prompt },
       ],
       temperature: 0.7,
-      max_tokens: 4096,
+      max_tokens: 16384,
     });
 
     const content = response.choices[0]?.message?.content;
