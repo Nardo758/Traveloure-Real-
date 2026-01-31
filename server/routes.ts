@@ -44,6 +44,7 @@ import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./
 import instagramRoutes from "./routes/instagram";
 import bookingsRoutes from "./routes/bookings";
 import bookingActionsRoutes from "./routes/booking-actions";
+import myItineraryRoutes from "./routes/my-itinerary.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -102,6 +103,9 @@ export async function registerRoutes(
 
   // Booking Actions API routes - Expert Review, Save, Share
   app.use("/api", bookingActionsRoutes);
+
+  // My Itinerary routes - final itinerary view with smart sequencing
+  app.use(myItineraryRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {

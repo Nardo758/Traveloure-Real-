@@ -4,7 +4,8 @@
  */
 
 import React from 'react';
-import { CheckCircle, Download, Mail, Calendar, MapPin, Users, CreditCard } from 'lucide-react';
+import { CheckCircle, Download, Mail, Calendar, MapPin, Users, CreditCard, FileText } from 'lucide-react';
+import { useLocation } from 'wouter';
 
 interface BookingItem {
   id: string;
@@ -24,6 +25,7 @@ interface BookingConfirmationProps {
   totalAmount: number;
   travelers: number;
   userEmail?: string;
+  itineraryId?: string;
   onClose: () => void;
 }
 
@@ -33,8 +35,11 @@ export default function BookingConfirmation({
   totalAmount,
   travelers,
   userEmail,
+  itineraryId,
   onClose,
 }: BookingConfirmationProps) {
+  const [, navigate] = useLocation();
+
   const handleDownloadReceipt = () => {
     // TODO: Implement receipt download
     console.log('Download receipt:', paymentIntentId);
@@ -43,6 +48,12 @@ export default function BookingConfirmation({
   const handleEmailReceipt = () => {
     // TODO: Implement email receipt
     console.log('Email receipt to:', userEmail);
+  };
+
+  const handleViewItinerary = () => {
+    if (itineraryId) {
+      navigate(`/my-itinerary/${itineraryId}`);
+    }
   };
 
   return (
@@ -188,9 +199,22 @@ export default function BookingConfirmation({
         </ul>
       </div>
 
+      {/* View Itinerary Button */}
+      {itineraryId && (
+        <button
+          onClick={handleViewItinerary}
+          data-testid="button-view-itinerary"
+          className="w-full py-4 bg-primary text-white rounded-lg hover:bg-primary/90 transition font-semibold text-lg shadow-lg hover:shadow-xl mb-3 flex items-center justify-center gap-2"
+        >
+          <FileText className="w-5 h-5" />
+          View Your Traveloure Itinerary
+        </button>
+      )}
+
       {/* Close Button */}
       <button
         onClick={onClose}
+        data-testid="button-close-confirmation"
         className="w-full py-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold text-lg shadow-lg hover:shadow-xl"
       >
         View My Trips

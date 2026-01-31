@@ -7,6 +7,14 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
+- **Traveloure Itinerary System**: Polished final itinerary view users receive after booking, featuring:
+  - Smart activity sequencing with 10+ intelligent rules (spa after adventure, walk after meals, transport buffers, intensity balancing)
+  - Methodology notes at activity, day, and itinerary levels explaining sequencing decisions
+  - Rich metrics dashboard: cost breakdown by category, time allocation, physical intensity analysis
+  - Activity balance scores (balance, diversity, pace, wellness) combined into overall Traveloure Score
+  - Transport Package and Accommodation Package sections with booking status tracking
+  - PDF export and calendar sync (.ics) capabilities
+  - Navigation from Booking Confirmation and My Bookings pages
 - **AI Quick Start Itinerary (Option 2)**: "Plan Now with AI" on TravelPulse city cards now generates an AI-powered itinerary using city intelligence (hidden gems, events, local insights). Features:
   - Auto-fetches TravelPulse data to inform AI generation
   - Day-by-day itinerary with activities, meals, transportation
