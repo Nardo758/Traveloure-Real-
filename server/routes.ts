@@ -6373,8 +6373,74 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
       });
 
+      // NEW: Create comparison and trigger optimization
+      const [comparison] = await db.insert(itineraryComparisons).values({
+        userId,
+        title: `${destination} Trip`,
+        destination,
+        startDate: dates.start,
+        endDate: dates.end,
+        budget: budget?.toString() || null,
+        travelers: travelers || 1,
+        status: 'generating',
+      }).returning();
+
+      // Convert generated itinerary to baseline items (with defensive checks)
+      const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
+      const baselineItems = dailyItinerary.flatMap((day: any, dayIndex: number) => {
+        const activities = Array.isArray(day?.activities) ? day.activities : [];
+        return activities.map((activity: any) => ({
+          id: activity.id || `${day?.day || dayIndex + 1}-${activity.time || 'item'}`,
+          name: activity.name || activity.title || 'Activity',
+          description: activity.description || '',
+          serviceType: activity.type || 'activities',
+          price: activity.estimatedCost || 0,
+          rating: 4.5,
+          location: activity.location || destination,
+          duration: activity.duration || 60,
+          dayNumber: dayIndex + 1,
+          timeSlot: activity.time?.includes('morning') ? 'morning' 
+                  : activity.time?.includes('afternoon') ? 'afternoon' 
+                  : 'evening',
+        }));
+      });
+
+      // Get available services for optimization
+      const availableServices = await db
+        .select()
+        .from(providerServices)
+        .where(eq(providerServices.status, 'active'))
+        .limit(100);
+
+      // Import optimizer
+      const { generateOptimizedItineraries } = await import('./itinerary-optimizer');
+
+      // Trigger optimization in background
+      generateOptimizedItineraries(
+        comparison.id,
+        userId,
+        baselineItems,
+        availableServices,
+        destination,
+        dates.start,
+        dates.end,
+        budget,
+        travelers
+      ).catch(err => {
+        console.error('Optimization error:', err);
+        db.update(itineraryComparisons)
+          .set({ status: 'failed' })
+          .where(eq(itineraryComparisons.id, comparison.id))
+          .catch(console.error);
+      });
+
+      // Return comparison ID immediately (include 'id' for backwards compatibility)
       res.json({
+        success: true,
         id: savedItinerary.id,
+        comparisonId: comparison.id,
+        itineraryId: savedItinerary.id,
+        message: 'Itinerary generated! Creating optimized variants...',
         ...result,
         createdAt: savedItinerary.createdAt,
         status: savedItinerary.status

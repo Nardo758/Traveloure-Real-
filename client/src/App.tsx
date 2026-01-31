@@ -116,6 +116,7 @@ import PressPage from "@/pages/press";
 import HelpPage from "@/pages/help";
 import ExpertDetailPage from "@/pages/expert-detail";
 import QuickStartItinerary from "@/pages/quick-start-itinerary";
+import BookingDemo from "@/pages/booking-demo";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest }: any) {
@@ -266,6 +267,9 @@ function Router() {
       </Route>
       <Route path="/payment">
         <PaymentPage />
+      </Route>
+      <Route path="/booking-demo">
+        <BookingDemo />
       </Route>
       
       {/* Application pages for becoming an expert or provider */}
