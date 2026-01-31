@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
+import { TripQueueProvider } from "@/contexts/TripQueueContext";
 
 import LandingPage from "@/pages/landing";
 import LandingMockups from "@/pages/landing-mockups";
@@ -524,10 +525,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <TripQueueProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </TripQueueProvider>
     </QueryClientProvider>
   );
 }
