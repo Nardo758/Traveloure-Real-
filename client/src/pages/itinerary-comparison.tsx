@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
 import { useLocation, useParams } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -108,6 +109,8 @@ interface ComparisonData {
 export default function ItineraryComparisonPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isLoading: authLoading } = useAuth();
+  const userId = user?.id || 'guest';
+  const userEmail = user?.email || undefined;
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
@@ -629,10 +632,10 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex-col gap-2">
+                  <CardFooter className="flex gap-2">
                     <Button
                       variant={selectedVariantId === userVariant.id ? "default" : "outline"}
-                      className="w-full"
+                      className="flex-1"
                       onClick={(e) => {
                         e.stopPropagation();
                         selectMutation.mutate(userVariant.id);
@@ -642,6 +645,13 @@ export default function ItineraryComparisonPage() {
                     >
                       {selectedVariantId === userVariant.id ? "Selected" : "Select This Plan"}
                     </Button>
+                    <BookThisTripButton
+                      variant={userVariant}
+                      comparison={data.comparison}
+                      userId={userId}
+                      userEmail={userEmail}
+                      className="flex-1"
+                    />
                   </CardFooter>
                 </Card>
               )}
@@ -779,10 +789,10 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex gap-2">
                     <Button
                       variant={selectedVariantId === variant.id ? "default" : "outline"}
-                      className="w-full"
+                      className="flex-1"
                       onClick={(e) => {
                         e.stopPropagation();
                         selectMutation.mutate(variant.id);
@@ -792,6 +802,13 @@ export default function ItineraryComparisonPage() {
                     >
                       {selectedVariantId === variant.id ? "Selected" : "Select This Plan"}
                     </Button>
+                    <BookThisTripButton
+                      variant={variant}
+                      comparison={data.comparison}
+                      userId={userId}
+                      userEmail={userEmail}
+                      className="flex-1"
+                    />
                   </CardFooter>
                 </Card>
               ))}
