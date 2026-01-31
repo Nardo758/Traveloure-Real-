@@ -673,25 +673,13 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex gap-2">
-                    <Button
-                      variant={selectedVariantId === userVariant.id ? "default" : "outline"}
-                      className="flex-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        selectMutation.mutate(userVariant.id);
-                      }}
-                      disabled={selectMutation.isPending}
-                      data-testid={`button-select-${userVariant.id}`}
-                    >
-                      {selectedVariantId === userVariant.id ? "Selected" : "Select This Plan"}
-                    </Button>
+                  <CardFooter>
                     <BookThisTripButton
                       variant={userVariant}
                       comparison={data.comparison}
                       userId={userId}
                       userEmail={userEmail}
-                      className="flex-1"
+                      className="w-full"
                     />
                   </CardFooter>
                 </Card>
@@ -871,25 +859,13 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex gap-2">
-                    <Button
-                      variant={selectedVariantId === variant.id ? "default" : "outline"}
-                      className="flex-1"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        selectMutation.mutate(variant.id);
-                      }}
-                      disabled={selectMutation.isPending}
-                      data-testid={`button-select-${variant.id}`}
-                    >
-                      {selectedVariantId === variant.id ? "Selected" : "Select This Plan"}
-                    </Button>
+                  <CardFooter>
                     <BookThisTripButton
                       variant={variant}
                       comparison={data.comparison}
                       userId={userId}
                       userEmail={userEmail}
-                      className="flex-1"
+                      className="w-full"
                     />
                   </CardFooter>
                 </Card>
@@ -1138,17 +1114,6 @@ export default function ItineraryComparisonPage() {
             <DialogFooter className="px-6 py-4 border-t shrink-0">
               <Button variant="outline" onClick={() => setModalVariant(null)}>
                 Close
-              </Button>
-              <Button 
-                onClick={() => {
-                  if (modalVariant) {
-                    selectMutation.mutate(modalVariant.id);
-                    setModalVariant(null);
-                  }
-                }}
-                disabled={selectMutation.isPending}
-              >
-                {selectedVariantId === modalVariant?.id ? "Selected" : "Select This Plan"}
               </Button>
             </DialogFooter>
           </DialogContent>
