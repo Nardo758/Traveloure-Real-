@@ -37,6 +37,139 @@ export interface ProcessCartResult {
 
 class BookingService {
   /**
+   * Generate a UUID for new trips
+   */
+  private generateUUID(): string {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  /**
+   * Validate that a tripId exists in the database
+   */
+  private async tripExists(tripId: string): Promise<boolean> {
+    try {
+      const result = await db.execute(sql`
+        SELECT id FROM trips WHERE id = ${tripId} LIMIT 1
+      `);
+      return (result.rows?.length || 0) > 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Create a trip record for booking items that don't have one
+   */
+  private async createTripForBooking(
+    userId: string,
+    cartItems: CartItem[]
+  ): Promise<string> {
+    if (!cartItems || cartItems.length === 0) {
+      throw new Error('Cannot create trip for empty cart');
+    }
+    
+    const firstItem = cartItems[0];
+    const destination = firstItem?.location || 'Unknown Destination';
+    const today = new Date().toISOString().split('T')[0];
+    const startDate = firstItem?.date || today;
+    
+    // Calculate end date from last item or default to start date
+    const dates = cartItems.map(item => item.date).filter(Boolean).sort();
+    const endDate = dates[dates.length - 1] || startDate;
+    
+    // Use UUID format for consistency with the rest of the application
+    const tripId = this.generateUUID();
+    
+    await db.execute(sql`
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, created_at)
+      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', NOW())
+    `);
+    
+    console.log(`Created trip ${tripId} for ${cartItems.length} booking items`);
+    return tripId;
+  }
+
+  /**
+   * Validate multiple tripIds using individual queries
+   */
+  private async getValidTripIds(tripIds: string[]): Promise<Set<string>> {
+    if (tripIds.length === 0) {
+      return new Set();
+    }
+    
+    const validIds = new Set<string>();
+    
+    // Check each tripId individually (trade-off: multiple queries but simpler and safer)
+    for (const tripId of tripIds) {
+      if (await this.tripExists(tripId)) {
+        validIds.add(tripId);
+      }
+    }
+    
+    return validIds;
+  }
+
+  /**
+   * Ensure all cart items have valid tripIds, creating trips as needed
+   */
+  private async ensureValidTripIds(
+    userId: string,
+    cartItems: CartItem[]
+  ): Promise<CartItem[]> {
+    if (!cartItems || cartItems.length === 0) {
+      return cartItems;
+    }
+
+    // Collect all unique tripIds that need validation
+    const tripIdsToValidate: string[] = [];
+    for (const item of cartItems) {
+      if (item.tripId && item.tripId.trim() !== '') {
+        if (!tripIdsToValidate.includes(item.tripId)) {
+          tripIdsToValidate.push(item.tripId);
+        }
+      }
+    }
+
+    // Validate existing tripIds in a single query
+    const validTripIds = await this.getValidTripIds(tripIdsToValidate);
+    
+    // Determine which tripIds are invalid
+    const invalidTripIds = new Set<string>();
+    for (const tripId of tripIdsToValidate) {
+      if (!validTripIds.has(tripId)) {
+        console.log(`TripId ${tripId} does not exist in database`);
+        invalidTripIds.add(tripId);
+      }
+    }
+
+    // If no items need a trip created, return as-is
+    const itemsNeedTrip = cartItems.some(item => 
+      !item.tripId || 
+      item.tripId.trim() === '' || 
+      invalidTripIds.has(item.tripId)
+    );
+
+    if (!itemsNeedTrip) {
+      return cartItems;
+    }
+
+    // Create a new trip for items with missing/invalid tripIds
+    const newTripId = await this.createTripForBooking(userId, cartItems);
+    
+    // Update items that need a valid tripId
+    return cartItems.map(item => ({
+      ...item,
+      tripId: (!item.tripId || item.tripId.trim() === '' || invalidTripIds.has(item.tripId)) 
+        ? newTripId 
+        : item.tripId
+    }));
+  }
+
+  /**
    * Process entire cart with mixed booking types
    */
   async processCart(
@@ -52,6 +185,21 @@ class BookingService {
       paymentIntent: undefined,
       errors: [],
     };
+
+    // Guard against empty cart
+    if (!cartItems || cartItems.length === 0) {
+      results.errors.push('Cart is empty');
+      return results;
+    }
+
+    // Ensure all items have valid tripIds (validates existing ones, creates new trip if needed)
+    try {
+      cartItems = await this.ensureValidTripIds(userId, cartItems);
+    } catch (error: any) {
+      console.error('Error ensuring valid trip IDs:', error);
+      results.errors.push(`Failed to validate/create trip: ${error.message}`);
+      return results;
+    }
 
     // Separate items by booking type
     const instantItems = cartItems.filter(item => item.bookingType === 'instant');
