@@ -302,6 +302,56 @@ class StripePaymentService {
     }
   }
   /**
+   * Create Payment Intent for Expert Review Service (for embedded checkout)
+   */
+  async createExpertServicePaymentIntent(
+    userId: string,
+    userEmail: string,
+    variantId: number,
+    comparisonId: number,
+    destination: string,
+    serviceType: 'review' | 'review_and_book' | 'full_concierge',
+    amount: number,
+    notes: string
+  ) {
+    try {
+      const serviceTitles = {
+        review: 'Review Only',
+        review_and_book: 'Review & Book',
+        full_concierge: 'Full Concierge',
+      };
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100), // Convert to cents
+        currency: 'usd',
+        metadata: {
+          type: 'expert_service',
+          userId,
+          variantId: variantId.toString(),
+          comparisonId: comparisonId.toString(),
+          destination,
+          serviceType,
+          notes: notes.substring(0, 450),
+        },
+        description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
+        receipt_email: userEmail,
+        automatic_payment_methods: {
+          enabled: true,
+        },
+      });
+
+      return {
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        amount: paymentIntent.amount,
+      };
+    } catch (error: any) {
+      console.error('Expert payment intent error:', error);
+      throw new Error(`Payment intent creation failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Create Stripe Checkout Session for Expert Review Service
    */
   async createExpertServiceCheckout(
