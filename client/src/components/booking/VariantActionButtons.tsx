@@ -202,40 +202,40 @@ export default function VariantActionButtons({
   return (
     <>
       {/* Action Buttons Grid */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-2 gap-1.5">
         {/* Book Now */}
         <Button
           onClick={onBook}
-          className="w-full"
-          size="lg"
+          className="w-full text-xs px-2"
+          size="sm"
           variant="default"
           data-testid={`button-book-now-${variant.id}`}
         >
-          <CreditCard className="w-4 h-4 mr-2" />
+          <CreditCard className="w-3 h-3 mr-1" />
           Book Now
         </Button>
 
         {/* Expert Review */}
         <Button
           onClick={() => setShowExpertModal(true)}
-          className="w-full"
-          size="lg"
+          className="w-full text-xs px-2"
+          size="sm"
           variant="outline"
           data-testid={`button-expert-review-${variant.id}`}
         >
-          <UserCheck className="w-4 h-4 mr-2" />
+          <UserCheck className="w-3 h-3 mr-1" />
           Expert Review
         </Button>
 
         {/* Save for Later */}
         <Button
           onClick={() => setShowSaveModal(true)}
-          className="w-full"
-          size="lg"
+          className="w-full text-xs px-2"
+          size="sm"
           variant="outline"
           data-testid={`button-save-later-${variant.id}`}
         >
-          <Bookmark className="w-4 h-4 mr-2" />
+          <Bookmark className="w-3 h-3 mr-1" />
           Save Later
         </Button>
 
@@ -245,12 +245,12 @@ export default function VariantActionButtons({
             setShowShareModal(true);
             if (!shareLink) handleShare();
           }}
-          className="w-full"
-          size="lg"
+          className="w-full text-xs px-2"
+          size="sm"
           variant="outline"
           data-testid={`button-share-${variant.id}`}
         >
-          <Share2 className="w-4 h-4 mr-2" />
+          <Share2 className="w-3 h-3 mr-1" />
           Share
         </Button>
       </div>
