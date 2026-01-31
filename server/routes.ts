@@ -6385,12 +6385,14 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         status: 'generating',
       }).returning();
 
-      // Convert generated itinerary to baseline items
-      const baselineItems = result.dailyItinerary.flatMap((day: any, dayIndex: number) => {
-        return day.activities.map((activity: any) => ({
-          id: activity.id || `${day.day}-${activity.time}`,
-          name: activity.name || activity.title,
-          description: activity.description,
+      // Convert generated itinerary to baseline items (with defensive checks)
+      const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
+      const baselineItems = dailyItinerary.flatMap((day: any, dayIndex: number) => {
+        const activities = Array.isArray(day?.activities) ? day.activities : [];
+        return activities.map((activity: any) => ({
+          id: activity.id || `${day?.day || dayIndex + 1}-${activity.time || 'item'}`,
+          name: activity.name || activity.title || 'Activity',
+          description: activity.description || '',
           serviceType: activity.type || 'activities',
           price: activity.estimatedCost || 0,
           rating: 4.5,
@@ -6427,14 +6429,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       ).catch(err => {
         console.error('Optimization error:', err);
         db.update(itineraryComparisons)
-          .set({ status: 'error' })
+          .set({ status: 'failed' })
           .where(eq(itineraryComparisons.id, comparison.id))
           .catch(console.error);
       });
 
-      // Return comparison ID immediately
+      // Return comparison ID immediately (include 'id' for backwards compatibility)
       res.json({
         success: true,
+        id: savedItinerary.id,
         comparisonId: comparison.id,
         itineraryId: savedItinerary.id,
         message: 'Itinerary generated! Creating optimized variants...',
