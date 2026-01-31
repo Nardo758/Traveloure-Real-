@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
+import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
 import { useLocation, useParams } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -598,9 +599,16 @@ export default function ItineraryComparisonPage() {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <Badge variant="secondary">Your Plan</Badge>
-                      {selectedVariantId === userVariant.id && (
-                        <Check className="h-5 w-5 text-primary" />
-                      )}
+                      <div className="flex items-center gap-1">
+                        {selectedVariantId === userVariant.id && (
+                          <Check className="h-5 w-5 text-primary" />
+                        )}
+                        <VariantOptionsMenu
+                          variant={userVariant}
+                          comparison={data.comparison}
+                          userId={userId}
+                        />
+                      </div>
                     </div>
                     <CardTitle className="text-lg">{userVariant.name}</CardTitle>
                     <CardDescription>{userVariant.description}</CardDescription>
@@ -751,9 +759,16 @@ export default function ItineraryComparisonPage() {
                         <Sparkles className="h-3 w-3 mr-1" />
                         AI Optimized
                       </Badge>
-                      {selectedVariantId === variant.id && (
-                        <Check className="h-5 w-5 text-primary" />
-                      )}
+                      <div className="flex items-center gap-1">
+                        {selectedVariantId === variant.id && (
+                          <Check className="h-5 w-5 text-primary" />
+                        )}
+                        <VariantOptionsMenu
+                          variant={variant}
+                          comparison={data.comparison}
+                          userId={userId}
+                        />
+                      </div>
                     </div>
                     <CardTitle className="text-lg">{variant.name}</CardTitle>
                     <CardDescription>{variant.description}</CardDescription>
