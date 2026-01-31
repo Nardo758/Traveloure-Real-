@@ -598,8 +598,8 @@ export default function ItineraryPage() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6 pb-12">
-          <div className="lg:w-64 flex-shrink-0">
-            <Card className="bg-white dark:bg-gray-800 sticky top-4">
+          <div className="lg:w-72 flex-shrink-0">
+            <Card className="bg-white dark:bg-gray-800 lg:sticky lg:top-4 z-10">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-[#6B7280]">Trip Days</CardTitle>
               </CardHeader>
