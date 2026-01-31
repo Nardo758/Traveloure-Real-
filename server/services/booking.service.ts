@@ -108,24 +108,24 @@ class BookingService {
 
     for (const item of cartItems) {
       try {
-        // Check availability
-        const available = await availabilityService.checkAvailability(
-          item.providerId!,
-          item.date,
-          item.time || '09:00'
-        );
+        // Skip availability check if no provider (AI-generated items)
+        if (item.providerId) {
+          const available = await availabilityService.checkAvailability(
+            item.providerId,
+            item.date,
+            item.time || '09:00'
+          );
 
-        if (!available) {
-          errors.push(`${item.title} is no longer available`);
-          continue;
+          if (!available) {
+            errors.push(`${item.title} is no longer available`);
+            continue;
+          }
         }
 
-        // Get final price
-        const finalPrice = await pricingService.getPrice(
-          item.providerId!,
-          item.date,
-          1 // travelers count
-        );
+        // Get price - use item price if no provider
+        const finalPrice = item.providerId 
+          ? await pricingService.getPrice(item.providerId, item.date, 1)
+          : item.price;
 
         // Calculate fees
         const feeBreakdown = pricingService.calculatePlatformFees(
