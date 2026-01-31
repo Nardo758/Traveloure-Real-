@@ -29,11 +29,12 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isReady, setIsReady] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!stripe || !elements) {
+    if (!stripe || !elements || !isReady) {
       return;
     }
 
@@ -67,8 +68,19 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Payment Element */}
-      <div className="border border-gray-200 rounded-lg p-4 bg-white">
-        <PaymentElement />
+      <div className="border border-gray-200 rounded-lg p-4 bg-white min-h-[200px]">
+        <PaymentElement 
+          onReady={() => setIsReady(true)}
+          onLoadError={(error) => {
+            setErrorMessage(error.error.message || 'Failed to load payment form');
+          }}
+        />
+        {!isReady && (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            <span className="ml-2 text-gray-500">Loading payment form...</span>
+          </div>
+        )}
       </div>
 
       {/* Error Message */}
@@ -88,10 +100,10 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={!stripe || isProcessing}
+        disabled={!stripe || !isReady || isProcessing}
         className={`
           w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
-          ${!stripe || isProcessing
+          ${!stripe || !isReady || isProcessing
             ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
             : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
           }
