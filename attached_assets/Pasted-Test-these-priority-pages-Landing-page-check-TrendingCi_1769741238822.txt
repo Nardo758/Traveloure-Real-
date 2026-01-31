@@ -1,0 +1,67 @@
+Test these priority pages:
+
+• / - Landing page (check TrendingCities cards)
+• /discover - All 5 tabs (Browse Services, Trip Packages, Influencer Curated, Events, TravelPulse)
+• /experts - Expert list
+• /experts/1 - Expert detail page (NEW - should work now)
+• /careers - NEW careers page
+• /blog - NEW blog page
+• /press - NEW press page
+• /help - NEW help center
+• /expert/content-studio - NEW Content Creator Studio
+Check for:
+
+• Console errors (F12 → Console tab)
+• Broken images
+• API failures (Network tab)
+• Layout issues
+• Cards display properly with new designs
+5. Commit & Push New Changes (5 minutes)
+
+The Content Creator Studio hasn't been committed yet:
+
+git add .
+git commit -m "feat: Add Content Creator Studio for experts/influencers
+
+- Created complete content creation system
+- Support for 10 content types (guides, reviews, lists, galleries)
+- Rich text editor, template builders, media manager
+- Instagram export with auto-captions & hashtags
+- Publishing workflow (draft → published)
+- Added database schema for expert_content tables
+- Added 9 API endpoints for content management"
+
+git push origin main
+
+6. Report Findings
+
+After testing, report:
+
+• ✅ What works
+• ❌ What's broken (with console errors)
+• 📸 Screenshots of any visual bugs
+• 🔧 Suggested fixes
+Documentation Available
+
+All testing documentation is in /docs/:
+
+• USER_TESTING_REPORT.md - Comprehensive testing guide
+• TESTING_CHECKLIST_VISUAL.md - Printable checklist
+• CONTENT_CREATOR_STUDIO.md - Content Studio user guide
+Success Criteria
+
+• [ ] Server starts successfully
+• [ ] Database connected
+• [ ] All new pages load without errors
+• [ ] Discover page cards display with new designs
+• [ ] Content Creator Studio accessible
+• [ ] No critical console errors
+• [ ] Changes committed and pushed to GitHub
+Priority Issues to Watch For
+
+1. Missing images or 404s
+2. API endpoints returning errors
+3. Cards not displaying properly
+4. Expert detail page route issues
+5. Content Creator Studio editor functionality
+Good luck! Focus on getting the database setup first, then test the critical user-facing pages.

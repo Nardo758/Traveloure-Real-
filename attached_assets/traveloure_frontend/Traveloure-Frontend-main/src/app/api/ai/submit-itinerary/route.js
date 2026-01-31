@@ -18,7 +18,6 @@ export async function POST(request) {
                        tokenFromHeader
     
     console.log('🔌 Submit Itinerary API - Session:', !!session)
-    console.log('🔌 Submit Itinerary API - Token from session:', !!session?.backendData?.accessToken)
     console.log('🔌 Submit Itinerary API - Token from header:', !!tokenFromHeader)
     
     if (!accessToken) {

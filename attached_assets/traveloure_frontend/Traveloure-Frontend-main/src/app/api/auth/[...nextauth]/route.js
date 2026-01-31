@@ -334,12 +334,6 @@ const handler = NextAuth({
           
           console.error("🔴 Credentials login failed:", {
             error: err.message,
-            stack: err.stack,
-            credentials: {
-              email: credentials?.email,
-              hasPassword: !!credentials?.password
-            },
-            apiUrl: `${apiBaseUrl}/auth/login/`,
             environment: process.env.NODE_ENV
           });
           

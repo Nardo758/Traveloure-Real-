@@ -64,6 +64,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',  # ✅ Enable compression
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -71,6 +72,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # ✅ Custom security middleware
+    'authentication.middleware.security_headers.SecurityHeadersMiddleware',
+    'authentication.middleware.rate_limiting.RateLimitMiddleware',
+    'authentication.middleware.admin_protection.AdminProtectionMiddleware',
 ]
 
 ROOT_URLCONF = 'travldna.urls'
@@ -362,3 +367,90 @@ else:
 
 VIATOR_API_KEY = os.getenv("VIATOR_API_KEY")
 VIATOR_DESTINATION_API_URL = os.getenv("VIATOR_DESTINATION_API_URL")
+# ========================================
+# SECURITY ENHANCEMENTS
+# Added: 2026-01-30
+# ========================================
+
+# Cache Configuration (for rate limiting)
+# In production, use Redis: pip install django-redis
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'traveloure-cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000
+        }
+    }
+}
+
+# Production: Use Redis for better performance
+# CACHES = {
+#     'default': {
+#         'BACKEND': 'django_redis.cache.RedisCache',
+#         'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
+#         'OPTIONS': {
+#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+#         }
+#     }
+# }
+
+# Security Headers (Enhanced)
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+# HSTS (HTTP Strict Transport Security) - Enforce HTTPS
+if ENVIRONMENT != "DEV":
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# Session Security
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+
+# CSRF Protection
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_USE_SESSIONS = False
+
+# Admin IP Whitelist (configure via environment)
+# Set ADMIN_ALLOWED_IPS in .env: "127.0.0.1,192.168.1.100"
+ADMIN_ALLOWED_IPS = os.getenv('ADMIN_ALLOWED_IPS', '127.0.0.1')
+
+# Compression Settings
+# GZip compression for responses > 200 bytes
+MIDDLEWARE_CLASSES_GZIP = True
+
+# File Upload Security
+DATA_UPLOAD_MAX_MEMORY_SIZE = 30 * 1024 * 1024  # 30MB (fixed typo)
+FILE_UPLOAD_MAX_MEMORY_SIZE = 30 * 1024 * 1024  # 30MB (fixed typo)
+
+# Allowed file extensions for uploads
+ALLOWED_FILE_EXTENSIONS = [
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',  # Images
+    'pdf', 'doc', 'docx',  # Documents
+    'mp4', 'mov', 'avi',  # Videos
+]
+
+# Password validation strength
+AUTH_PASSWORD_VALIDATORS += [
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
+    },
+]
+
+# Logging Security Events
+LOGGING['loggers']['security'] = {
+    'handlers': ['console'],
+    'level': 'WARNING',
+    'propagate': False,
+}
+
+print("✅ Security enhancements loaded")

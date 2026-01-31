@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { Layout } from "@/components/layout";
 import { Card } from "@/components/ui/card";
@@ -51,9 +51,26 @@ const cardVariants = {
 };
 
 export default function Experiences() {
+  const searchString = useSearch();
+  const searchParams = new URLSearchParams(searchString);
+  const destinationParam = searchParams.get("destination");
+  const countryParam = searchParams.get("country");
+  const multiCityParam = searchParams.get("multiCity");
+  const destinationsParam = searchParams.get("destinations");
+  
   const { data: experienceTypes, isLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
   });
+  
+  const buildExperienceLink = (slug: string) => {
+    const params = new URLSearchParams();
+    if (destinationParam) params.set("destination", destinationParam);
+    if (countryParam) params.set("country", countryParam);
+    if (multiCityParam) params.set("multiCity", multiCityParam);
+    if (destinationsParam) params.set("destinations", destinationsParam);
+    const queryString = params.toString();
+    return `/experiences/${slug}/new${queryString ? `?${queryString}` : ""}`;
+  };
 
   return (
     <Layout>
@@ -122,7 +139,7 @@ export default function Experiences() {
                   const totalSteps = stepCounts[type.slug] || 5;
                   return (
                     <motion.div key={type.id} variants={cardVariants}>
-                      <Link href={`/experiences/${type.slug}/new`}>
+                      <Link href={buildExperienceLink(type.slug)}>
                         <Card 
                           className="group relative overflow-visible h-full cursor-pointer transition-all duration-300 hover-elevate"
                           data-testid={`card-experience-${type.slug}`}
