@@ -77,6 +77,7 @@ import { cn } from "@/lib/utils";
 import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpulse/TravelPulseCard";
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
+import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 
 type ServiceCategory = {
   id: string;
@@ -1691,6 +1692,7 @@ export default function DiscoverPage() {
           </div>
         </section>
       </div>
+      <TripQueueIndicator />
     </Layout>
   );
 }
