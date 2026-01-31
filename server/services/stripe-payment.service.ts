@@ -5,6 +5,7 @@
 
 import Stripe from 'stripe';
 import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia',
@@ -22,16 +23,16 @@ class StripePaymentService {
   ) {
     try {
       // Get user details
-      const user = await db.execute(
-        'SELECT email, username FROM users WHERE id = ?',
-        [userId]
-      );
+      const user = await db.execute(sql`
+        SELECT email, username FROM users WHERE id = ${userId}
+      `);
 
       if (!user.rows || user.rows.length === 0) {
         throw new Error('User not found');
       }
 
-      const userEmail = user.rows[0].email || `user${userId}@traveloure.com`;
+      const userRow = user.rows[0] as { email?: string; username?: string };
+      const userEmail = userRow.email || `user${userId}@traveloure.com`;
 
       // Create payment intent
       const paymentIntent = await stripe.paymentIntents.create({
@@ -51,21 +52,13 @@ class StripePaymentService {
       });
 
       // Store payment intent in database
-      await db.execute(
-        `INSERT INTO payment_intents (
+      const metadataJson = JSON.stringify(paymentIntent.metadata);
+      await db.execute(sql`
+        INSERT INTO payment_intents (
           stripe_payment_intent_id, user_id, amount, currency,
           status, is_deposit, metadata, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [
-          paymentIntent.id,
-          userId,
-          amount,
-          'usd',
-          paymentIntent.status,
-          isDeposit ? 1 : 0,
-          JSON.stringify(paymentIntent.metadata),
-        ]
-      );
+        ) VALUES (${paymentIntent.id}, ${userId}, ${amount}, 'usd', ${paymentIntent.status}, ${isDeposit}, ${metadataJson}, NOW())
+      `);
 
       return {
         clientSecret: paymentIntent.client_secret,
@@ -118,23 +111,33 @@ class StripePaymentService {
     const { userId, bookingIds, isDeposit } = paymentIntent.metadata;
 
     // Update payment intent status
-    await db.execute(
-      `UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ?`,
-      [paymentIntent.id]
-    );
+    await db.execute(sql`
+      UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ${paymentIntent.id}
+    `);
 
     // Update bookings
     const bookingIdList = bookingIds.split(',');
     for (const bookingId of bookingIdList) {
-      await db.execute(
-        `UPDATE bookings SET
-          status = 'confirmed',
-          payment_status = 'succeeded',
-          confirmed_at = datetime('now'),
-          ${isDeposit === 'true' ? 'deposit_paid = 1' : 'deposit_paid = 1, balance_paid = 1'}
-        WHERE id = ?`,
-        [bookingId]
-      );
+      if (isDeposit === 'true') {
+        await db.execute(sql`
+          UPDATE bookings SET
+            status = 'confirmed',
+            payment_status = 'succeeded',
+            confirmed_at = NOW(),
+            deposit_paid = true
+          WHERE id = ${bookingId}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE bookings SET
+            status = 'confirmed',
+            payment_status = 'succeeded',
+            confirmed_at = NOW(),
+            deposit_paid = true,
+            balance_paid = true
+          WHERE id = ${bookingId}
+        `);
+      }
 
       // TODO: Notify user and provider
       // TODO: Update provider earnings
@@ -148,21 +151,19 @@ class StripePaymentService {
     const { bookingIds } = paymentIntent.metadata;
 
     // Update payment intent status
-    await db.execute(
-      `UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ?`,
-      [paymentIntent.id]
-    );
+    await db.execute(sql`
+      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntent.id}
+    `);
 
     // Update bookings
     const bookingIdList = bookingIds.split(',');
     for (const bookingId of bookingIdList) {
-      await db.execute(
-        `UPDATE bookings SET
+      await db.execute(sql`
+        UPDATE bookings SET
           status = 'payment_failed',
           payment_status = 'failed'
-        WHERE id = ?`,
-        [bookingId]
-      );
+        WHERE id = ${bookingId}
+      `);
     }
 
     // TODO: Notify user of payment failure
@@ -175,21 +176,19 @@ class StripePaymentService {
     const { bookingIds } = paymentIntent.metadata;
 
     // Update payment intent status
-    await db.execute(
-      `UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ?`,
-      [paymentIntent.id]
-    );
+    await db.execute(sql`
+      UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
+    `);
 
     // Update bookings
     const bookingIdList = bookingIds.split(',');
     for (const bookingId of bookingIdList) {
-      await db.execute(
-        `UPDATE bookings SET
+      await db.execute(sql`
+        UPDATE bookings SET
           status = 'canceled',
           payment_status = 'canceled'
-        WHERE id = ?`,
-        [bookingId]
-      );
+        WHERE id = ${bookingId}
+      `);
     }
   }
 
@@ -198,21 +197,15 @@ class StripePaymentService {
    */
   private async handleRefund(charge: Stripe.Charge) {
     const paymentIntentId = charge.payment_intent as string;
+    const refundAmount = charge.amount_refunded / 100;
 
     // Create refund record
-    await db.execute(
-      `INSERT INTO refunds (
+    await db.execute(sql`
+      INSERT INTO refunds (
         stripe_charge_id, stripe_payment_intent_id,
         amount, currency, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-      [
-        charge.id,
-        paymentIntentId,
-        charge.amount_refunded / 100,
-        charge.currency,
-        'completed',
-      ]
-    );
+      ) VALUES (${charge.id}, ${paymentIntentId}, ${refundAmount}, ${charge.currency}, 'completed', NOW())
+    `);
 
     // TODO: Update booking status
     // TODO: Return inventory
@@ -224,21 +217,21 @@ class StripePaymentService {
   async createRefund(bookingId: string, amount?: number, reason?: string) {
     try {
       // Get booking and payment intent
-      const booking = await db.execute(
-        `SELECT b.*, pi.stripe_payment_intent_id
+      const booking = await db.execute(sql`
+        SELECT b.*, pi.stripe_payment_intent_id
         FROM bookings b
         JOIN payment_intents pi ON pi.user_id = b.user_id
-        WHERE b.id = ?
-        LIMIT 1`,
-        [bookingId]
-      );
+        WHERE b.id = ${bookingId}
+        LIMIT 1
+      `);
 
       if (!booking.rows || booking.rows.length === 0) {
         throw new Error('Booking not found');
       }
 
-      const paymentIntentId = booking.rows[0].stripe_payment_intent_id;
-      const refundAmount = amount || booking.rows[0].total_amount;
+      const bookingRow = booking.rows[0] as any;
+      const paymentIntentId = bookingRow.stripe_payment_intent_id;
+      const refundAmount = amount || bookingRow.total_amount;
 
       // Create Stripe refund
       const refund = await stripe.refunds.create({
@@ -251,30 +244,21 @@ class StripePaymentService {
       });
 
       // Store refund in database
-      await db.execute(
-        `INSERT INTO refunds (
+      const refundReason = reason || 'requested_by_customer';
+      await db.execute(sql`
+        INSERT INTO refunds (
           booking_id, stripe_refund_id, stripe_payment_intent_id,
           amount, currency, status, reason, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        [
-          bookingId,
-          refund.id,
-          paymentIntentId,
-          refundAmount,
-          'usd',
-          refund.status,
-          reason || 'requested_by_customer',
-        ]
-      );
+        ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${refundAmount}, 'usd', ${refund.status}, ${refundReason}, NOW())
+      `);
 
       // Update booking status
-      await db.execute(
-        `UPDATE bookings SET
+      await db.execute(sql`
+        UPDATE bookings SET
           status = 'refunded',
-          refunded_at = datetime('now')
-        WHERE id = ?`,
-        [bookingId]
-      );
+          refunded_at = NOW()
+        WHERE id = ${bookingId}
+      `);
 
       return {
         refundId: refund.id,

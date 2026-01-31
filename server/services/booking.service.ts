@@ -4,6 +4,7 @@
  */
 
 import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
@@ -151,36 +152,29 @@ class BookingService {
         }
 
         // Create booking in database
-        const booking = await db.execute(
-          `INSERT INTO bookings (
+        const bookingTime = item.time || null;
+        const totalAmountValue = finalPrice + feeBreakdown.platformFee;
+        const providerPayout = finalPrice - feeBreakdown.providerDeduction;
+        
+        const booking = await db.execute(sql`
+          INSERT INTO bookings (
             user_id, trip_id, provider_id, booking_type, status,
             title, booking_date, booking_time, travelers,
             service_amount, platform_fee, total_amount, provider_payout,
             payment_method, deposit_amount, balance_amount, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-          [
-            userId,
-            item.tripId,
-            item.providerId,
-            'instant',
-            'pending_payment',
-            item.title,
-            item.date,
-            item.time || null,
-            1, // travelers
-            finalPrice,
-            feeBreakdown.platformFee,
-            finalPrice + feeBreakdown.platformFee,
-            finalPrice - feeBreakdown.providerDeduction,
-            paymentMethod,
-            depositAmount,
-            balanceAmount,
-          ]
-        );
+          ) VALUES (
+            ${userId}, ${item.tripId}, ${item.providerId || null}, ${'instant'}, ${'pending_payment'},
+            ${item.title}, ${item.date}, ${bookingTime}, ${1},
+            ${finalPrice}, ${feeBreakdown.platformFee}, ${totalAmountValue}, ${providerPayout},
+            ${paymentMethod}, ${depositAmount}, ${balanceAmount}, NOW()
+          ) RETURNING id
+        `);
 
+        const insertedBooking = booking.rows?.[0] as { id: string } | undefined;
+        const { id: _itemId, ...itemWithoutId } = item;
         bookings.push({
-          id: booking.lastInsertRowid,
-          ...item,
+          ...itemWithoutId,
+          id: insertedBooking?.id,
           serviceAmount: finalPrice,
           totalAmount: finalPrice + feeBreakdown.platformFee,
           status: 'pending_payment',
@@ -226,28 +220,24 @@ class BookingService {
     for (const item of cartItems) {
       try {
         // Create booking request
-        const result = await db.execute(
-          `INSERT INTO booking_requests (
+        const requestedTime = item.time || null;
+        const result = await db.execute(sql`
+          INSERT INTO booking_requests (
             user_id, provider_id, trip_id, status,
             requested_date, requested_time, travelers,
             title, item_type, created_at, expires_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now', '+48 hours'))`,
-          [
-            userId,
-            item.providerId,
-            item.tripId,
-            'pending_provider',
-            item.date,
-            item.time || null,
-            1, // travelers
-            item.title,
-            item.itemType,
-          ]
-        );
+          ) VALUES (
+            ${userId}, ${item.providerId || null}, ${item.tripId}, ${'pending_provider'},
+            ${item.date}, ${requestedTime}, ${1},
+            ${item.title}, ${item.itemType}, NOW(), NOW() + INTERVAL '48 hours'
+          ) RETURNING id
+        `);
 
+        const insertedRequest = result.rows?.[0] as { id: string } | undefined;
+        const { id: _reqItemId, ...reqItemWithoutId } = item;
         requests.push({
-          id: result.lastInsertRowid,
-          ...item,
+          ...reqItemWithoutId,
+          id: insertedRequest?.id,
           status: 'pending_provider',
         });
 
@@ -304,16 +294,15 @@ class BookingService {
     try {
       const confirmationCode = this.generateConfirmationCode();
 
-      await db.execute(
-        `UPDATE bookings SET
+      await db.execute(sql`
+        UPDATE bookings SET
           status = 'confirmed',
           payment_status = 'succeeded',
-          confirmed_at = datetime('now'),
-          confirmation_code = ?,
-          deposit_paid = 1
-        WHERE id = ?`,
-        [confirmationCode, bookingId]
-      );
+          confirmed_at = NOW(),
+          confirmation_code = ${confirmationCode},
+          deposit_paid = true
+        WHERE id = ${bookingId}
+      `);
 
       // TODO: Update provider earnings
       // TODO: Decrease availability

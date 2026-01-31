@@ -4,6 +4,7 @@
  */
 
 import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 interface FeeBreakdown {
   serviceAmount: number;
@@ -38,10 +39,9 @@ class PricingService {
   ): Promise<number> {
     try {
       // Get base price from provider
-      const provider = await db.execute(
-        `SELECT base_price, price_per_person FROM service_providers WHERE id = ?`,
-        [providerId]
-      );
+      const provider = await db.execute(sql`
+        SELECT base_price, price_per_person FROM service_providers WHERE id = ${providerId}
+      `);
 
       if (!provider.rows || provider.rows.length === 0) {
         throw new Error('Provider not found');
@@ -69,16 +69,16 @@ class PricingService {
   private async getDynamicPrice(providerId: string, date: string): Promise<number | null> {
     try {
       // Check for special pricing rules
-      const pricing = await db.execute(
-        `SELECT price FROM dynamic_pricing
-        WHERE provider_id = ?
-          AND ? BETWEEN start_date AND end_date
+      const pricing = await db.execute(sql`
+        SELECT price FROM dynamic_pricing
+        WHERE provider_id = ${providerId}
+          AND ${date} BETWEEN start_date AND end_date
         ORDER BY priority DESC
-        LIMIT 1`,
-        [providerId, date]
-      );
+        LIMIT 1
+      `);
 
-      return pricing.rows?.[0]?.price || null;
+      const row = pricing.rows?.[0] as { price: number } | undefined;
+      return row?.price || null;
     } catch (error) {
       return null;
     }
@@ -138,27 +138,26 @@ class PricingService {
    */
   async applyPromoCode(code: string, amount: number, userId: string) {
     try {
-      const promo = await db.execute(
-        `SELECT * FROM promo_codes
-        WHERE code = ?
-          AND active = 1
-          AND (expires_at IS NULL OR expires_at > datetime('now'))
-          AND (usage_limit IS NULL OR usage_count < usage_limit)`,
-        [code.toUpperCase()]
-      );
+      const upperCode = code.toUpperCase();
+      const promo = await db.execute(sql`
+        SELECT * FROM promo_codes
+        WHERE code = ${upperCode}
+          AND active = true
+          AND (expires_at IS NULL OR expires_at > NOW())
+          AND (usage_limit IS NULL OR usage_count < usage_limit)
+      `);
 
       if (!promo.rows || promo.rows.length === 0) {
         return { valid: false, error: 'Invalid or expired promo code' };
       }
 
-      const promoData = promo.rows[0];
+      const promoData = promo.rows[0] as any;
 
       // Check if user already used this code
-      const userUsage = await db.execute(
-        `SELECT id FROM promo_code_usage
-        WHERE promo_code_id = ? AND user_id = ?`,
-        [promoData.id, userId]
-      );
+      const userUsage = await db.execute(sql`
+        SELECT id FROM promo_code_usage
+        WHERE promo_code_id = ${promoData.id} AND user_id = ${userId}
+      `);
 
       if (userUsage.rows && userUsage.rows.length > 0) {
         return { valid: false, error: 'Promo code already used' };
@@ -196,18 +195,16 @@ class PricingService {
    */
   async recordPromoUsage(promoCodeId: string, userId: string, bookingId: string) {
     try {
-      await db.execute(
-        `INSERT INTO promo_code_usage (
+      await db.execute(sql`
+        INSERT INTO promo_code_usage (
           promo_code_id, user_id, booking_id, used_at
-        ) VALUES (?, ?, ?, datetime('now'))`,
-        [promoCodeId, userId, bookingId]
-      );
+        ) VALUES (${promoCodeId}, ${userId}, ${bookingId}, NOW())
+      `);
 
       // Increment usage count
-      await db.execute(
-        `UPDATE promo_codes SET usage_count = usage_count + 1 WHERE id = ?`,
-        [promoCodeId]
-      );
+      await db.execute(sql`
+        UPDATE promo_codes SET usage_count = usage_count + 1 WHERE id = ${promoCodeId}
+      `);
     } catch (error) {
       console.error('Record promo usage error:', error);
     }
