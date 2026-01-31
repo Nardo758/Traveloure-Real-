@@ -108,17 +108,25 @@ class BookingService {
 
     for (const item of cartItems) {
       try {
+        console.log(`Processing item: ${item.title}, providerId: ${item.providerId}, bookingType: ${item.bookingType}`);
+        
         // Skip availability check if no provider (AI-generated items)
-        if (item.providerId) {
-          const available = await availabilityService.checkAvailability(
-            item.providerId,
-            item.date,
-            item.time || '09:00'
-          );
+        // Only check if we have a real provider ID (not null, undefined, or empty)
+        if (item.providerId && item.providerId.trim().length > 0) {
+          try {
+            const available = await availabilityService.checkAvailability(
+              item.providerId,
+              item.date,
+              item.time || '09:00'
+            );
 
-          if (!available) {
-            errors.push(`${item.title} is no longer available`);
-            continue;
+            if (!available) {
+              errors.push(`${item.title} is no longer available`);
+              continue;
+            }
+          } catch (availErr) {
+            // Provider doesn't exist - treat as AI-generated
+            console.log(`Provider ${item.providerId} not found, treating as AI-generated`);
           }
         }
 
