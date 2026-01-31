@@ -47,3 +47,5 @@ integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_openai_ai_int
 [userenv.shared]
 TWELVEGO_AFFILIATE_ID = "13805109"
 VITE_TWELVEGO_AFFILIATE_ID = "13805109"
+ENVIRONMENT = "PROD"
+ADMIN_ALLOWED_IPS = "127.0.0.1"
