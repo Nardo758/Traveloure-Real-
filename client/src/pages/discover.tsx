@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -662,11 +662,25 @@ export default function DiscoverPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  
+  // Parse URL params for expert handoff context
+  const urlParams = new URLSearchParams(window.location.search);
+  const showExperts = urlParams.get("showExperts") === "true";
+  const expertHandoffDestination = urlParams.get("destination") || "";
+  const expertHandoffCountry = urlParams.get("country") || "";
+  const expertHandoffExperienceType = urlParams.get("experienceType") || "";
+  const expertHandoffTripId = urlParams.get("tripId") || "";
+  const expertHandoffStartDate = urlParams.get("startDate") || "";
+  const expertHandoffEndDate = urlParams.get("endDate") || "";
+  const isFromQuickStart = urlParams.get("source") === "quick-start";
+  
+  // Ref for experts section to scroll to
+  const expertsSectionRef = useRef<HTMLDivElement>(null);
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [locationFilter, setLocationFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
   const [minPrice, setMinPrice] = useState(0);
@@ -684,6 +698,9 @@ export default function DiscoverPage() {
   const [addedServices, setAddedServices] = useState<Set<string>>(new Set());
   const [addingToCartId, setAddingToCartId] = useState<string | null>(null);
   const [creatingComparison, setCreatingComparison] = useState(false);
+  
+  // Expert handoff state
+  const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
 
   // Debounce search query
   useEffect(() => {
@@ -738,6 +755,29 @@ export default function DiscoverPage() {
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
   });
+  
+  // Experts query for handoff - fetch experts filtered by destination/experience type
+  const expertsApiUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (expertHandoffDestination) params.set("location", expertHandoffDestination);
+    if (expertHandoffExperienceType) params.set("experienceType", expertHandoffExperienceType);
+    const queryStr = params.toString();
+    return queryStr ? `/api/experts?${queryStr}` : "/api/experts";
+  }, [expertHandoffDestination, expertHandoffExperienceType]);
+  
+  const { data: matchedExperts = [], isLoading: expertsLoading } = useQuery<any[]>({
+    queryKey: [expertsApiUrl],
+    enabled: showExperts,
+  });
+  
+  // Auto-scroll to experts section when coming from quick-start
+  useEffect(() => {
+    if (showExperts && expertsSectionRef.current) {
+      setTimeout(() => {
+        expertsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 500);
+    }
+  }, [showExperts]);
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
 
@@ -959,6 +999,167 @@ export default function DiscoverPage() {
             </motion.div>
           </div>
         </section>
+
+        {/* Expert Handoff Banner - shown when coming from quick-start */}
+        {showExpertHandoffBanner && (
+          <section className="bg-gradient-to-r from-amber-500/10 to-primary/10 border-b py-4">
+            <div className="container mx-auto px-4 max-w-6xl">
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col sm:flex-row items-center justify-between gap-4"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center">
+                    <Sparkles className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">
+                      Your AI itinerary for {expertHandoffDestination}{expertHandoffCountry ? `, ${expertHandoffCountry}` : ""} is ready!
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {expertHandoffStartDate && expertHandoffEndDate
+                        ? `${expertHandoffStartDate} to ${expertHandoffEndDate} • `
+                        : ""}
+                      Connect with a local expert below to refine your trip
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowExpertHandoffBanner(false)}
+                  data-testid="button-dismiss-handoff-banner"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </motion.div>
+            </div>
+          </section>
+        )}
+
+        {/* Matched Experts Section - shown when coming from quick-start with showExperts */}
+        {showExperts && (
+          <section ref={expertsSectionRef} className="py-8 bg-muted/30">
+            <div className="container mx-auto px-4 max-w-6xl">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Users className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold" data-testid="text-matched-experts-title">
+                    Experts for {expertHandoffDestination}
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Local experts who can help refine your itinerary and add bookable services
+                  </p>
+                </div>
+              </div>
+              
+              {expertsLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="overflow-hidden">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-12 w-12 rounded-full" />
+                          <div className="flex-1">
+                            <Skeleton className="h-4 w-32 mb-2" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : matchedExperts.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {matchedExperts.slice(0, 6).map((expert: any) => (
+                    <Card key={expert.id} className="overflow-hidden hover-elevate transition-all">
+                      <CardContent className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            {expert.profileImageUrl ? (
+                              <img
+                                src={expert.profileImageUrl}
+                                alt={expert.firstName || expert.username}
+                                className="h-12 w-12 rounded-full object-cover"
+                              />
+                            ) : (
+                              <Users className="h-6 w-6 text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-medium truncate">
+                              {expert.firstName} {expert.lastName || ""}
+                            </h3>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {expert.expertSpecialty || "Travel Expert"}
+                            </p>
+                            {expert.expertLocations && (
+                              <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                <MapPin className="h-3 w-3" />
+                                <span className="truncate">{expert.expertLocations}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-3">
+                          {expert.averageRating && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Star className="h-3 w-3 mr-1" />
+                              {parseFloat(expert.averageRating).toFixed(1)}
+                            </Badge>
+                          )}
+                          {expert.isExpert && (
+                            <Badge variant="outline" className="text-xs">Verified Expert</Badge>
+                          )}
+                        </div>
+                        <Button
+                          className="w-full mt-3"
+                          size="sm"
+                          onClick={() => {
+                            const params = new URLSearchParams();
+                            if (expertHandoffTripId) params.set("tripId", expertHandoffTripId);
+                            params.set("source", "quick-start");
+                            setLocation(`/expert/${expert.id}?${params.toString()}`);
+                          }}
+                          data-testid={`button-connect-expert-${expert.id}`}
+                        >
+                          Connect
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="p-6 text-center">
+                    <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+                    <h3 className="font-medium mb-1">No experts found for this location</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Try browsing all experts or adjusting your destination
+                    </p>
+                    <Button onClick={() => setLocation("/experts")} data-testid="button-browse-all-experts">
+                      Browse All Experts
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              
+              {matchedExperts.length > 6 && (
+                <div className="text-center mt-6">
+                  <Link href={`/experts?destination=${encodeURIComponent(expertHandoffDestination)}`}>
+                    <Button variant="outline" data-testid="button-view-all-experts">
+                      View All {matchedExperts.length} Experts
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Main Content */}
         <section className="py-12">

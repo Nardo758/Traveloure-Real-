@@ -56,9 +56,10 @@ import {
   AlertTriangle,
   Gem,
 } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import type { ExperienceType } from "@shared/schema";
 
 interface DayActivity {
   time: string;
@@ -180,6 +181,12 @@ export default function QuickStartItinerary() {
   const [travelers, setTravelers] = useState(2);
   const [interests, setInterests] = useState<string[]>(["culture", "food"]);
   const [pacePreference, setPacePreference] = useState<string>("moderate");
+  const [selectedExperienceType, setSelectedExperienceType] = useState<string>("travel");
+
+  // Fetch experience types
+  const { data: experienceTypes = [] } = useQuery<ExperienceType[]>({
+    queryKey: ["/api/experience-types"],
+  });
 
   const generateMutation = useMutation({
     mutationFn: async (params: {
@@ -256,6 +263,7 @@ export default function QuickStartItinerary() {
     const itinerary = generateMutation.data as GeneratedItinerary;
     const dest = customDestination || destination;
     const fullDestination = (customCountry || country) ? `${dest}, ${customCountry || country}` : dest;
+    const experienceSlug = selectedExperienceType || "travel";
     
     try {
       // Create a trip with the AI-generated itinerary
@@ -268,15 +276,19 @@ export default function QuickStartItinerary() {
         itineraryId: itinerary.id,
       });
       
-      // Navigate to expert matching with the trip context
+      // Navigate to discover page with expert handoff context
       const params = new URLSearchParams();
       params.set("destination", dest);
       if (customCountry || country) params.set("country", customCountry || country);
       params.set("tripId", trip.id);
       params.set("itineraryId", itinerary.id);
+      params.set("experienceType", experienceSlug);
+      params.set("startDate", startDate ? format(startDate, "yyyy-MM-dd") : "");
+      params.set("endDate", endDate ? format(endDate, "yyyy-MM-dd") : "");
       params.set("source", "quick-start");
+      params.set("showExperts", "true");
       
-      setLocation(`/experts?${params.toString()}`);
+      setLocation(`/discover?${params.toString()}`);
     } catch (error) {
       console.error("Failed to create trip:", error);
       // Fall back to direct navigation with itinerary context
@@ -284,21 +296,128 @@ export default function QuickStartItinerary() {
       params.set("destination", dest);
       if (customCountry || country) params.set("country", customCountry || country);
       params.set("itineraryId", itinerary.id);
+      params.set("experienceType", experienceSlug);
+      params.set("startDate", startDate ? format(startDate, "yyyy-MM-dd") : "");
+      params.set("endDate", endDate ? format(endDate, "yyyy-MM-dd") : "");
       params.set("source", "quick-start");
+      params.set("showExperts", "true");
       
-      setLocation(`/experts?${params.toString()}`);
+      setLocation(`/discover?${params.toString()}`);
     }
   };
 
   const handleCustomize = () => {
     if (!generateMutation.data) return;
     
-    // Navigate to full experience builder with the itinerary context
-    const params = new URLSearchParams();
-    params.set("destination", `${customDestination || destination}, ${customCountry || country}`);
-    params.set("itineraryId", generateMutation.data.id);
+    const itinerary = generateMutation.data as GeneratedItinerary;
+    const experienceSlug = selectedExperienceType || "travel";
     
-    setLocation(`/experiences/travel/new?${params.toString()}`);
+    // Convert itinerary items to external cart format
+    const externalCartItems: any[] = [];
+    let itemIndex = 0;
+    
+    // Add activities from daily itinerary
+    itinerary.dailyItinerary.forEach((day) => {
+      day.activities.forEach((activity) => {
+        externalCartItems.push({
+          id: `quick-start-activity-${itemIndex++}`,
+          type: "activity",
+          name: activity.name,
+          price: activity.estimatedCost || 0,
+          quantity: travelers,
+          date: day.date,
+          details: activity.description,
+          provider: activity.location || "AI Suggested",
+          isExternal: true,
+          metadata: {
+            duration: activity.duration,
+            meetingPoint: activity.location,
+          },
+        });
+      });
+      
+      // Add meals as items
+      day.meals.forEach((meal) => {
+        externalCartItems.push({
+          id: `quick-start-meal-${itemIndex++}`,
+          type: "meal",
+          name: `${meal.type.charAt(0).toUpperCase() + meal.type.slice(1)}: ${meal.suggestion}`,
+          price: meal.priceRange === "$$$" ? 75 : meal.priceRange === "$$" ? 35 : 15,
+          quantity: travelers,
+          date: day.date,
+          details: `${meal.cuisine} cuisine`,
+          provider: "AI Suggested",
+          isExternal: true,
+        });
+      });
+      
+      // Add transportation
+      day.transportation.forEach((transport) => {
+        externalCartItems.push({
+          id: `quick-start-transport-${itemIndex++}`,
+          type: "transport",
+          name: `${transport.from} → ${transport.to}`,
+          price: transport.cost || 0,
+          quantity: 1,
+          date: day.date,
+          details: `${transport.mode} (${transport.duration})`,
+          provider: "AI Suggested",
+          isExternal: true,
+          metadata: {
+            duration: transport.duration,
+          },
+        });
+      });
+    });
+    
+    // Add accommodation suggestions
+    itinerary.accommodationSuggestions.forEach((accommodation, idx) => {
+      const nights = startDate && endDate ? differenceInDays(endDate, startDate) : 3;
+      externalCartItems.push({
+        id: `quick-start-accommodation-${idx}`,
+        type: "hotel",
+        name: accommodation.name,
+        price: accommodation.pricePerNight * nights,
+        quantity: 1,
+        details: `${accommodation.type} in ${accommodation.neighborhood} - ${accommodation.whyRecommended}`,
+        provider: "AI Suggested",
+        isExternal: true,
+        metadata: {
+          nights,
+          pricePerNight: accommodation.pricePerNight,
+          roomCategory: accommodation.type,
+          checkInDate: startDate ? format(startDate, "yyyy-MM-dd") : undefined,
+          checkOutDate: endDate ? format(endDate, "yyyy-MM-dd") : undefined,
+          travelers,
+        },
+      });
+    });
+    
+    // Store cart items in sessionStorage with experience context (matches experience-template format)
+    sessionStorage.setItem(`externalCart_${experienceSlug}`, JSON.stringify(externalCartItems));
+    
+    // Also store trip context
+    const tripContext = {
+      destination: customDestination || destination,
+      country: customCountry || country,
+      startDate: startDate ? format(startDate, "yyyy-MM-dd") : null,
+      endDate: endDate ? format(endDate, "yyyy-MM-dd") : null,
+      travelers,
+      interests,
+      itineraryId: itinerary.id,
+    };
+    sessionStorage.setItem(`tripContext_${experienceSlug}`, JSON.stringify(tripContext));
+    
+    // Navigate to experience builder (note: route is /experiences/:slug)
+    const params = new URLSearchParams();
+    const fullDestination = (customCountry || country) 
+      ? `${customDestination || destination}, ${customCountry || country}` 
+      : (customDestination || destination);
+    params.set("destination", fullDestination);
+    params.set("itineraryId", itinerary.id);
+    params.set("fromQuickStart", "true");
+    
+    setLocation(`/experiences/${experienceSlug}?${params.toString()}`);
   };
 
   const toggleActivityExpanded = (key: string) => {
@@ -365,6 +484,25 @@ export default function QuickStartItinerary() {
                   onChange={(e) => setCustomCountry(e.target.value)}
                   data-testid="input-country"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Experience Type</Label>
+                <Select value={selectedExperienceType} onValueChange={setSelectedExperienceType}>
+                  <SelectTrigger data-testid="select-experience-type">
+                    <SelectValue placeholder="Select experience type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {experienceTypes.map((type) => (
+                      <SelectItem key={type.id} value={type.slug}>
+                        {type.name}
+                      </SelectItem>
+                    ))}
+                    {experienceTypes.length === 0 && (
+                      <SelectItem value="travel">Travel</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
