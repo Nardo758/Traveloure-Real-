@@ -7,6 +7,7 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
+- **"Take me Here" Multi-City Trip Planning**: Users can now click "Take me Here" on TravelPulse city cards to either start planning immediately ("Plan Now") or add destinations to a trip queue ("Add to Multi-City Trip"). A floating trip queue indicator shows queued destinations with "Plan Trip with AI" functionality that pre-fills the experience template with all selected cities.
 - **Content Creator Studio**: Complete content creation platform for travel experts with 10 content types (Travel Guide, Review, Top List, Photo Gallery, Video, Itinerary, Food Guide, Hotel Guide, Tips & Tricks, Travel Story). Features AI-powered title/description generation, hashtag suggestions, and destination intelligence.
 - **Instagram Business API Integration**: Full OAuth flow for Instagram Business/Creator accounts, single and carousel image publishing, AI-generated hashtags, 24-hour publishing limit tracking (100 posts/day), accessible via Content Studio.
 - **Landing Page Redesign**: Complete visual overhaul with Framer Motion animations, improved hero section with gradient text, modernized experience templates, updated stats/testimonials/FAQ sections
