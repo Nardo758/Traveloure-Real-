@@ -176,6 +176,12 @@ export default function ItineraryComparisonPage() {
   });
 
   const destination = data?.comparison?.destination;
+  const isMultiCity = destination?.includes(";") || destination?.includes(",") && destination?.split(",").length > 2;
+  
+  // For multi-city trips, extract just the first city for TravelPulse lookup
+  const primaryCity = isMultiCity 
+    ? destination?.split(";")[0]?.trim()?.split(",")[0]?.trim() 
+    : destination?.split(",")[0]?.trim();
   
   const { data: travelPulseData, isLoading: travelPulseLoading, isError: travelPulseError } = useQuery<{
     city?: {
@@ -193,8 +199,8 @@ export default function ItineraryComparisonPage() {
       aiMustSeeAttractions?: string;
     };
   }>({
-    queryKey: ["/api/travelpulse/cities", destination],
-    enabled: !!destination,
+    queryKey: ["/api/travelpulse/cities", primaryCity],
+    enabled: !!primaryCity,
   });
 
   const { data: trendingData, isLoading: trendingLoading } = useQuery<{
@@ -206,8 +212,8 @@ export default function ItineraryComparisonPage() {
       reason?: string;
     }>;
   }>({
-    queryKey: ["/api/travelpulse/trending", destination],
-    enabled: !!destination,
+    queryKey: ["/api/travelpulse/trending", primaryCity],
+    enabled: !!primaryCity,
   });
 
   const travelPulseIntelligenceLoading = travelPulseLoading || trendingLoading;
@@ -481,11 +487,16 @@ export default function ItineraryComparisonPage() {
                       Destination Intelligence
                     </span>
                     <span className="text-xs text-purple-600/70 dark:text-purple-400/70">
-                      {destination}
+                      {isMultiCity ? `${primaryCity} + more` : destination}
                     </span>
-                    {travelPulseError && !travelPulseLoading && (
+                    {isMultiCity && (
+                      <Badge variant="outline" className="text-[10px] h-4 ml-1 border-purple-200 text-purple-600 dark:border-purple-700 dark:text-purple-400">
+                        Multi-city
+                      </Badge>
+                    )}
+                    {travelPulseError && !travelPulseLoading && !travelPulseData?.city && (
                       <span className="text-xs text-muted-foreground ml-auto">
-                        Intelligence unavailable
+                        {isMultiCity ? "Per-city data varies" : "Intel pending"}
                       </span>
                     )}
                   </div>
