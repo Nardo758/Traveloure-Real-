@@ -4,6 +4,7 @@
  */
 
 import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 interface AffiliateLink {
   url: string;
@@ -167,12 +168,11 @@ class AffiliateService {
    */
   private async trackLinkGeneration(partner: string, itemType: string, destination: string) {
     try {
-      await db.execute(
-        `INSERT INTO affiliate_links (
+      await db.execute(sql`
+        INSERT INTO affiliate_links (
           partner, item_type, destination, generated_at
-        ) VALUES (?, ?, ?, datetime('now'))`,
-        [partner, itemType, destination]
-      );
+        ) VALUES (${partner}, ${itemType}, ${destination}, NOW())
+      `);
     } catch (error) {
       console.error('Track link error:', error);
     }
@@ -183,18 +183,17 @@ class AffiliateService {
    */
   async trackClick(linkId: string, userId?: string) {
     try {
-      await db.execute(
-        `INSERT INTO affiliate_clicks (
+      const userIdValue = userId || null;
+      await db.execute(sql`
+        INSERT INTO affiliate_clicks (
           link_id, user_id, clicked_at
-        ) VALUES (?, ?, datetime('now'))`,
-        [linkId, userId || null]
-      );
+        ) VALUES (${linkId}, ${userIdValue}, NOW())
+      `);
 
       // Increment click count
-      await db.execute(
-        `UPDATE affiliate_links SET clicks = clicks + 1 WHERE id = ?`,
-        [linkId]
-      );
+      await db.execute(sql`
+        UPDATE affiliate_links SET clicks = clicks + 1 WHERE id = ${linkId}
+      `);
     } catch (error) {
       console.error('Track click error:', error);
     }
@@ -210,21 +209,19 @@ class AffiliateService {
     commission: number
   ) {
     try {
-      await db.execute(
-        `INSERT INTO affiliate_conversions (
+      await db.execute(sql`
+        INSERT INTO affiliate_conversions (
           link_id, user_id, amount, commission, converted_at
-        ) VALUES (?, ?, ?, ?, datetime('now'))`,
-        [linkId, userId, amount, commission]
-      );
+        ) VALUES (${linkId}, ${userId}, ${amount}, ${commission}, NOW())
+      `);
 
       // Update affiliate stats
-      await db.execute(
-        `UPDATE affiliate_links
+      await db.execute(sql`
+        UPDATE affiliate_links
         SET conversions = conversions + 1,
-            total_revenue = total_revenue + ?
-        WHERE id = ?`,
-        [amount, linkId]
-      );
+            total_revenue = total_revenue + ${amount}
+        WHERE id = ${linkId}
+      `);
     } catch (error) {
       console.error('Track conversion error:', error);
     }
@@ -235,25 +232,31 @@ class AffiliateService {
    */
   async getStats(startDate?: string, endDate?: string) {
     try {
-      let query = `
-        SELECT
-          partner,
-          COUNT(*) as total_links,
-          SUM(clicks) as total_clicks,
-          SUM(conversions) as total_conversions,
-          SUM(total_revenue) as total_revenue
-        FROM affiliate_links
-      `;
-
-      const params: any[] = [];
+      let stats;
       if (startDate && endDate) {
-        query += ` WHERE generated_at BETWEEN ? AND ?`;
-        params.push(startDate, endDate);
+        stats = await db.execute(sql`
+          SELECT
+            partner,
+            COUNT(*) as total_links,
+            SUM(clicks) as total_clicks,
+            SUM(conversions) as total_conversions,
+            SUM(total_revenue) as total_revenue
+          FROM affiliate_links
+          WHERE generated_at BETWEEN ${startDate} AND ${endDate}
+          GROUP BY partner
+        `);
+      } else {
+        stats = await db.execute(sql`
+          SELECT
+            partner,
+            COUNT(*) as total_links,
+            SUM(clicks) as total_clicks,
+            SUM(conversions) as total_conversions,
+            SUM(total_revenue) as total_revenue
+          FROM affiliate_links
+          GROUP BY partner
+        `);
       }
-
-      query += ` GROUP BY partner`;
-
-      const stats = await db.execute(query, params);
       return stats.rows || [];
     } catch (error) {
       console.error('Get stats error:', error);
