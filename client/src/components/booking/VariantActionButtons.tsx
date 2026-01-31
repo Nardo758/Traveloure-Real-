@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star } from 'lucide-react';
+import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star, MoreVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,6 +14,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -201,12 +207,12 @@ export default function VariantActionButtons({
 
   return (
     <>
-      {/* Action Buttons Grid */}
-      <div className="grid grid-cols-2 gap-1.5">
+      {/* Action Buttons Row */}
+      <div className="flex items-center gap-1.5">
         {/* Book Now */}
         <Button
           onClick={onBook}
-          className="w-full text-xs px-2"
+          className="flex-1 text-xs px-2"
           size="sm"
           variant="default"
           data-testid={`button-book-now-${variant.id}`}
@@ -218,7 +224,7 @@ export default function VariantActionButtons({
         {/* Expert Review */}
         <Button
           onClick={() => setShowExpertModal(true)}
-          className="w-full text-xs px-2"
+          className="flex-1 text-xs px-2"
           size="sm"
           variant="outline"
           data-testid={`button-expert-review-${variant.id}`}
@@ -227,32 +233,37 @@ export default function VariantActionButtons({
           Expert Review
         </Button>
 
-        {/* Save for Later */}
-        <Button
-          onClick={() => setShowSaveModal(true)}
-          className="w-full text-xs px-2"
-          size="sm"
-          variant="outline"
-          data-testid={`button-save-later-${variant.id}`}
-        >
-          <Bookmark className="w-3 h-3 mr-1" />
-          Save Later
-        </Button>
-
-        {/* Share */}
-        <Button
-          onClick={() => {
-            setShowShareModal(true);
-            if (!shareLink) handleShare();
-          }}
-          className="w-full text-xs px-2"
-          size="sm"
-          variant="outline"
-          data-testid={`button-share-${variant.id}`}
-        >
-          <Share2 className="w-3 h-3 mr-1" />
-          Share
-        </Button>
+        {/* More Options Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              data-testid={`button-more-options-${variant.id}`}
+            >
+              <MoreVertical className="w-4 h-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() => setShowSaveModal(true)}
+              data-testid={`menu-save-later-${variant.id}`}
+            >
+              <Bookmark className="w-4 h-4 mr-2" />
+              Save for Later
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                setShowShareModal(true);
+                if (!shareLink) handleShare();
+              }}
+              data-testid={`menu-share-${variant.id}`}
+            >
+              <Share2 className="w-4 h-4 mr-2" />
+              Share
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Expert Review Modal */}
