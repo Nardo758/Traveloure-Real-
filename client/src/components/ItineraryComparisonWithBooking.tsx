@@ -121,6 +121,3 @@ export function BookThisTripButton({ variant, comparison, userId, userEmail, cla
     </>
   );
 }
-
-// Export helper functions for use in itinerary-comparison.tsx
-export { convertToCartItems, calculateItemDate } from './booking/BookingFlowModal';
