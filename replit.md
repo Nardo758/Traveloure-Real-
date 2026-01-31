@@ -7,6 +7,13 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2026)
+- **Smart Sequencing Integration in Itinerary Optimizer**: Integrated the 10+ wellness sequencing rules directly into the AI optimization flow:
+  - AI-generated variants now have activities reordered based on intelligent wellness rules (spa after adventure, cultural activities in morning, walk after heavy meals, etc.)
+  - Enhanced metrics calculated for each variant: balance_score, wellness_score, pace_score, diversity_score, sequencing_score
+  - Methodology notes generated at activity, day, and itinerary levels explaining sequencing decisions
+  - Traveloure Score badge displayed on variant cards (average of sequencing scores)
+  - "Why it's better" section now separates core metrics from Smart Sequencing metrics with color-coded scores
+  - Color coding: green (80+), yellow (60-79), orange (<60)
 - **Traveloure Itinerary System**: Polished final itinerary view users receive after booking, featuring:
   - Smart activity sequencing with 10+ intelligent rules (spa after adventure, walk after meals, transport buffers, intensity balancing)
   - Methodology notes at activity, day, and itinerary levels explaining sequencing decisions
