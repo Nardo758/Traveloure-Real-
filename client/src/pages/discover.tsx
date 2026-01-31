@@ -962,24 +962,16 @@ export default function DiscoverPage() {
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
-            <Tabs defaultValue="services" className="w-full">
+            <Tabs defaultValue="travelpulse" className="w-full">
               <div className="relative mb-8">
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <TabsTrigger
-                    value="services"
+                    value="travelpulse"
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-services"
+                    data-testid="tab-travelpulse"
                   >
-                    <Building2 className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Browse </span>Services
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-packages"
-                  >
-                    <Globe className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Trip </span>Packages
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                    TravelPulse
                   </TabsTrigger>
                   <TabsTrigger
                     value="articles"
@@ -995,15 +987,23 @@ export default function DiscoverPage() {
                     data-testid="tab-events"
                   >
                     <Ticket className="w-4 h-4 mr-2" />
-                    <span className="hidden lg:inline">Upcoming </span>Events
+                    <span className="hidden lg:inline">Travel </span>Events
                   </TabsTrigger>
                   <TabsTrigger
-                    value="travelpulse"
+                    value="packages"
                     className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
-                    data-testid="tab-travelpulse"
+                    data-testid="tab-packages"
                   >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    TravelPulse
+                    <Globe className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Trip </span>Packages
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="services"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    data-testid="tab-services"
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">Browse </span>Services
                   </TabsTrigger>
                 </TabsList>
                 {/* Scroll hint for mobile */}
