@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign } from 'lucide-react';
+import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -72,19 +72,19 @@ export default function VariantActionButtons({
       name: 'Review Only',
       price: 50,
       description: 'Expert reviews your itinerary and provides feedback',
-      icon: '👀',
+      IconComponent: Eye,
     },
     review_and_book: {
       name: 'Review & Book',
       price: 50 + (parseFloat(variant.totalCost) * 0.05),
       description: 'Expert reviews and books everything for you',
-      icon: '✅',
+      IconComponent: CheckCircle,
     },
     full_concierge: {
       name: 'Full Concierge',
       price: 100 + (parseFloat(variant.totalCost) * 0.08),
       description: 'Complete white-glove service, expert handles everything',
-      icon: '⭐',
+      IconComponent: Star,
     },
   };
 
@@ -209,6 +209,7 @@ export default function VariantActionButtons({
           className="w-full"
           size="lg"
           variant="default"
+          data-testid={`button-book-now-${variant.id}`}
         >
           <CreditCard className="w-4 h-4 mr-2" />
           Book Now
@@ -220,6 +221,7 @@ export default function VariantActionButtons({
           className="w-full"
           size="lg"
           variant="outline"
+          data-testid={`button-expert-review-${variant.id}`}
         >
           <UserCheck className="w-4 h-4 mr-2" />
           Expert Review
@@ -231,6 +233,7 @@ export default function VariantActionButtons({
           className="w-full"
           size="lg"
           variant="outline"
+          data-testid={`button-save-later-${variant.id}`}
         >
           <Bookmark className="w-4 h-4 mr-2" />
           Save Later
@@ -245,6 +248,7 @@ export default function VariantActionButtons({
           className="w-full"
           size="lg"
           variant="outline"
+          data-testid={`button-share-${variant.id}`}
         >
           <Share2 className="w-4 h-4 mr-2" />
           Share
@@ -265,16 +269,16 @@ export default function VariantActionButtons({
             {/* Service Tier Selection */}
             <RadioGroup value={expertServiceType} onValueChange={(v: any) => setExpertServiceType(v)}>
               {Object.entries(expertTiers).map(([key, tier]) => (
-                <div key={key} className="flex items-start space-x-2 border rounded-lg p-4 hover:bg-gray-50">
-                  <RadioGroupItem value={key} id={key} />
+                <div key={key} className="flex items-start space-x-2 border rounded-lg p-4 hover-elevate" data-testid={`radio-option-${key}`}>
+                  <RadioGroupItem value={key} id={key} data-testid={`radio-${key}`} />
                   <Label htmlFor={key} className="flex-1 cursor-pointer">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="font-semibold">
-                        {tier.icon} {tier.name}
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="font-semibold flex items-center gap-1">
+                        <tier.IconComponent className="w-4 h-4" /> {tier.name}
                       </span>
                       <Badge variant="secondary">${tier.price.toFixed(2)}</Badge>
                     </div>
-                    <p className="text-sm text-gray-600">{tier.description}</p>
+                    <p className="text-sm text-muted-foreground">{tier.description}</p>
                   </Label>
                 </div>
               ))}
@@ -289,12 +293,13 @@ export default function VariantActionButtons({
                 placeholder="Any specific preferences or requirements for the expert..."
                 rows={3}
                 className="mt-2"
+                data-testid="textarea-expert-notes"
               />
             </div>
 
             {/* Info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
+            <div className="bg-muted border rounded-lg p-4">
+              <p className="text-sm text-muted-foreground">
                 <Clock className="w-4 h-4 inline mr-2" />
                 Experts typically respond within 2-4 hours. You'll be notified via email when your request is reviewed.
               </p>
@@ -302,10 +307,10 @@ export default function VariantActionButtons({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowExpertModal(false)}>
+            <Button variant="outline" onClick={() => setShowExpertModal(false)} data-testid="button-cancel-expert">
               Cancel
             </Button>
-            <Button onClick={handleExpertSubmit} disabled={isSubmittingExpert}>
+            <Button onClick={handleExpertSubmit} disabled={isSubmittingExpert} data-testid="button-submit-expert">
               {isSubmittingExpert ? 'Submitting...' : `Submit Request - $${expertTiers[expertServiceType].price.toFixed(2)}`}
             </Button>
           </DialogFooter>
@@ -331,11 +336,12 @@ export default function VariantActionButtons({
                 placeholder="Why are you saving this trip? (e.g., 'Waiting for approval', 'Need to check dates')"
                 rows={3}
                 className="mt-2"
+                data-testid="textarea-save-notes"
               />
             </div>
 
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-              <p className="text-sm text-yellow-800">
+            <div className="bg-muted border rounded-lg p-4">
+              <p className="text-sm text-muted-foreground">
                 <Clock className="w-4 h-4 inline mr-2" />
                 Price lock: Current prices are saved, but may change when you book later.
               </p>
@@ -343,10 +349,10 @@ export default function VariantActionButtons({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSaveModal(false)}>
+            <Button variant="outline" onClick={() => setShowSaveModal(false)} data-testid="button-cancel-save">
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving} data-testid="button-submit-save">
               {isSaving ? 'Saving...' : 'Save Trip'}
             </Button>
           </DialogFooter>
@@ -378,9 +384,10 @@ export default function VariantActionButtons({
                     type="text"
                     value={shareLink}
                     readOnly
-                    className="flex-1 px-3 py-2 border rounded-lg bg-gray-50 text-sm"
+                    className="flex-1 px-3 py-2 border rounded-lg bg-muted text-sm"
+                    data-testid="input-share-link"
                   />
-                  <Button onClick={copyLink} size="sm">
+                  <Button onClick={copyLink} size="sm" data-testid="button-copy-link">
                     Copy
                   </Button>
                 </div>
@@ -394,6 +401,7 @@ export default function VariantActionButtons({
                     variant="outline"
                     onClick={() => window.open(socialUrls!.facebook, '_blank')}
                     className="w-full"
+                    data-testid="button-share-facebook"
                   >
                     Facebook
                   </Button>
@@ -401,6 +409,7 @@ export default function VariantActionButtons({
                     variant="outline"
                     onClick={() => window.open(socialUrls!.twitter, '_blank')}
                     className="w-full"
+                    data-testid="button-share-twitter"
                   >
                     Twitter
                   </Button>
@@ -408,6 +417,7 @@ export default function VariantActionButtons({
                     variant="outline"
                     onClick={() => window.open(socialUrls!.whatsapp, '_blank')}
                     className="w-full"
+                    data-testid="button-share-whatsapp"
                   >
                     WhatsApp
                   </Button>
@@ -415,6 +425,7 @@ export default function VariantActionButtons({
                     variant="outline"
                     onClick={() => window.open(socialUrls!.email, '_blank')}
                     className="w-full"
+                    data-testid="button-share-email"
                   >
                     Email
                   </Button>
@@ -424,7 +435,7 @@ export default function VariantActionButtons({
           ) : null}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowShareModal(false)}>
+            <Button variant="outline" onClick={() => setShowShareModal(false)} data-testid="button-done-share">
               Done
             </Button>
           </DialogFooter>
