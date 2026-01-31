@@ -4,9 +4,8 @@
  */
 
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { ShoppingCart, CreditCard } from 'lucide-react';
 import BookingFlowModal from './booking/BookingFlowModal';
+import VariantActionButtons from './booking/VariantActionButtons';
 
 interface VariantItem {
   id: string;
@@ -58,7 +57,7 @@ export function BookThisTripButton({ variant, comparison, userId, userEmail, cla
     return items.map((item, index) => ({
       id: item.id || `item-${index}`,
       tripId: comparison.id,
-      providerId: undefined, // Will be populated by availability check
+      providerId: undefined,
       title: item.name,
       itemType: item.serviceType || 'activities',
       bookingType: (item.serviceType?.toLowerCase().includes('transport') ||
@@ -95,14 +94,13 @@ export function BookThisTripButton({ variant, comparison, userId, userEmail, cla
 
   return (
     <>
-      <Button
-        onClick={handleBookClick}
-        className={className}
-        size="lg"
-      >
-        <CreditCard className="mr-2 h-4 w-4" />
-        Book This Trip
-      </Button>
+      <VariantActionButtons
+        variant={variant}
+        comparison={comparison}
+        userId={userId}
+        userEmail={userEmail}
+        onBook={handleBookClick}
+      />
 
       <BookingFlowModal
         isOpen={isBookingOpen}
