@@ -24,14 +24,14 @@ class StripePaymentService {
     try {
       // Get user details
       const user = await db.execute(sql`
-        SELECT email, username FROM users WHERE id = ${userId}
+        SELECT email, first_name, last_name FROM users WHERE id = ${userId}
       `);
 
       if (!user.rows || user.rows.length === 0) {
         throw new Error('User not found');
       }
 
-      const userRow = user.rows[0] as { email?: string; username?: string };
+      const userRow = user.rows[0] as { email?: string; first_name?: string; last_name?: string };
       const userEmail = userRow.email || `user${userId}@traveloure.com`;
 
       // Create payment intent
