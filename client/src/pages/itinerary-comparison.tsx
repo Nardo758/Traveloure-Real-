@@ -536,7 +536,11 @@ export default function ItineraryComparisonPage() {
                         {travelPulseData.city.aiBudgetEstimate && (
                           <div className="flex items-center gap-1">
                             <DollarSign className="h-3 w-3 text-emerald-500" />
-                            <span className="font-medium text-emerald-600 dark:text-emerald-400 truncate max-w-32">{travelPulseData.city.aiBudgetEstimate}</span>
+                            <span className="font-medium text-emerald-600 dark:text-emerald-400 truncate max-w-32">
+                              {typeof travelPulseData.city.aiBudgetEstimate === 'string' 
+                                ? travelPulseData.city.aiBudgetEstimate 
+                                : (travelPulseData.city.aiBudgetEstimate as any)?.midRange || 'Budget varies'}
+                            </span>
                           </div>
                         )}
                       </div>
