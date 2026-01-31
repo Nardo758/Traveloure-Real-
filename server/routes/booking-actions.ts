@@ -17,10 +17,10 @@ function generateToken(): string {
 }
 
 /**
- * POST /api/expert-requests/checkout
- * Create Stripe checkout session for expert review service
+ * POST /api/expert-requests/payment-intent
+ * Create Stripe payment intent for expert review service (embedded checkout)
  */
-router.post('/expert-requests/checkout', async (req, res) => {
+router.post('/expert-requests/payment-intent', async (req, res) => {
   try {
     const {
       userId,
@@ -37,11 +37,7 @@ router.post('/expert-requests/checkout', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const successUrl = `${baseUrl}/expert-request-success?session_id={CHECKOUT_SESSION_ID}`;
-    const cancelUrl = `${baseUrl}/itinerary/${comparisonId}`;
-
-    const session = await stripePaymentService.createExpertServiceCheckout(
+    const paymentIntent = await stripePaymentService.createExpertServicePaymentIntent(
       userId,
       userEmail || `user${userId}@traveloure.com`,
       variantId,
@@ -49,15 +45,13 @@ router.post('/expert-requests/checkout', async (req, res) => {
       destination,
       serviceType,
       amount,
-      notes || '',
-      successUrl,
-      cancelUrl
+      notes || ''
     );
 
-    res.json(session);
+    res.json(paymentIntent);
   } catch (error: any) {
-    console.error('Expert checkout error:', error);
-    res.status(500).json({ error: error.message || 'Failed to create checkout session' });
+    console.error('Expert payment intent error:', error);
+    res.status(500).json({ error: error.message || 'Failed to create payment intent' });
   }
 });
 

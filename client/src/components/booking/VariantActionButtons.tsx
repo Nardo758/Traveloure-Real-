@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from 'react';
-import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star, MoreVertical } from 'lucide-react';
+import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star, MoreVertical, ArrowLeft } from 'lucide-react';
+import StripeCheckout from './StripeCheckout';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -67,6 +68,8 @@ export default function VariantActionButtons({
   const [expertServiceType, setExpertServiceType] = useState<'review' | 'review_and_book' | 'full_concierge'>('review');
   const [expertNotes, setExpertNotes] = useState('');
   const [isSubmittingExpert, setIsSubmittingExpert] = useState(false);
+  const [expertStep, setExpertStep] = useState<'select' | 'payment' | 'success'>('select');
+  const [expertPaymentIntent, setExpertPaymentIntent] = useState<{ clientSecret: string; paymentIntentId: string; amount: number } | null>(null);
 
   // Save Modal
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -111,14 +114,14 @@ export default function VariantActionButtons({
     return expertTiers[expertServiceType].price;
   };
 
-  // Handle Expert Review Submit - Redirect to Stripe Checkout
+  // Handle Expert Review Submit - Create payment intent and show payment form
   const handleExpertSubmit = async () => {
     setIsSubmittingExpert(true);
     try {
       const city = extractCity(comparison.destination);
       const totalAmount = calculateTotalPrice();
       
-      const response = await fetch('/api/expert-requests/checkout', {
+      const response = await fetch('/api/expert-requests/payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -133,21 +136,57 @@ export default function VariantActionButtons({
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to create checkout session');
+      if (!response.ok) throw new Error('Failed to create payment intent');
 
       const data = await response.json();
-      
-      // Redirect to Stripe Checkout
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error('No checkout URL returned');
-      }
+      setExpertPaymentIntent(data);
+      setExpertStep('payment');
     } catch (error) {
-      console.error('Expert checkout error:', error);
-      alert('Failed to start checkout. Please try again.');
+      console.error('Expert payment error:', error);
+      alert('Failed to start payment. Please try again.');
+    } finally {
       setIsSubmittingExpert(false);
     }
+  };
+
+  // Handle payment success
+  const handleExpertPaymentSuccess = async (paymentIntentId: string) => {
+    try {
+      // Create the expert request after successful payment
+      const city = extractCity(comparison.destination);
+      await fetch('/api/expert-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          variantId: variant.id,
+          comparisonId: comparison.id,
+          destination: city,
+          requestType: expertServiceType,
+          expertFee: calculateTotalPrice(),
+          notes: expertNotes,
+          paymentIntentId,
+          paymentStatus: 'paid',
+        }),
+      });
+      setExpertStep('success');
+    } catch (error) {
+      console.error('Error creating expert request:', error);
+    }
+  };
+
+  // Handle payment error
+  const handleExpertPaymentError = (error: string) => {
+    console.error('Payment error:', error);
+  };
+
+  // Reset expert modal state
+  const resetExpertModal = () => {
+    setShowExpertModal(false);
+    setExpertStep('select');
+    setExpertPaymentIntent(null);
+    setExpertNotes('');
+    setExpertServiceType('review');
   };
 
   // Handle Save for Later
@@ -251,64 +290,131 @@ export default function VariantActionButtons({
       </div>
 
       {/* Expert Review Modal */}
-      <Dialog open={showExpertModal} onOpenChange={setShowExpertModal}>
+      <Dialog open={showExpertModal} onOpenChange={(open) => { if (!open) resetExpertModal(); else setShowExpertModal(true); }}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Expert Review Service</DialogTitle>
-            <DialogDescription>
-              Connect with a local expert in {comparison.destination} who will review your itinerary
-            </DialogDescription>
-          </DialogHeader>
+          {/* Step 1: Select Service */}
+          {expertStep === 'select' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Expert Review Service</DialogTitle>
+                <DialogDescription>
+                  Connect with a local expert in {comparison.destination} who will review your itinerary
+                </DialogDescription>
+              </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Service Tier Selection */}
-            <RadioGroup value={expertServiceType} onValueChange={(v: any) => setExpertServiceType(v)}>
-              {Object.entries(expertTiers).map(([key, tier]) => (
-                <div key={key} className="flex items-start space-x-2 border rounded-lg p-4 hover-elevate" data-testid={`radio-option-${key}`}>
-                  <RadioGroupItem value={key} id={key} data-testid={`radio-${key}`} />
-                  <Label htmlFor={key} className="flex-1 cursor-pointer">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="font-semibold flex items-center gap-1">
-                        <tier.IconComponent className="w-4 h-4" /> {tier.name}
-                      </span>
-                      <Badge variant="secondary">${tier.price.toFixed(2)}</Badge>
+              <div className="space-y-4">
+                {/* Service Tier Selection */}
+                <RadioGroup value={expertServiceType} onValueChange={(v: any) => setExpertServiceType(v)}>
+                  {Object.entries(expertTiers).map(([key, tier]) => (
+                    <div key={key} className="flex items-start space-x-2 border rounded-lg p-4 hover-elevate" data-testid={`radio-option-${key}`}>
+                      <RadioGroupItem value={key} id={key} data-testid={`radio-${key}`} />
+                      <Label htmlFor={key} className="flex-1 cursor-pointer">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="font-semibold flex items-center gap-1">
+                            <tier.IconComponent className="w-4 h-4" /> {tier.name}
+                          </span>
+                          <Badge variant="secondary">${tier.price.toFixed(2)}</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{tier.description}</p>
+                      </Label>
                     </div>
-                    <p className="text-sm text-muted-foreground">{tier.description}</p>
-                  </Label>
+                  ))}
+                </RadioGroup>
+
+                {/* Notes */}
+                <div>
+                  <Label>Special Requests (Optional)</Label>
+                  <Textarea
+                    value={expertNotes}
+                    onChange={(e) => setExpertNotes(e.target.value)}
+                    placeholder="Any specific preferences or requirements for the expert..."
+                    rows={3}
+                    className="mt-2"
+                    data-testid="textarea-expert-notes"
+                  />
                 </div>
-              ))}
-            </RadioGroup>
 
-            {/* Notes */}
-            <div>
-              <Label>Special Requests (Optional)</Label>
-              <Textarea
-                value={expertNotes}
-                onChange={(e) => setExpertNotes(e.target.value)}
-                placeholder="Any specific preferences or requirements for the expert..."
-                rows={3}
-                className="mt-2"
-                data-testid="textarea-expert-notes"
+                {/* Info */}
+                <div className="bg-muted border rounded-lg p-4">
+                  <p className="text-sm text-muted-foreground">
+                    <Clock className="w-4 h-4 inline mr-2" />
+                    Experts typically respond within 2-4 hours. You'll be notified via email when your request is reviewed.
+                  </p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={resetExpertModal} data-testid="button-cancel-expert">
+                  Cancel
+                </Button>
+                <Button onClick={handleExpertSubmit} disabled={isSubmittingExpert} data-testid="button-submit-expert">
+                  {isSubmittingExpert ? 'Processing...' : `Continue to Payment - $${expertTiers[expertServiceType].price.toFixed(2)}`}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {/* Step 2: Payment */}
+          {expertStep === 'payment' && expertPaymentIntent && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="icon" onClick={() => setExpertStep('select')} data-testid="button-back-to-select">
+                    <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                  <div>
+                    <DialogTitle>Complete Payment</DialogTitle>
+                    <DialogDescription>
+                      {expertTiers[expertServiceType].name} - ${expertTiers[expertServiceType].price.toFixed(2)}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              <StripeCheckout
+                paymentIntent={expertPaymentIntent}
+                bookingIds={[`expert-${variant.id}`]}
+                onSuccess={handleExpertPaymentSuccess}
+                onError={handleExpertPaymentError}
+                onCancel={() => setExpertStep('select')}
               />
-            </div>
+            </>
+          )}
 
-            {/* Info */}
-            <div className="bg-muted border rounded-lg p-4">
-              <p className="text-sm text-muted-foreground">
-                <Clock className="w-4 h-4 inline mr-2" />
-                Experts typically respond within 2-4 hours. You'll be notified via email when your request is reviewed.
-              </p>
-            </div>
-          </div>
+          {/* Step 3: Success */}
+          {expertStep === 'success' && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-green-600">
+                  <CheckCircle className="w-5 h-5" />
+                  Request Submitted Successfully
+                </DialogTitle>
+              </DialogHeader>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowExpertModal(false)} data-testid="button-cancel-expert">
-              Cancel
-            </Button>
-            <Button onClick={handleExpertSubmit} disabled={isSubmittingExpert} data-testid="button-submit-expert">
-              {isSubmittingExpert ? 'Submitting...' : `Submit Request - $${expertTiers[expertServiceType].price.toFixed(2)}`}
-            </Button>
-          </DialogFooter>
+              <div className="space-y-4 py-4">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Your expert request is confirmed!</h3>
+                  <p className="text-muted-foreground">
+                    A local expert in {comparison.destination} will review your itinerary and contact you within 2-4 hours.
+                  </p>
+                </div>
+
+                <div className="bg-muted rounded-lg p-4 text-sm">
+                  <p><strong>Service:</strong> {expertTiers[expertServiceType].name}</p>
+                  <p><strong>Amount Paid:</strong> ${expertTiers[expertServiceType].price.toFixed(2)}</p>
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button onClick={resetExpertModal} data-testid="button-done-expert">
+                  Done
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
