@@ -908,7 +908,7 @@ export default function DiscoverPage() {
                     placeholder="Search services, destinations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-12"
+                    className="pl-10 h-12 text-foreground"
                     data-testid="input-search"
                   />
                 </div>
