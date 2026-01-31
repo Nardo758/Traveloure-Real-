@@ -327,20 +327,87 @@ export default function ItineraryComparisonPage() {
           </div>
         </div>
 
-        {isGenerating && (
-          <Card className="mb-6 border-primary/50 bg-primary/5">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-4">
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <div>
-                  <h3 className="font-semibold">AI is optimizing your itinerary...</h3>
-                  <p className="text-sm text-muted-foreground">
-                    This usually takes 30-60 seconds. We're analyzing your selections and finding better alternatives.
-                  </p>
+        {isGenerating && !hasVariants && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            {/* Your Plan skeleton */}
+            <Card className="border-dashed">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-5 w-20" />
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                <Skeleton className="h-6 w-32 mt-2" />
+                <Skeleton className="h-4 w-48 mt-1" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-6 w-16" />
+                  </div>
+                  <Separator />
+                  <div className="flex items-center justify-center gap-3 py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Building your plan...</span>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-9 w-full" />
+              </CardFooter>
+            </Card>
+
+            {/* AI Optimized skeleton cards */}
+            {[1, 2].map((i) => (
+              <Card key={i} className={cn("border-dashed relative", i === 1 && "border-green-500/30")}>
+                {i === 1 && (
+                  <div className="absolute -top-3 left-4">
+                    <Badge className="bg-green-600/50">
+                      <Award className="h-3 w-3 mr-1" />
+                      Recommended
+                    </Badge>
+                  </div>
+                )}
+                <CardHeader className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="default" className="bg-primary/10 text-primary/50">
+                      <Sparkles className="h-3 w-3 mr-1" />
+                      AI Optimized
+                    </Badge>
+                  </div>
+                  <Skeleton className="h-6 w-40 mt-2" />
+                  <Skeleton className="h-4 w-56 mt-1" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <Skeleton className="h-4 w-20" />
+                      <Skeleton className="h-6 w-16" />
+                    </div>
+                    <Separator />
+                    <div className="flex flex-col items-center justify-center gap-3 py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <span className="text-sm text-muted-foreground">
+                        {i === 1 ? "Finding best alternatives..." : "Optimizing for savings..."}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                      <Skeleton className="h-10 w-full" />
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Skeleton className="h-9 w-full" />
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
         )}
 
         {hasFailed && (
@@ -589,8 +656,8 @@ export default function ItineraryComparisonPage() {
                             View Full Plan
                           </Button>
                         </div>
-                        <ScrollArea className="h-32">
-                          {userVariant.items.slice(0, 4).map((item, idx) => {
+                        <ScrollArea className="h-48">
+                          {userVariant.items.slice(0, 6).map((item, idx) => {
                             const bookingType = getBookingType(item.serviceType);
                             return (
                               <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
@@ -623,9 +690,9 @@ export default function ItineraryComparisonPage() {
                               </div>
                             );
                           })}
-                          {userVariant.items.length > 4 && (
+                          {userVariant.items.length > 6 && (
                             <p className="text-xs text-muted-foreground text-center py-2">
-                              +{userVariant.items.length - 4} more activities...
+                              +{userVariant.items.length - 6} more activities...
                             </p>
                           )}
                         </ScrollArea>
@@ -741,8 +808,8 @@ export default function ItineraryComparisonPage() {
                             View Full Plan
                           </Button>
                         </div>
-                        <ScrollArea className="h-32">
-                          {variant.items.slice(0, 4).map((item, idx) => {
+                        <ScrollArea className="h-48">
+                          {variant.items.slice(0, 6).map((item, idx) => {
                             const bookingType = getBookingType(item.serviceType);
                             return (
                               <div key={item.id || idx} className="py-2 text-sm border-b last:border-0">
@@ -780,9 +847,9 @@ export default function ItineraryComparisonPage() {
                               </div>
                             );
                           })}
-                          {variant.items.length > 4 && (
+                          {variant.items.length > 6 && (
                             <p className="text-xs text-muted-foreground text-center py-2">
-                              +{variant.items.length - 4} more activities...
+                              +{variant.items.length - 6} more activities...
                             </p>
                           )}
                         </ScrollArea>
