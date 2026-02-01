@@ -2,6 +2,7 @@
 // ✅ SECURE VERSION - No localStorage token storage
 
 import { createLogger } from './logger'
+import logger from './logger'
 const logger = createLogger('Auth')
 
 // Global reference to NextAuth signOut function
@@ -196,13 +197,13 @@ export const handleTokenExpiration = async (currentPath = null, signOutCallback 
   // Call NextAuth signOut to clear session
   if (signOut && typeof signOut === 'function') {
     try {
-      console.log('🔒 Calling NextAuth signOut to clear session')
+      logger.debug('🔒 Calling NextAuth signOut to clear session')
       await signOut({ redirect: false }) // Don't let NextAuth redirect, we'll handle it
     } catch (error) {
-      console.error('Error calling NextAuth signOut:', error)
+      logger.error('Error calling NextAuth signOut:', error)
     }
   } else {
-    console.warn('⚠️ No NextAuth signOut function available. Session may not be fully cleared.')
+    logger.warn('⚠️ No NextAuth signOut function available. Session may not be fully cleared.')
   }
   
   // Get current path from window if not provided
@@ -211,7 +212,7 @@ export const handleTokenExpiration = async (currentPath = null, signOutCallback 
   // Get appropriate redirect URL
   const redirectUrl = getRedirectUrl(path)
   
-  console.log(`🔒 Redirecting to: ${redirectUrl}`)
+  logger.debug(`🔒 Redirecting to: ${redirectUrl}`)
   
   // Redirect to appropriate page
   if (typeof window !== 'undefined') {

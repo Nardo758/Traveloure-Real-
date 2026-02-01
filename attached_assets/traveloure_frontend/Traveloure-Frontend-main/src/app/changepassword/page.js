@@ -27,27 +27,58 @@ const router = useRouter();
       return;
     }
 
+    // Validate password strength
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+
     try {
       const result = await dispatch(
         changePassword({
           newPassword,
           confirmNewPassword,
-          token:session?.backendData?.accessToken
+          token: session?.backendData?.accessToken
         })
       );
 
       if (changePassword.fulfilled.match(result)) {
-      
+        // Clear form fields
         setNewPassword('');
         setConfirmNewPassword('');
-          toast.success("Password changed successfully"); 
-           if (changePassword.fulfilled.match(resultAction)) {
+        
+        toast.success("Password changed successfully");
+        
+        // Redirect to home page
+        setTimeout(() => {
+          router.push('/');
+        }, 1500);
+      } else if (changePassword.rejected.match(result)) {
+        // Handle rejection with meaningful error message
+        const errorMessage = result.error?.message || 
+                            result.payload?.message || 
+                            "Failed to change password. Please try again.";
+        toast.error(errorMessage);
+      }
+    } catch (error) {
+      console.error("Password change error:", error);
       
-            router.push('/');
-          } 
-      } 
-    } catch {
-      console.log("error")
+      // Handle different error scenarios
+      let errorMessage = "An unexpected error occurred while changing password.";
+      
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Check for common error patterns
+      if (error.message?.includes('token') || error.message?.includes('unauthorized')) {
+        errorMessage = "Session expired. Please log in again.";
+        setTimeout(() => {
+          router.push('/login');
+        }, 2000);
+      }
+      
+      toast.error(errorMessage);
     }
   };
 

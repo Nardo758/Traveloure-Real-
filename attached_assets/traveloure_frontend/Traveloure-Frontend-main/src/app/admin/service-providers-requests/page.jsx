@@ -15,6 +15,7 @@ import { CommonDataTable } from '../../../components/admin/CommonDataTable'
 import { getCountriesForFilter, getLanguagesForFilter, applyFilters } from '../../../lib/countryUtils'
 import Link from "next/link"
 import { getPendingServiceProviders, updateServiceProvider } from '../../../app/redux-features/service-provider/serviceProviderSlice'
+import logger from '../../../lib/logger'
 
 // Mock data for service providers requests
 const serviceProvidersData = [
@@ -199,7 +200,7 @@ export default function ServiceProvidersRequests() {
         token: session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
       }))
     } catch (error) {
-      console.error('Error approving provider:', error)
+      logger.error('Error approving provider:', error)
     }
   }
 
@@ -220,7 +221,7 @@ export default function ServiceProvidersRequests() {
         token: session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
       }))
     } catch (error) {
-      console.error('Error rejecting provider:', error)
+      logger.error('Error rejecting provider:', error)
     }
   }
 
@@ -372,13 +373,13 @@ export default function ServiceProvidersRequests() {
         handleReject(itemId)
         break
       case 'viewDetails':
-        console.log("View details for service provider:", itemId)
+        logger.debug("View details for service provider:", itemId)
         break
       case 'editDetails':
-        console.log("Edit details for service provider:", itemId)
+        logger.debug("Edit details for service provider:", itemId)
         break
       case 'sendMail':
-        console.log("Send mail to service provider:", itemId)
+        logger.debug("Send mail to service provider:", itemId)
         break
       default:
         break

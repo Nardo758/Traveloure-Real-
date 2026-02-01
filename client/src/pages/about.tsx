@@ -13,6 +13,7 @@ import {
   MapPin,
   Award
 } from "lucide-react";
+import { SEOHead } from "@/components/seo-head";
 
 const values = [
   {
@@ -81,6 +82,12 @@ const stats = [
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-background">
+      <SEOHead 
+        title="About Us"
+        description="Learn about Traveloure's mission to transform travel planning through AI and human expertise. Meet our team and discover our values."
+        keywords={["about traveloure", "travel platform", "AI travel", "company mission"]}
+        url="/about"
+      />
       {/* Hero Section */}
       <section className="py-16 md:py-24 bg-gradient-to-br from-orange-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         <div className="container mx-auto px-4">

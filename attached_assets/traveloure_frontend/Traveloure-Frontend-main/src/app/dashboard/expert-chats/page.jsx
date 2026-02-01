@@ -34,6 +34,7 @@ import ItineraryMessage from "../../../components/ItineraryMessage"
 import soundNotification from "../../../utils/soundNotification"
 import { useIsMobile } from "../../../hooks/use-mobile"
 import { AppSidebar } from "../../../components/app-sidebar"
+import logger from '../../../lib/logger'
 
 export default function ExpertChatsPage() {
   const { data: session } = useSession()
@@ -80,7 +81,7 @@ export default function ExpertChatsPage() {
         .then(result => {
         })
         .catch(error => {
-          console.error('🔌 Dashboard expert-chats - Failed to check contract status:', error)
+          logger.error('🔌 Dashboard expert-chats - Failed to check contract status:', error)
         })
     }
   }, [session?.backendData?.accessToken, session?.backendData?.backendData?.accessToken, selectedChat, dispatch])
@@ -157,7 +158,7 @@ export default function ExpertChatsPage() {
         }
       }, 60000) // Max 1 minute
     } catch (error) {
-      console.error("Error starting recording:", error)
+      logger.error("Error starting recording:", error)
       toast.error("Could not start recording")
     }
   }
@@ -174,7 +175,7 @@ export default function ExpertChatsPage() {
         setAudioBlob(null)
         setRecordingTime(0)
       } catch (error) {
-        console.error("Error sending voice message:", error)
+        logger.error("Error sending voice message:", error)
         toast.error("Failed to send voice message")
       }
     }
@@ -249,7 +250,7 @@ export default function ExpertChatsPage() {
       setChatMessage("")
       setSelectedFile(null)
     } catch (error) {
-      console.error("Error sending message:", error)
+      logger.error("Error sending message:", error)
       toast.error("Failed to send message")
     }
   }
@@ -547,16 +548,16 @@ export default function ExpertChatsPage() {
             if (chatId) {
               dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId }))
               .then(() => {
-                console.log("🔌 Dashboard Expert Chats - Contract status refreshed successfully")
+                logger.debug("🔌 Dashboard Expert Chats - Contract status refreshed successfully")
               })
               .catch(error => {
-                console.error("🔌 Dashboard Expert Chats - Error refreshing contract status:", error)
+                logger.error("🔌 Dashboard Expert Chats - Error refreshing contract status:", error)
               })
             } else {
-              console.log("🔌 Dashboard Expert Chats - No chat ID available for checkContractStatus")
+              logger.debug("🔌 Dashboard Expert Chats - No chat ID available for checkContractStatus")
             }
           } else {
-            console.log("🔌 Dashboard Expert Chats - No access token available for checkContractStatus")
+            logger.debug("🔌 Dashboard Expert Chats - No access token available for checkContractStatus")
           }
         }
       }
@@ -596,16 +597,16 @@ export default function ExpertChatsPage() {
           if (chatId) {
             dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId }))
             .then(() => {
-              console.log("🔌 Dashboard Expert Chats - Contract status refreshed successfully after itinerary acceptance")
+              logger.debug("🔌 Dashboard Expert Chats - Contract status refreshed successfully after itinerary acceptance")
             })
             .catch(error => {
-              console.error("🔌 Dashboard Expert Chats - Error refreshing contract status after itinerary acceptance:", error)
+              logger.error("🔌 Dashboard Expert Chats - Error refreshing contract status after itinerary acceptance:", error)
             })
           } else {
-            console.log("🔌 Dashboard Expert Chats - No chat ID available for checkContractStatus after itinerary acceptance")
+            logger.debug("🔌 Dashboard Expert Chats - No chat ID available for checkContractStatus after itinerary acceptance")
           }
         } else {
-          console.log("🔌 Dashboard Expert Chats - No access token available for checkContractStatus after itinerary acceptance")
+          logger.debug("🔌 Dashboard Expert Chats - No access token available for checkContractStatus after itinerary acceptance")
         }
       }
     }
@@ -629,7 +630,7 @@ export default function ExpertChatsPage() {
     try {
       await contract.handleContractSubmit(contractData)
     } catch (error) {
-      console.error("Contract submission error:", error)
+      logger.error("Contract submission error:", error)
     }
   }
 
@@ -643,7 +644,7 @@ export default function ExpertChatsPage() {
     try {
       await contract.handleContractPay(contractId, chat.messages)
     } catch (error) {
-      console.error("Error processing payment:", error)
+      logger.error("Error processing payment:", error)
     }
   }
 
@@ -652,7 +653,7 @@ export default function ExpertChatsPage() {
     try {
       await itinerary.handleItineraryAction(itineraryId, "approve")
     } catch (error) {
-      console.error("Error approving itinerary:", error)
+      logger.error("Error approving itinerary:", error)
     }
   }
 
@@ -660,7 +661,7 @@ export default function ExpertChatsPage() {
     try {
       await itinerary.handleItineraryAction(itineraryId, "requestEdit")
     } catch (error) {
-      console.error("Error requesting itinerary edit:", error)
+      logger.error("Error requesting itinerary edit:", error)
     }
   }
 
@@ -703,10 +704,10 @@ export default function ExpertChatsPage() {
     // Fetch chat history again to refresh the list
     const accessToken = session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
     if (accessToken) {
-      console.log('🔍 Dashboard Expert Chats - Fetching chat history on back button')
+      logger.debug('🔍 Dashboard Expert Chats - Fetching chat history on back button')
       
     } else {
-      console.log('🔍 Dashboard Expert Chats - No access token available')
+      logger.debug('🔍 Dashboard Expert Chats - No access token available')
     }
     
     chat.handleCloseChat()

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '../../auth/[...nextauth]/route'
+import logger from '../../../../lib/logger'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
@@ -17,11 +18,11 @@ export async function POST(request) {
                        session?.backendData?.backendData?.accessToken || 
                        tokenFromHeader
     
-    console.log('🔌 Submit Itinerary API - Session:', !!session)
-    console.log('🔌 Submit Itinerary API - Token from header:', !!tokenFromHeader)
+    logger.debug('🔌 Submit Itinerary API - Session:', !!session)
+    logger.debug('🔌 Submit Itinerary API - Token from header:', !!tokenFromHeader)
     
     if (!accessToken) {
-      console.error('❌ Submit Itinerary API - No access token found')
+      logger.error('❌ Submit Itinerary API - No access token found')
       return NextResponse.json(
         { error: 'Authentication required' },
         { status: 401 }
@@ -88,7 +89,7 @@ export async function POST(request) {
     })
 
   } catch (error) {
-    console.error('Error in submit-itinerary API:', error)
+    logger.error('Error in submit-itinerary API:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

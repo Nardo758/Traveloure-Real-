@@ -2,6 +2,7 @@
 // ✅ SECURE VERSION - Uses NextAuth session instead of localStorage
 import { getSession } from 'next-auth/react'
 import { isTokenExpired, handleTokenExpiration } from './authUtils'
+import logger from './logger'
 
 /**
  * Handle API error in Redux async thunk
@@ -17,7 +18,7 @@ export const handleReduxApiError = (error, rejectWithValue) => {
     
     // Check for token expiration
     if (isTokenExpired(errorData)) {
-      console.log('🔒 Token expired detected in Redux thunk:', errorData)
+      logger.debug('🔒 Token expired detected in Redux thunk:', errorData)
       handleTokenExpiration()
       return rejectWithValue('Token expired - please login again')
     }
@@ -27,12 +28,12 @@ export const handleReduxApiError = (error, rejectWithValue) => {
   if (error.response?.status === 401) {
     // Double-check for token expiration in 401 responses
     if (error.response?.data && isTokenExpired(error.response.data)) {
-      console.log('🔒 Token expired detected in 401 response')
+      logger.debug('🔒 Token expired detected in 401 response')
       handleTokenExpiration()
       return rejectWithValue('Token expired - please login again')
     }
     
-    console.log('🔒 Unauthorized (401) in Redux thunk')
+    logger.debug('🔒 Unauthorized (401) in Redux thunk')
     handleTokenExpiration()
     return rejectWithValue('Authentication failed - please login again')
   }
@@ -82,7 +83,7 @@ export const getReduxAuthHeaders = async (token = null) => {
     const accessToken = session?.backendData?.accessToken
     return accessToken ? { Authorization: `Bearer ${accessToken}` } : {}
   } catch (error) {
-    console.error('Error getting session for auth headers:', error)
+    logger.error('Error getting session for auth headers:', error)
     return {}
   }
 }

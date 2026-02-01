@@ -2,6 +2,7 @@
 // ✅ SECURE VERSION - Uses NextAuth session instead of localStorage
 import { getSession } from 'next-auth/react'
 import { isTokenExpired, handleTokenExpiration } from './authUtils'
+import logger from './logger'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
@@ -46,7 +47,7 @@ export const apiRequest = async (endpoint, options = {}) => {
     
     // Check if token is expired from response body (check before status code)
     if (responseData && isTokenExpired(responseData)) {
-      console.log('🔒 Token expired detected from response body:', responseData)
+      logger.debug('🔒 Token expired detected from response body:', responseData)
       handleTokenExpiration()
       throw new Error('Token expired')
     }
@@ -55,7 +56,7 @@ export const apiRequest = async (endpoint, options = {}) => {
     if (response.status === 401) {
       // Double-check for token expiration in 401 responses - if detected, logout immediately
       if (responseData && isTokenExpired(responseData)) {
-        console.log('🔒 Token expired detected in 401 response - logging out immediately')
+        logger.debug('🔒 Token expired detected in 401 response - logging out immediately')
         handleTokenExpiration()
         throw new Error('Token expired')
       }
@@ -86,7 +87,7 @@ export const apiRequest = async (endpoint, options = {}) => {
             
             // ✅ SECURE: Do NOT store token in localStorage
             // NextAuth will automatically update the session
-            console.log('✅ Token refreshed - NextAuth will update session automatically')
+            logger.debug('✅ Token refreshed - NextAuth will update session automatically')
             
             // Retry the original request with new token
             const retryConfig = {
@@ -100,12 +101,12 @@ export const apiRequest = async (endpoint, options = {}) => {
             return await fetch(url, retryConfig)
           } else {
             // Refresh failed, handle token expiration
-            console.log('🔒 Token refresh failed')
+            logger.debug('🔒 Token refresh failed')
             handleTokenExpiration()
             throw new Error('Authentication failed')
           }
         } catch (error) {
-          console.error('Token refresh failed:', error)
+          logger.error('Token refresh failed:', error)
           handleTokenExpiration()
           throw error
         }
@@ -115,7 +116,7 @@ export const apiRequest = async (endpoint, options = {}) => {
           // For auth endpoints, just throw error without logout
           throw new Error('Authentication failed')
         }
-        console.log('🔒 No refresh token available or auth endpoint - logging out')
+        logger.debug('🔒 No refresh token available or auth endpoint - logging out')
         handleTokenExpiration()
         throw new Error('Authentication failed')
       }
@@ -123,7 +124,7 @@ export const apiRequest = async (endpoint, options = {}) => {
 
     return response
   } catch (error) {
-    console.error('API request failed:', error)
+    logger.error('API request failed:', error)
     throw error
   }
 }

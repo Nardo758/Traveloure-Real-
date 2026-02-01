@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avat
 import { Button } from "../../../components/ui/button"
 import { Input } from "../../../components/ui/input"
 import { useHelpMeDecideCleanup } from "../../../hooks/useHelpMeDecideCleanup"
+import logger from '../../../lib/logger'
 
 export default function HelpMeDecideNightlifePage() {
   // Use the cleanup hook to handle localStorage cleanup when navigating away
@@ -114,7 +115,7 @@ export default function HelpMeDecideNightlifePage() {
 
   const handleEditComment = (id) => {
     // Implement edit functionality
-    console.log("Editing comment:", id)
+    logger.debug("Editing comment:", id)
   }
 
   const handleRemoveComment = (id) => {

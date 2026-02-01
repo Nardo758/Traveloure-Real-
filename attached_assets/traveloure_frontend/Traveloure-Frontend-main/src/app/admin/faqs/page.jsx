@@ -38,13 +38,13 @@ export default function AdminFAQs() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateForm, setShowCreateForm] = useState(false)
 
-  // Get access token
+  // ✅ SECURE: Get access token from NextAuth session only (no localStorage fallback)
   const getAccessToken = () => {
     return session?.backendData?.accessToken || 
            session?.backendData?.backendData?.accessToken ||
            sessionData?.backendData?.accessToken ||
            sessionData?.backendData?.backendData?.accessToken ||
-           localStorage.getItem('accessToken')
+           null
   }
 
   useEffect(() => {

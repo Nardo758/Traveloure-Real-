@@ -1,0 +1,484 @@
+{
+  "meta": {
+    "description": "SERP API query configurations for all Traveloure templates",
+    "version": "1.0.0",
+    "created": "2025-02-01",
+    "priority_implementation_order": [
+      "wedding",
+      "bachelor-bachelorette",
+      "anniversary-trip",
+      "corporate-events",
+      "birthday",
+      "travel"
+    ]
+  },
+  "templates": {
+    "wedding": {
+      "tabs": {
+        "venues": {
+          "api": "google_places",
+          "query_template": "wedding venues in {destination}",
+          "filters": {
+            "type": "event_venue",
+            "keywords": ["wedding", "venue", "ceremony", "reception"],
+            "radius": 50000
+          },
+          "fallback_queries": [
+            "event venues {destination}",
+            "banquet halls {destination}",
+            "wedding halls {destination}"
+          ],
+          "fields": ["name", "formatted_address", "rating", "user_ratings_total", "photos", "price_level", "opening_hours", "website", "phone"]
+        },
+        "vendors": {
+          "api": "yelp_fusion",
+          "categories": {
+            "photographers": {
+              "query": "wedding photographers {destination}",
+              "yelp_category": "photographers",
+              "limit": 20
+            },
+            "florists": {
+              "query": "wedding florists {destination}",
+              "yelp_category": "florists",
+              "limit": 15
+            },
+            "caterers": {
+              "query": "wedding caterers {destination}",
+              "yelp_category": "caterers",
+              "limit": 15
+            },
+            "djs": {
+              "query": "wedding DJs {destination}",
+              "yelp_category": "djs",
+              "limit": 15
+            },
+            "planners": {
+              "query": "wedding planners {destination}",
+              "yelp_category": "wedding_planning",
+              "limit": 10
+            },
+            "videographers": {
+              "query": "wedding videographers {destination}",
+              "yelp_category": "videographers",
+              "limit": 15
+            }
+          }
+        },
+        "guest-accommodations": {
+          "api": "booking_com",
+          "query_params": {
+            "city": "{destination}",
+            "check_in": "{wedding_date_minus_1}",
+            "check_out": "{wedding_date_plus_1}",
+            "guests": 2,
+            "filters": {
+              "group_rates": true,
+              "wedding_friendly": true
+            }
+          },
+          "sort_by": "distance_from_venue"
+        },
+        "transportation": {
+          "api": "google_places",
+          "categories": [
+            {
+              "name": "shuttle_services",
+              "query": "wedding shuttle service {destination}",
+              "type": "car_rental"
+            },
+            {
+              "name": "limo_services",
+              "query": "limousine service {destination}",
+              "type": "car_rental"
+            }
+          ]
+        }
+      }
+    },
+    "bachelor-bachelorette": {
+      "tabs": {
+        "destinations": {
+          "api": "google_places",
+          "query_template": "popular destinations for bachelor party",
+          "custom_logic": "Use destination popularity + flight accessibility from guest origins"
+        },
+        "accommodations": {
+          "api": "airbnb",
+          "query_params": {
+            "location": "{destination}",
+            "check_in": "{start_date}",
+            "check_out": "{end_date}",
+            "guests": "{group_size}",
+            "property_types": ["house", "villa", "apartment"],
+            "amenities": ["pool", "hot_tub", "wifi", "kitchen"]
+          },
+          "fallback_api": "vrbo",
+          "sort_by": "sleeps_count"
+        },
+        "daytime-activities": {
+          "api": "viator",
+          "query_params": {
+            "destination": "{destination}",
+            "categories": ["adventure", "water_sports", "outdoor", "wine_tours", "brewery_tours"],
+            "group_size_min": "{group_size}"
+          },
+          "fallback_api": "tripadvisor"
+        },
+        "nightlife": {
+          "api": "yelp_fusion",
+          "categories": {
+            "nightclubs": {
+              "query": "nightclubs {destination}",
+              "yelp_category": "nightclubs",
+              "filters": {
+                "group_reservations": true
+              }
+            },
+            "bars": {
+              "query": "bars {destination}",
+              "yelp_category": "bars",
+              "filters": {
+                "group_friendly": true
+              }
+            },
+            "lounges": {
+              "query": "lounges {destination}",
+              "yelp_category": "lounges"
+            }
+          }
+        },
+        "dining": {
+          "api": "opentable",
+          "query_params": {
+            "location": "{destination}",
+            "party_size": "{group_size}",
+            "filters": {
+              "private_room": true,
+              "large_groups": true
+            }
+          },
+          "fallback_api": "yelp_fusion"
+        },
+        "transportation": {
+          "api": "google_search",
+          "queries": [
+            "party bus rental {destination}",
+            "sprinter van rental {destination}",
+            "limo service {destination}"
+          ]
+        },
+        "party-services": {
+          "api": "yelp_fusion",
+          "categories": {
+            "photographers": "event photography {destination}",
+            "decorators": "party decorations {destination}",
+            "custom_apparel": "custom t-shirts {destination}"
+          }
+        }
+      }
+    },
+    "anniversary-trip": {
+      "tabs": {
+        "destinations": {
+          "api": "google_search",
+          "query_template": "most romantic destinations for {milestone} anniversary",
+          "custom_logic": "Filter by romance score, season, accessibility"
+        },
+        "accommodations": {
+          "api": "booking_com",
+          "query_params": {
+            "location": "{destination}",
+            "check_in": "{start_date}",
+            "check_out": "{end_date}",
+            "guests": 2,
+            "filters": {
+              "property_types": ["boutique_hotel", "luxury_resort", "villa"],
+              "amenities": ["private_pool", "ocean_view", "spa", "romantic_package"]
+            }
+          },
+          "sort_by": "romance_rating"
+        },
+        "experiences": {
+          "api": "viator",
+          "query_params": {
+            "destination": "{destination}",
+            "categories": ["couples_activities", "romantic_experiences", "private_tours"],
+            "group_size": 2
+          }
+        },
+        "dining": {
+          "api": "opentable",
+          "query_params": {
+            "location": "{destination}",
+            "party_size": 2,
+            "filters": {
+              "romantic": true,
+              "fine_dining": true,
+              "scenic_views": true
+            }
+          }
+        },
+        "spa-wellness": {
+          "api": "google_places",
+          "query_template": "couples spa {destination}",
+          "filters": {
+            "type": "spa",
+            "keywords": ["couples", "massage", "wellness"]
+          }
+        }
+      }
+    },
+    "corporate-events": {
+      "tabs": {
+        "venues": {
+          "api": "google_places",
+          "query_template": "conference venues {destination}",
+          "filters": {
+            "type": "conference_center",
+            "keywords": ["conference", "meeting", "event space", "AV equipment"],
+            "capacity_min": "{attendees}"
+          }
+        },
+        "team-activities": {
+          "api": "viator",
+          "query_params": {
+            "destination": "{destination}",
+            "categories": ["team_building", "corporate_events"],
+            "group_size_min": "{attendees}"
+          }
+        },
+        "accommodations": {
+          "api": "booking_com",
+          "query_params": {
+            "location": "{destination}",
+            "check_in": "{start_date}",
+            "check_out": "{end_date}",
+            "rooms": "{attendees / 2}",
+            "filters": {
+              "conference_facilities": true,
+              "shuttle_service": true,
+              "group_rates": true
+            }
+          }
+        }
+      }
+    },
+    "birthday": {
+      "tabs": {
+        "venues": {
+          "api": "google_places",
+          "query_template": "{age_group} birthday party venues {destination}",
+          "age_groups": {
+            "0-5": "kids birthday party venues",
+            "6-12": "children birthday party venues",
+            "13-17": "teen birthday party venues",
+            "18-20": "young adult birthday venues",
+            "21-29": "adult birthday venues",
+            "30+": "milestone birthday venues {age}"
+          }
+        },
+        "activities": {
+          "api": "yelp_fusion",
+          "age_based_categories": {
+            "0-5": ["bounce_houses", "petting_zoos", "magicians"],
+            "6-12": ["trampoline_parks", "arcades", "laser_tag"],
+            "13-17": ["escape_rooms", "go_karts", "skating"],
+            "18-20": ["karaoke", "bowling", "mini_golf"],
+            "21+": ["wine_tasting", "cooking_classes", "bar_hopping"]
+          }
+        },
+        "dining": {
+          "api": "opentable",
+          "query_params": {
+            "location": "{destination}",
+            "party_size": "{guests}",
+            "filters": {
+              "birthday_packages": true,
+              "private_room": "{guests > 15}"
+            }
+          }
+        }
+      }
+    },
+    "travel": {
+      "tabs": {
+        "activities": {
+          "api": "tripadvisor",
+          "query_params": {
+            "destination": "{destination}",
+            "categories": ["all"],
+            "sort_by": "popularity"
+          }
+        },
+        "hotels": {
+          "api": "booking_com",
+          "query_params": {
+            "location": "{destination}",
+            "check_in": "{start_date}",
+            "check_out": "{end_date}",
+            "guests": "{travelers}",
+            "filters": {
+              "family_friendly": "{has_kids}",
+              "budget_range": "{budget}"
+            }
+          }
+        },
+        "flights": {
+          "api": "amadeus",
+          "query_params": {
+            "origin": "{origin_city}",
+            "destination": "{destination_airport}",
+            "departure_date": "{start_date}",
+            "return_date": "{end_date}",
+            "passengers": "{travelers}"
+          }
+        },
+        "dining": {
+          "api": "yelp_fusion",
+          "query_template": "restaurants {destination}",
+          "filters": {
+            "categories": "all",
+            "sort_by": "rating"
+          }
+        }
+      }
+    },
+    "proposal": {
+      "tabs": {
+        "locations": {
+          "api": "google_places",
+          "query_template": "proposal spots {destination}",
+          "filters": {
+            "keywords": ["scenic", "romantic", "viewpoint", "rooftop", "beach", "garden"],
+            "sort_by": "rating"
+          }
+        },
+        "services": {
+          "api": "yelp_fusion",
+          "categories": {
+            "photographers": "proposal photographer {destination}",
+            "florists": "florist {destination}",
+            "musicians": "musicians {destination}"
+          }
+        },
+        "celebration-dining": {
+          "api": "opentable",
+          "query_params": {
+            "location": "{destination}",
+            "party_size": 2,
+            "filters": {
+              "romantic": true,
+              "private_table": true,
+              "champagne_service": true
+            }
+          }
+        }
+      }
+    },
+    "date-night": {
+      "tabs": {
+        "dining": {
+          "api": "yelp_fusion",
+          "query_template": "romantic restaurants {city}",
+          "filters": {
+            "price_range": "{budget}",
+            "atmosphere": "romantic",
+            "outdoor_seating": "{weather_dependent}"
+          }
+        },
+        "activities": {
+          "api": "google_places",
+          "query_template": "date night activities {city}",
+          "categories": ["movie_theaters", "mini_golf", "museums", "comedy_clubs"]
+        },
+        "entertainment": {
+          "api": "eventbrite",
+          "query_params": {
+            "location": "{city}",
+            "date": "{date}",
+            "categories": ["comedy", "music", "theater"],
+            "filters": {
+              "date_appropriate": true
+            }
+          }
+        }
+      }
+    },
+    "reunions": {
+      "tabs": {
+        "venues": {
+          "api": "google_places",
+          "query_template": "{reunion_type} reunion venues {destination}",
+          "reunion_types": {
+            "family": "family reunion venues",
+            "school": "school reunion venues",
+            "friends": "event venues"
+          }
+        },
+        "activities": {
+          "api": "yelp_fusion",
+          "query_template": "group activities {destination}",
+          "filters": {
+            "group_size_min": "{attendees}",
+            "age_appropriate": "{has_kids}"
+          }
+        }
+      }
+    }
+  },
+  "api_configurations": {
+    "google_places": {
+      "endpoint": "https://maps.googleapis.com/maps/api/place/textsearch/json",
+      "auth": "API_KEY",
+      "rate_limit": "100 requests per second",
+      "cache_ttl": 3600,
+      "fields_recommended": ["name", "formatted_address", "rating", "user_ratings_total", "photos", "price_level", "website", "phone", "opening_hours"]
+    },
+    "yelp_fusion": {
+      "endpoint": "https://api.yelp.com/v3/businesses/search",
+      "auth": "API_KEY",
+      "rate_limit": "5000 requests per day",
+      "cache_ttl": 3600
+    },
+    "booking_com": {
+      "endpoint": "https://distribution-xml.booking.com/2.0",
+      "auth": "AFFILIATE_ID",
+      "affiliate_tracking": true,
+      "cache_ttl": 1800
+    },
+    "amadeus": {
+      "endpoint": "https://api.amadeus.com/v2/shopping/flight-offers",
+      "auth": "CLIENT_CREDENTIALS",
+      "rate_limit": "10 requests per second",
+      "cache_ttl": 600
+    },
+    "viator": {
+      "endpoint": "https://api.viator.com/partner/products/search",
+      "auth": "API_KEY",
+      "cache_ttl": 3600
+    },
+    "opentable": {
+      "endpoint": "https://www.opentable.com/booking/restaurants",
+      "auth": "PARTNER_ID",
+      "cache_ttl": 1800
+    },
+    "tripadvisor": {
+      "endpoint": "https://api.tripadvisor.com/api/partner/2.0/location",
+      "auth": "API_KEY",
+      "cache_ttl": 3600
+    },
+    "eventbrite": {
+      "endpoint": "https://www.eventbriteapi.com/v3/events/search",
+      "auth": "OAUTH_TOKEN",
+      "cache_ttl": 600
+    }
+  },
+  "implementation_notes": {
+    "caching_strategy": "Implement Redis cache with TTL per API. Cache keys: '{api}:{template}:{tab}:{destination}:{filters_hash}'",
+    "error_handling": "Graceful degradation: Show 'Add Manually' option if API fails after 2 retries",
+    "rate_limiting": "Implement token bucket algorithm per API to respect rate limits",
+    "affiliate_tracking": "Track all external bookings with UTM params: source=traveloure&medium={template}&campaign={destination}",
+    "personalization": "For guest invites, replace {origin_city} with guest's submitted city for flight/transport queries"
+  }
+}

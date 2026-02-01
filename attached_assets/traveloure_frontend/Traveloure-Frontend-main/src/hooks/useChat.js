@@ -8,6 +8,7 @@ import { validateMessage } from "../utils/messageValidation"
 import { useDispatch } from "react-redux"
 import * as contractActions from "../app/redux-features/contract/contractSlice"
 import { getChatMessages, getChatHistory } from "../app/redux-features/chat/chatSlice"
+import logger from '../lib/logger'
 
 export const useChat = () => {
   const { data: session } = useSession()
@@ -129,13 +130,13 @@ export const useChat = () => {
       
       // Skip if this is our own message (prevent duplicates)
       if (isOurOwnMessage(message)) {
-        console.log('🚫 handleChatMessage - Skipping own message:', message.id)
+        logger.debug('🚫 handleChatMessage - Skipping own message:', message.id)
         return
       }
 
       // Skip if message already exists
       if (messageExists(message.id)) {
-        console.log('🚫 handleChatMessage - Message already exists:', message.id)
+        logger.debug('🚫 handleChatMessage - Message already exists:', message.id)
         return
       }
 
@@ -224,13 +225,13 @@ export const useChat = () => {
         // Refresh chat history to get updated payment link from backend
         const accessToken = session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
         if (accessToken) {
-          console.log('🔌 Chat Hook - Contract accepted, refreshing chat history for payment link')
+          logger.debug('🔌 Chat Hook - Contract accepted, refreshing chat history for payment link')
           dispatch(getChatHistory({ token: accessToken }))
             .then((result) => {
-              console.log('🔌 Chat Hook - Chat history refreshed after contract acceptance:', result.payload)
+              logger.debug('🔌 Chat Hook - Chat history refreshed after contract acceptance:', result.payload)
             })
             .catch((error) => {
-              console.error('🔌 Chat Hook - Error refreshing chat history after contract acceptance:', error)
+              logger.error('🔌 Chat Hook - Error refreshing chat history after contract acceptance:', error)
             })
         }
       }
@@ -275,14 +276,14 @@ export const useChat = () => {
                   const chatId = selectedExpert?.user?.id || selectedExpert?.chat?.id || selectedExpert?.id
                   dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId })).catch(
                     (error) => {
-                        console.error("🔌 Chat Hook - Retry failed:", error)
+                        logger.error("🔌 Chat Hook - Retry failed:", error)
                     },
                   )
                   }, 2000)
                 }
               })
             .catch((error) => {
-                console.error("🔌 Chat Hook - Error refreshing contract status:", error)
+                logger.error("🔌 Chat Hook - Error refreshing contract status:", error)
               })
           }, 1000) // 1 second delay to ensure backend processing
         }
@@ -339,10 +340,10 @@ export const useChat = () => {
         const chatId = selectedExpert?.user?.id || selectedExpert?.chat?.id || selectedExpert?.id
         dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId }))
             .then(() => {
-              console.log("🔌 Chat Hook - Contract status refreshed successfully after itinerary acceptance")
+              logger.debug("🔌 Chat Hook - Contract status refreshed successfully after itinerary acceptance")
             })
           .catch((error) => {
-              console.error("🔌 Chat Hook - Error refreshing contract status after itinerary acceptance:", error)
+              logger.error("🔌 Chat Hook - Error refreshing contract status after itinerary acceptance:", error)
             })
         }
       }
@@ -577,7 +578,7 @@ export const useChat = () => {
           // Check contract status when chat messages are loaded
             const chatId = expert?.user?.id || expert?.chat?.id || expert?.id
             dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId })).catch((error) => {
-              console.error("Error checking contract status:", error)
+              logger.error("Error checking contract status:", error)
             })
 
           toast.success(`Joined chat with ${getDisplayName(expert)}`)
@@ -600,7 +601,7 @@ export const useChat = () => {
           }, 300)
       }
     } catch (error) {
-        console.error("Error opening chat:", error)
+        logger.error("Error opening chat:", error)
         toast.error("Failed to open chat. Please try again.")
     }
     },
@@ -669,7 +670,7 @@ export const useChat = () => {
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}))
-          console.error("File upload error:", errorData)
+          logger.error("File upload error:", errorData)
 
           if (response.status === 401) {
             throw new Error("Authentication required. Please login again.")
@@ -711,7 +712,7 @@ export const useChat = () => {
 
       // Show more specific error messages
       const errorMessage = error.message || "Failed to send message. Please try again."
-      console.error("Send message error:", error)
+      logger.error("Send message error:", error)
       toast.error(errorMessage)
     }
   }, [
@@ -1010,7 +1011,7 @@ export const useChat = () => {
         setMessages(convertedMessages)
       }
     } catch (error) {
-      console.error("🔌 Error refreshing chat messages via Redux:", error)
+      logger.error("🔌 Error refreshing chat messages via Redux:", error)
     }
   }, [
     currentChatId,

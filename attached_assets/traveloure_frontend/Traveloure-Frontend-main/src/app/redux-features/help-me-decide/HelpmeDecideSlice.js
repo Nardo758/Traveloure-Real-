@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import axios from "axios";
 import { toast } from "sonner";
 import { isTokenExpired, handleTokenExpiration } from "../../../lib/authUtils";
+import logger from '../../../lib/logger'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -11,18 +12,18 @@ const getHeaders = (token) => {
 };
 // Helper function to extract error message
 const getErrorMessage = (error) => {
-  console.error("API Error:", error);
+  logger.error("API Error:", error);
 
   // Check for token expiration FIRST
   if (error?.response?.data && isTokenExpired(error.response.data)) {
-    console.log('🔒 Token expired detected in HelpmeDecide slice')
+    logger.debug('🔒 Token expired detected in HelpmeDecide slice')
     handleTokenExpiration()
     return 'Token expired - please login again'
   }
 
   // Check for 401 status
   if (error?.response?.status === 401) {
-    console.log('🔒 Unauthorized (401) in HelpmeDecide slice')
+    logger.debug('🔒 Unauthorized (401) in HelpmeDecide slice')
     handleTokenExpiration()
     return 'Authentication failed - please login again'
   }
@@ -210,7 +211,7 @@ export const createTrip = createAsyncThunk(
         return { success: true };
       }
     } catch (error) {
-      console.error("Create trip API error:", error);
+      logger.error("Create trip API error:", error);
       
       // Handle JSON parse errors
       if (error.message && error.message.includes("JSON")) {

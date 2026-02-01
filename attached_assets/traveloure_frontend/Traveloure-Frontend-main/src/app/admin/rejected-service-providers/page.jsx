@@ -15,6 +15,7 @@ import { CommonDataTable } from '../../../components/admin/CommonDataTable'
 import { getCountriesForFilter, applyFilters } from '../../../lib/countryUtils'
 import Link from "next/link"
 import { getRejectedServiceProviders, getServiceProviderById, updateServiceProvider } from '../../../app/redux-features/service-provider/serviceProviderSlice'
+import logger from '../../../lib/logger'
 
 // Mock data for rejected service providers
 const rejectedServiceProvidersData = [
@@ -214,7 +215,7 @@ export default function RejectedServiceProviders() {
         token: session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
       }))
     } catch (error) {
-      console.error('Error approving provider:', error)
+      logger.error('Error approving provider:', error)
     }
   }
 
@@ -235,7 +236,7 @@ export default function RejectedServiceProviders() {
         token: session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
       }))
     } catch (error) {
-      console.error('Error deleting provider:', error)
+      logger.error('Error deleting provider:', error)
     }
   }
 
@@ -253,12 +254,12 @@ export default function RejectedServiceProviders() {
   }
 
   const handleEditDetails = (id) => {
-    console.log("Edit details for service provider:", id)
+    logger.debug("Edit details for service provider:", id)
     // Add edit details logic here
   }
 
   const handleSendMail = (id) => {
-    console.log("Send mail to service provider:", id)
+    logger.debug("Send mail to service provider:", id)
     // Add send mail logic here
   }
 

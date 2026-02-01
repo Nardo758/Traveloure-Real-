@@ -20,6 +20,7 @@ import {
   setSelectedCategory 
 } from '../../../app/redux-features/category/categorySlice'
 import { Plus, Folder, FolderOpen, X, ChevronDown, ChevronRight, Edit2, Save, Trash2, Eye, Search, Menu } from 'lucide-react'
+import logger from '../../../lib/logger'
 
 export default function LocalExpertContractCategories() {
   const { isLocalExpert, isLoading: localExpertLoading, isAuthenticated, session } = useLocalExpert()
@@ -68,7 +69,7 @@ export default function LocalExpertContractCategories() {
            session?.backendData?.backendData?.accessToken ||
            sessionData?.backendData?.accessToken ||
            sessionData?.backendData?.backendData?.accessToken ||
-           localStorage.getItem('accessToken')
+           null // ✅ SECURE: No localStorage fallback
   }
 
   useEffect(() => {
@@ -118,7 +119,7 @@ export default function LocalExpertContractCategories() {
             })
           })
           .catch(err => {
-            console.error('Error fetching categories:', err)
+            logger.error('Error fetching categories:', err)
             dispatch({ 
               type: 'category/fetchCategories/rejected', 
               payload: err.message 
@@ -255,7 +256,7 @@ export default function LocalExpertContractCategories() {
           subcategoriesList = data.data
         }
         
-        console.log('Fetched subcategories for category:', categoryId, subcategoriesList)
+        logger.debug('Fetched subcategories for category:', categoryId, subcategoriesList)
         
         // Dispatch to Redux to update subcategories state
         dispatch({
@@ -264,10 +265,10 @@ export default function LocalExpertContractCategories() {
         })
       } else {
         const errorText = await response.text()
-        console.error('Failed to fetch subcategories:', response.status, errorText)
+        logger.error('Failed to fetch subcategories:', response.status, errorText)
       }
     } catch (error) {
-      console.error('Error fetching subcategories:', error)
+      logger.error('Error fetching subcategories:', error)
     } finally {
       setLoadingSubcategories(prev => ({ ...prev, [categoryId]: false }))
     }
