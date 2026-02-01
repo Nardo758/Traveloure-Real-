@@ -2589,8 +2589,8 @@ export default function ExperienceTemplatePage() {
                     addToCart(item);
                   }}
                   externalVendorType={activeTab === "vendors" ? vendorType : undefined}
-                  externalMinRating={activeTab === "vendors" ? minRating : undefined}
-                  hideFilters={activeTab === "vendors"}
+                  externalMinRating={minRating}
+                  hideFilters={true}
                 />
               </div>
             )
