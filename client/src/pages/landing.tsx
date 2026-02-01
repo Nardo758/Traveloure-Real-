@@ -53,6 +53,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { SEOHead } from "@/components/seo-head";
 
 const experienceTemplates = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500", bgColor: "bg-blue-500/10 dark:bg-blue-500/20" },
@@ -430,6 +431,12 @@ const itemVariants = {
 export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
+      <SEOHead 
+        title="Home"
+        description="Plan unforgettable experiences with Traveloure. From romantic getaways to corporate events, our AI-powered platform connects you with expert travel planners and service providers worldwide."
+        keywords={["travel platform", "AI travel planning", "event planning", "vacation booking", "travel services"]}
+        url="/"
+      />
       <CityTickerTape />
 
       <section 

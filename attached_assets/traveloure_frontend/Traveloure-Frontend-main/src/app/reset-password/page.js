@@ -22,8 +22,22 @@ const ResetPasswordContent = () => {
 
   const handleReset = async (e) => {
     e.preventDefault();
+    
+    // Validate passwords match
     if (newPassword !== confirmPassword) {
       toast.error('Passwords do not match');
+      return;
+    }
+
+    // Validate password strength
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters long');
+      return;
+    }
+
+    // Validate uid and token exist
+    if (!uid || !token) {
+      toast.error('Invalid reset link. Please request a new password reset.');
       return;
     }
 
@@ -38,11 +52,37 @@ const ResetPasswordContent = () => {
       );
 
       if (resetPassword.fulfilled.match(resultAction)) {
+        toast.success('Password reset successfully! Redirecting to login...');
+        
+        // Redirect to login page after successful reset
+        setTimeout(() => {
+          router.push('/login');
+        }, 1500);
+      } else if (resetPassword.rejected.match(resultAction)) {
+        // Handle rejection with meaningful error message
+        const errorMessage = resultAction.error?.message || 
+                            resultAction.payload?.message || 
+                            'Failed to reset password. The reset link may have expired.';
+        toast.error(errorMessage);
+      }
+    } catch (error) {
+      console.error('Password reset error:', error);
       
-        router.push('/');
-      } 
-    } catch {
-    console.log("error")
+      // Handle different error scenarios
+      let errorMessage = 'An unexpected error occurred while resetting password.';
+      
+      if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      // Check for common error patterns
+      if (error.message?.includes('expired') || error.message?.includes('invalid')) {
+        errorMessage = 'Reset link has expired or is invalid. Please request a new password reset.';
+      } else if (error.message?.includes('network') || error.message?.includes('timeout')) {
+        errorMessage = 'Unable to connect to server. Please check your internet connection.';
+      }
+      
+      toast.error(errorMessage);
     }
   };
 

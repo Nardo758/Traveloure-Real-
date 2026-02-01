@@ -68,9 +68,15 @@ export default function PartnerWithUsPage() {
       setPendingRedirect("expert");
       setShowLoginPrompt(true);
     } else {
-      // Check expert status first
-      setCheckingType("expert");
-      await dispatch(getLocalExpertStatus({ token: session.backendData.accessToken }));
+      try {
+        // Check expert status first
+        setCheckingType("expert");
+        await dispatch(getLocalExpertStatus({ token: session.backendData.accessToken }));
+      } catch (error) {
+        console.error("Error checking expert status:", error);
+        // If error occurs, allow user to proceed to form
+        router.push("/travel-experts");
+      }
     }
   };
 
@@ -79,9 +85,15 @@ export default function PartnerWithUsPage() {
       setPendingRedirect("provider");
       setShowLoginPrompt(true);
     } else {
-      // Check provider status first
-      setCheckingType("provider");
-      await dispatch(getServiceProviderStatus({ token: session.backendData.accessToken }));
+      try {
+        // Check provider status first
+        setCheckingType("provider");
+        await dispatch(getServiceProviderStatus({ token: session.backendData.accessToken }));
+      } catch (error) {
+        console.error("Error checking provider status:", error);
+        // If error occurs, allow user to proceed to form
+        router.push("/services-provider");
+      }
     }
   };
 

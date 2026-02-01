@@ -5,6 +5,7 @@ import ReduxProvider from "../components/ReduxProvider";
 import Providers from "./Provider";
 import RedirectAuth from "../components/RedirectAuth";
 import ChunkErrorHandler from "../components/ChunkErrorHandler";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -84,13 +85,15 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        <ReduxProvider>
-          <Providers>
-            <ChunkErrorHandler />
-            <RedirectAuth />
-            {children}
-          </Providers>
-        </ReduxProvider>
+        <ErrorBoundary>
+          <ReduxProvider>
+            <Providers>
+              <ChunkErrorHandler />
+              <RedirectAuth />
+              {children}
+            </Providers>
+          </ReduxProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

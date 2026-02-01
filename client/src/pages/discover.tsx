@@ -78,6 +78,8 @@ import { TravelPulseCard, TravelPulseTrendingData } from "@/components/travelpul
 import { CityGrid } from "@/components/travelpulse/CityGrid";
 import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
 import { TripQueueIndicator } from "@/components/TripQueueIndicator";
+import { SEOHead } from "@/components/seo-head";
+import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
 
 type ServiceCategory = {
   id: string;
@@ -913,6 +915,12 @@ export default function DiscoverPage() {
 
   return (
     <Layout>
+      <SEOHead 
+        title="Discover Services & Experiences"
+        description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
+        keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
+        url="/discover"
+      />
       <div className="min-h-screen bg-background">
         {/* Hero Section */}
         <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
@@ -1441,11 +1449,7 @@ export default function DiscoverPage() {
 
                     {/* Services Grid */}
                     {servicesLoading ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                          <Skeleton key={i} className="h-96 rounded-2xl" />
-                        ))}
-                      </div>
+                      <CardGridSkeleton count={8} />
                     ) : result?.services && result.services.length > 0 ? (
                       <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

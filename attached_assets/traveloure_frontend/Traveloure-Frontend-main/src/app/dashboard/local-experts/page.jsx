@@ -5,6 +5,7 @@ import { useTravelExperts } from "../../../hooks/useTravelExperts";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import ProtectedRoute from "../../../components/protectedroutes/ProtectedRoutes";
+import logger from '../../../lib/logger'
 
 export default function LocalExpertsDashboard() {
   const {
@@ -32,7 +33,7 @@ export default function LocalExpertsDashboard() {
   const handleGetExpertById = async (id) => {
     const result = await getExpertById(id);
     if (result.meta.requestStatus === 'fulfilled') {
-      console.log('Expert details:', result.payload);
+      logger.debug('Expert details:', result.payload);
     }
   };
 

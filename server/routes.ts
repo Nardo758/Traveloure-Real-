@@ -7458,6 +7458,90 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // ============================================
+  // VENUE SEARCH API ROUTES
+  // Google Places API integration for venues/vendors
+  // ============================================
+
+  // Search for venues by type and location
+  app.get("/api/venues/search", async (req, res) => {
+    try {
+      const { location, type = 'venue', radius, minRating, priceLevel, keyword } = req.query;
+
+      if (!location) {
+        return res.status(400).json({ message: "Location parameter is required" });
+      }
+
+      const { venueSearchService } = await import("./services/venue-search.service");
+      
+      const results = await venueSearchService.searchVenues({
+        location: location as string,
+        type: type as any,
+        radius: radius ? parseInt(radius as string) : undefined,
+        minRating: minRating ? parseFloat(minRating as string) : undefined,
+        priceLevel: priceLevel as string,
+        keyword: keyword as string
+      });
+
+      res.json({ 
+        results,
+        count: results.length,
+        source: "google_places"
+      });
+    } catch (error: any) {
+      console.error("Error searching venues:", error);
+      res.status(500).json({ message: "Failed to search venues", error: error.message });
+    }
+  });
+
+  // Get venue details by place ID
+  app.get("/api/venues/:placeId", async (req, res) => {
+    try {
+      const { placeId } = req.params;
+
+      const { venueSearchService } = await import("./services/venue-search.service");
+      
+      const venue = await venueSearchService.getVenueDetails(placeId);
+
+      if (!venue) {
+        return res.status(404).json({ message: "Venue not found" });
+      }
+
+      res.json(venue);
+    } catch (error: any) {
+      console.error("Error fetching venue details:", error);
+      res.status(500).json({ message: "Failed to fetch venue details", error: error.message });
+    }
+  });
+
+  // Search for wedding vendors (photographers, florists, etc.)
+  app.get("/api/venues/wedding-vendors", async (req, res) => {
+    try {
+      const { location, vendorType } = req.query;
+
+      if (!location || !vendorType) {
+        return res.status(400).json({ message: "Location and vendorType parameters are required" });
+      }
+
+      const { venueSearchService } = await import("./services/venue-search.service");
+      
+      const results = await venueSearchService.searchWeddingVendors(
+        location as string,
+        vendorType as string
+      );
+
+      res.json({ 
+        results,
+        count: results.length,
+        vendorType,
+        location
+      });
+    } catch (error: any) {
+      console.error("Error searching wedding vendors:", error);
+      res.status(500).json({ message: "Failed to search wedding vendors", error: error.message });
+    }
+  });
+
+  // ============================================
   // FEVER PARTNER API ROUTES
   // Events and experiences from Fever (feverup.com)
   // ============================================

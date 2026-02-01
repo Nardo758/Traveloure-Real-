@@ -1,330 +1,243 @@
-# Traveloure Platform - Deployment Checklist
+# Wedding Template Fixes - Deployment Checklist ✅
 
-## Routing Fixes - Ready for Deployment
+## Pre-Deployment
+
+### Code Review
+- [x] All changes in single file: `client/src/pages/experience-template.tsx`
+- [x] 9 targeted edits (no broad refactoring)
+- [x] Backwards compatible (no breaking changes)
+- [x] TypeScript syntax valid
+- [ ] Code review by senior dev
+- [ ] QA approval
+
+### Testing
+- [ ] Manual smoke test (2 min - see below)
+- [ ] Full test plan (15 min - see WEDDING_FIXES_COMPLETE.md)
+- [ ] Cross-browser test (Chrome, Safari, Firefox)
+- [ ] Mobile responsive test
+- [ ] Regression test on other templates (ensure they still work)
 
 ---
 
-## ✅ Pre-Deployment Verification
+## Quick Smoke Test (2 minutes)
 
-### Code Changes Summary:
-- **5 New Pages Created**: careers, blog, press, help, expert-detail
-- **6 New Routes Added**: /careers, /blog, /press, /help, /support, /experts/:id
-- **2 New API Endpoints**: /api/experts/:id/services, /api/experts/:id/reviews
-- **0 Breaking Changes**: All changes are additive
-
----
-
-## ✅ Files Created
-
+### Test 1: Mode Switching Works Without Submission
 ```
-client/src/pages/
-├── careers.tsx          (7.9 KB)
-├── blog.tsx             (11.8 KB)
-├── press.tsx            (9.6 KB)
-├── help.tsx             (10.5 KB)
-└── expert-detail.tsx    (18.8 KB)
-
-Total: 58.6 KB of new frontend code
+1. Navigate to: /wedding
+2. Enter destination: "New York"
+3. Click "Guest Activities" button
+   ✅ PASS: Tabs switch to guest-focused (Activities, Dining, etc.)
+   ❌ FAIL: Tabs don't change OR placeholder appears
+4. Click "Activities" tab
+   ✅ PASS: Activity search component loads immediately
+   ❌ FAIL: Placeholder "Please submit details" message
+5. Click "Planning Mode" button
+   ✅ PASS: Tabs switch back to planning (Venues, Vendors, etc.)
+   ❌ FAIL: Tabs don't change
 ```
 
----
+### Test 2: Wedding Date Labels Are Clear
+```
+1. Navigate to: /wedding
+2. Look at date field labels
+   ✅ PASS: Shows "Ceremony Date" and "End Date (Optional)"
+   ❌ FAIL: Shows generic "From" and "To"
+3. Look for help text
+   ✅ PASS: See help text: "The ceremony date is required..."
+   ❌ FAIL: No help text visible
+```
 
-## ✅ Files Modified
+### Test 3: Button Text is Wedding-Specific
+```
+1. Navigate to: /wedding
+2. Check submit button text
+   ✅ PASS: Button says "Save Wedding Details"
+   ❌ FAIL: Button says "Submit Wedding Details"
+3. Click button
+   ✅ PASS: Toast mentions "Planning and Guest modes"
+   ❌ FAIL: Generic toast message
+```
 
-### 1. client/src/App.tsx
-**Changes:**
-- Added 5 new imports (lines 30-34)
-- Added 6 new routes (scattered throughout routing section)
-- No existing routes modified
+### Test 4: Other Templates Unaffected
+```
+1. Navigate to: /travel
+2. Check date labels
+   ✅ PASS: Shows standard "From" and "To"
+   ❌ FAIL: Shows wedding-specific labels
+3. Check button text
+   ✅ PASS: Says "Save Travel Details"
+   ❌ FAIL: Says wedding-specific text
+```
 
-### 2. server/routes.ts
-**Changes:**
-- Added 2 new public endpoints for expert services and reviews
-- Location: After line 1540
-- ~35 lines of code added
-
----
-
-## ✅ Feature Checklist
-
-### New Pages (All Complete):
-- [x] Careers page with job listings
-- [x] Blog page with article cards and filtering
-- [x] Press page with media kit and releases
-- [x] Help center with FAQs and search
-- [x] Expert detail page with profile and booking
-
-### Routing (All Complete):
-- [x] /careers route added to App.tsx
-- [x] /blog route added to App.tsx
-- [x] /press route added to App.tsx
-- [x] /help route added to App.tsx
-- [x] /support route added (alias to /help)
-- [x] /experts/:id route added to App.tsx
-
-### Backend (All Complete):
-- [x] Expert services endpoint implemented
-- [x] Expert reviews endpoint implemented  
-- [x] Expert booking endpoint verified
-- [x] Discover city filter verified
-- [x] Trip detail endpoint verified
-
-### Footer Links (All Complete):
-- [x] All 10 footer links verified working
-- [x] Social media links working
-- [x] Help center accessible from footer
-- [x] Careers page accessible from footer
-- [x] Blog accessible from footer
-- [x] Press accessible from footer
+**If all 4 tests PASS:** ✅ Ready to deploy  
+**If any test FAILS:** ❌ Review code changes
 
 ---
 
-## ✅ Testing Completed
+## Deployment Steps
 
-### Manual Browser Testing:
-- [x] Navigate to each new page via URL
-- [x] Click footer links to each new page
-- [x] Test expert detail page with valid ID
-- [x] Test discover page with location filter
-- [x] Test trip creation and detail view
-- [x] Verify no console errors
-- [x] Check responsive design on mobile
-
-### API Testing:
-- [x] GET /api/experts - returns list
-- [x] GET /api/experts/:id - returns details
-- [x] GET /api/experts/:id/services - returns services
-- [x] GET /api/experts/:id/reviews - returns reviews
-- [x] GET /api/discover?location=X - filters correctly
-- [x] GET /api/trips/:id - returns trip details
-
-### User Flow Testing:
-- [x] Browse experts → View expert detail → View services
-- [x] Create experience → View trip details
-- [x] Use discover page → Apply location filter
-- [x] Navigate all footer links
-- [x] Use help center search
-
----
-
-## ✅ Quality Assurance
-
-### Code Quality:
-- [x] TypeScript strict mode passing
-- [x] No ESLint errors
-- [x] Consistent code style with existing codebase
-- [x] Proper error handling in API endpoints
-- [x] Loading states implemented on pages
-- [x] Responsive design for all screen sizes
-
-### Performance:
-- [x] No unnecessary re-renders
-- [x] Efficient data fetching with React Query
-- [x] Proper code splitting (page-level)
-- [x] Images optimized (using external URLs)
-
-### Accessibility:
-- [x] Semantic HTML structure
-- [x] Proper heading hierarchy
-- [x] Keyboard navigation support
-- [x] Screen reader friendly
-- [x] ARIA labels where needed
-- [x] Color contrast compliance
-
-### Security:
-- [x] No sensitive data exposed
-- [x] Authentication checks in place
-- [x] Input validation on forms
-- [x] XSS protection (React default)
-- [x] CSRF protection (via auth middleware)
-
----
-
-## ✅ Documentation
-
-### Created Documentation:
-- [x] ROUTING_FIXES_SUMMARY.md - Complete changelog
-- [x] DEPLOYMENT_CHECKLIST.md - This file
-- [x] test-routes.sh - Automated testing script
-- [x] Inline code comments where needed
-
-### Updated Documentation:
-- [ ] README.md - Add note about new pages (optional)
-- [ ] API_DOCS.md - Document new endpoints (optional)
-
----
-
-## ✅ Deployment Steps
-
-### 1. Pre-Deployment:
+### 1. Build
 ```bash
-# Navigate to project directory
-cd /home/leon/Traveloure-Platform
-
-# Verify all files exist
-ls -la client/src/pages/careers.tsx
-ls -la client/src/pages/blog.tsx
-ls -la client/src/pages/press.tsx
-ls -la client/src/pages/help.tsx
-ls -la client/src/pages/expert-detail.tsx
-
-# Install any new dependencies (if needed)
-npm install
-
-# Run linter
-npm run lint
-
-# Build frontend
+cd /home/leon/clawd/Traveloure-Platform/client
 npm run build
 ```
+- [ ] Build completes without errors
+- [ ] No TypeScript errors
+- [ ] Bundle size similar to previous build
 
-### 2. Testing:
+### 2. Deploy to Staging
 ```bash
-# Start development server
-npm run dev
+# Your deployment command here
+npm run deploy:staging
+```
+- [ ] Staging deployment successful
+- [ ] Run smoke test on staging
+- [ ] Check browser console for errors
 
-# In another terminal, run test script
-./test-routes.sh
+### 3. Staging Validation
+- [ ] Wedding template works correctly
+- [ ] Other templates unaffected
+- [ ] No console errors
+- [ ] Performance acceptable (no slowdowns)
 
-# Manual testing in browser
-# Open http://localhost:5000 and test all routes
+### 4. Deploy to Production
+```bash
+# Your deployment command here
+npm run deploy:prod
+```
+- [ ] Production deployment successful
+- [ ] Health check passes
+- [ ] Monitor error logs
+
+### 5. Post-Deployment Monitoring
+- [ ] Check error tracking (Sentry, Rollbar, etc.)
+- [ ] Monitor user sessions (first 1 hour)
+- [ ] Check analytics for bounce rate on /wedding
+- [ ] Verify no increase in support tickets
+
+---
+
+## Rollback Plan
+
+**If issues are detected in production:**
+
+### Quick Rollback (< 5 minutes)
+```bash
+# Revert to previous deployment
+git revert <commit-hash>
+npm run build
+npm run deploy:prod
 ```
 
-### 3. Deployment:
-```bash
-# Commit changes
-git add .
-git commit -m "feat: Add missing pages and fix routing issues
+### Files to Restore
+- Only 1 file changed: `client/src/pages/experience-template.tsx`
+- Rollback commit: Revert all 9 edits
 
-- Created careers, blog, press, help pages
-- Created expert detail page
-- Added all missing routes to App.tsx
-- Implemented expert services and reviews endpoints
-- Fixed all footer links
-- Verified discover city filter works
-- Verified trip detail route works
+### Rollback Triggers
+- Critical bug detected
+- User complaints spike
+- Error rate >5%
+- Breaking change discovered
 
-All tests passing ✅"
+---
 
-# Push to repository
-git push origin main
+## Success Metrics
 
-# Deploy to production (method depends on hosting)
-# Replit will auto-deploy on push
-# For other platforms: npm run deploy or similar
+### Monitor These Metrics (First 48 Hours)
+
+**User Behavior:**
+- [ ] Time to first interaction decreased
+- [ ] Mode switching events increased
+- [ ] Bounce rate on /wedding decreased
+- [ ] Session duration increased
+
+**Technical:**
+- [ ] Error rate remains stable (<1%)
+- [ ] Page load time unchanged
+- [ ] API request rate stable
+- [ ] No new console errors
+
+**Business:**
+- [ ] User satisfaction comments positive
+- [ ] Support ticket volume stable or decreased
+- [ ] Conversion rate on wedding template stable or increased
+
+---
+
+## Communication Plan
+
+### Internal Team
+```
+Subject: Wedding Template UX Fixes Deployed
+
+Changes:
+- Fixed mode switching buttons (now work immediately)
+- Added wedding-specific date labels
+- Improved button messaging
+
+Impact: Better UX, fewer user complaints
+
+Rollback: Available if needed (single file change)
+
+Questions? Contact: [Your name]
 ```
 
-### 4. Post-Deployment Verification:
-```bash
-# Test production URLs
-curl -I https://yourapp.com/careers
-curl -I https://yourapp.com/blog
-curl -I https://yourapp.com/press
-curl -I https://yourapp.com/help
-curl -I https://yourapp.com/experts
+### Support Team Briefing
+```
+Heads up: Wedding template improved!
 
-# Monitor logs for errors
-# Check analytics for 404 errors (should be none for new routes)
+What changed:
+1. Mode buttons work instantly (no submit needed)
+2. Date fields are clearer ("Ceremony Date" vs "From")
+3. Button says "Save" not "Submit"
+
+If users mention:
+- "Buttons are broken" → Fixed! Should work now.
+- "Confusing dates" → Fixed! Now labeled clearly.
+- "Scared to submit" → Fixed! Button says "Save" now.
+
+Old behavior users might remember:
+- Had to click submit to see anything
+- This is now optional!
 ```
 
 ---
 
-## ✅ Rollback Plan
+## Documentation Updates
 
-If issues arise after deployment:
+### Post-Deployment
+- [ ] Update user guide (if exists)
+- [ ] Update internal wiki
+- [ ] Create release notes
+- [ ] Tag commit in Git
+- [ ] Update changelog
 
-### Quick Rollback:
-```bash
-# Revert the commit
-git revert HEAD
-
-# Push the revert
-git push origin main
-```
-
-### Partial Rollback:
-```bash
-# Remove specific routes from App.tsx
-# Remove imports for problematic pages
-# Redeploy
-```
-
-### Database Rollback:
-- **N/A** - No database changes made
+### Files to Archive
+- [x] WEDDING_FIXES_COMPLETE.md (technical details)
+- [x] FIXES_SUMMARY.md (executive summary)
+- [x] BEFORE_AFTER_COMPARISON.md (visual guide)
+- [x] DEPLOYMENT_CHECKLIST.md (this file)
 
 ---
 
-## ✅ Monitoring
+## Sign-Off
 
-### What to Monitor:
-- [ ] 404 error rates for new routes
-- [ ] API endpoint response times
-- [ ] JavaScript console errors
-- [ ] User navigation patterns
-- [ ] Footer link click-through rates
-
-### Success Metrics:
-- All new routes return 200 status
-- No increase in error rates
-- Footer links drive traffic to new pages
-- Help center reduces support tickets
-- Expert detail pages increase bookings
+**Developer:** __________ Date: __________  
+**QA Lead:** __________ Date: __________  
+**Product Owner:** __________ Date: __________
 
 ---
 
-## ✅ Future Enhancements
+## Post-Deployment Notes
 
-### Phase 2 (Optional):
-- [ ] Implement actual review system for experts
-- [ ] Add CMS for blog post management
-- [ ] Integrate real press release API
-- [ ] Enhance help center with video tutorials
-- [ ] Add expert availability calendar
+*Add notes here after deployment:*
 
-### Technical Debt:
-- [ ] Add comprehensive unit tests for new pages
-- [ ] Add E2E tests for critical flows
-- [ ] Optimize bundle size if needed
-- [ ] Add Storybook stories for new components
+**Deployment Date:** __________  
+**Deployed By:** __________  
+**Issues Encountered:** __________  
+**User Feedback:** __________  
+**Follow-Up Actions:** __________
 
 ---
 
-## ✅ Sign-Off
-
-### Development Team:
-- [x] Code reviewed and approved
-- [x] All tests passing
-- [x] Documentation complete
-
-### QA Team:
-- [x] Manual testing complete
-- [x] No critical bugs found
-- [x] Ready for deployment
-
-### Product Owner:
-- [x] All requirements met
-- [x] User flows verified
-- [x] Approved for release
-
----
-
-## 📞 Support Contacts
-
-**Technical Issues:**
-- Developer: Check git commit history
-- Documentation: See ROUTING_FIXES_SUMMARY.md
-
-**Deployment Issues:**
-- Check logs in production environment
-- Verify environment variables
-- Check build output
-
----
-
-## ✅ READY FOR DEPLOYMENT
-
-**All checklist items complete. System is ready for production deployment.**
-
-**Last Updated:** January 29, 2024  
-**Version:** 1.0.0  
-**Status:** ✅ APPROVED FOR DEPLOYMENT
+✅ **Ready to deploy when all checkboxes are complete!**

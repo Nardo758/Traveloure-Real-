@@ -37,12 +37,31 @@ function VerifyEmailPageContent() {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/auth/tokenverify/${token}/`
       );
-      toast.success("Email verified successfully!");
-      router.push("/login"); // Redirect to home after verification
+      
+      if (response.status === 200) {
+        toast.success("Email verified successfully!");
+        router.push("/login");
+      }
     } catch (error) {
-      toast.error(
-        error.response?.data?.detail || "Email verification failed. Please try again."
-      );
+      console.error("Email verification error:", error);
+      
+      // Handle different error scenarios
+      let errorMessage = "Email verification failed. Please try again.";
+      
+      if (error.response) {
+        // Server responded with error status
+        errorMessage = error.response.data?.detail || 
+                       error.response.data?.message || 
+                       `Verification failed: ${error.response.status}`;
+      } else if (error.request) {
+        // Request made but no response received
+        errorMessage = "Unable to connect to server. Please check your internet connection.";
+      } else {
+        // Something else happened
+        errorMessage = error.message || "Unexpected error occurred during verification.";
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,7 @@ import { useAdmin } from '../../../hooks/useAdmin'
 import { getCountriesForFilter, getLanguagesForFilter, applyFilters } from '../../../lib/countryUtils'
 import { getRejectedLocalExperts, getLocalExpertById, updateLocalExpert } from '../../redux-features/Travelexperts/travelexpertsSlice'
 import Link from "next/link"
+import logger from '../../../lib/logger'
 
 // Static fallback data
 const staticRejectedExpertsData = [
@@ -264,7 +265,7 @@ export default function RejectedLocalExperts() {
         setIsModalOpen(false)
       }
     } catch (error) {
-      console.error("Error deleting expert:", error)
+      logger.error("Error deleting expert:", error)
     }
   }
 
@@ -283,7 +284,7 @@ export default function RejectedLocalExperts() {
         setIsModalOpen(false)
       }
     } catch (error) {
-      console.error("Error approving expert:", error)
+      logger.error("Error approving expert:", error)
     }
   }
 
@@ -294,12 +295,12 @@ export default function RejectedLocalExperts() {
 
   
   const handleEditDetails = (id) => {
-    console.log("Edit details for expert:", id)
+    logger.debug("Edit details for expert:", id)
     // Add edit details logic here
   }
 
   const handleSendMail = (id) => {
-    console.log("Send mail to expert:", id)
+    logger.debug("Send mail to expert:", id)
     // Add send mail logic here
   }
 

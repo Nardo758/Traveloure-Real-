@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import { toast } from 'sonner'
 import { isTokenExpired, handleTokenExpiration } from '../../../lib/authUtils'
+import logger from '../../../lib/logger'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
@@ -16,7 +17,7 @@ const getHeaders = (token) => {
 const handleApiError = (error, rejectWithValue) => {
   // This handles network errors (fetch failures, not HTTP errors)
   const errorMessage = error.message || 'Network error occurred'
-  console.error('Network error in FAQ thunk:', error)
+  logger.error('Network error in FAQ thunk:', error)
   return rejectWithValue(errorMessage)
 }
 
@@ -43,7 +44,7 @@ export const fetchFAQs = createAsyncThunk(
       
       // Check if token is expired from response body
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in fetch FAQs')
+        logger.debug('🔒 Token expired detected in fetch FAQs')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
@@ -51,7 +52,7 @@ export const fetchFAQs = createAsyncThunk(
       if (!response.ok) {
         // Check for 401 status
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in fetch FAQs')
+          logger.debug('🔒 Unauthorized (401) in fetch FAQs')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }
@@ -98,7 +99,7 @@ export const createFAQ = createAsyncThunk(
       
       // Check if token is expired from response body
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in create FAQ')
+        logger.debug('🔒 Token expired detected in create FAQ')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
@@ -106,7 +107,7 @@ export const createFAQ = createAsyncThunk(
       if (!response.ok) {
         // Check for 401 status
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in create FAQ')
+          logger.debug('🔒 Unauthorized (401) in create FAQ')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }
@@ -151,7 +152,7 @@ export const updateFAQ = createAsyncThunk(
       
       // Check if token is expired from response body
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in update FAQ')
+        logger.debug('🔒 Token expired detected in update FAQ')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
@@ -159,7 +160,7 @@ export const updateFAQ = createAsyncThunk(
       if (!response.ok) {
         // Check for 401 status
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in update FAQ')
+          logger.debug('🔒 Unauthorized (401) in update FAQ')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }
@@ -203,7 +204,7 @@ export const deleteFAQ = createAsyncThunk(
       
       // Check if token is expired from response body
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in delete FAQ')
+        logger.debug('🔒 Token expired detected in delete FAQ')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
@@ -211,7 +212,7 @@ export const deleteFAQ = createAsyncThunk(
       if (!response.ok) {
         // Check for 401 status
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in delete FAQ')
+          logger.debug('🔒 Unauthorized (401) in delete FAQ')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }

@@ -51,6 +51,7 @@ import { useChat } from "../../hooks/useChat"
 import { useContract } from "../../hooks/useContract"
 import { useItinerary } from "../../hooks/useItinerary"
 import { AttachmentDisplay } from "../../components/AttachmentDisplay"
+import logger from '../../lib/logger'
 
 // Dynamically import the map component to avoid SSR issues
 const MapComponent = dynamic(() => import("../../components/map-component").catch(() => {
@@ -337,7 +338,7 @@ function BookingPageContent() {
         setIsFromChatExperts(true)
       }
     } else {
-      console.log('🔍 No valid tab parameter found or tab not in allowed list')
+      logger.debug('🔍 No valid tab parameter found or tab not in allowed list')
     }
   }, [searchParams, isClient])
 
@@ -348,7 +349,7 @@ function BookingPageContent() {
         .then((result) => {
         })
         .catch((error) => {
-          console.error("UserProfile dispatch error:", error)
+          logger.error("UserProfile dispatch error:", error)
         })
     }
   }, [token, dispatch])
@@ -416,7 +417,7 @@ function BookingPageContent() {
   // Debug contract status data
   useEffect(() => {
     if (contractStatusData) {
-      console.log('🔌 Contract status data:', contractStatusData)
+      logger.debug('🔌 Contract status data:', contractStatusData)
     }
   }, [contractStatusData])
 
@@ -428,7 +429,7 @@ function BookingPageContent() {
       if (chatId && chatId !== 'undefined' && chatId !== undefined) {
         dispatch(contractActions.checkContractStatus({ token, withChat: chatId }))
           .catch(error => {
-            console.error('Failed to check contract status on mount:', error)
+            logger.error('Failed to check contract status on mount:', error)
           })
       }
     }
@@ -999,7 +1000,7 @@ function BookingPageContent() {
           setSelectedServiceIds(parsed.map((s) => s.service_id))
         }
       } catch (error) {
-        console.error("Error parsing selectedServices from localStorage:", error)
+        logger.error("Error parsing selectedServices from localStorage:", error)
       }
     }
 
@@ -1012,7 +1013,7 @@ function BookingPageContent() {
           setSelectedServices(parsed)
         }
       } catch (error) {
-        console.error("Error parsing selectedServices from localStorage:", error)
+        logger.error("Error parsing selectedServices from localStorage:", error)
       }
     }
 
@@ -1025,7 +1026,7 @@ function BookingPageContent() {
           setSelectedPlaces(parsed)
         }
       } catch (error) {
-        console.error("Error parsing selectedPlaces from localStorage:", error)
+        logger.error("Error parsing selectedPlaces from localStorage:", error)
       }
     }
   }, [dataCleared])
@@ -1505,7 +1506,7 @@ function BookingPageContent() {
 
     } catch (error) {
       setLoading(false)
-      console.log(error,"jiji")
+      logger.debug(error,"jiji")
       
       // Check if it's a 429 error (rate limit / IP restriction)
       if (error?.status === 429) {
@@ -1547,7 +1548,7 @@ function BookingPageContent() {
     try {
       await contract.handleContractSubmit(contractData)
     } catch (error) {
-      console.error('Contract submission error:', error)
+      logger.error('Contract submission error:', error)
     }
   }
 
@@ -1691,7 +1692,7 @@ function BookingPageContent() {
                   className="rounded-[22px] border-none bg-[#fdeef4] px-3 flex items-center gap-2 h-[42px] flex-shrink-0 hidden lg:flex cursor-not-allowed"
                   onClick={() => {
                     // Handle credits click - you can add your logic here
-                    console.log('Credits clicked')
+                    logger.debug('Credits clicked')
                   }}
                 >
                   <Image 
@@ -2841,7 +2842,7 @@ function BookingPageContent() {
             size="sm"
             className="rounded-[22px] border-none bg-[#fdeef4] px-3 flex items-center gap-2 h-[42px] flex-shrink-0 cursor-not-allowed"
             onClick={() => {
-              console.log('Credits clicked (mobile)')
+              logger.debug('Credits clicked (mobile)')
             }}
           >
             <Image 
