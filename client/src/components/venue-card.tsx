@@ -48,7 +48,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
     : defaultImage;
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-200">
+    <Card className="overflow-hidden hover-elevate" data-testid={`card-venue-${venue.id}`}>
       <div className="relative h-48 overflow-hidden bg-gray-100">
         {imageLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
@@ -66,7 +66,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
           }}
         />
         {venue.priceLevel && (
-          <Badge className="absolute top-2 right-2 bg-white/90 text-gray-900 hover:bg-white">
+          <Badge className="absolute top-2 right-2 bg-white/90 text-gray-900 no-default-hover-elevate no-default-active-elevate">
             {getPriceLevelIndicator(venue.priceLevel)}
           </Badge>
         )}
@@ -112,8 +112,9 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
               href={venue.website}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[#FF385C] hover:underline"
+              className="flex items-center gap-1 text-[#FF385C]"
               onClick={(e) => e.stopPropagation()}
+              data-testid={`link-venue-website-${venue.id}`}
             >
               <Globe className="w-4 h-4" />
               <span className="text-xs">Website</span>
@@ -129,14 +130,16 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
             variant="outline"
             className="flex-1"
             onClick={() => onViewDetails(venue)}
+            data-testid={`button-view-details-${venue.id}`}
           >
             View Details
           </Button>
         )}
         {onAddToCart && (
           <Button
-            className="flex-1 bg-[#FF385C] hover:bg-[#E23350]"
+            className="flex-1 bg-[#FF385C]"
             onClick={() => onAddToCart(venue)}
+            data-testid={`button-add-to-cart-${venue.id}`}
           >
             <Plus className="w-4 h-4 mr-2" />
             Add to Cart

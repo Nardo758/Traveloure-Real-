@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Filter, RefreshCw, AlertCircle } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Search, RefreshCw, AlertCircle, MapPin } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 
@@ -184,6 +185,7 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
             size="sm"
             onClick={handleRefresh}
             disabled={isLoading}
+            data-testid="button-refresh-venues"
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
@@ -196,7 +198,7 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
             <div className="space-y-2">
               <Label htmlFor="vendorType">Vendor Type</Label>
               <Select value={vendorType} onValueChange={setVendorType}>
-                <SelectTrigger id="vendorType">
+                <SelectTrigger id="vendorType" data-testid="select-vendor-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -219,6 +221,7 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
                 placeholder={venueConfig?.keyword || "e.g., outdoor, luxury"}
                 value={customKeyword}
                 onChange={(e) => setCustomKeyword(e.target.value)}
+                data-testid="input-venue-keyword"
               />
             </div>
           )}
@@ -227,7 +230,7 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
           <div className="space-y-2">
             <Label htmlFor="minRating">Minimum Rating</Label>
             <Select value={minRating} onValueChange={setMinRating}>
-              <SelectTrigger id="minRating">
+              <SelectTrigger id="minRating" data-testid="select-min-rating">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -296,7 +299,7 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
           <p className="text-gray-500 max-w-md mb-4">
             We couldn't find any venues matching your criteria in this location. Try adjusting your filters or search in a nearby city.
           </p>
-          <Button variant="outline" onClick={handleRefresh}>
+          <Button variant="outline" onClick={handleRefresh} data-testid="button-try-again">
             Try Again
           </Button>
         </div>
@@ -305,26 +308,3 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
   );
 }
 
-function MapPin(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-      <circle cx="12" cy="10" r="3" />
-    </svg>
-  );
-}
-
-function Card(props: any) {
-  return <div className="border border-gray-200 rounded-lg" {...props} />;
-}
