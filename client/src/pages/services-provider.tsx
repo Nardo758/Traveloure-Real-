@@ -548,13 +548,13 @@ export default function ServicesProviderPage() {
                   />
                   <label htmlFor="terms" className="text-sm text-[#6B7280]">
                     I agree to the{" "}
-                    <Link href="/service-provider-terms" className="text-[#FF385C] underline">
+                    <a href="/terms#service-provider-requirements" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
                       Service Provider Terms
-                    </Link>{" "}
+                    </a>{" "}
                     and{" "}
-                    <Link href="/privacy-policy" className="text-[#FF385C] underline">
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
                       Privacy Policy
-                    </Link>
+                    </a>
                   </label>
                 </div>
               </CardContent>

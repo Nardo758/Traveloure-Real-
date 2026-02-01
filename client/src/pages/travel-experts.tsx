@@ -543,26 +543,18 @@ export default function TravelExpertsPage() {
                   </div>
                 </div>
 
-                {/* Influencer Toggle */}
-                <div className="border-t pt-6 mt-6">
-                  <div className="flex items-center space-x-3 mb-4">
-                    <Checkbox
-                      id="isInfluencer"
-                      checked={formData.isInfluencer}
-                      onCheckedChange={(checked) => updateFormData("isInfluencer", checked)}
-                      data-testid="checkbox-is-influencer"
-                    />
-                    <div>
-                      <Label htmlFor="isInfluencer" className="text-[#374151] font-medium cursor-pointer">
-                        I'm a Travel Content Creator / Influencer
-                      </Label>
+                {/* Influencer Section - Only shown when arriving via influencer program link */}
+                {influencerFromUrl && (
+                  <div className="border-t pt-6 mt-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Badge className="bg-[#FF385C] text-white">
+                        <Sparkles className="w-3 h-3 mr-1" />
+                        Influencer Program
+                      </Badge>
                       <p className="text-sm text-muted-foreground">
                         Get a verified creator badge and earn referral commissions
                       </p>
                     </div>
-                  </div>
-
-                  {formData.isInfluencer && (
                     <div className="space-y-4 pl-6 border-l-2 border-primary/20">
                       <p className="text-sm text-muted-foreground mb-4">
                         Share your social media profiles. We'll verify your creator status and enable referral tracking.
@@ -634,8 +626,8 @@ export default function TravelExpertsPage() {
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -1015,8 +1007,13 @@ export default function TravelExpertsPage() {
                   />
                   <label htmlFor="terms" className="text-sm text-[#6B7280]">
                     I agree to the{" "}
-                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
-                      Terms of Service
+                    <a 
+                      href={influencerFromUrl ? "/terms#influencer-terms" : "/terms#expert-terms"} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-[#FF385C] underline"
+                    >
+                      {influencerFromUrl ? "Influencer Program Terms" : "Travel Expert Terms"}
                     </a>{" "}
                     and{" "}
                     <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
