@@ -4490,8 +4490,22 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
             analytics: loc.travelerScore ? { travelers: { score: loc.travelerScore } } : undefined,
           };
         });
-        // Sort by traveler score descending - higher score = more popular destination
+        // Sort by relevance: exact name match first, then by traveler score
         formattedLocations.sort((a: any, b: any) => {
+          const keywordLower = keyword.toLowerCase();
+          const nameA = (a.name || '').toLowerCase();
+          const nameB = (b.name || '').toLowerCase();
+          const cityA = (a.address?.cityName || '').toLowerCase();
+          const cityB = (b.address?.cityName || '').toLowerCase();
+          
+          // Exact match on name or city name gets highest priority
+          const exactMatchA = nameA === keywordLower || cityA === keywordLower;
+          const exactMatchB = nameB === keywordLower || cityB === keywordLower;
+          
+          if (exactMatchA && !exactMatchB) return -1;
+          if (!exactMatchA && exactMatchB) return 1;
+          
+          // Then sort by traveler score (higher is better)
           const scoreA = a.analytics?.travelers?.score ?? 0;
           const scoreB = b.analytics?.travelers?.score ?? 0;
           return scoreB - scoreA;
@@ -4530,8 +4544,22 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         });
       }
       
-      // Sort by traveler score descending - higher score = more popular destination
+      // Sort by relevance: exact name match first, then by traveler score
       locations.sort((a: any, b: any) => {
+        const keywordLower = keyword.toLowerCase();
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        const cityA = (a.address?.cityName || '').toLowerCase();
+        const cityB = (b.address?.cityName || '').toLowerCase();
+        
+        // Exact match on name or city name gets highest priority
+        const exactMatchA = nameA === keywordLower || cityA === keywordLower;
+        const exactMatchB = nameB === keywordLower || cityB === keywordLower;
+        
+        if (exactMatchA && !exactMatchB) return -1;
+        if (!exactMatchA && exactMatchB) return 1;
+        
+        // Then sort by traveler score (higher is better)
         const scoreA = a.analytics?.travelers?.score ?? 0;
         const scoreB = b.analytics?.travelers?.score ?? 0;
         return scoreB - scoreA;
