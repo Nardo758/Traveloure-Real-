@@ -157,7 +157,7 @@ export default function TermsOfServicePage() {
             </ul>
           </section>
 
-          <section>
+          <section id="service-provider-requirements">
             <h2 className="text-2xl font-semibold mb-4">5. Service Provider Requirements</h2>
             
             <h3 className="text-xl font-medium mb-3">5.1 Four-Tier Insurance Structure</h3>
@@ -180,6 +180,76 @@ export default function TermsOfServicePage() {
             <p className="text-muted-foreground leading-relaxed">
               Service Providers must submit and maintain: proof of insurance coverage, valid licenses and permits, business registration documentation, tax identification numbers, proof of identity for business owners, and annual renewal documentation.
             </p>
+          </section>
+
+          <section id="influencer-terms">
+            <h2 className="text-2xl font-semibold mb-4">5.5 Travel Content Creator & Influencer Terms</h2>
+            
+            <h3 className="text-xl font-medium mb-3">5.5.1 Influencer Program Overview</h3>
+            <p className="text-muted-foreground leading-relaxed mb-4">
+              The Traveloure Influencer Program allows verified travel content creators to earn commissions through referrals, access exclusive experiences, and collaborate with the platform on content creation.
+            </p>
+
+            <h3 className="text-xl font-medium mb-3">5.5.2 Eligibility Requirements</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li>Minimum combined following of 10,000 across verified social platforms</li>
+              <li>Active content creation in travel, lifestyle, or related niches</li>
+              <li>Authentic engagement metrics (no purchased followers or fake engagement)</li>
+              <li>Compliance with FTC disclosure guidelines and local advertising regulations</li>
+              <li>Professional and brand-appropriate content history</li>
+            </ul>
+
+            <h3 className="text-xl font-medium mb-3">5.5.3 Commission Structure</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li><strong>Referral Commission:</strong> 5-15% of booking value for referred travelers (tier-based on performance)</li>
+              <li><strong>Content Bonus:</strong> Additional compensation for featured platform content</li>
+              <li><strong>Affiliate Links:</strong> Unique tracking links with 30-day cookie duration</li>
+              <li><strong>Payout Terms:</strong> Monthly payouts, minimum $50 threshold, via Stripe</li>
+            </ul>
+
+            <h3 className="text-xl font-medium mb-3">5.5.4 Content Creator Responsibilities</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li>Disclose partnership/affiliate relationships in all sponsored content (#ad, #sponsored)</li>
+              <li>Provide honest, unbiased reviews and recommendations</li>
+              <li>Not engage in misleading or deceptive promotional practices</li>
+              <li>Respect intellectual property rights of Traveloure and partners</li>
+              <li>Maintain professional conduct that reflects positively on the platform</li>
+              <li>Report accurate follower counts and engagement metrics</li>
+            </ul>
+
+            <h3 className="text-xl font-medium mb-3">5.5.5 Program Termination</h3>
+            <p className="text-muted-foreground leading-relaxed">
+              Traveloure reserves the right to terminate influencer partnerships for: fraudulent activity, violation of disclosure requirements, content that damages platform reputation, inactive accounts (no referrals for 6+ months), or breach of these terms. Upon termination, pending commissions below $50 are forfeited.
+            </p>
+          </section>
+
+          <section id="expert-terms">
+            <h2 className="text-2xl font-semibold mb-4">5.6 Travel Expert & Local Expert Specific Terms</h2>
+            
+            <h3 className="text-xl font-medium mb-3">5.6.1 Expert Categories</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li><strong>Travel Expert:</strong> Destination specialists offering itinerary planning and travel advice</li>
+              <li><strong>Local Expert:</strong> City residents providing on-ground tours, experiences, and local insights</li>
+              <li><strong>Event Planner:</strong> Specialists in destination weddings, proposals, and celebrations</li>
+              <li><strong>Executive Assistant:</strong> Premium travel managers for high-net-worth clients</li>
+            </ul>
+
+            <h3 className="text-xl font-medium mb-3">5.6.2 Service Level Standards</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
+              <li>Respond to client inquiries within 24 hours</li>
+              <li>Maintain availability calendar accuracy</li>
+              <li>Provide detailed service descriptions and transparent pricing</li>
+              <li>Honor confirmed bookings unless emergency circumstances apply</li>
+              <li>Maintain minimum 4.0 star rating to remain in good standing</li>
+            </ul>
+
+            <h3 className="text-xl font-medium mb-3">5.6.3 Platform Fees</h3>
+            <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
+              <li><strong>Commission Rate:</strong> 15-20% of service fees (tier-based on volume)</li>
+              <li><strong>Payment Processing:</strong> 2.9% + $0.30 per transaction (Stripe fees)</li>
+              <li><strong>Payout Schedule:</strong> Weekly payouts for verified experts</li>
+              <li><strong>Minimum Payout:</strong> $25 threshold for withdrawal</li>
+            </ul>
           </section>
 
           <section>
