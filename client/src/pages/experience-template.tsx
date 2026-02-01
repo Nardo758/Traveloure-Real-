@@ -2135,63 +2135,66 @@ export default function ExperienceTemplatePage() {
                         </div>
                       </div>
 
-                      <div>
-                        <Label className="text-sm font-medium mb-2 block">Preferences</Label>
-                        <div className="flex flex-wrap gap-2">
-                          {config.filters.map((filter) => (
-                            <Badge
-                              key={filter}
-                              variant={selectedFilters.includes(filter) ? "default" : "outline"}
-                              className={cn(
-                                "cursor-pointer",
-                                selectedFilters.includes(filter) && "bg-[#FF385C]"
-                              )}
-                              onClick={() => toggleFilter(filter)}
-                              data-testid={`filter-${filter.toLowerCase()}`}
-                            >
-                              {filter}
-                            </Badge>
-                          ))}
-                          {/* Interest-based filters - shown for Activities tab */}
-                          {activeTab === "activities" && [
-                            { id: "culture", label: "Culture & History" },
-                            { id: "food", label: "Food & Dining" },
-                            { id: "adventure", label: "Adventure" },
-                            { id: "nature", label: "Nature & Outdoors" },
-                            { id: "nightlife", label: "Nightlife" },
-                            { id: "shopping", label: "Shopping" },
-                            { id: "wellness", label: "Wellness & Spa" },
-                            { id: "art", label: "Art & Museums" },
-                          ].map((interest) => (
-                            <Badge
-                              key={interest.id}
-                              variant={selectedInterests.includes(interest.id) ? "default" : "outline"}
-                              className={cn(
-                                "cursor-pointer",
-                                selectedInterests.includes(interest.id) && "bg-[#FF385C]"
-                              )}
-                              onClick={() => toggleInterest(interest.id)}
-                              data-testid={`interest-filter-${interest.id}`}
-                            >
-                              {interest.label}
-                            </Badge>
-                          ))}
-                          {(selectedFilters.length > 0 || selectedInterests.length > 0) && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-xs h-6"
-                              onClick={() => {
-                                setSelectedFilters([]);
-                                setSelectedInterests([]);
-                              }}
-                              data-testid="button-clear-filters"
-                            >
-                              Clear all
-                            </Button>
-                          )}
+                      {/* Hide Preferences section for vendors tab - VenueSearchPanel has its own Vendor Type filter */}
+                      {activeTab !== "vendors" && (
+                        <div>
+                          <Label className="text-sm font-medium mb-2 block">Preferences</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {config.filters.map((filter) => (
+                              <Badge
+                                key={filter}
+                                variant={selectedFilters.includes(filter) ? "default" : "outline"}
+                                className={cn(
+                                  "cursor-pointer",
+                                  selectedFilters.includes(filter) && "bg-[#FF385C]"
+                                )}
+                                onClick={() => toggleFilter(filter)}
+                                data-testid={`filter-${filter.toLowerCase()}`}
+                              >
+                                {filter}
+                              </Badge>
+                            ))}
+                            {/* Interest-based filters - shown for Activities tab */}
+                            {activeTab === "activities" && [
+                              { id: "culture", label: "Culture & History" },
+                              { id: "food", label: "Food & Dining" },
+                              { id: "adventure", label: "Adventure" },
+                              { id: "nature", label: "Nature & Outdoors" },
+                              { id: "nightlife", label: "Nightlife" },
+                              { id: "shopping", label: "Shopping" },
+                              { id: "wellness", label: "Wellness & Spa" },
+                              { id: "art", label: "Art & Museums" },
+                            ].map((interest) => (
+                              <Badge
+                                key={interest.id}
+                                variant={selectedInterests.includes(interest.id) ? "default" : "outline"}
+                                className={cn(
+                                  "cursor-pointer",
+                                  selectedInterests.includes(interest.id) && "bg-[#FF385C]"
+                                )}
+                                onClick={() => toggleInterest(interest.id)}
+                                data-testid={`interest-filter-${interest.id}`}
+                              >
+                                {interest.label}
+                              </Badge>
+                            ))}
+                            {(selectedFilters.length > 0 || selectedInterests.length > 0) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs h-6"
+                                onClick={() => {
+                                  setSelectedFilters([]);
+                                  setSelectedInterests([]);
+                                }}
+                                data-testid="button-clear-filters"
+                              >
+                                Clear all
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </>
                   )}
                 </CardContent>
