@@ -1,6 +1,7 @@
 import { Express, Request, Response } from "express";
 import { db } from "../db";
 import { eq, and, desc } from "drizzle-orm";
+import { z } from "zod";
 import { 
   eventInvites, 
   guestTravelPlans, 
@@ -11,7 +12,64 @@ import {
   InsertInviteTemplate
 } from "../../shared/guest-invites-schema";
 import { userExperiences } from "../../shared/schema";
+import { isAuthenticated } from "../replit_integrations/auth";
 import crypto from "crypto";
+
+// Zod validation schemas
+const guestSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  name: z.string().min(1, "Name is required"),
+  phone: z.string().optional()
+});
+
+const createInvitesSchema = z.object({
+  guests: z.array(guestSchema).min(1, "At least one guest is required")
+});
+
+const originSchema = z.object({
+  originCity: z.string().min(1, "Origin city is required"),
+  originState: z.string().optional(),
+  originCountry: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional()
+});
+
+const rsvpSchema = z.object({
+  rsvpStatus: z.enum(["accepted", "declined", "maybe"]),
+  numberOfGuests: z.number().int().min(1).optional(),
+  dietaryRestrictions: z.array(z.string()).optional(),
+  accommodationPreference: z.enum(["hotel_block", "own_booking", "with_family", "undecided"]).optional(),
+  transportationNeeded: z.boolean().optional(),
+  specialRequests: z.string().optional(),
+  message: z.string().optional()
+});
+
+const inviteTemplateSchema = z.object({
+  userId: z.string().min(1),
+  name: z.string().min(1, "Template name is required"),
+  subject: z.string().optional(),
+  messageBody: z.string().min(1, "Message body is required"),
+  eventType: z.string().optional()
+});
+
+const travelPlansSchema = z.object({
+  selectedFlight: z.any().optional(),
+  selectedTransport: z.any().optional(),
+  selectedAccommodation: z.any().optional(),
+  selectedActivities: z.array(z.any()).optional(),
+  arrivalDate: z.string().optional(),
+  departureDate: z.string().optional()
+});
+
+// Helper to verify experience ownership
+async function verifyExperienceOwnership(experienceId: string, userId: string): Promise<boolean> {
+  const experience = await db.select()
+    .from(userExperiences)
+    .where(eq(userExperiences.id, experienceId))
+    .limit(1);
+  
+  return experience.length > 0 && experience[0].userId === userId;
+}
 
 /**
  * Generate a unique URL-safe token for invite links
@@ -51,26 +109,33 @@ export function setupGuestInviteRoutes(app: Express) {
    * Create invite links for guests
    * Body: { guests: [{ email, name, phone? }] }
    */
-  app.post("/api/events/:experienceId/invites", async (req: Request, res: Response) => {
+  app.post("/api/events/:experienceId/invites", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { experienceId } = req.params;
-      const { guests } = req.body;
+      const userId = (req.user as any)?.claims?.sub;
       
-      if (!Array.isArray(guests) || guests.length === 0) {
-        return res.status(400).json({ error: "Guests array is required" });
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
+      
+      // Validate request body
+      const validation = createInvitesSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: validation.error.errors 
+        });
+      }
+      
+      const { guests } = validation.data;
       
       // Verify user owns this experience
-      const experience = await db.select()
-        .from(userExperiences)
-        .where(eq(userExperiences.id, experienceId))
-        .limit(1);
-      
-      if (experience.length === 0) {
-        return res.status(404).json({ error: "Experience not found" });
+      const isOwner = await verifyExperienceOwnership(experienceId, userId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You don't have permission to manage invites for this experience" });
       }
       
-      const organizerId = experience[0].userId;
+      const organizerId = userId;
       
       // Create invites in batch
       const createdInvites = [];
@@ -108,9 +173,20 @@ export function setupGuestInviteRoutes(app: Express) {
    * GET /api/events/:experienceId/invites
    * Get all invites for an event
    */
-  app.get("/api/events/:experienceId/invites", async (req: Request, res: Response) => {
+  app.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { experienceId } = req.params;
+      const userId = (req.user as any)?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      // Verify user owns this experience
+      const isOwner = await verifyExperienceOwnership(experienceId, userId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You don't have permission to view invites for this experience" });
+      }
       
       const invites = await db.select()
         .from(eventInvites)
@@ -135,9 +211,20 @@ export function setupGuestInviteRoutes(app: Express) {
    * GET /api/events/:experienceId/invites/stats
    * Get RSVP statistics for an event
    */
-  app.get("/api/events/:experienceId/invites/stats", async (req: Request, res: Response) => {
+  app.get("/api/events/:experienceId/invites/stats", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { experienceId } = req.params;
+      const userId = (req.user as any)?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      // Verify user owns this experience
+      const isOwner = await verifyExperienceOwnership(experienceId, userId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You don't have permission to view stats for this experience" });
+      }
       
       const invites = await db.select()
         .from(eventInvites)
@@ -150,7 +237,7 @@ export function setupGuestInviteRoutes(app: Express) {
         pending: invites.filter(i => i.rsvpStatus === 'pending').length,
         maybe: invites.filter(i => i.rsvpStatus === 'maybe').length,
         totalGuests: invites.reduce((sum, i) => sum + (i.numberOfGuests || 0), 0),
-        originCities: [...new Set(invites.map(i => i.originCity).filter(Boolean))],
+        originCities: Array.from(new Set(invites.map(i => i.originCity).filter(Boolean))),
         viewedCount: invites.filter(i => i.inviteViewedAt !== null).length,
         notViewedCount: invites.filter(i => i.inviteViewedAt === null).length,
       };
@@ -167,9 +254,30 @@ export function setupGuestInviteRoutes(app: Express) {
    * DELETE /api/invites/:inviteId
    * Delete/cancel an invite
    */
-  app.delete("/api/invites/:inviteId", async (req: Request, res: Response) => {
+  app.delete("/api/invites/:inviteId", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { inviteId } = req.params;
+      const userId = (req.user as any)?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      // Get the invite to check ownership
+      const [invite] = await db.select()
+        .from(eventInvites)
+        .where(eq(eventInvites.id, inviteId))
+        .limit(1);
+      
+      if (!invite) {
+        return res.status(404).json({ error: "Invite not found" });
+      }
+      
+      // Verify user owns the experience this invite belongs to
+      const isOwner = await verifyExperienceOwnership(invite.experienceId, userId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You don't have permission to delete this invite" });
+      }
       
       await db.delete(eventInvites).where(eq(eventInvites.id, inviteId));
       
@@ -230,16 +338,22 @@ export function setupGuestInviteRoutes(app: Express) {
   
   /**
    * POST /api/invites/:token/origin
-   * Save guest's origin city
+   * Save guest's origin city (public - guests don't need accounts)
    */
   app.post("/api/invites/:token/origin", async (req: Request, res: Response) => {
     try {
       const { token } = req.params;
-      const { originCity, originState, originCountry, latitude, longitude } = req.body;
       
-      if (!originCity) {
-        return res.status(400).json({ error: "Origin city is required" });
+      // Validate request body
+      const validation = originSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: validation.error.errors 
+        });
       }
+      
+      const { originCity, originState, originCountry, latitude, longitude } = validation.data;
       
       // Update invite with origin
       const [updated] = await db.update(eventInvites)
@@ -247,8 +361,8 @@ export function setupGuestInviteRoutes(app: Express) {
           originCity,
           originState,
           originCountry,
-          originLatitude: latitude,
-          originLongitude: longitude,
+          originLatitude: latitude?.toString(),
+          originLongitude: longitude?.toString(),
         })
         .where(eq(eventInvites.uniqueToken, token))
         .returning();
@@ -270,11 +384,21 @@ export function setupGuestInviteRoutes(app: Express) {
   
   /**
    * POST /api/invites/:token/rsvp
-   * Submit RSVP
+   * Submit RSVP (public - guests don't need accounts)
    */
   app.post("/api/invites/:token/rsvp", async (req: Request, res: Response) => {
     try {
       const { token } = req.params;
+      
+      // Validate request body
+      const validation = rsvpSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: validation.error.errors 
+        });
+      }
+      
       const { 
         rsvpStatus, 
         numberOfGuests, 
@@ -283,11 +407,7 @@ export function setupGuestInviteRoutes(app: Express) {
         transportationNeeded,
         specialRequests,
         message 
-      } = req.body;
-      
-      if (!rsvpStatus || !['accepted', 'declined', 'maybe'].includes(rsvpStatus)) {
-        return res.status(400).json({ error: "Valid RSVP status required (accepted, declined, maybe)" });
-      }
+      } = validation.data;
       
       const [updated] = await db.update(eventInvites)
         .set({
@@ -371,8 +491,8 @@ export function setupGuestInviteRoutes(app: Express) {
           country: invite.originCountry,
         },
         destination: {
-          city: experience?.destination,
-          eventDate: experience?.startDate,
+          city: experience?.location,
+          eventDate: experience?.eventDate,
         },
         flights: travelPlan.flightOptions || [],
         groundTransport: travelPlan.transportOptions || [],
@@ -395,11 +515,21 @@ export function setupGuestInviteRoutes(app: Express) {
   
   /**
    * POST /api/invites/:token/travel-plans
-   * Update guest's travel selections
+   * Update guest's travel selections (public - guests don't need accounts)
    */
   app.post("/api/invites/:token/travel-plans", async (req: Request, res: Response) => {
     try {
       const { token } = req.params;
+      
+      // Validate request body
+      const validation = travelPlansSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: validation.error.errors 
+        });
+      }
+      
       const { 
         selectedFlight,
         selectedTransport,
@@ -407,7 +537,7 @@ export function setupGuestInviteRoutes(app: Express) {
         selectedActivities,
         arrivalDate,
         departureDate
-      } = req.body;
+      } = validation.data;
       
       // Get invite
       const [invite] = await db.select()
@@ -475,17 +605,28 @@ export function setupGuestInviteRoutes(app: Express) {
    * POST /api/invite-templates
    * Create custom invite template
    */
-  app.post("/api/invite-templates", async (req: Request, res: Response) => {
+  app.post("/api/invite-templates", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const { userId, name, subject, messageBody, eventType } = req.body;
+      const userId = (req.user as any)?.claims?.sub;
       
-      if (!userId || !name || !messageBody) {
-        return res.status(400).json({ error: "userId, name, and messageBody are required" });
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
       }
+      
+      // Validate request body (override userId with authenticated user)
+      const validation = inviteTemplateSchema.omit({ userId: true }).safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: validation.error.errors 
+        });
+      }
+      
+      const { name, subject, messageBody, eventType } = validation.data;
       
       const [template] = await db.insert(inviteTemplates)
         .values({
-          userId,
+          userId, // Use authenticated user's ID
           name,
           subject,
           messageBody,
@@ -505,13 +646,23 @@ export function setupGuestInviteRoutes(app: Express) {
    * GET /api/invite-templates/user/:userId
    * Get user's invite templates
    */
-  app.get("/api/invite-templates/user/:userId", async (req: Request, res: Response) => {
+  app.get("/api/invite-templates/user/:userId", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const { userId } = req.params;
+      const requestedUserId = req.params.userId;
+      const authenticatedUserId = (req.user as any)?.claims?.sub;
+      
+      if (!authenticatedUserId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      // Users can only access their own templates
+      if (requestedUserId !== authenticatedUserId) {
+        return res.status(403).json({ error: "You can only access your own templates" });
+      }
       
       const templates = await db.select()
         .from(inviteTemplates)
-        .where(eq(inviteTemplates.userId, userId))
+        .where(eq(inviteTemplates.userId, requestedUserId))
         .orderBy(desc(inviteTemplates.createdAt));
       
       return res.json({ templates });
