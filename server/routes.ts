@@ -7485,7 +7485,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.json({ 
         results,
         count: results.length,
-        source: "google_places"
+        source: "serpapi"
       });
     } catch (error: any) {
       console.error("Error searching venues:", error);
@@ -7493,27 +7493,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
-  // Get venue details by place ID
-  app.get("/api/venues/:placeId", async (req, res) => {
-    try {
-      const { placeId } = req.params;
-
-      const { venueSearchService } = await import("./services/venue-search.service");
-      
-      const venue = await venueSearchService.getVenueDetails(placeId);
-
-      if (!venue) {
-        return res.status(404).json({ message: "Venue not found" });
-      }
-
-      res.json(venue);
-    } catch (error: any) {
-      console.error("Error fetching venue details:", error);
-      res.status(500).json({ message: "Failed to fetch venue details", error: error.message });
-    }
-  });
-
   // Search for wedding vendors (photographers, florists, etc.)
+  // IMPORTANT: This route must be defined BEFORE /api/venues/:placeId to avoid being caught by the dynamic route
   app.get("/api/venues/wedding-vendors", async (req, res) => {
     try {
       const { location, vendorType } = req.query;
@@ -7538,6 +7519,26 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error("Error searching wedding vendors:", error);
       res.status(500).json({ message: "Failed to search wedding vendors", error: error.message });
+    }
+  });
+
+  // Get venue details by place ID
+  app.get("/api/venues/:placeId", async (req, res) => {
+    try {
+      const { placeId } = req.params;
+
+      const { venueSearchService } = await import("./services/venue-search.service");
+      
+      const venue = await venueSearchService.getVenueDetails(placeId);
+
+      if (!venue) {
+        return res.status(404).json({ message: "Venue not found" });
+      }
+
+      res.json(venue);
+    } catch (error: any) {
+      console.error("Error fetching venue details:", error);
+      res.status(500).json({ message: "Failed to fetch venue details", error: error.message });
     }
   });
 
