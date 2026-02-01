@@ -18,6 +18,7 @@ interface VenueSearchPanelProps {
   onAddToCart?: (item: any) => void;
   externalVendorType?: string;
   externalMinRating?: number;
+  externalKeyword?: string;
   hideFilters?: boolean;
 }
 
@@ -76,13 +77,14 @@ export function VenueSearchPanel({
   onAddToCart,
   externalVendorType,
   externalMinRating,
+  externalKeyword,
   hideFilters = false
 }: VenueSearchPanelProps) {
   const { toast } = useToast();
   const [searchTrigger, setSearchTrigger] = useState(0);
   const [internalVendorType, setInternalVendorType] = useState<string>('photographer');
   const [internalMinRating, setInternalMinRating] = useState<string>('0');
-  const [customKeyword, setCustomKeyword] = useState<string>('');
+  const [internalKeyword, setInternalKeyword] = useState<string>('');
 
   const venueConfig = VENUE_TYPE_CONFIG[template]?.[tabId];
   const isWeddingVendorsTab = template === 'wedding' && tabId === 'vendors';
@@ -90,6 +92,7 @@ export function VenueSearchPanel({
   // Use external values if provided, otherwise use internal state
   const vendorType = externalVendorType ?? internalVendorType;
   const minRating = externalMinRating !== undefined ? String(externalMinRating) : internalMinRating;
+  const customKeyword = externalKeyword !== undefined ? externalKeyword : internalKeyword;
 
   // Build search params based on tab configuration
   const searchParams = new URLSearchParams();
@@ -236,7 +239,7 @@ export function VenueSearchPanel({
                   id="keyword"
                   placeholder={venueConfig?.keyword || "e.g., outdoor, luxury"}
                   value={customKeyword}
-                  onChange={(e) => setCustomKeyword(e.target.value)}
+                  onChange={(e) => setInternalKeyword(e.target.value)}
                   data-testid="input-venue-keyword"
                 />
               </div>

@@ -2590,6 +2590,7 @@ export default function ExperienceTemplatePage() {
                   }}
                   externalVendorType={activeTab === "vendors" ? vendorType : undefined}
                   externalMinRating={minRating}
+                  externalKeyword={activeTab !== "vendors" ? searchQuery : undefined}
                   hideFilters={true}
                 />
               </div>
