@@ -66,7 +66,7 @@ export default function ContractCategories() {
            session?.backendData?.backendData?.accessToken ||
            sessionData?.backendData?.accessToken ||
            sessionData?.backendData?.backendData?.accessToken ||
-           localStorage.getItem('accessToken')
+           null // ✅ SECURE: No localStorage fallback
   }
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { isTokenExpired, handleTokenExpiration } from '../../../lib/authUtils'
+import logger from '../../../lib/logger'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
@@ -28,7 +29,7 @@ export const fetchLocalExpertDashboard = createAsyncThunk(
       
       // Check if token is expired from response body
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in local expert dashboard')
+        logger.debug('🔒 Token expired detected in local expert dashboard')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
@@ -36,7 +37,7 @@ export const fetchLocalExpertDashboard = createAsyncThunk(
       if (!response.ok) {
         // Check for 401 status
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in local expert dashboard')
+          logger.debug('🔒 Unauthorized (401) in local expert dashboard')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }
@@ -77,7 +78,7 @@ export const fetchLocalExpertEarnings = createAsyncThunk(
       
       // Check if token is expired from response body
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in local expert earnings')
+        logger.debug('🔒 Token expired detected in local expert earnings')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
@@ -85,7 +86,7 @@ export const fetchLocalExpertEarnings = createAsyncThunk(
       if (!response.ok) {
         // Check for 401 status
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in local expert earnings')
+          logger.debug('🔒 Unauthorized (401) in local expert earnings')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }
@@ -125,14 +126,14 @@ export const fetchLocalExpertBusinessProfile = createAsyncThunk(
       }
 
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in local expert business profile')
+        logger.debug('🔒 Token expired detected in local expert business profile')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
 
       if (!response.ok) {
         if (response.status === 401) {
-          console.log('🔒 Unauthorized (401) in local expert business profile')
+          logger.debug('🔒 Unauthorized (401) in local expert business profile')
           handleTokenExpiration()
           return rejectWithValue('Authentication failed - please login again')
         }

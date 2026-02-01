@@ -21,6 +21,7 @@ import ReactSelect from "react-select";
 import { PhoneInput } from 'react-international-phone';
 import ProtectedRoute from "../../components/protectedroutes/ProtectedRoutes";
 import 'react-international-phone/style.css';
+import logger from '../../lib/logger'
 
 // Phone Input Styles for Production
 const phoneInputStyles = `
@@ -456,8 +457,8 @@ export default function ServiceProviderRegistration(props) {
           if (!phone) return "";
           
           // Log the original phone number for debugging
-          console.log("Original phone number:", phone);
-          console.log("Original phone char codes:", phone.split('').map(c => c.charCodeAt(0)));
+          logger.debug("Original phone number:", phone);
+          logger.debug("Original phone char codes:", phone.split('').map(c => c.charCodeAt(0)));
           
           // Remove any spaces, special characters, and non-printable characters except +
           let cleaned = phone.replace(/[\s\-\(\)\u00A0\u2000-\u200F\u2028-\u202F]/g, '');
@@ -465,19 +466,19 @@ export default function ServiceProviderRegistration(props) {
           // Remove any non-digit characters except +
           cleaned = cleaned.replace(/[^\d+]/g, '');
           
-          console.log("Cleaned phone number:", cleaned);
-          console.log("Cleaned phone char codes:", cleaned.split('').map(c => c.charCodeAt(0)));
+          logger.debug("Cleaned phone number:", cleaned);
+          logger.debug("Cleaned phone char codes:", cleaned.split('').map(c => c.charCodeAt(0)));
           
           // If phone already starts with +, validate and return
           if (cleaned.startsWith('+')) {
             if (validatePhoneNumber(cleaned)) {
-              console.log("Phone already has + and is valid:", cleaned);
+              logger.debug("Phone already has + and is valid:", cleaned);
               return cleaned;
             } else {
-              console.log("Phone has + but is invalid format:", cleaned);
+              logger.debug("Phone has + but is invalid format:", cleaned);
               // Try to fix common issues
               if (cleaned.length < 10) {
-                console.log("Phone too short, might be missing digits");
+                logger.debug("Phone too short, might be missing digits");
               }
               return cleaned; // Return as is, validation will catch it
             }
@@ -487,15 +488,15 @@ export default function ServiceProviderRegistration(props) {
           if (cleaned.match(/^\d{1,4}/)) {
             const formatted = `+${cleaned}`;
             if (validatePhoneNumber(formatted)) {
-              console.log("Added + to phone and it's valid:", formatted);
+              logger.debug("Added + to phone and it's valid:", formatted);
               return formatted;
             } else {
-              console.log("Added + but phone is still invalid:", formatted);
+              logger.debug("Added + but phone is still invalid:", formatted);
               return formatted; // Return as is, validation will catch it
             }
           }
           
-          console.log("Phone format not recognized, returning as is:", phone);
+          logger.debug("Phone format not recognized, returning as is:", phone);
           return phone;
         };
 
@@ -523,15 +524,15 @@ export default function ServiceProviderRegistration(props) {
         };
 
         // Debug: Log phone numbers to ensure correct format
-        console.log("Mobile number:", providerPayload.mobile);
-        console.log("WhatsApp number:", providerPayload.whatsapp);
-        console.log("Mobile validation result:", validatePhoneNumber(providerPayload.mobile));
-        console.log("WhatsApp validation result:", validatePhoneNumber(providerPayload.whatsapp));
-        console.log("Mobile length:", providerPayload.mobile?.length);
-        console.log("WhatsApp length:", providerPayload.whatsapp?.length);
-        console.log("Mobile char codes:", providerPayload.mobile?.split('').map(c => c.charCodeAt(0)));
-        console.log("WhatsApp char codes:", providerPayload.whatsapp?.split('').map(c => c.charCodeAt(0)));
-        console.log("Full payload being sent:", providerPayload);
+        logger.debug("Mobile number:", providerPayload.mobile);
+        logger.debug("WhatsApp number:", providerPayload.whatsapp);
+        logger.debug("Mobile validation result:", validatePhoneNumber(providerPayload.mobile));
+        logger.debug("WhatsApp validation result:", validatePhoneNumber(providerPayload.whatsapp));
+        logger.debug("Mobile length:", providerPayload.mobile?.length);
+        logger.debug("WhatsApp length:", providerPayload.whatsapp?.length);
+        logger.debug("Mobile char codes:", providerPayload.mobile?.split('').map(c => c.charCodeAt(0)));
+        logger.debug("WhatsApp char codes:", providerPayload.whatsapp?.split('').map(c => c.charCodeAt(0)));
+        logger.debug("Full payload being sent:", providerPayload);
         // Debug: Log all fields before sending
         const result = await createProvider(providerPayload);
         if (result.meta.requestStatus === 'fulfilled') {
@@ -545,7 +546,7 @@ export default function ServiceProviderRegistration(props) {
           step2Form.reset();
           step3Form.reset();
         } else {
-          console.error('Failed to create service provider:', result.error);
+          logger.error('Failed to create service provider:', result.error);
           toast.error("Failed to submit application. Please try again.");
         }
       } else {
@@ -761,7 +762,7 @@ export default function ServiceProviderRegistration(props) {
                             key={phoneCountry} // Force re-render when country changes
                             value={field.value}
                             onChange={(phone) => {
-                              console.log("PhoneInput onChange:", phone);
+                              logger.debug("PhoneInput onChange:", phone);
                               field.onChange(phone);
                             }}
                             defaultCountry={phoneCountry}
@@ -835,7 +836,7 @@ export default function ServiceProviderRegistration(props) {
                             key={`whatsapp-${phoneCountry}`} // Force re-render when country changes
                             value={field.value}
                             onChange={(phone) => {
-                              console.log("WhatsApp PhoneInput onChange:", phone);
+                              logger.debug("WhatsApp PhoneInput onChange:", phone);
                               field.onChange(phone);
                             }}
                             defaultCountry={phoneCountry}

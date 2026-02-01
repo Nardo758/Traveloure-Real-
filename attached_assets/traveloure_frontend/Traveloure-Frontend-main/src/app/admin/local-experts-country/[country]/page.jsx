@@ -14,6 +14,7 @@ import { applyFilters, getCountrySpecificLanguages, getCountryCodeFromName } fro
 import { City, State } from 'country-state-city'
 import Link from "next/link"
 import { getLocalExpertsByCountry } from '../../../../app/redux-features/Travelexperts/travelexpertsSlice'
+import logger from '../../../../lib/logger'
 
 // Mock data for country-specific local experts
 const countryExpertsData = [
@@ -194,22 +195,22 @@ export default function LocalExpertsCountry() {
   }
 
   const handleViewMore = (id) => {
-    console.log("View more for expert:", id)
+    logger.debug("View more for expert:", id)
     // Add view more logic here
   }
 
   const handleViewDetails = (id) => {
-    console.log("View details for expert:", id)
+    logger.debug("View details for expert:", id)
     // Add view details logic here
   }
 
   const handleEditDetails = (id) => {
-    console.log("Edit details for expert:", id)
+    logger.debug("Edit details for expert:", id)
     // Add edit details logic here
   }
 
   const handleSendMail = (id) => {
-    console.log("Send mail to expert:", id)
+    logger.debug("Send mail to expert:", id)
     // Add send mail logic here
   }
 

@@ -14,6 +14,7 @@ import { applyFilters, getCountryCodeFromName } from '../../../../lib/countryUti
 import { City, State } from 'country-state-city'
 import Link from "next/link"
 import { getServiceProvidersByCountry } from '../../../../app/redux-features/service-provider/serviceProviderSlice'
+import logger from '../../../../lib/logger'
 
 // Mock data for accommodations matching the image
 const accommodationsData = [
@@ -158,7 +159,7 @@ export default function ServiceProvidersCountry() {
   }
 
   const handleViewMore = (id) => {
-    console.log("View more for accommodation:", id)
+    logger.debug("View more for accommodation:", id)
     // Add view more logic here
   }
 
@@ -412,13 +413,13 @@ export default function ServiceProvidersCountry() {
         handleViewMore(itemId)
         break
       case 'viewDetails':
-        console.log("View details for accommodation:", itemId)
+        logger.debug("View details for accommodation:", itemId)
         break
       case 'editDetails':
-        console.log("Edit details for accommodation:", itemId)
+        logger.debug("Edit details for accommodation:", itemId)
         break
       case 'sendMail':
-        console.log("Send mail to accommodation:", itemId)
+        logger.debug("Send mail to accommodation:", itemId)
         break
       default:
         break

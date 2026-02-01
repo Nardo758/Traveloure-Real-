@@ -18,10 +18,27 @@ export default function ForgotPasswordPage() {
       return;
     }
 
+    try {
       const resultAction = await dispatch(forgotPassword(emailOrUsername));
-
       
-   
+      // Check if the action was successful
+      if (forgotPassword.fulfilled.match(resultAction)) {
+        toast.success("Password reset link sent! Please check your email.");
+        setEmailOrUsername(""); // Clear the form
+      } else if (forgotPassword.rejected.match(resultAction)) {
+        // Handle rejection
+        const errorMessage = resultAction.error?.message || 
+                            resultAction.payload?.message || 
+                            "Failed to send reset link. Please try again.";
+        toast.error(errorMessage);
+      }
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      
+      // Handle unexpected errors
+      const errorMessage = error.message || "An unexpected error occurred. Please try again.";
+      toast.error(errorMessage);
+    }
   };
 
   return (

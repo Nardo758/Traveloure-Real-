@@ -18,7 +18,7 @@ export default function FAQsPage() {
   const getAccessToken = () => {
     return session?.backendData?.accessToken || 
            session?.backendData?.backendData?.accessToken ||
-           localStorage.getItem('accessToken')
+           null // ✅ SECURE: No localStorage fallback
   }
 
   return (

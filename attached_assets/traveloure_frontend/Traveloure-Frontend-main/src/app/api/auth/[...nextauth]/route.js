@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
 import CredentialsProvider from "next-auth/providers/credentials";
+import logger from '../../../../lib/logger'
 
 // Simple JWT decoder function (no external dependencies needed)
 function decodeJWT(token) {
@@ -15,7 +16,7 @@ function decodeJWT(token) {
     );
     return JSON.parse(jsonPayload);
   } catch (error) {
-    console.error('Failed to decode JWT token:', error);
+    logger.error('Failed to decode JWT token:', error);
     return null;
   }
 }
@@ -33,7 +34,7 @@ function isTokenExpired(token) {
     const expirationTime = decoded.exp * 1000; // Convert to milliseconds
     return Date.now() >= (expirationTime - bufferTime);
   } catch (error) {
-    console.error('Error checking token expiration:', error);
+    logger.error('Error checking token expiration:', error);
     return true;
   }
 }
@@ -60,7 +61,7 @@ async function refreshAccessToken(refreshToken) {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('🔴 Token refresh failed:', data);
+      logger.error('🔴 Token refresh failed:', data);
       throw new Error(data?.detail || 'Failed to refresh token');
     }
 
@@ -70,7 +71,7 @@ async function refreshAccessToken(refreshToken) {
       expires: data.expires || null,
     };
   } catch (error) {
-    console.error('🔴 Token refresh error:', error);
+    logger.error('🔴 Token refresh error:', error);
     throw error;
   }
 }
@@ -121,7 +122,7 @@ const handler = NextAuth({
             try {
               userData = JSON.parse(credentials.userData);
             } catch (e) {
-              console.warn('⚠️ Could not parse user data:', e);
+              logger.warn('⚠️ Could not parse user data:', e);
             }
           }
 
@@ -138,7 +139,7 @@ const handler = NextAuth({
             if (userResponse.ok) {
               userData = await userResponse.json();
             } else {
-              console.warn("⚠️ Failed to fetch user data from backend");
+              logger.warn("⚠️ Failed to fetch user data from backend");
             }
           }
 
@@ -154,7 +155,7 @@ const handler = NextAuth({
           
           return result;
         } catch (err) {
-          console.error("🔴 External token login failed:", err);
+          logger.error("🔴 External token login failed:", err);
           return null;
         }
       }
@@ -165,7 +166,7 @@ const handler = NextAuth({
           
           // Log API URL in production for debugging (without sensitive data)
           if (process.env.NODE_ENV === 'production') {
-            console.log('🔍 Login attempt - API URL:', apiBaseUrl);
+            logger.debug('🔍 Login attempt - API URL:', apiBaseUrl);
           }
           
           // Create AbortController for timeout
@@ -286,9 +287,9 @@ const handler = NextAuth({
             } catch (fetchError) {
               clearTimeout(userTimeoutId);
               if (fetchError.name === 'AbortError') {
-                console.warn("⚠️ User data fetch timeout, using tokens data");
+                logger.warn("⚠️ User data fetch timeout, using tokens data");
               } else {
-                console.warn("⚠️ Error fetching user data:", fetchError);
+                logger.warn("⚠️ Error fetching user data:", fetchError);
               }
               // Continue with login even if user data fetch fails
               userResponse = null;
@@ -298,10 +299,10 @@ const handler = NextAuth({
             if (userResponse && userResponse.ok) {
               userData = await userResponse.json();
             } else {
-              console.warn("⚠️ Failed to fetch user data, using tokens data");
+              logger.warn("⚠️ Failed to fetch user data, using tokens data");
             }
           } catch (err) {
-            console.warn("⚠️ Error fetching user data:", err);
+            logger.warn("⚠️ Error fetching user data:", err);
             // Continue with login even if user data fetch fails
           }
 
@@ -332,7 +333,7 @@ const handler = NextAuth({
         } catch (err) {
           const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
           
-          console.error("🔴 Credentials login failed:", {
+          logger.error("🔴 Credentials login failed:", {
             error: err.message,
             environment: process.env.NODE_ENV
           });
@@ -381,7 +382,7 @@ const handler = NextAuth({
           account.backendResponse = data;
           return true;
         } catch (err) {
-          console.error("🔴 Google login error:", err);
+          logger.error("🔴 Google login error:", err);
           return false;
         }
       }
@@ -406,14 +407,14 @@ const handler = NextAuth({
           const data = await response.json();
 
           if (!response.ok) {
-            console.error("🔴 Facebook callback backend failed:", data);
+            logger.error("🔴 Facebook callback backend failed:", data);
             return false;
           }
 
           account.backendResponse = data;
           return true;
         } catch (err) {
-          console.error("🔴 Facebook login error:", err);
+          logger.error("🔴 Facebook login error:", err);
           return false;
         }
       }
@@ -510,10 +511,10 @@ const handler = NextAuth({
               token.expiresAt = null;
             }
           } else {
-            console.log("✅ Token is still valid");
+            logger.debug("✅ Token is still valid");
           }
         } catch (error) {
-          console.error("🔴 JWT token check error:", error);
+          logger.error("🔴 JWT token check error:", error);
         }
       }
 
@@ -590,7 +591,7 @@ const handler = NextAuth({
             },
           });
         } catch (error) {
-          console.warn("⚠️ Backend logout failed:", error);
+          logger.warn("⚠️ Backend logout failed:", error);
           // Don't throw error, continue with client-side logout
         }
       }

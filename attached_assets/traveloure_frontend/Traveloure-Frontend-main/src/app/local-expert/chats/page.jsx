@@ -45,6 +45,7 @@ import { LocalExpertSidebar } from '../../../components/local-expert/LocalExpert
 import { Input } from '@/components/ui/input'
 import StripeOnboardingModal from '../../../components/StripeOnboardingModal'
 import PaymentSuccessModal from '../../../components/PaymentSuccessModal'
+import logger from '../../../lib/logger'
 
 export default function LocalExpertChatsPage() {
   const { data: session, status } = useSession()
@@ -133,7 +134,7 @@ export default function LocalExpertChatsPage() {
 
   // Auto-scroll when messages change
   useEffect(() => {
-    console.log('🔌 Local Expert - currentChatMessages changed:', currentChatMessages)
+    logger.debug('🔌 Local Expert - currentChatMessages changed:', currentChatMessages)
     scrollToBottom()
   }, [currentChatMessages, scrollToBottom])
 
@@ -161,7 +162,7 @@ export default function LocalExpertChatsPage() {
     if (!isConnected) return
 
     const handleIncomingMessage = (data) => {
-      console.log('WebSocket message received:', data.type, data)
+      logger.debug('WebSocket message received:', data.type, data)
       
       if (data.type === 'chat_message' && data.message) {
         // Handle regular chat messages
@@ -242,13 +243,13 @@ export default function LocalExpertChatsPage() {
           // Refresh chat history to get updated payment link from backend
           const accessToken = session?.backendData?.accessToken || session?.backendData?.backendData?.accessToken
           if (accessToken) {
-            console.log('🔌 Local Expert - Contract accepted, refreshing chat history for payment link')
+            logger.debug('🔌 Local Expert - Contract accepted, refreshing chat history for payment link')
             dispatch(getChatHistory({ token: accessToken }))
               .then((result) => {
-                console.log('🔌 Local Expert - Chat history refreshed after contract acceptance:', result.payload)
+                logger.debug('🔌 Local Expert - Chat history refreshed after contract acceptance:', result.payload)
               })
               .catch((error) => {
-                console.error('🔌 Local Expert - Error refreshing chat history after contract acceptance:', error)
+                logger.error('🔌 Local Expert - Error refreshing chat history after contract acceptance:', error)
               })
           }
           
@@ -281,7 +282,7 @@ export default function LocalExpertChatsPage() {
         // Handle contract payment success
         const contractId = data.message.contract_id || data.message.id
         if (contractId) {
-          console.log('🔌 Local Expert - Payment success received:', data.message)
+          logger.debug('🔌 Local Expert - Payment success received:', data.message)
           
           // Update contract status in Redux
           dispatch(contractActions.updateContractStatus({
@@ -317,42 +318,42 @@ export default function LocalExpertChatsPage() {
           if (accessToken) {
             const chatId = selectedChat?.user?.id || selectedChat?.chat?.id || selectedChat?.id
             if (chatId) {
-              console.log('🔌 Local Expert - Refreshing contract status after payment success')
+              logger.debug('🔌 Local Expert - Refreshing contract status after payment success')
             
             // Add a small delay to ensure backend has processed the payment
             setTimeout(() => {
                 dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId }))
                 .then((result) => {
-                    console.log('🔌 Local Expert - Contract status refreshed:', result.payload)
+                    logger.debug('🔌 Local Expert - Contract status refreshed:', result.payload)
                  
                   // If show_itinerary is still false, try again after another delay
                   if (result.payload?.show_itinerary === false) {
-                      console.log('🔌 Local Expert - show_itinerary is false, retrying...')
+                      logger.debug('🔌 Local Expert - show_itinerary is false, retrying...')
                     setTimeout(() => {
                         dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId }))
                         .then((retryResult) => {
-                            console.log('🔌 Local Expert - Retry result:', retryResult.payload)
+                            logger.debug('🔌 Local Expert - Retry result:', retryResult.payload)
                         })
                           .catch((error) => {
-                            console.error('🔌 Local Expert - Retry failed:', error)
+                            logger.error('🔌 Local Expert - Retry failed:', error)
                         })
                     }, 2000)
                   }
                 })
                   .catch((error) => {
-                    console.error('🔌 Local Expert - Error refreshing contract status:', error)
+                    logger.error('🔌 Local Expert - Error refreshing contract status:', error)
                 })
             }, 1000) // 1 second delay to ensure backend processing
           } else {
-              console.log('🔌 Local Expert - No chat ID available for checkContractStatus')
+              logger.debug('🔌 Local Expert - No chat ID available for checkContractStatus')
             }
           } else {
-            console.log('🔌 Local Expert - No access token available for checkContractStatus')
+            logger.debug('🔌 Local Expert - No access token available for checkContractStatus')
           }
         }
       } else if (data.type === 'submit_itinerary_accepted' && data.message) {
         // Handle itinerary accepted - change button back to "Send Contract"
-        console.log('🔌 Local Expert - Itinerary accepted received:', data.message)
+        logger.debug('🔌 Local Expert - Itinerary accepted received:', data.message)
         
         const itineraryId = data.message.id || data.message.itinerary_id
         
@@ -375,10 +376,10 @@ export default function LocalExpertChatsPage() {
           setTimeout(() => {
             dispatch(contractActions.checkContractStatus({ token: accessToken, withChat: chatId }))
             .then((result) => {
-              console.log('🔌 Local Expert - Contract status refreshed after itinerary accepted:', result.payload)
+              logger.debug('🔌 Local Expert - Contract status refreshed after itinerary accepted:', result.payload)
             })
             .catch((error) => {
-              console.error('🔌 Local Expert - Error refreshing contract status after itinerary accepted:', error)
+              logger.error('🔌 Local Expert - Error refreshing contract status after itinerary accepted:', error)
             })
           }, 1000) // 1 second delay to ensure backend processing
         }
@@ -388,7 +389,7 @@ export default function LocalExpertChatsPage() {
         }
       } else if (data.type === 'submit_itinerary_rejected' && data.message) {
         // Handle itinerary rejected status update
-        console.log('🔌 Local Expert - Itinerary rejected received:', data.message)
+        logger.debug('🔌 Local Expert - Itinerary rejected received:', data.message)
         
         const itineraryId = data.message.id || data.message.itinerary_id
         
@@ -408,7 +409,7 @@ export default function LocalExpertChatsPage() {
         }
       } else if (data.type === 'new_submit_itinerary' && data.message) {
         // Handle new itinerary submission from WebSocket
-        console.log('🔌 Local Expert - New itinerary received:', data.message)
+        logger.debug('🔌 Local Expert - New itinerary received:', data.message)
           
           const itineraryData = data.message.itinerary_submit
           const itineraryId = itineraryData.id || data.message.id
@@ -417,7 +418,7 @@ export default function LocalExpertChatsPage() {
         const isFromCurrentUser = data.message.sender?.id === session?.user?.id ||
                                  data.message.sender_id === session?.user?.id
         
-        console.log('🔌 Local Expert - WebSocket Itinerary Debug:', {
+        logger.debug('🔌 Local Expert - WebSocket Itinerary Debug:', {
           messageSenderId: data.message.sender?.id,
           messageSenderIdAlt: data.message.sender_id,
           currentUserId: session?.user?.id,
@@ -457,7 +458,7 @@ export default function LocalExpertChatsPage() {
           sender_name: data.message.sender?.username
         }
         
-        console.log('🔌 Local Expert - Processed itinerary message:', {
+        logger.debug('🔌 Local Expert - Processed itinerary message:', {
           itineraryMessage,
           isFromCurrentUser,
           isLocalExpertSending,
@@ -470,7 +471,7 @@ export default function LocalExpertChatsPage() {
         
         // Reload chat messages to ensure correct positioning
         if (isLocalExpertSending && selectedChat) {
-          console.log('🔌 Local Expert - Reloading chat messages after itinerary submission')
+          logger.debug('🔌 Local Expert - Reloading chat messages after itinerary submission')
           setTimeout(() => {
             handleChatSelect(selectedChat)
           }, 500) // Small delay to ensure WebSocket message is processed
@@ -496,14 +497,14 @@ export default function LocalExpertChatsPage() {
       
       // Join WebSocket room
       const chatId = chat.user?.id || chat.chat?.id || chat.id
-      console.log('🔌 Local Expert - Chat selected:', { chat, chatId })
+      logger.debug('🔌 Local Expert - Chat selected:', { chat, chatId })
       
       if (chatId) {
         joinChat(chatId)
       }
       
       // Load chat messages using direct fetch like expert page
-      console.log('🔌 Local Expert - Loading chat messages for chatId:', chatId)
+      logger.debug('🔌 Local Expert - Loading chat messages for chatId:', chatId)
       
       const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000"
       const response = await fetch(`${apiBaseUrl}/ai/chats/${chatId}/`, {
@@ -518,7 +519,7 @@ export default function LocalExpertChatsPage() {
         const data = await response.json()
         const apiMessages = data.data || data || []
         
-        console.log('🔌 Local Expert - API Response:', { data, apiMessages })
+        logger.debug('🔌 Local Expert - API Response:', { data, apiMessages })
         
         const currentUserName = session?.user?.name || session?.user?.username
         const currentUserId = session?.user?.id
@@ -564,7 +565,7 @@ export default function LocalExpertChatsPage() {
             return dateA - dateB
           })
 
-        console.log('🔌 Local Expert - Converted messages:', convertedMessages)
+        logger.debug('🔌 Local Expert - Converted messages:', convertedMessages)
         
         // Update Redux state with converted messages
         dispatch({
@@ -589,7 +590,7 @@ export default function LocalExpertChatsPage() {
           })
         }
       } else {
-        console.error('🔌 Local Expert - Failed to load messages:', response.status, response.statusText)
+        logger.error('🔌 Local Expert - Failed to load messages:', response.status, response.statusText)
         toast.error('Failed to load chat messages')
       }
       
@@ -603,7 +604,7 @@ export default function LocalExpertChatsPage() {
       setShowChatOnMobile(true)
       
     } catch (error) {
-      console.error('Error selecting chat:', error)
+      logger.error('Error selecting chat:', error)
       toast.error('Failed to load chat')
     }
   }, [session, dispatch, joinChat])
@@ -679,7 +680,7 @@ export default function LocalExpertChatsPage() {
         toast.success('Itinerary submitted successfully')
       }
     } catch (error) {
-      console.error('Itinerary submit error:', error)
+      logger.error('Itinerary submit error:', error)
       toast.error(error.message || 'Failed to submit itinerary')
     }
   }, [session, selectedChat, dispatch])
@@ -750,7 +751,7 @@ export default function LocalExpertChatsPage() {
         }
       }, 60000)
     } catch (error) {
-      console.error("Error starting recording:", error)
+      logger.error("Error starting recording:", error)
       toast.error("Could not start recording. Please check microphone permissions.")
     }
   }, [])
@@ -832,7 +833,7 @@ export default function LocalExpertChatsPage() {
       
       toast.success('Voice message sent')
     } catch (error) {
-      console.error('Error sending voice message:', error)
+      logger.error('Error sending voice message:', error)
       toast.error('Failed to send voice message')
     }
   }, [audioBlob, session, selectedChat, dispatch, recordingTime])
@@ -944,7 +945,7 @@ export default function LocalExpertChatsPage() {
       }
       
     } catch (error) {
-      console.error('Send message error:', error)
+      logger.error('Send message error:', error)
       toast.error(error.message || 'Failed to send message')
     }
   }, [chatMessage, selectedFile, session, selectedChat, dispatch])
@@ -1001,7 +1002,7 @@ export default function LocalExpertChatsPage() {
         toast.success('Contract sent successfully')
       }
     } catch (error) {
-      console.error('Contract submit error:', error)
+      logger.error('Contract submit error:', error)
       
       // Check if error is related to Stripe onboarding
       if (error?.message?.includes('onboarding') || 
@@ -1046,7 +1047,7 @@ export default function LocalExpertChatsPage() {
       
       toast.success('Contract accepted')
     } catch (error) {
-      console.error('Contract accept error:', error)
+      logger.error('Contract accept error:', error)
       // Revert optimistic update on error
       dispatch(updateContractStatus({
         contractId: contractId,
@@ -1086,7 +1087,7 @@ export default function LocalExpertChatsPage() {
       
       toast.success('Contract rejected')
     } catch (error) {
-      console.error('Contract reject error:', error)
+      logger.error('Contract reject error:', error)
       // Revert optimistic update on error
       dispatch(updateContractStatus({
         contractId: contractId,
@@ -1113,7 +1114,7 @@ export default function LocalExpertChatsPage() {
       // Reuse shared contract hook logic to open any available payment URL
       await contract.handleContractPay(contractId, currentChatMessages)
     } catch (error) {
-      console.error('Contract pay error:', error)
+      logger.error('Contract pay error:', error)
       toast.error('Failed to process payment')
     }
   }, [contract, currentChatMessages])
@@ -1167,7 +1168,7 @@ export default function LocalExpertChatsPage() {
                                   message.sender === 'user' ||
                                   (messageSenderId === session?.user?.id)
       
-      console.log('🔌 Itinerary Message Debug:', {
+      logger.debug('🔌 Itinerary Message Debug:', {
         messageId: message.id,
         messageSenderId,
         currentUserId: session?.user?.id,
@@ -1298,7 +1299,7 @@ export default function LocalExpertChatsPage() {
                     const unreadCount = chat.unread_count || chat.unread_messages_count || 0
                     const hasUnread = unreadCount > 0
                     
-                    console.log('Chat selection debug:', {
+                    logger.debug('Chat selection debug:', {
                       chatId,
                       selectedId,
                       isSelected,
@@ -1484,7 +1485,7 @@ export default function LocalExpertChatsPage() {
                                                 null
                                   }
                                   
-                                  console.log('🔌 Local Expert - ContractMessage data:', {
+                                  logger.debug('🔌 Local Expert - ContractMessage data:', {
                                     messageId: message.id,
                                     contractId: message.contract?.id,
                                     contractPaymentUrls: contract.contractPaymentUrls,

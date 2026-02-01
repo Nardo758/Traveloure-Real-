@@ -11,6 +11,7 @@ import {
   ArrowRight, Star, MapPin, Clock, ChevronRight
 } from "lucide-react";
 import type { ExperienceType } from "@shared/schema";
+import { SEOHead } from "@/components/seo-head";
 
 // Step counts per experience type
 const stepCounts: Record<string, number> = {
@@ -74,6 +75,12 @@ export default function Experiences() {
 
   return (
     <Layout>
+      <SEOHead 
+        title="Experiences"
+        description="Explore curated experience templates for weddings, travel, proposals, birthdays, corporate events, and more. Plan your perfect experience with expert guidance."
+        keywords={["experience planning", "wedding planning", "trip templates", "event templates", "birthday planning", "corporate events"]}
+        url="/experiences"
+      />
       <div className="min-h-screen bg-background">
         <div className="relative overflow-hidden bg-gradient-to-br from-primary/10 via-primary/5 to-background py-16 sm:py-24">
           <div className="absolute inset-0 bg-grid-pattern opacity-5" />

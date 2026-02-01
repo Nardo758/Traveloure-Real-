@@ -19,6 +19,7 @@ import { useContract } from "../../hooks/useContract"
 import { useItinerary } from "../../hooks/useItinerary"
 import soundNotification from "../../utils/soundNotification"
 import { toast } from "sonner"
+import logger from '../../lib/logger'
 
 // Static fallback data for missing API fields
 const staticExpertData = {
@@ -94,7 +95,7 @@ export default function TravelExperts() {
         .then(result => {
         })
         .catch(error => {
-          console.error('🔌 Experts page - Failed to check contract status:', error)
+          logger.error('🔌 Experts page - Failed to check contract status:', error)
         })
     }
   }, [session?.backendData?.accessToken, session?.backendData?.backendData?.accessToken, chat?.selectedExpert, dispatch])
@@ -282,7 +283,7 @@ export default function TravelExperts() {
           // Get payment URL from either payment_url or payment_link field
           const paymentUrl = data.message?.payment_url || data.message?.payment_link
           
-          console.log('🔌 Traveler Panel - Contract accepted with payment URL:', {
+          logger.debug('🔌 Traveler Panel - Contract accepted with payment URL:', {
             contractId,
             paymentUrl,
             message: data.message
@@ -457,7 +458,7 @@ export default function TravelExperts() {
           sender_name: data.message.sender?.username
         }
         
-        console.log('🔌 Expert Panel - Processed itinerary message:', {
+        logger.debug('🔌 Expert Panel - Processed itinerary message:', {
           itineraryMessage,
           isFromCurrentUser,
           currentUserId: session?.user?.id,
@@ -671,7 +672,7 @@ export default function TravelExperts() {
                     
                     // Quick test to verify boolean conversion
                     if (message.contract && typeof isContractMessage !== 'boolean') {
-                      console.error('🔌 Boolean conversion failed!', { isContractMessage, type: typeof isContractMessage })
+                      logger.error('🔌 Boolean conversion failed!', { isContractMessage, type: typeof isContractMessage })
                     }
                     
 
@@ -718,7 +719,7 @@ export default function TravelExperts() {
                     
                     // Test finalIsOutgoing value
                     if (isContractMessage) {
-                      console.log('🔌 Contract message finalIsOutgoing:', { 
+                      logger.debug('🔌 Contract message finalIsOutgoing:', { 
                         messageId: message.id, 
                         finalIsOutgoing, 
                         messageType: message.type, 

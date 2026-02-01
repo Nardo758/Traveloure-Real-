@@ -4,6 +4,7 @@
 import axios from 'axios'
 import { getSession } from 'next-auth/react'
 import { isTokenExpired, handleTokenExpiration } from './authUtils'
+import logger from './logger'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
@@ -36,7 +37,7 @@ axiosInstance.interceptors.request.use(
     
     // Check if there's already a pending request with the same key
     if (pendingRequests.has(requestKey)) {
-      console.log(`🔄 Deduplicating request: ${requestKey}`)
+      logger.debug(`🔄 Deduplicating request: ${requestKey}`)
       // Return the existing promise instead of making a new request
       return Promise.reject({
         ...new Error('Duplicate request cancelled'),
@@ -101,7 +102,7 @@ axiosInstance.interceptors.response.use(
       
       // Check for token expiration using our utility
       if (isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in axios response:', errorData)
+        logger.debug('🔒 Token expired detected in axios response:', errorData)
         handleTokenExpiration()
         return Promise.reject(new Error('Token expired'))
       }
@@ -125,7 +126,7 @@ axiosInstance.interceptors.response.use(
       
       // Double-check for token expiration in 401 responses - if detected, logout immediately
       if (errorData && isTokenExpired(errorData)) {
-        console.log('🔒 Token expired detected in 401 response - logging out immediately')
+        logger.debug('🔒 Token expired detected in 401 response - logging out immediately')
         handleTokenExpiration()
         return Promise.reject(new Error('Token expired'))
       }
@@ -145,7 +146,7 @@ axiosInstance.interceptors.response.use(
             // NextAuth will automatically update the session with the new token
             // We just need to update the current request's authorization header
             
-            console.log('✅ Token refreshed - NextAuth will update session automatically')
+            logger.debug('✅ Token refreshed - NextAuth will update session automatically')
             
             // Update the authorization header for this specific retry
             originalRequest.headers.Authorization = `Bearer ${response.data.access}`
@@ -157,16 +158,16 @@ axiosInstance.interceptors.response.use(
             return axiosInstance(originalRequest)
           } else {
             // No access token in refresh response, logout
-            console.log('🔒 No access token in refresh response - logging out')
+            logger.debug('🔒 No access token in refresh response - logging out')
             handleTokenExpiration()
             return Promise.reject(new Error('Token refresh failed'))
           }
         } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError)
+          logger.error('Token refresh failed:', refreshError)
           
           // Check if refresh error also indicates token expiration
           if (refreshError.response?.data && isTokenExpired(refreshError.response.data)) {
-            console.log('🔒 Refresh token also expired - logging out')
+            logger.debug('🔒 Refresh token also expired - logging out')
           }
           
           // Any refresh error means we should logout
@@ -175,7 +176,7 @@ axiosInstance.interceptors.response.use(
         }
       } else {
         // No refresh token - logout immediately
-        console.log('🔒 No refresh token available - logging out')
+        logger.debug('🔒 No refresh token available - logging out')
         handleTokenExpiration()
         return Promise.reject(new Error('Authentication failed'))
       }
@@ -215,7 +216,7 @@ export const setupAxiosInterceptors = (customAxios) => {
     async (error) => {
       // Check for token expiration FIRST (before 401 check)
       if (error.response?.data && isTokenExpired(error.response.data)) {
-        console.log('🔒 Token expired detected in custom axios response:', error.response.data)
+        logger.debug('🔒 Token expired detected in custom axios response:', error.response.data)
         handleTokenExpiration()
         return Promise.reject(new Error('Token expired'))
       }
@@ -238,7 +239,7 @@ export const setupAxiosInterceptors = (customAxios) => {
         
         // Double-check for token expiration in 401 responses - if detected, logout immediately
         if (errorData && isTokenExpired(errorData)) {
-          console.log('🔒 Token expired detected in 401 response - logging out immediately')
+          logger.debug('🔒 Token expired detected in 401 response - logging out immediately')
           handleTokenExpiration()
           return Promise.reject(new Error('Token expired'))
         }
@@ -256,22 +257,22 @@ export const setupAxiosInterceptors = (customAxios) => {
             if (response.data?.access) {
               // ✅ SECURE: Do NOT store token in localStorage
               // Just update the current request's authorization header
-              console.log('✅ Token refreshed - NextAuth will update session automatically')
+              logger.debug('✅ Token refreshed - NextAuth will update session automatically')
               
               error.config.headers.Authorization = `Bearer ${response.data.access}`
               return customAxios(error.config)
             } else {
               // No access token in refresh response, logout
-              console.log('🔒 No access token in refresh response - logging out')
+              logger.debug('🔒 No access token in refresh response - logging out')
               handleTokenExpiration()
               return Promise.reject(new Error('Token refresh failed'))
             }
           } catch (refreshError) {
-            console.error('Token refresh failed:', refreshError)
+            logger.error('Token refresh failed:', refreshError)
             
             // Check if refresh error also indicates token expiration
             if (refreshError.response?.data && isTokenExpired(refreshError.response.data)) {
-              console.log('🔒 Refresh token also expired - logging out')
+              logger.debug('🔒 Refresh token also expired - logging out')
             }
             
             // Any refresh error means we should logout
@@ -280,7 +281,7 @@ export const setupAxiosInterceptors = (customAxios) => {
           }
         } else {
           // No refresh token - logout immediately
-          console.log('🔒 No refresh token available - logging out')
+          logger.debug('🔒 No refresh token available - logging out')
           handleTokenExpiration()
           return Promise.reject(new Error('Authentication failed'))
         }

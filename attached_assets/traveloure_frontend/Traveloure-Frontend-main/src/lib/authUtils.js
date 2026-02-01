@@ -1,4 +1,5 @@
 // Centralized authentication utilities for handling token expiration and logout
+import logger from './logger'
 
 // Global reference to NextAuth signOut function
 let globalSignOutFunction = null
@@ -10,7 +11,7 @@ let globalSignOutFunction = null
  */
 export const registerSignOut = (signOutFn) => {
   globalSignOutFunction = signOutFn
-  console.log('🔒 NextAuth signOut function registered')
+  logger.auth('NextAuth signOut function registered')
 }
 
 /**
@@ -154,14 +155,19 @@ export const getRedirectUrl = (currentPath) => {
 
 /**
  * Clear all authentication data from localStorage
+ * ⚠️ DEPRECATED: Only kept for backward compatibility during migration
+ * NextAuth manages tokens in httpOnly cookies, not localStorage
+ * This clears legacy localStorage data if it exists
  */
 export const clearAuthData = () => {
-  localStorage.removeItem('accessToken')
-  localStorage.removeItem('refreshToken')
-  localStorage.removeItem('userData')
-  
-  // Clear any other session-related data if needed
-  // Add more items here if your app stores additional auth data
+  // Only clear if localStorage is available (client-side only)
+  if (typeof window !== 'undefined' && window.localStorage) {
+    // Clear legacy localStorage data (if any exists from old code)
+    localStorage.removeItem('accessToken')
+    localStorage.removeItem('refreshToken')
+    localStorage.removeItem('userData')
+    logger.debug('Cleared legacy localStorage auth data (if any existed)')
+  }
 }
 
 /**
@@ -170,9 +176,9 @@ export const clearAuthData = () => {
  * @param {function} signOutCallback - NextAuth signOut function (optional, uses global if not provided)
  */
 export const handleTokenExpiration = async (currentPath = null, signOutCallback = null) => {
-  console.log('🔒 Token expired - logging out user')
+  logger.auth('Token expired - logging out user')
   
-  // Clear authentication data from localStorage
+  // Clear legacy localStorage data (if any exists from old code)
   clearAuthData()
   
   // Use provided signOut or fall back to global signOut
@@ -181,13 +187,13 @@ export const handleTokenExpiration = async (currentPath = null, signOutCallback 
   // Call NextAuth signOut to clear session
   if (signOut && typeof signOut === 'function') {
     try {
-      console.log('🔒 Calling NextAuth signOut to clear session')
+      logger.auth('Calling NextAuth signOut to clear session')
       await signOut({ redirect: false }) // Don't let NextAuth redirect, we'll handle it
     } catch (error) {
-      console.error('Error calling NextAuth signOut:', error)
+      logger.error('Error calling NextAuth signOut:', error)
     }
   } else {
-    console.warn('⚠️ No NextAuth signOut function available. Session may not be fully cleared.')
+    logger.warn('No NextAuth signOut function available. Session may not be fully cleared.')
   }
   
   // Get current path from window if not provided
@@ -196,7 +202,7 @@ export const handleTokenExpiration = async (currentPath = null, signOutCallback 
   // Get appropriate redirect URL
   const redirectUrl = getRedirectUrl(path)
   
-  console.log(`🔒 Redirecting to: ${redirectUrl}`)
+  logger.auth(`Redirecting to: ${redirectUrl}`)
   
   // Redirect to appropriate page
   if (typeof window !== 'undefined') {
@@ -229,7 +235,8 @@ export const setupTokenExpirationListener = (callback) => {
   
   const handleStorageChange = (e) => {
     if (e.key === 'tokenExpired' || e.key === 'accessToken') {
-      // Check if token was removed
+      // ⚠️ BACKWARD COMPATIBILITY: Check if legacy token was removed (cross-tab sync)
+      // This is NOT used for authentication - only for detecting logout in other tabs
       const accessToken = localStorage.getItem('accessToken')
       if (!accessToken && e.oldValue && !e.newValue) {
         callback()

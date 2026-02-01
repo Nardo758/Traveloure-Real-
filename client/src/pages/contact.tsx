@@ -24,6 +24,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SEOHead } from "@/components/seo-head";
 
 const contactReasons = [
   { id: "general", label: "General Inquiry" },
@@ -105,6 +106,12 @@ export default function ContactPage() {
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
+      <SEOHead 
+        title="Contact Us"
+        description="Get in touch with the Traveloure team. We're here to help with inquiries, support, partnerships, and feedback. Contact us by email, phone, or live chat."
+        keywords={["contact traveloure", "customer support", "travel help", "partnership inquiry"]}
+        url="/contact"
+      />
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-[#111827] to-[#1F2937] text-white py-16">
         <div className="container mx-auto px-4 max-w-6xl">

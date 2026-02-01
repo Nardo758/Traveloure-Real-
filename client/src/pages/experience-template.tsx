@@ -90,6 +90,7 @@ import { AffiliateTransportProducts } from "@/components/affiliate-transport-pro
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
+import { VenueSearchPanel } from "@/components/venue-search-panel";
 
 interface CartItem {
   id: string;
@@ -1046,7 +1047,7 @@ export default function ExperienceTemplatePage() {
   const [destinationCenter, setDestinationCenter] = useState<{ lat: number; lng: number } | null>(null);
   
   useEffect(() => {
-    if (!destination || destination.length < 2 || !detailsSubmitted) {
+    if (!destination || destination.length < 2) {
       return;
     }
     
@@ -1074,7 +1075,7 @@ export default function ExperienceTemplatePage() {
     };
     
     geocodeDestination();
-  }, [destination, detailsSubmitted]);
+  }, [destination]);
 
   const { data: customVenues = [] } = useQuery<CustomVenue[]>({
     queryKey: ["/api/custom-venues", { experienceType: slug }],
@@ -1406,9 +1407,8 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    // Only show service markers after user submits travel details
-    // This prevents confusing NYC marker cluster on initial page load
-    const serviceMarkers = detailsSubmitted
+    // Show service markers when destination is set
+    const serviceMarkers = destination && destination.length >= 2
       ? filteredServices.map((s, index) => {
           const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
           // Use golden angle distribution for spreading markers around destination
@@ -1449,7 +1449,7 @@ export default function ExperienceTemplatePage() {
       : [];
     
     return [...customVenueMarkers, ...serviceMarkers, ...hotelSearchMarkers, ...activitySearchMarkers];
-  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers, destinationCenter, detailsSubmitted]);
+  }, [filteredServices, currentTabCategory, customVenues, activeTab, hotelSearchMarkers, activitySearchMarkers, destinationCenter, destination]);
 
   const selectedProviderIds = useMemo(() => cart.map(item => item.id), [cart]);
 
@@ -1716,7 +1716,9 @@ export default function ExperienceTemplatePage() {
                   <Label className="text-sm font-medium">{config.dateLabel}</Label>
                   <div className="grid grid-cols-2 gap-2 mt-1">
                     <div>
-                      <span className="text-sm text-muted-foreground">From</span>
+                      <span className="text-sm text-muted-foreground">
+                        {slug === "wedding" ? "Ceremony Date" : "From"}
+                      </span>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
@@ -1744,7 +1746,9 @@ export default function ExperienceTemplatePage() {
                       </Popover>
                     </div>
                     <div>
-                      <span className="text-sm text-muted-foreground">To</span>
+                      <span className="text-sm text-muted-foreground">
+                        {slug === "wedding" ? "End Date (Optional)" : "To"}
+                      </span>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
@@ -1776,6 +1780,11 @@ export default function ExperienceTemplatePage() {
                   {dateError && (
                     <p className="text-xs text-red-500 mt-1" data-testid="text-date-error">{dateError}</p>
                   )}
+                  {slug === "wedding" && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      The ceremony date is required. Add an end date if your wedding spans multiple days (rehearsal, ceremony, reception).
+                    </p>
+                  )}
                 </div>
 
                 <Button 
@@ -1785,12 +1794,14 @@ export default function ExperienceTemplatePage() {
                     setDetailsSubmitted(true);
                     toast({
                       title: "Details Saved",
-                      description: "Your travel details have been applied. Browse the tabs to find flights, hotels, and more!"
+                      description: slug === "wedding" 
+                        ? "Your wedding details are saved! Switch between Planning and Guest modes to explore venues, activities, and more."
+                        : "Your travel details have been saved. Browse the tabs to find flights, hotels, and activities!"
                     });
                   }}
                   data-testid="button-submit-details"
                 >
-                  Submit {experienceType.name} Details
+                  {slug === "wedding" ? "Save Wedding Details" : `Save ${experienceType.name} Details`}
                 </Button>
               </div>
             </CardContent>
@@ -2200,19 +2211,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "flights" && !detailsSubmitted && (
-            <Card className="border-2 border-dashed mb-6">
-              <CardContent className="p-8 text-center">
-                <Plane className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                <h3 className="font-semibold text-lg mb-2">Search Flights</h3>
-                <p className="text-muted-foreground">
-                  Fill in your Travel Details above and click "Submit" to search for available flights.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeTab === "flights" && detailsSubmitted && (
+          {activeTab === "flights" && (
             <div className="mb-6">
               <FlightSearch
                 destination={destination}
@@ -2265,19 +2264,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {(activeTab === "hotels" || activeTab === "accommodations") && !detailsSubmitted && (
-            <Card className="border-2 border-dashed mb-6">
-              <CardContent className="p-8 text-center">
-                <Hotel className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                <h3 className="font-semibold text-lg mb-2">Search Hotels</h3>
-                <p className="text-muted-foreground">
-                  Fill in your Travel Details above and click "Submit" to search for available hotels.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {(activeTab === "hotels" || activeTab === "accommodations") && detailsSubmitted && (
+          {(activeTab === "hotels" || activeTab === "accommodations") && (
             <div className="mb-6">
               <HotelSearch
                 destination={destination}
@@ -2362,28 +2349,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "transportation" && !detailsSubmitted && (
-            <div className="mb-6">
-              <ServiceBrowser
-                defaultLocation={destination}
-                categorySlug="transportation-logistics"
-                showCategoryFilter={false}
-                title="Transportation Services"
-                onAddToCart={(service) => {
-                  addToCart({
-                    id: `transport-${service.id}`,
-                    type: "transportation",
-                    name: service.serviceName,
-                    price: parseFloat(service.price) || 0,
-                    quantity: 1,
-                    provider: "Platform Service",
-                  });
-                }}
-              />
-            </div>
-          )}
-
-          {activeTab === "transportation" && detailsSubmitted && (
+          {activeTab === "transportation" && (
             <div className="mb-6 space-y-6">
               <ActivitySearch
                 destination={destination}
@@ -2483,19 +2449,7 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "activities" && !detailsSubmitted && (
-            <Card className="border-2 border-dashed mb-6">
-              <CardContent className="p-8 text-center">
-                <Palmtree className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
-                <h3 className="font-semibold text-lg mb-2">Search Activities</h3>
-                <p className="text-muted-foreground">
-                  Fill in your Travel Details above and click "Submit" to search for tours and activities.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeTab === "activities" && detailsSubmitted && (
+          {activeTab === "activities" && (
             <div className="mb-6 space-y-4">
               <ActivitySearch
                 destination={destination}
@@ -2584,6 +2538,24 @@ export default function ExperienceTemplatePage() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Venue Search Panel - Google Places Integration */}
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "logistics" && (
+            (activeTab === "venues" || activeTab === "venue" || activeTab === "vendors" || 
+             activeTab === "guest-accommodations" || activeTab === "rehearsal" || 
+             activeTab === "team-activities" || activeTab === "nightlife" || activeTab === "dining") && (
+              <div className="mb-6">
+                <VenueSearchPanel
+                  template={slug || ''}
+                  location={destination}
+                  tabId={activeTab}
+                  onAddToCart={(item) => {
+                    addToCart(item);
+                  }}
+                />
+              </div>
+            )
           )}
 
           {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (

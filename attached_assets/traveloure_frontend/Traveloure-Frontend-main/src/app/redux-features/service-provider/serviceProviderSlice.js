@@ -2,12 +2,13 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import axios from "axios";
 import { toast } from "sonner";
 import { handleReduxApiError, getReduxAuthHeaders } from "../../../lib/reduxHelpers";
+import logger from '../../../lib/logger'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 // Helper function to extract error message (kept for specific error handling)
 const getErrorMessage = (error) => {
-  console.error("API Error:", error);
+  logger.error("API Error:", error);
 
   return (
     error?.response?.data?.message ||
@@ -49,7 +50,7 @@ export const createServiceProvider = createAsyncThunk(
 
       // Debug: Log all FormData entries
       for (let pair of formData.entries()) {
-        console.log("FormData to backend:", pair[0], pair[1]);
+        logger.debug("FormData to backend:", pair[0], pair[1]);
       }
 
       // Do NOT set Content-Type header, let browser set it
@@ -289,7 +290,7 @@ export const createService = createAsyncThunk(
 
       // Debug: Log all FormData entries
       for (let pair of formData.entries()) {
-        console.log("FormData to backend:", pair[0], pair[1]);
+        logger.debug("FormData to backend:", pair[0], pair[1]);
       }
 
       const response = await axios.post(

@@ -3,6 +3,7 @@ import axios from 'axios'
 import { toast } from 'sonner'
 import { checkContractStatus, storePaymentUrl } from '../contract/contractSlice'
 import { isTokenExpired, handleTokenExpiration } from '../../../lib/authUtils'
+import logger from '../../../lib/logger'
 
 // Helper function to get headers with token
 const getHeaders = (token) => {
@@ -31,11 +32,11 @@ export const getChatHistory = createAsyncThunk(
       
       // Extract and store payment URLs from contract messages in chat history
       const chatData = response.data
-      console.log('🔌 ChatSlice - Chat history data:', chatData)
+      logger.debug('🔌 ChatSlice - Chat history data:', chatData)
       
       if (chatData && Array.isArray(chatData)) {
         chatData.forEach(chat => {
-          console.log('🔌 ChatSlice - Processing chat:', {
+          logger.debug('🔌 ChatSlice - Processing chat:', {
             chatId: chat.id,
             lastMessage: chat.last_message,
             hasContract: !!chat.last_message?.contract,
@@ -43,7 +44,7 @@ export const getChatHistory = createAsyncThunk(
           })
           
           if (chat.last_message && chat.last_message.contract && chat.last_message.contract.payment_url) {
-            console.log('🔌 ChatSlice - Storing payment URL:', {
+            logger.debug('🔌 ChatSlice - Storing payment URL:', {
               contractId: chat.last_message.contract.id,
               paymentUrl: chat.last_message.contract.payment_url
             })
@@ -58,17 +59,17 @@ export const getChatHistory = createAsyncThunk(
       
       return chatData
     } catch (error) {
-      console.error('🔌 Error fetching chat history:', error.response?.data || error.message)
+      logger.error('🔌 Error fetching chat history:', error.response?.data || error.message)
       
       // Check for token expiration
       if (error.response?.data && isTokenExpired(error.response.data)) {
-        console.log('🔒 Token expired detected in chat history')
+        logger.debug('🔒 Token expired detected in chat history')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
       
       if (error.response?.status === 401) {
-        console.log('🔒 Unauthorized (401) in chat history')
+        logger.debug('🔒 Unauthorized (401) in chat history')
         handleTokenExpiration()
         return rejectWithValue('Authentication failed')
       }
@@ -97,7 +98,7 @@ export const getChatMessages = createAsyncThunk(
         }
       )
       
-      console.log('🔌 ChatSlice - API Response:', {
+      logger.debug('🔌 ChatSlice - API Response:', {
         status: response.status,
         data: response.data,
         dataType: typeof response.data,
@@ -109,14 +110,14 @@ export const getChatMessages = createAsyncThunk(
       // API response: { count, total_pages, data: [...] }
       const messages = response.data.data || response.data || []
       
-      console.log('🔌 ChatSlice - Extracted messages:', {
+      logger.debug('🔌 ChatSlice - Extracted messages:', {
         messagesCount: messages.length,
         messages: messages
       })
       
       // Extract and store payment URLs from contract messages
       messages.forEach(message => {
-        console.log('🔌 ChatSlice - Processing message:', {
+        logger.debug('🔌 ChatSlice - Processing message:', {
           messageId: message.id,
           hasContract: !!message.contract,
           contractId: message.contract?.id,
@@ -124,7 +125,7 @@ export const getChatMessages = createAsyncThunk(
         })
         
         if (message.contract && message.contract.payment_url) {
-          console.log('🔌 ChatSlice - Storing payment URL from message:', {
+          logger.debug('🔌 ChatSlice - Storing payment URL from message:', {
             contractId: message.contract.id,
             paymentUrl: message.contract.payment_url
           })
@@ -140,23 +141,23 @@ export const getChatMessages = createAsyncThunk(
       if (token) {
         dispatch(checkContractStatus({ token, withChat: chatId }))
           .catch(error => {
-            console.error('Failed to check contract status after chat messages:', error)
+            logger.error('Failed to check contract status after chat messages:', error)
           })
       }
       
       return { chatId, messages: messages }
     } catch (error) {
-      console.error('🔌 Error fetching chat messages:', error.response?.data || error.message)
+      logger.error('🔌 Error fetching chat messages:', error.response?.data || error.message)
       
       // Check for token expiration
       if (error.response?.data && isTokenExpired(error.response.data)) {
-        console.log('🔒 Token expired detected in chat messages')
+        logger.debug('🔒 Token expired detected in chat messages')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
       
       if (error.response?.status === 401) {
-        console.log('🔒 Unauthorized (401) in chat messages')
+        logger.debug('🔒 Unauthorized (401) in chat messages')
         handleTokenExpiration()
         return rejectWithValue('Authentication failed')
       }
@@ -179,7 +180,7 @@ export const sendMessage = createAsyncThunk(
       
       // Validate chatId is a string UUID
       if (!chatId || typeof chatId !== 'string') {
-        console.error('🔌 Invalid chatId:', chatId, 'Type:', typeof chatId)
+        logger.error('🔌 Invalid chatId:', chatId, 'Type:', typeof chatId)
         return rejectWithValue('Invalid chat ID')
       }
       
@@ -204,17 +205,17 @@ export const sendMessage = createAsyncThunk(
       
       return { chatId, message: response.data }
     } catch (error) {
-      console.error('🔌 Error sending message:', error.response?.data || error.message)
+      logger.error('🔌 Error sending message:', error.response?.data || error.message)
       
       // Check for token expiration
       if (error.response?.data && isTokenExpired(error.response.data)) {
-        console.log('🔒 Token expired detected in send message')
+        logger.debug('🔒 Token expired detected in send message')
         handleTokenExpiration()
         return rejectWithValue('Token expired - please login again')
       }
       
       if (error.response?.status === 401) {
-        console.log('🔒 Unauthorized (401) in send message')
+        logger.debug('🔒 Unauthorized (401) in send message')
         handleTokenExpiration()
         return rejectWithValue('Authentication failed')
       }
@@ -258,7 +259,7 @@ export const sendMessage = createAsyncThunk(
           
           return messageData
         } catch (error) {
-          console.error('🔌 Error adding incoming message:', error)
+          logger.error('🔌 Error adding incoming message:', error)
           return rejectWithValue('Failed to add incoming message')
         }
       }
@@ -454,10 +455,10 @@ const chatSlice = createSlice({
           
          
         } else {
-          console.log("🔌 🔴 Message not found in Redux state")
+          logger.debug("🔌 🔴 Message not found in Redux state")
         }
       } else {
-        console.log("🔌 🔴 currentChatMessages is not an array:", typeof state.currentChatMessages)
+        logger.debug("🔌 🔴 currentChatMessages is not an array:", typeof state.currentChatMessages)
       }
     },
 
@@ -529,7 +530,7 @@ const chatSlice = createSlice({
         state.currentChatLoading = false
         state.currentChatId = action.payload.chatId
         
-        console.log('🔌 ChatSlice - getChatMessages.fulfilled:', {
+        logger.debug('🔌 ChatSlice - getChatMessages.fulfilled:', {
           chatId: action.payload.chatId,
           messagesCount: action.payload.messages?.length || 0,
           messages: action.payload.messages
@@ -546,7 +547,7 @@ const chatSlice = createSlice({
         
         state.currentChatMessages = sortedMessages
         
-        console.log('🔌 ChatSlice - Messages sorted and set:', {
+        logger.debug('🔌 ChatSlice - Messages sorted and set:', {
           sortedCount: sortedMessages.length,
           firstMessage: sortedMessages[0],
           lastMessage: sortedMessages[sortedMessages.length - 1]
@@ -555,7 +556,7 @@ const chatSlice = createSlice({
         // Log each message to check for voice messages
         if (state.currentChatMessages.length > 0) {
           state.currentChatMessages.forEach((msg, index) => {
-            console.log(`🔌 ChatSlice - Message ${index}:`, {
+            logger.debug(`🔌 ChatSlice - Message ${index}:`, {
               id: msg.id,
               message: msg.message,
               created_at: msg.created_at,
