@@ -16,6 +16,9 @@ interface VenueSearchPanelProps {
   location: string;
   tabId: string;
   onAddToCart?: (item: any) => void;
+  externalVendorType?: string;
+  externalMinRating?: number;
+  hideFilters?: boolean;
 }
 
 interface VenueResult {
@@ -66,15 +69,27 @@ const WEDDING_VENDOR_TYPES = [
   { value: 'baker', label: 'Cake Bakers' }
 ];
 
-export function VenueSearchPanel({ template, location, tabId, onAddToCart }: VenueSearchPanelProps) {
+export function VenueSearchPanel({ 
+  template, 
+  location, 
+  tabId, 
+  onAddToCart,
+  externalVendorType,
+  externalMinRating,
+  hideFilters = false
+}: VenueSearchPanelProps) {
   const { toast } = useToast();
   const [searchTrigger, setSearchTrigger] = useState(0);
-  const [vendorType, setVendorType] = useState<string>('photographer');
-  const [minRating, setMinRating] = useState<string>('0');
+  const [internalVendorType, setInternalVendorType] = useState<string>('photographer');
+  const [internalMinRating, setInternalMinRating] = useState<string>('0');
   const [customKeyword, setCustomKeyword] = useState<string>('');
 
   const venueConfig = VENUE_TYPE_CONFIG[template]?.[tabId];
   const isWeddingVendorsTab = template === 'wedding' && tabId === 'vendors';
+  
+  // Use external values if provided, otherwise use internal state
+  const vendorType = externalVendorType ?? internalVendorType;
+  const minRating = externalMinRating !== undefined ? String(externalMinRating) : internalMinRating;
 
   // Build search params based on tab configuration
   const searchParams = new URLSearchParams();
@@ -172,77 +187,79 @@ export function VenueSearchPanel({ template, location, tabId, onAddToCart }: Ven
 
   return (
     <div className="space-y-6">
-      {/* Search Controls */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">
-            {isWeddingVendorsTab 
-              ? `Wedding Vendors in ${location}` 
-              : `${venueConfig?.label || 'Venues'} in ${location}`}
-          </h3>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-            data-testid="button-refresh-venues"
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-        </div>
+      {/* Search Controls - hide when external filters are provided */}
+      {!hideFilters && (
+        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">
+              {isWeddingVendorsTab 
+                ? `Wedding Vendors in ${location}` 
+                : `${venueConfig?.label || 'Venues'} in ${location}`}
+            </h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isLoading}
+              data-testid="button-refresh-venues"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Vendor Type Selector (Wedding Vendors Tab) */}
-          {isWeddingVendorsTab && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Vendor Type Selector (Wedding Vendors Tab) */}
+            {isWeddingVendorsTab && (
+              <div className="space-y-2">
+                <Label htmlFor="vendorType">Vendor Type</Label>
+                <Select value={vendorType} onValueChange={setInternalVendorType}>
+                  <SelectTrigger id="vendorType" data-testid="select-vendor-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WEDDING_VENDOR_TYPES.map(type => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Custom Keyword (Optional) */}
+            {!isWeddingVendorsTab && (
+              <div className="space-y-2">
+                <Label htmlFor="keyword">Search Keyword (Optional)</Label>
+                <Input
+                  id="keyword"
+                  placeholder={venueConfig?.keyword || "e.g., outdoor, luxury"}
+                  value={customKeyword}
+                  onChange={(e) => setCustomKeyword(e.target.value)}
+                  data-testid="input-venue-keyword"
+                />
+              </div>
+            )}
+
+            {/* Minimum Rating Filter */}
             <div className="space-y-2">
-              <Label htmlFor="vendorType">Vendor Type</Label>
-              <Select value={vendorType} onValueChange={setVendorType}>
-                <SelectTrigger id="vendorType" data-testid="select-vendor-type">
+              <Label htmlFor="minRating">Minimum Rating</Label>
+              <Select value={minRating} onValueChange={setInternalMinRating}>
+                <SelectTrigger id="minRating" data-testid="select-min-rating">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {WEDDING_VENDOR_TYPES.map(type => (
-                    <SelectItem key={type.value} value={type.value}>
-                      {type.label}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="0">Any Rating</SelectItem>
+                  <SelectItem value="3.5">3.5+ Stars</SelectItem>
+                  <SelectItem value="4.0">4.0+ Stars</SelectItem>
+                  <SelectItem value="4.5">4.5+ Stars</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          )}
-
-          {/* Custom Keyword (Optional) */}
-          {!isWeddingVendorsTab && (
-            <div className="space-y-2">
-              <Label htmlFor="keyword">Search Keyword (Optional)</Label>
-              <Input
-                id="keyword"
-                placeholder={venueConfig?.keyword || "e.g., outdoor, luxury"}
-                value={customKeyword}
-                onChange={(e) => setCustomKeyword(e.target.value)}
-                data-testid="input-venue-keyword"
-              />
-            </div>
-          )}
-
-          {/* Minimum Rating Filter */}
-          <div className="space-y-2">
-            <Label htmlFor="minRating">Minimum Rating</Label>
-            <Select value={minRating} onValueChange={setMinRating}>
-              <SelectTrigger id="minRating" data-testid="select-min-rating">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Any Rating</SelectItem>
-                <SelectItem value="3.5">3.5+ Stars</SelectItem>
-                <SelectItem value="4.0">4.0+ Stars</SelectItem>
-                <SelectItem value="4.5">4.5+ Stars</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Error State */}
       {error && (
