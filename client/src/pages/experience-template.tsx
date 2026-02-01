@@ -156,6 +156,17 @@ interface ExperienceConfig {
   };
 }
 
+const WEDDING_VENDOR_TYPES = [
+  { value: 'photographer', label: 'Photographers' },
+  { value: 'florist', label: 'Florists' },
+  { value: 'caterer', label: 'Caterers' },
+  { value: 'dj', label: 'DJs & Musicians' },
+  { value: 'planner', label: 'Wedding Planners' },
+  { value: 'videographer', label: 'Videographers' },
+  { value: 'makeup', label: 'Makeup Artists' },
+  { value: 'baker', label: 'Cake Bakers' }
+];
+
 const experienceConfigs: Record<string, ExperienceConfig> = {
   travel: {
     heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
@@ -833,6 +844,7 @@ export default function ExperienceTemplatePage() {
   const [sortBy, setSortBy] = useState(initialSettings?.sortBy ?? "popular");
   const [selectedFilters, setSelectedFilters] = useState<string[]>(initialSettings?.selectedFilters ?? []);
   const [selectedInterests, setSelectedInterests] = useState<string[]>(initialSettings?.selectedInterests ?? []);
+  const [vendorType, setVendorType] = useState<string>(initialSettings?.vendorType ?? "photographer");
   
   // Flight-specific filters
   const [flightMaxPrice, setFlightMaxPrice] = useState(initialSettings?.flightMaxPrice ?? 2000);
@@ -2075,17 +2087,37 @@ export default function ExperienceTemplatePage() {
                   ) : (
                     <>
                       <div>
-                        <Label className="text-sm font-medium">Search</Label>
-                        <div className="relative mt-1">
-                          <Input
-                            placeholder="Search by name, provider, or description..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10"
-                            data-testid="input-search"
-                          />
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        </div>
+                        {activeTab === "vendors" ? (
+                          <>
+                            <Label className="text-sm font-medium">Vendor Type</Label>
+                            <Select value={vendorType} onValueChange={setVendorType}>
+                              <SelectTrigger className="mt-1" data-testid="select-vendor-type-main">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {WEDDING_VENDOR_TYPES.map(type => (
+                                  <SelectItem key={type.value} value={type.value}>
+                                    {type.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </>
+                        ) : (
+                          <>
+                            <Label className="text-sm font-medium">Search</Label>
+                            <div className="relative mt-1">
+                              <Input
+                                placeholder="Search by name, provider, or description..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10"
+                                data-testid="input-search"
+                              />
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap gap-4">
@@ -2556,6 +2588,9 @@ export default function ExperienceTemplatePage() {
                   onAddToCart={(item) => {
                     addToCart(item);
                   }}
+                  externalVendorType={activeTab === "vendors" ? vendorType : undefined}
+                  externalMinRating={activeTab === "vendors" ? minRating : undefined}
+                  hideFilters={activeTab === "vendors"}
                 />
               </div>
             )
