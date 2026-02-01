@@ -1,6 +1,6 @@
 /**
  * Venue Search Service
- * Handles venue/vendor searches for templates using Google Places API
+ * Handles venue/vendor searches for templates using SerpAPI (Google Maps Local Results)
  * Implements caching, rate limiting, and graceful degradation
  */
 
@@ -10,7 +10,7 @@ import { serpCache } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 
 const CACHE_DURATION_HOURS = 24;
-const GOOGLE_PLACES_BASE_URL = "https://maps.googleapis.com/maps/api/place";
+const SERP_API_BASE_URL = "https://serpapi.com/search.json";
 
 interface VenueSearchParams {
   location: string;
@@ -37,15 +37,15 @@ export interface VenueResult {
     lng: number;
   };
   types?: string[];
-  source: 'google_places';
+  source: 'serpapi' | 'google_places';
 }
 
 class VenueSearchService {
-  private apiKey: string | undefined;
+  private serpApiKey: string | undefined;
   private venueLogger = logger.child({ service: "venue-search" });
 
   constructor() {
-    this.apiKey = process.env.GOOGLE_MAPS_API_KEY;
+    this.serpApiKey = process.env.SERP_API_KEY;
   }
 
   private generateCacheKey(params: VenueSearchParams): string {
@@ -106,38 +106,11 @@ class VenueSearchService {
   }
 
   /**
-   * Geocode a location string to coordinates
-   */
-  private async geocodeLocation(location: string): Promise<{ lat: number; lng: number } | null> {
-    if (!this.apiKey) {
-      this.venueLogger.warn("Google Maps API key not configured");
-      return null;
-    }
-
-    try {
-      const url = `${GOOGLE_PLACES_BASE_URL}/textsearch/json?query=${encodeURIComponent(location)}&key=${this.apiKey}`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
-        return {
-          lat: data.results[0].geometry.location.lat,
-          lng: data.results[0].geometry.location.lng
-        };
-      }
-      return null;
-    } catch (error) {
-      this.venueLogger.error({ error, location }, "Error geocoding location");
-      return null;
-    }
-  }
-
-  /**
-   * Search for venues using Google Places API
+   * Search for venues using SerpAPI Google Maps endpoint
    */
   async searchVenues(params: VenueSearchParams): Promise<VenueResult[]> {
-    if (!this.apiKey) {
-      this.venueLogger.warn("Google Maps API key not configured - returning empty results");
+    if (!this.serpApiKey) {
+      this.venueLogger.warn("SERP_API_KEY not configured - returning empty results");
       return [];
     }
 
@@ -151,46 +124,45 @@ class VenueSearchService {
     try {
       // Build query based on type and location
       let query = params.keyword || this.getDefaultQuery(params.type);
-      query += ` in ${params.location}`;
-
-      const url = new URL(`${GOOGLE_PLACES_BASE_URL}/textsearch/json`);
-      url.searchParams.append('query', query);
-      url.searchParams.append('key', this.apiKey);
       
-      if (params.radius) {
-        const coords = await this.geocodeLocation(params.location);
-        if (coords) {
-          url.searchParams.append('location', `${coords.lat},${coords.lng}`);
-          url.searchParams.append('radius', params.radius.toString());
-        }
-      }
+      // Use SerpAPI Google Maps Local Results
+      const url = new URL(SERP_API_BASE_URL);
+      url.searchParams.append('engine', 'google_maps');
+      url.searchParams.append('q', query);
+      url.searchParams.append('ll', await this.getLocationCoords(params.location) || `@0,0,12z`);
+      url.searchParams.append('type', 'search');
+      url.searchParams.append('api_key', this.serpApiKey);
 
-      this.venueLogger.info({ query, location: params.location, type: params.type }, "Searching venues");
+      this.venueLogger.info({ query, location: params.location, type: params.type }, "Searching venues via SerpAPI");
 
       const response = await fetch(url.toString());
       const data = await response.json();
 
-      if (data.status !== 'OK') {
-        this.venueLogger.warn({ status: data.status, error: data.error_message }, "Google Places API error");
+      if (data.error) {
+        this.venueLogger.warn({ error: data.error }, "SerpAPI error");
         return [];
       }
 
-      const results: VenueResult[] = (data.results || []).map((place: any) => ({
-        id: place.place_id,
-        name: place.name,
-        address: place.formatted_address,
+      // Parse local_results from SerpAPI response
+      const localResults = data.local_results || [];
+      
+      const results: VenueResult[] = localResults.map((place: any) => ({
+        id: place.place_id || `serp-${place.position || Math.random().toString(36).slice(2)}`,
+        name: place.title || place.name,
+        address: place.address || '',
         rating: place.rating,
-        reviewCount: place.user_ratings_total,
-        priceLevel: place.price_level,
-        photos: place.photos?.slice(0, 3).map((photo: any) => 
-          `${GOOGLE_PLACES_BASE_URL}/photo?maxwidth=800&photo_reference=${photo.photo_reference}&key=${this.apiKey}`
-        ),
-        coordinates: place.geometry?.location ? {
-          lat: place.geometry.location.lat,
-          lng: place.geometry.location.lng
+        reviewCount: place.reviews,
+        priceLevel: this.parsePriceLevel(place.price),
+        photos: place.thumbnail ? [place.thumbnail] : [],
+        phone: place.phone,
+        website: place.website,
+        openingHours: place.hours || place.operating_hours?.wednesday,
+        coordinates: place.gps_coordinates ? {
+          lat: place.gps_coordinates.latitude,
+          lng: place.gps_coordinates.longitude
         } : undefined,
-        types: place.types,
-        source: 'google_places'
+        types: place.type ? [place.type] : [],
+        source: 'serpapi' as const
       }));
 
       // Filter by minimum rating if specified
@@ -212,45 +184,83 @@ class VenueSearchService {
   }
 
   /**
+   * Get location coordinates string for SerpAPI
+   */
+  private async getLocationCoords(location: string): Promise<string | null> {
+    try {
+      // Use SerpAPI's Google Maps endpoint to geocode
+      const url = new URL(SERP_API_BASE_URL);
+      url.searchParams.append('engine', 'google_maps');
+      url.searchParams.append('q', location);
+      url.searchParams.append('type', 'search');
+      url.searchParams.append('api_key', this.serpApiKey!);
+
+      const response = await fetch(url.toString());
+      const data = await response.json();
+
+      if (data.place_results?.gps_coordinates) {
+        const { latitude, longitude } = data.place_results.gps_coordinates;
+        return `@${latitude},${longitude},14z`;
+      }
+      
+      // Default to searching by query only
+      return null;
+    } catch (error) {
+      this.venueLogger.debug({ error, location }, "Could not geocode location");
+      return null;
+    }
+  }
+
+  /**
+   * Parse price level from SerpAPI format
+   */
+  private parsePriceLevel(price?: string): number | undefined {
+    if (!price) return undefined;
+    const dollarSigns = (price.match(/\$/g) || []).length;
+    return dollarSigns || undefined;
+  }
+
+  /**
    * Get venue details by place ID
    */
   async getVenueDetails(placeId: string): Promise<VenueResult | null> {
-    if (!this.apiKey) {
-      this.venueLogger.warn("Google Maps API key not configured");
+    if (!this.serpApiKey) {
+      this.venueLogger.warn("SERP_API_KEY not configured");
       return null;
     }
 
     try {
-      const url = `${GOOGLE_PLACES_BASE_URL}/details/json?place_id=${placeId}&fields=name,formatted_address,rating,user_ratings_total,price_level,photos,formatted_phone_number,website,opening_hours,geometry,types&key=${this.apiKey}`;
-      
-      const response = await fetch(url);
+      const url = new URL(SERP_API_BASE_URL);
+      url.searchParams.append('engine', 'google_maps');
+      url.searchParams.append('place_id', placeId);
+      url.searchParams.append('api_key', this.serpApiKey);
+
+      const response = await fetch(url.toString());
       const data = await response.json();
 
-      if (data.status !== 'OK' || !data.result) {
-        this.venueLogger.warn({ status: data.status, placeId }, "Failed to fetch venue details");
+      if (data.error || !data.place_results) {
+        this.venueLogger.warn({ error: data.error, placeId }, "Failed to fetch venue details");
         return null;
       }
 
-      const place = data.result;
+      const place = data.place_results;
       return {
         id: placeId,
-        name: place.name,
-        address: place.formatted_address,
+        name: place.title,
+        address: place.address,
         rating: place.rating,
-        reviewCount: place.user_ratings_total,
-        priceLevel: place.price_level,
-        photos: place.photos?.slice(0, 5).map((photo: any) => 
-          `${GOOGLE_PLACES_BASE_URL}/photo?maxwidth=1200&photo_reference=${photo.photo_reference}&key=${this.apiKey}`
-        ),
-        phone: place.formatted_phone_number,
+        reviewCount: place.reviews,
+        priceLevel: this.parsePriceLevel(place.price),
+        photos: place.images?.map((img: any) => img.image || img) || [],
+        phone: place.phone,
         website: place.website,
-        openingHours: place.opening_hours?.weekday_text?.join(', '),
-        coordinates: place.geometry?.location ? {
-          lat: place.geometry.location.lat,
-          lng: place.geometry.location.lng
+        openingHours: place.hours,
+        coordinates: place.gps_coordinates ? {
+          lat: place.gps_coordinates.latitude,
+          lng: place.gps_coordinates.longitude
         } : undefined,
-        types: place.types,
-        source: 'google_places'
+        types: place.type ? [place.type] : [],
+        source: 'serpapi'
       };
     } catch (error) {
       this.venueLogger.error({ error, placeId }, "Error fetching venue details");
