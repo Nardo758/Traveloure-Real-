@@ -546,7 +546,7 @@ Return JSON with this structure:
         tpParts.push(`- City Pulse Score: ${tpCtx.pulseScore}/100 (activity level)`);
       }
       if (tpCtx.trendingScore) {
-        tpParts.push(`- Trending Score: ${tpCtx.trendingScore}/100 (current popularity)`);
+        tpParts.push(`- Trending Score: ${tpCtx.trendingScore}/100 (7-day trend)`);
       }
       if (tpCtx.crowdLevel) {
         tpParts.push(`- Current Crowd Level: ${tpCtx.crowdLevel}`);
@@ -720,7 +720,7 @@ Return JSON with this exact structure:
   
   "pulseMetrics": {
     "pulseScore": <0-100 overall travel appeal right now>,
-    "trendingScore": <0-100 how viral/trending>,
+    "trendingScore": <0-100 how viral/trending based on past 7 days>,
     "crowdLevel": "<quiet|moderate|busy|packed>",
     "weatherScore": <0-100 how good for travel>
   },

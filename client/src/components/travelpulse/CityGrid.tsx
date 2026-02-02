@@ -272,7 +272,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
           <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
             <div className="flex items-center gap-1">
               <TrendingUp className="h-3 w-3" />
-              <span>{city.totalTrendingSpots} trending</span>
+              <span>{city.totalTrendingSpots} trending (7d)</span>
             </div>
             <div className="flex items-center gap-1">
               <Gem className="h-3 w-3" />
