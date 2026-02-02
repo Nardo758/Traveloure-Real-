@@ -12,6 +12,7 @@ import {
   PartyPopper,
   Check
 } from "lucide-react";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 const steps = [
   {
@@ -80,6 +81,8 @@ const planningOptions = [
 ];
 
 export default function HowItWorksPage() {
+  const { openSignInModal } = useSignInModal();
+  
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -96,11 +99,9 @@ export default function HowItWorksPage() {
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
               From dream to destination in three simple steps. Our AI-powered platform and expert network make travel planning effortless.
             </p>
-            <a href="/api/login">
-              <Button size="lg" data-testid="button-get-started">
-                Get Started <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </a>
+            <Button size="lg" onClick={() => openSignInModal()} data-testid="button-get-started">
+              Get Started <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
           </motion.div>
         </div>
       </section>
@@ -218,11 +219,9 @@ export default function HowItWorksPage() {
               Join thousands of travelers who have discovered the joy of effortless trip planning.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <a href="/api/login">
-                <Button size="lg" variant="secondary" data-testid="button-create-trip-cta">
-                  Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </a>
+              <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-create-trip-cta">
+                Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
               <Link href="/experts">
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-browse-experts">
                   Browse Experts
