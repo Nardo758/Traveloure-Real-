@@ -28,6 +28,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 interface CartItem {
   id: string;
@@ -125,6 +126,7 @@ type FlowStep = "cart" | "itinerary" | "payment";
 
 export default function CartPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -545,9 +547,7 @@ export default function CartPage() {
           <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">Your Cart</h1>
           <p className="text-muted-foreground mb-6">Please sign in to view your cart</p>
-          <a href="/api/login">
-            <Button data-testid="button-sign-in">Sign In</Button>
-          </a>
+          <Button onClick={() => openSignInModal()} data-testid="button-sign-in">Sign In</Button>
         </div>
       </Layout>
     );
