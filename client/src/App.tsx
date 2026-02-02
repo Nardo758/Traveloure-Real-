@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
+import { SignInModalProvider } from "@/contexts/SignInModalContext";
 
 import LandingPage from "@/pages/landing";
 import LandingMockups from "@/pages/landing-mockups";
@@ -538,10 +539,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TripQueueProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <SignInModalProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </SignInModalProvider>
       </TripQueueProvider>
     </QueryClientProvider>
   );
