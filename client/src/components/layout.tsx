@@ -111,6 +111,12 @@ const navItems = [
     icon: ChevronDown,
     sections: [
       {
+        title: "OVERVIEW",
+        items: [
+          { name: "Partner With Us", href: "/partner-with-us", icon: Users, description: "Learn about partnership opportunities" },
+        ],
+      },
+      {
         title: "BECOME A PARTNER",
         items: [
           { name: "Travel Expert", href: "/become-expert", icon: Plane, description: "Share your destination expertise" },
@@ -119,14 +125,6 @@ const navItems = [
           { name: "Executive Assistant", href: "/become-expert", icon: Briefcase, description: "Manage high-end clients" },
           { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
           { name: "Influencer Program", href: "/become-expert?influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
-        ],
-      },
-      {
-        title: "BENEFITS",
-        items: [
-          { name: "Flexible Schedule", href: "/partner-with-us", icon: Clock, description: "Work on your own terms" },
-          { name: "AI-Powered Tools", href: "/partner-with-us", icon: Bot, description: "Cutting-edge planning tools" },
-          { name: "Global Clientele", href: "/partner-with-us", icon: Globe, description: "Connect with travelers worldwide" },
         ],
       },
     ],
