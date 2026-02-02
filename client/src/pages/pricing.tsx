@@ -16,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 const creditPackages = [
   {
@@ -124,6 +125,8 @@ const featureComparison = [
 ];
 
 export default function PricingPage() {
+  const { openSignInModal } = useSignInModal();
+  
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -190,15 +193,14 @@ export default function PricingPage() {
                         </li>
                       ))}
                     </ul>
-                    <a href="/api/login">
-                      <Button 
-                        variant={plan.variant} 
-                        className="w-full mt-6"
-                        data-testid={`button-plan-${plan.name.toLowerCase()}`}
-                      >
-                        {plan.cta}
-                      </Button>
-                    </a>
+                    <Button 
+                      variant={plan.variant} 
+                      className="w-full mt-6"
+                      onClick={() => openSignInModal()}
+                      data-testid={`button-plan-${plan.name.toLowerCase()}`}
+                    >
+                      {plan.cta}
+                    </Button>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -367,11 +369,9 @@ export default function PricingPage() {
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
               Get 5 free credits when you sign up. No credit card required.
             </p>
-            <a href="/api/login">
-              <Button size="lg" variant="secondary" data-testid="button-get-started-free">
-                Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </a>
+            <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-get-started-free">
+              Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
           </motion.div>
         </div>
       </section>

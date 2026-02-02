@@ -54,6 +54,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { SEOHead } from "@/components/seo-head";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 const experienceTemplates = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500", bgColor: "bg-blue-500/10 dark:bg-blue-500/20" },
@@ -429,6 +430,8 @@ const itemVariants = {
 };
 
 export default function LandingPage() {
+  const { openSignInModal } = useSignInModal();
+  
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <SEOHead 
@@ -815,16 +818,15 @@ export default function LandingPage() {
               Join thousands who've planned unforgettable trips with local experts and AI
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <a href="/api/login" data-testid="link-cta-get-started">
-                <Button 
-                  size="lg" 
-                  className="bg-white text-[#FF385C] font-semibold px-8 h-12 shadow-xl" 
-                  data-testid="button-cta-get-started"
-                >
-                  Get Started - Free
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </a>
+              <Button 
+                size="lg" 
+                className="bg-white text-[#FF385C] font-semibold px-8 h-12 shadow-xl" 
+                onClick={() => openSignInModal()}
+                data-testid="button-cta-get-started"
+              >
+                Get Started - Free
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
               <Link href="/experts">
                 <Button 
                   size="lg" 

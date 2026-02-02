@@ -16,23 +16,30 @@ import {
   Building2, 
   LogOut 
 } from "lucide-react";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 export function UserMenu() {
   const { user, logout } = useAuth();
+  const { openSignInModal } = useSignInModal();
 
   if (!user) {
     return (
       <div className="flex items-center gap-3">
-        <a href="/api/login">
-          <Button variant="outline" className="rounded-full px-4" data-testid="button-login">
-            Login
-          </Button>
-        </a>
-        <a href="/api/login">
-          <Button className="bg-primary hover:bg-primary/90 text-white rounded-full px-4" data-testid="button-sign-up">
-            Sign Up
-          </Button>
-        </a>
+        <Button 
+          variant="outline" 
+          className="rounded-full px-4" 
+          onClick={() => openSignInModal()}
+          data-testid="button-login"
+        >
+          Login
+        </Button>
+        <Button 
+          className="bg-primary hover:bg-primary/90 text-white rounded-full px-4" 
+          onClick={() => openSignInModal()}
+          data-testid="button-sign-up"
+        >
+          Sign Up
+        </Button>
       </div>
     );
   }

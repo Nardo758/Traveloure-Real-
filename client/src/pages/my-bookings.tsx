@@ -33,6 +33,7 @@ import {
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 interface Booking {
   id: string;
@@ -68,6 +69,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
 
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
@@ -94,9 +96,7 @@ export default function MyBookingsPage() {
           <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">My Bookings</h1>
           <p className="text-muted-foreground mb-6">Please sign in to view your bookings</p>
-          <a href="/api/login">
-            <Button data-testid="button-sign-in">Sign In</Button>
-          </a>
+          <Button onClick={() => openSignInModal()} data-testid="button-sign-in">Sign In</Button>
         </div>
       </Layout>
     );
