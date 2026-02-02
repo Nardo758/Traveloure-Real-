@@ -20,6 +20,9 @@ import {
   TrendingUp,
   Shield,
   Zap,
+  Bot,
+  Laptop,
+  HeartHandshake,
 } from "lucide-react";
 
 const partnerTypes = [
@@ -150,6 +153,39 @@ const testimonials = [
     author: "Sofia R.",
     role: "Event Planner, Barcelona",
     earnings: "$6,000/month avg",
+  },
+];
+
+const platformBenefits = [
+  {
+    title: "Flexible Schedule",
+    description: "Work on your own terms. Set your availability and take on as many or as few clients as you want. Perfect for side income or full-time work.",
+    icon: Clock,
+  },
+  {
+    title: "AI-Powered Tools",
+    description: "Access cutting-edge AI tools to create personalized itineraries in minutes. Our technology helps you deliver exceptional experiences efficiently.",
+    icon: Bot,
+  },
+  {
+    title: "Global Clientele",
+    description: "Connect with travelers from around the world. Our platform brings qualified leads directly to you, so you can focus on what you do best.",
+    icon: Globe,
+  },
+  {
+    title: "Dedicated Support",
+    description: "Get help when you need it. Our partner success team is here to support you with training, resources, and personalized guidance.",
+    icon: HeartHandshake,
+  },
+  {
+    title: "Easy-to-Use Dashboard",
+    description: "Manage bookings, communicate with clients, and track earnings all in one place. Our intuitive dashboard makes running your business simple.",
+    icon: Laptop,
+  },
+  {
+    title: "Competitive Earnings",
+    description: "Keep more of what you earn with our transparent fee structure. Top partners earn $5,000+ per month with unlimited earning potential.",
+    icon: DollarSign,
   },
 ];
 
@@ -317,8 +353,55 @@ export default function PartnerWithUsPage() {
         </div>
       </section>
 
+      {/* Platform Benefits */}
+      <section id="benefits" className="py-20 bg-white">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="text-center mb-12">
+            <Badge className="bg-[#FFE3E8] text-[#FF385C] mb-4">
+              <Sparkles className="w-3 h-3 mr-1" />
+              Why Partner With Traveloure
+            </Badge>
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+              Platform Benefits
+            </h2>
+            <p className="text-lg text-[#6B7280] max-w-2xl mx-auto">
+              Join a platform designed to help you succeed. We provide the tools, 
+              clients, and support you need to grow your travel business.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {platformBenefits.map((benefit, idx) => (
+              <motion.div
+                key={benefit.title}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+              >
+                <Card 
+                  className="h-full border-[#E5E7EB] hover:shadow-lg transition-shadow"
+                  data-testid={`card-benefit-${benefit.title.toLowerCase().replace(/\s+/g, '-')}`}
+                >
+                  <CardContent className="p-6">
+                    <div className="w-12 h-12 rounded-lg bg-[#FFE3E8] flex items-center justify-center mb-4">
+                      <benefit.icon className="w-6 h-6 text-[#FF385C]" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-[#111827] mb-2">
+                      {benefit.title}
+                    </h3>
+                    <p className="text-[#6B7280]">
+                      {benefit.description}
+                    </p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-white">
+      <section id="how-it-works" className="py-20 bg-[#F9FAFB]">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
