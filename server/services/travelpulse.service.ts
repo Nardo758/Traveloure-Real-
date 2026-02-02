@@ -88,8 +88,8 @@ Return a JSON array of ${limit} trending destinations/experiences in ${city}. Fo
       "destinationName": "Name of place/experience",
       "destinationType": "restaurant|attraction|hotel|tour|neighborhood|activity",
       "trendScore": 0-1000 (velocity of trending),
-      "growthPercent": percentage increase in mentions,
-      "mentionCount": estimated recent mentions,
+      "growthPercent": percentage increase in mentions over the past 7 days,
+      "mentionCount": estimated mentions in the past 7 days,
       "trendStatus": "emerging|viral|mainstream|declining",
       "triggerEvent": "What caused the trend (influencer post, news, seasonal, etc.)",
       
