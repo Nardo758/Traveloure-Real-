@@ -402,6 +402,38 @@ function ServiceCard({
     return imageMap[categorySlug] || "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80";
   };
 
+  // Generate provider avatar based on service ID for consistency
+  const getProviderAvatar = (serviceId: string) => {
+    const avatars = [
+      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&q=80",
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80",
+      "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&q=80",
+      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80",
+      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80",
+      "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80",
+      "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&q=80",
+      "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=150&q=80",
+      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&q=80",
+      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&q=80",
+      "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&q=80",
+      "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&q=80",
+    ];
+    // Use a hash of the service ID to get a consistent avatar
+    const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return avatars[hash % avatars.length];
+  };
+
+  // Generate provider name based on service ID
+  const getProviderName = (serviceId: string) => {
+    const firstNames = ["Sarah", "Michael", "Emma", "James", "Sofia", "David", "Olivia", "Daniel", "Isabella", "Alexander", "Mia", "William"];
+    const lastNames = ["Mitchell", "Chen", "Rodriguez", "Thompson", "Garcia", "Wilson", "Lee", "Anderson", "Taylor", "Brown", "Kim", "Davis"];
+    const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return `${firstNames[hash % firstNames.length]} ${lastNames[(hash + 3) % lastNames.length]}`;
+  };
+
+  const providerAvatar = getProviderAvatar(service.id);
+  const providerName = getProviderName(service.id);
+
   const getStatusColor = (rating: number) => {
     if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
     if (rating >= 4.0) return { text: "text-yellow-500 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-900/20" };
@@ -474,30 +506,33 @@ function ServiceCard({
               )}
             </div>
 
-            {/* Service Title & Icon */}
+            {/* Provider Info & Service Title */}
             <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3">
-              <div className={cn(
-                "w-12 h-12 rounded-xl flex items-center justify-center shadow-lg",
-                category?.slug ? categoryIcons[category.slug] ? "bg-primary" : "bg-muted" : "bg-muted"
-              )}>
-                <Icon className="w-6 h-6 text-white" />
+              <div className="relative">
+                <img
+                  src={providerAvatar}
+                  alt={providerName}
+                  className="w-12 h-12 rounded-full border-2 border-white object-cover shadow-lg"
+                  data-testid={`img-provider-avatar-${service.id}`}
+                />
+                {isVerified && (
+                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white">
+                    <CheckCircle className="w-3 h-3 text-white" />
+                  </div>
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <h3 
-                  className="text-xl font-bold text-white line-clamp-1"
+                  className="text-lg font-bold text-white line-clamp-1"
                   data-testid={`text-service-name-${service.id}`}
                 >
                   {service.serviceName}
                 </h3>
-                <div className="flex items-center gap-2 text-white/80 text-sm">
+                <div className="flex items-center gap-2 text-white/90 text-sm">
+                  <span className="font-medium" data-testid={`text-provider-name-${service.id}`}>{providerName}</span>
+                  <span className="text-white/60">•</span>
                   <MapPin className="w-3 h-3" />
                   <span data-testid={`text-location-${service.id}`}>{location}</span>
-                  {isVerified && (
-                    <CheckCircle 
-                      className="w-3 h-3" 
-                      data-testid={`icon-verified-${service.id}`}
-                    />
-                  )}
                 </div>
               </div>
             </div>
