@@ -703,6 +703,11 @@ export default function DiscoverPage() {
   
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
+  
+  // Tab navigation state (read from URL)
+  const urlTab = urlParams.get("tab") || "travelpulse";
+  const urlCity = urlParams.get("city") || "";
+  const [activeTab, setActiveTab] = useState(urlTab);
 
   // Debounce search query
   useEffect(() => {
@@ -1172,7 +1177,7 @@ export default function DiscoverPage() {
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
-            <Tabs defaultValue="travelpulse" className="w-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <div className="relative mb-8">
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <TabsTrigger
@@ -1866,7 +1871,7 @@ export default function DiscoverPage() {
 
               {/* TravelPulse Tab */}
               <TabsContent value="travelpulse">
-                <CityGrid />
+                <CityGrid selectedCityName={urlCity} />
               </TabsContent>
             </Tabs>
           </div>
