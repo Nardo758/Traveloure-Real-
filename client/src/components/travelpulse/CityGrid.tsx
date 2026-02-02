@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,6 +64,7 @@ interface TravelPulseCity {
 
 interface CityGridProps {
   onCitySelect?: (city: TravelPulseCity) => void;
+  selectedCityName?: string;
 }
 
 const vibeTagColors: Record<string, string> = {
@@ -362,12 +363,26 @@ function CityGridSkeleton() {
   );
 }
 
-export function CityGrid({ onCitySelect }: CityGridProps) {
+export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   const [selectedCity, setSelectedCity] = useState<TravelPulseCity | null>(null);
+  const [hasAutoSelected, setHasAutoSelected] = useState(false);
 
   const { data, isLoading, error } = useQuery<{ cities: TravelPulseCity[]; count: number }>({
     queryKey: ["/api/travelpulse/cities"],
   });
+
+  // Auto-select city from URL param when data loads
+  useEffect(() => {
+    if (selectedCityName && data?.cities && !hasAutoSelected) {
+      const matchedCity = data.cities.find(
+        (city) => city.cityName.toLowerCase() === selectedCityName.toLowerCase()
+      );
+      if (matchedCity) {
+        setSelectedCity(matchedCity);
+        setHasAutoSelected(true);
+      }
+    }
+  }, [selectedCityName, data?.cities, hasAutoSelected]);
 
   const handleCityClick = (city: TravelPulseCity) => {
     setSelectedCity(city);

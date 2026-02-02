@@ -297,7 +297,7 @@ export function TrendingCities() {
               transition={{ delay: index * 0.05 }}
               className="group"
             >
-              <Link href={`/discover?city=${city.name.toLowerCase()}`}>
+              <Link href={`/discover?tab=travelpulse&city=${encodeURIComponent(city.name)}`}>
                 <div 
                   className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-500 cursor-pointer border border-border"
                   data-testid={`card-city-${city.id}`}
