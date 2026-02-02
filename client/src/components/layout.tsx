@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
 import { 
   Map, 
@@ -273,6 +274,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -315,11 +317,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       Become an Expert
                     </Button>
                   </Link>
-                  <a href="/api/login">
-                    <Button size="sm" data-testid="button-sign-in">
-                      Sign In
-                    </Button>
-                  </a>
+                  <Button 
+                    size="sm" 
+                    onClick={() => openSignInModal()}
+                    data-testid="button-sign-in"
+                  >
+                    Sign In
+                  </Button>
                 </>
               )}
               {user && (
@@ -427,9 +431,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         Become an Expert
                       </Button>
                     </Link>
-                    <a href="/api/login" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Button className="w-full" data-testid="button-mobile-sign-in">Sign In</Button>
-                    </a>
+                    <Button 
+                      className="w-full" 
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        openSignInModal();
+                      }}
+                      data-testid="button-mobile-sign-in"
+                    >
+                      Sign In
+                    </Button>
                   </div>
                 )}
               </div>
