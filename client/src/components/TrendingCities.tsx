@@ -428,7 +428,7 @@ export function TrendingCities() {
                       </div>
                       <div className="flex items-center gap-1" data-testid={`stat-trending-${city.id}`}>
                         <TrendingUp className="w-3 h-3" />
-                        {city.trendingCount}
+                        {city.trendingCount} (7d)
                       </div>
                       <div className="flex items-center gap-1" data-testid={`stat-gems-${city.id}`}>
                         <Gem className="w-3 h-3 text-purple-500 dark:text-purple-400" />
