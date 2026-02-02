@@ -192,6 +192,8 @@ const preResearchedTrips = [
     originalPrice: 2999,
     highlights: ["Fushimi Inari Shrine", "Traditional Tea Ceremony", "Bamboo Grove Walk"],
     expertPick: true,
+    imageUrl: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600&q=80",
+    vibeTags: ["cultural", "peaceful", "historic"],
   },
   {
     id: 2,
@@ -206,6 +208,8 @@ const preResearchedTrips = [
     originalPrice: 3899,
     highlights: ["Positano Beach Day", "Limoncello Tasting", "Sunset Boat Cruise"],
     expertPick: true,
+    imageUrl: "https://images.unsplash.com/photo-1455587734955-081b22074882?w=600&q=80",
+    vibeTags: ["romantic", "coastal", "luxury"],
   },
   {
     id: 3,
@@ -220,6 +224,8 @@ const preResearchedTrips = [
     originalPrice: 2299,
     highlights: ["Yoga Sessions", "Rice Terrace Walks", "Spa Treatments"],
     expertPick: false,
+    imageUrl: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=600&q=80",
+    vibeTags: ["wellness", "nature", "spiritual"],
   },
   {
     id: 4,
@@ -234,6 +240,8 @@ const preResearchedTrips = [
     originalPrice: 2699,
     highlights: ["Zip-lining", "Volcano Hiking", "Wildlife Safari"],
     expertPick: false,
+    imageUrl: "https://images.unsplash.com/photo-1519999482648-25049ddd37b1?w=600&q=80",
+    vibeTags: ["adventure", "nature", "wildlife"],
   },
   {
     id: 5,
@@ -248,6 +256,8 @@ const preResearchedTrips = [
     originalPrice: 3299,
     highlights: ["Eiffel Tower", "Disneyland Paris", "Seine River Cruise"],
     expertPick: true,
+    imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=600&q=80",
+    vibeTags: ["family", "iconic", "cultural"],
   },
   {
     id: 6,
@@ -262,6 +272,8 @@ const preResearchedTrips = [
     originalPrice: 1999,
     highlights: ["Sahara Camping", "Medina Tour", "Camel Trek"],
     expertPick: false,
+    imageUrl: "https://images.unsplash.com/photo-1489749798305-4fea3ae63d43?w=600&q=80",
+    vibeTags: ["adventure", "exotic", "cultural"],
   },
 ];
 
@@ -271,48 +283,78 @@ const influencerContent = [
     title: "My Top 10 Hidden Cafes in Bali",
     category: "Food & Drink",
     creator: "@wanderlust_sarah",
+    creatorName: "Sarah Mitchell",
     followers: "125K",
     platform: "instagram",
+    imageUrl: "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600&q=80",
+    avatarUrl: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&q=80",
+    destination: "Bali, Indonesia",
+    engagementRate: "4.8%",
   },
   {
     id: 2,
     title: "Ultimate Tokyo Street Food Guide",
     category: "Destinations",
     creator: "@nomadic_mike",
+    creatorName: "Mike Chen",
     followers: "89K",
     platform: "youtube",
+    imageUrl: "https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=600&q=80",
+    avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80",
+    destination: "Tokyo, Japan",
+    engagementRate: "6.2%",
   },
   {
     id: 3,
     title: "Budget Travel Hacks That Actually Work",
     category: "Tips",
     creator: "@thriftytraveler",
+    creatorName: "Emma Rodriguez",
     followers: "250K",
     platform: "tiktok",
+    imageUrl: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80",
+    avatarUrl: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&q=80",
+    destination: "Multiple",
+    engagementRate: "8.5%",
   },
   {
     id: 4,
     title: "Romance in Paris: Local's Guide",
     category: "Romantic",
     creator: "@couples_abroad",
+    creatorName: "Alex & Jordan",
     followers: "180K",
     platform: "instagram",
+    imageUrl: "https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=600&q=80",
+    avatarUrl: "https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=100&q=80",
+    destination: "Paris, France",
+    engagementRate: "5.3%",
   },
   {
     id: 5,
     title: "Best Sunset Spots in Santorini",
     category: "Photography",
     creator: "@golden_hour_jen",
+    creatorName: "Jennifer Wu",
     followers: "95K",
     platform: "instagram",
+    imageUrl: "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=600&q=80",
+    avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&q=80",
+    destination: "Santorini, Greece",
+    engagementRate: "7.1%",
   },
   {
     id: 6,
     title: "How I Plan Corporate Retreats",
     category: "Business",
     creator: "@eventpro_lisa",
+    creatorName: "Lisa Thompson",
     followers: "45K",
     platform: "linkedin",
+    imageUrl: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&q=80",
+    avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&q=80",
+    destination: "Corporate",
+    engagementRate: "3.9%",
   },
 ];
 
@@ -1684,59 +1726,83 @@ export default function DiscoverPage() {
                       key={trip.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
+                      whileHover={{ y: -4 }}
+                      transition={{ duration: 0.2, delay: idx * 0.05 }}
                     >
                       <Card
-                        className="hover-elevate overflow-hidden group"
+                        className="hover-elevate overflow-hidden group h-full"
                         data-testid={`card-trip-${trip.id}`}
                       >
-                        <CardContent className="p-0">
-                          <div className="relative h-48 bg-gradient-to-br from-muted to-muted/50">
-                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                              <MapPin className="w-12 h-12" />
-                            </div>
+                        <CardContent className="p-0 flex flex-col h-full">
+                          <div className="relative h-48 overflow-hidden">
+                            {trip.imageUrl ? (
+                              <img
+                                src={trip.imageUrl}
+                                alt={trip.title}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                                <MapPin className="h-12 w-12 text-primary/30" />
+                              </div>
+                            )}
+                            
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                             
                             <button
                               onClick={() => toggleFavorite(trip.id)}
-                              className="absolute top-3 right-3 p-2 bg-background/90 rounded-full shadow-sm"
+                              className="absolute top-3 right-3 p-2 bg-white/90 rounded-full shadow-sm hover:bg-white transition-colors"
                               data-testid={`button-favorite-${trip.id}`}
                             >
                               <Heart
                                 className={cn(
                                   "w-5 h-5",
                                   favorites.includes(trip.id)
-                                    ? "fill-primary text-primary"
-                                    : "text-muted-foreground"
+                                    ? "fill-[#FF385C] text-[#FF385C]"
+                                    : "text-gray-600"
                                 )}
                               />
                             </button>
 
                             {trip.expertPick && (
                               <div className="absolute top-3 left-3">
-                                <Badge>
-                                  <Star className="w-3 h-3 mr-1 fill-current" />
+                                <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 font-semibold">
+                                  <Trophy className="w-3 h-3 mr-1" />
                                   Expert Pick
                                 </Badge>
                               </div>
                             )}
 
-                            <div className="absolute bottom-3 right-3 bg-background px-3 py-1 rounded-lg shadow-sm">
-                              <span className="text-xs text-muted-foreground line-through">
-                                ${trip.originalPrice}
-                              </span>
-                              <span className="ml-1 font-bold">
-                                ${trip.price}
-                              </span>
+                            <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                              <div className="flex flex-wrap gap-1">
+                                {trip.vibeTags?.slice(0, 2).map((tag) => (
+                                  <Badge 
+                                    key={tag} 
+                                    variant="secondary" 
+                                    className="text-xs bg-white/90 text-gray-700 border-0"
+                                  >
+                                    {tag}
+                                  </Badge>
+                                ))}
+                              </div>
+                              <div className="bg-white px-3 py-1.5 rounded-lg shadow-md">
+                                <span className="text-xs text-gray-400 line-through block">
+                                  ${trip.originalPrice}
+                                </span>
+                                <span className="font-bold text-lg text-[#FF385C]">
+                                  ${trip.price}
+                                </span>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="p-4">
+                          <div className="p-4 flex-1 flex flex-col">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                              <MapPin className="w-4 h-4" />
-                              <span>{trip.destination}</span>
+                              <MapPin className="w-4 h-4 text-[#FF385C]" />
+                              <span className="font-medium">{trip.destination}</span>
                             </div>
 
-                            <h3 className="font-semibold mb-3 group-hover:text-primary transition-colors">
+                            <h3 className="font-semibold text-lg mb-3 group-hover:text-[#FF385C] transition-colors line-clamp-2">
                               {trip.title}
                             </h3>
 
@@ -1755,20 +1821,21 @@ export default function DiscoverPage() {
                               </span>
                             </div>
 
-                            <div className="flex flex-wrap gap-1 mb-4">
+                            <div className="flex flex-wrap gap-1 mb-4 flex-1">
                               {trip.highlights.slice(0, 2).map((h) => (
-                                <Badge key={h} variant="secondary" className="text-xs">
+                                <Badge key={h} variant="outline" className="text-xs">
+                                  <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
                                   {h}
                                 </Badge>
                               ))}
                               {trip.highlights.length > 2 && (
-                                <Badge variant="secondary" className="text-xs">
+                                <Badge variant="outline" className="text-xs">
                                   +{trip.highlights.length - 2} more
                                 </Badge>
                               )}
                             </div>
 
-                            <Button className="w-full" data-testid={`button-view-trip-${trip.id}`}>
+                            <Button className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-trip-${trip.id}`}>
                               View Details
                               <ArrowRight className="w-4 h-4 ml-2" />
                             </Button>
@@ -1802,7 +1869,13 @@ export default function DiscoverPage() {
               {/* Influencer Curated Content Tab */}
               <TabsContent value="articles">
                 <div className="mb-6">
-                  <h2 className="text-xl font-semibold mb-2">Curated by Travel Creators</h2>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Creator Spotlight
+                    </Badge>
+                  </div>
+                  <h2 className="text-2xl font-bold mb-2">Curated by Travel Creators</h2>
                   <p className="text-muted-foreground">Discover authentic recommendations from verified travel influencers and local experts.</p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1811,39 +1884,90 @@ export default function DiscoverPage() {
                       key={content.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.05 }}
+                      whileHover={{ y: -4 }}
+                      transition={{ duration: 0.2, delay: idx * 0.05 }}
                     >
                       <Card
-                        className="hover-elevate overflow-hidden cursor-pointer group"
+                        className="hover-elevate overflow-hidden cursor-pointer group h-full"
                         data-testid={`card-influencer-${content.id}`}
                       >
-                        <CardContent className="p-0">
-                          <div className="h-36 bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center relative">
-                            <div className="absolute top-2 right-2">
-                              <Badge variant="secondary" className="text-xs bg-white/90">
-                                {content.platform === "instagram" && "📸 Instagram"}
-                                {content.platform === "youtube" && "🎬 YouTube"}
-                                {content.platform === "tiktok" && "🎵 TikTok"}
-                                {content.platform === "linkedin" && "💼 LinkedIn"}
+                        <CardContent className="p-0 flex flex-col h-full">
+                          <div className="relative h-44 overflow-hidden">
+                            {content.imageUrl ? (
+                              <img
+                                src={content.imageUrl}
+                                alt={content.title}
+                                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-purple-500/20 to-pink-500/10 flex items-center justify-center">
+                                <Camera className="h-12 w-12 text-purple-500/30" />
+                              </div>
+                            )}
+                            
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                            
+                            <div className="absolute top-3 right-3">
+                              <Badge 
+                                className={cn(
+                                  "text-xs border-0 font-medium",
+                                  content.platform === "instagram" && "bg-gradient-to-r from-purple-500 to-pink-500 text-white",
+                                  content.platform === "youtube" && "bg-red-500 text-white",
+                                  content.platform === "tiktok" && "bg-black text-white",
+                                  content.platform === "linkedin" && "bg-blue-600 text-white"
+                                )}
+                              >
+                                {content.platform === "instagram" && "Instagram"}
+                                {content.platform === "youtube" && "YouTube"}
+                                {content.platform === "tiktok" && "TikTok"}
+                                {content.platform === "linkedin" && "LinkedIn"}
                               </Badge>
                             </div>
-                            <Users className="w-10 h-10 text-primary/40" />
+
+                            <div className="absolute bottom-3 left-3 right-3">
+                              <div className="flex items-center gap-3">
+                                <img
+                                  src={content.avatarUrl}
+                                  alt={content.creatorName}
+                                  className="w-10 h-10 rounded-full border-2 border-white object-cover"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-white font-semibold text-sm truncate">{content.creatorName}</p>
+                                  <p className="text-white/70 text-xs">{content.creator}</p>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="p-4">
+                          
+                          <div className="p-4 flex-1 flex flex-col">
                             <div className="flex items-center gap-2 mb-2">
                               <Badge variant="outline" className="text-xs">
                                 {content.category}
                               </Badge>
-                              <Badge className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-200">
-                                Verified Creator
+                              <Badge className="text-xs bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Verified
                               </Badge>
                             </div>
-                            <h3 className="font-semibold mb-2 group-hover:text-primary transition-colors line-clamp-2">
+                            
+                            <h3 className="font-semibold text-base mb-2 group-hover:text-[#FF385C] transition-colors line-clamp-2 flex-1">
                               {content.title}
                             </h3>
-                            <div className="flex items-center justify-between text-sm text-muted-foreground">
-                              <span className="font-medium text-foreground">{content.creator}</span>
-                              <span>{content.followers} followers</span>
+                            
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
+                              <MapPin className="w-4 h-4 text-[#FF385C]" />
+                              <span>{content.destination}</span>
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-sm pt-3 border-t">
+                              <span className="flex items-center gap-1 text-muted-foreground">
+                                <Users className="w-4 h-4" />
+                                {content.followers}
+                              </span>
+                              <span className="flex items-center gap-1 text-emerald-600 font-medium">
+                                <TrendingUp className="w-4 h-4" />
+                                {content.engagementRate}
+                              </span>
                             </div>
                           </div>
                         </CardContent>
@@ -1853,9 +1977,9 @@ export default function DiscoverPage() {
                 </div>
 
                 <div className="text-center mt-8">
-                  <Button variant="outline" data-testid="button-view-all-creators">
+                  <Button variant="outline" className="px-8" data-testid="button-view-all-creators">
                     View All Creators
-                    <ChevronRight className="w-4 h-4 ml-1" />
+                    <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
               </TabsContent>
