@@ -138,7 +138,7 @@ const navItems = [
         title: "AI & EXPERTS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Find Local Experts", href: "/vendors", icon: Users, description: "Connect with destination experts" },
+          { name: "Find Local Service Providers", href: "/vendors", icon: Users, description: "Connect with destination experts" },
           { name: "Executive Assistant", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
         ],
       },
