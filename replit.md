@@ -6,7 +6,19 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
-## Recent Changes (January 2026)
+## Recent Changes (February 2026)
+- **Sign-In Modal System**: Implemented a benefits-first sign-in modal across 10+ pages using `useSignInModal()` hook from `SignInModalContext`. Shows platform benefits before redirecting to authentication.
+- **TravelPulse 7-Day Trend Data**: Updated TravelPulse to display 7-day trend data with "(7d)" labels in UI and AI prompts. Metrics include `growthPercent`, `mentionCount`, and `trendingScore`.
+- **Discover Page Card Redesigns**: 
+  - Trip Packages: Full-bleed destination images, gradient overlays, hover zoom animations, Expert Pick badges, vibe tags, strikethrough pricing, highlight checkmarks
+  - Influencer Curated: Full-bleed content images, platform-specific colored badges (Instagram gradient, YouTube red, TikTok black, LinkedIn blue), creator avatar overlays, verified badges, engagement rates
+  - Browse Services: Provider face avatars with consistent hash-based generation, verified badges, provider names displayed on cards
+- **Provider Faces on Service Cards**: Each service card displays a professional provider avatar (face photo), name, and verification badge, generated consistently from the service ID
+- **Navigation Label Updates**: "Find Local Experts" renamed to "Find Local Service Providers"; "Experts" renamed to "Local Experts" in the main navigation
+- **Partner With Us Page Updates**: Added Platform Benefits section with 6 benefits (Flexible Schedule, AI-Powered Tools, Global Clientele, Dedicated Support, Dashboard, Competitive Earnings). Added "Partner With Us" link under OVERVIEW section, removed BENEFITS dropdown
+- **TravelPulse Duplicate Fix**: Cleaned up duplicate city entries (Sydney, Tokyo) in the database
+
+## Previous Changes (January 2026)
 - **Smart Sequencing Integration in Itinerary Optimizer**: Integrated the 10+ wellness sequencing rules directly into the AI optimization flow:
   - AI-generated variants now have activities reordered based on intelligent wellness rules (spa after adventure, cultural activities in morning, walk after heavy meals, etc.)
   - Enhanced metrics calculated for each variant: balance_score, wellness_score, pace_score, diversity_score, sequencing_score
