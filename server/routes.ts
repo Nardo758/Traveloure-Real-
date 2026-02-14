@@ -9897,8 +9897,14 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
+      const [existing] = await db.select().from(temporalAnchors).where(eq(temporalAnchors.id, req.params.id));
+      if (!existing) return res.status(404).json({ message: "Anchor not found" });
+      const trip = await storage.getTrip(existing.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
       const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
-      if (!updated) return res.status(404).json({ message: "Anchor not found" });
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update anchor", error: error.message });
@@ -9907,6 +9913,13 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
+      const [existing] = await db.select().from(temporalAnchors).where(eq(temporalAnchors.id, req.params.id));
+      if (!existing) return res.status(404).json({ message: "Anchor not found" });
+      const trip = await storage.getTrip(existing.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
       await storage.deleteTemporalAnchor(req.params.id);
       res.status(204).send();
     } catch (error: any) {
