@@ -36,6 +36,40 @@ interface VenueResult {
   source: string;
 }
 
+const TAB_FALLBACK_CONFIG: Record<string, { type: string; keyword?: string; label: string }> = {
+  venues: { type: 'venue', keyword: 'event venues', label: 'Venues' },
+  venue: { type: 'venue', keyword: 'event venues', label: 'Venues' },
+  dining: { type: 'restaurant', label: 'Restaurants' },
+  nightlife: { type: 'venue', keyword: 'nightlife bars clubs', label: 'Nightlife' },
+  sports: { type: 'venue', keyword: 'sports recreation', label: 'Sports & Recreation' },
+  spa: { type: 'venue', keyword: 'spa wellness massage', label: 'Spa & Wellness' },
+  'spa-wellness': { type: 'venue', keyword: 'spa wellness retreat', label: 'Spa & Wellness' },
+  shopping: { type: 'venue', keyword: 'shopping boutiques', label: 'Shopping' },
+  entertainment: { type: 'venue', keyword: 'entertainment live shows', label: 'Entertainment' },
+  catering: { type: 'venue', keyword: 'catering services', label: 'Catering' },
+  decorations: { type: 'venue', keyword: 'event decorations party supplies', label: 'Decorations' },
+  photography: { type: 'venue', keyword: 'photography studios photographers', label: 'Photography' },
+  wellness: { type: 'venue', keyword: 'wellness retreat yoga', label: 'Wellness' },
+  rentals: { type: 'venue', keyword: 'party rentals event supplies', label: 'Rentals' },
+  av: { type: 'venue', keyword: 'audio visual equipment rental', label: 'A/V Equipment' },
+  destinations: { type: 'venue', keyword: 'tourist attractions things to do', label: 'Destinations' },
+  locations: { type: 'venue', keyword: 'romantic scenic locations', label: 'Locations' },
+  'celebration-dining': { type: 'restaurant', keyword: 'fine dining celebration', label: 'Celebration Dining' },
+  'post-proposal': { type: 'venue', keyword: 'romantic activities couples', label: 'Post-Proposal Activities' },
+  'welcome-events': { type: 'venue', keyword: 'welcome party event venues', label: 'Welcome Events' },
+  'local-experiences': { type: 'venue', keyword: 'local experiences tours', label: 'Local Experiences' },
+  'daytime-activities': { type: 'venue', keyword: 'daytime activities attractions', label: 'Daytime Activities' },
+  'party-services': { type: 'venue', keyword: 'party planning services', label: 'Party Services' },
+  experiences: { type: 'venue', keyword: 'couple experiences romantic activities', label: 'Experiences' },
+  'special-touches': { type: 'venue', keyword: 'gift shops florists luxury gifts', label: 'Special Touches' },
+  'itinerary-builder': { type: 'venue', keyword: 'tourist attractions things to do', label: 'Points of Interest' },
+  accommodations: { type: 'hotel', label: 'Hotels' },
+  'guest-accommodations': { type: 'hotel', label: 'Hotels' },
+  transportation: { type: 'venue', keyword: 'transportation services', label: 'Transportation' },
+  rehearsal: { type: 'restaurant', keyword: 'private dining rehearsal dinner', label: 'Rehearsal Venues' },
+  'team-activities': { type: 'venue', keyword: 'team building activities', label: 'Team Activities' },
+};
+
 const VENUE_TYPE_CONFIG: Record<string, Record<string, { type: string; keyword?: string; label: string }>> = {
   wedding: {
     venues: { type: 'venue', keyword: 'wedding venues', label: 'Wedding Venues' },
@@ -86,7 +120,7 @@ export function VenueSearchPanel({
   const [internalMinRating, setInternalMinRating] = useState<string>('0');
   const [internalKeyword, setInternalKeyword] = useState<string>('');
 
-  const venueConfig = VENUE_TYPE_CONFIG[template]?.[tabId];
+  const venueConfig = VENUE_TYPE_CONFIG[template]?.[tabId] || TAB_FALLBACK_CONFIG[tabId];
   const isWeddingVendorsTab = template === 'wedding' && tabId === 'vendors';
   
   // Use external values if provided, otherwise use internal state
