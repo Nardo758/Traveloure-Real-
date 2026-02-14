@@ -2579,7 +2579,15 @@ export default function ExperienceTemplatePage() {
           {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "logistics" && (
             (activeTab === "venues" || activeTab === "venue" || activeTab === "vendors" || 
              activeTab === "guest-accommodations" || activeTab === "rehearsal" || 
-             activeTab === "team-activities" || activeTab === "nightlife" || activeTab === "dining") && (
+             activeTab === "team-activities" || activeTab === "nightlife" || activeTab === "dining" ||
+             activeTab === "sports" || activeTab === "spa" || activeTab === "spa-wellness" ||
+             activeTab === "shopping" || activeTab === "entertainment" || activeTab === "catering" ||
+             activeTab === "decorations" || activeTab === "photography" || activeTab === "wellness" ||
+             activeTab === "rentals" || activeTab === "av" || activeTab === "destinations" ||
+             activeTab === "locations" || activeTab === "celebration-dining" || activeTab === "post-proposal" ||
+             activeTab === "welcome-events" || activeTab === "local-experiences" || activeTab === "daytime-activities" ||
+             activeTab === "party-services" || activeTab === "experiences" || activeTab === "special-touches" ||
+             activeTab === "itinerary-builder" || activeTab === "accommodations") && (
               <div className="mb-6">
                 <VenueSearchPanel
                   template={slug || ''}
