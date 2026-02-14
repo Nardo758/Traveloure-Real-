@@ -20,6 +20,17 @@ export const vendorAssignmentStatusEnum = ["pending", "confirmed", "completed", 
 export const applicationStatusEnum = ["pending", "approved", "rejected", "deleted"] as const;
 export const serviceFormStatusEnum = ["pending", "approved", "rejected"] as const;
 
+// Logistics enums
+export const temporalAnchorTypeEnum = [
+  "flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout",
+  "pre_booked_tour", "ceremony_time", "rehearsal_time", "proposal_moment",
+  "meeting_time", "hair_makeup_start", "reception_start", "photographer_arrival",
+  "dinner_reservation", "custom"
+] as const;
+export const energyTypeEnum = ["physical", "mental", "social", "mixed"] as const;
+export const peakTimingEnum = ["morning", "afternoon", "evening", "night", "flexible"] as const;
+export const attendanceRequirementEnum = ["all", "subset", "optional"] as const;
+
 // === Tables ===
 
 export const touristPlacesSearches = pgTable("tourist_places_searches", {
@@ -2445,6 +2456,13 @@ export const tripParticipants = pgTable("trip_participants", {
   emergencyContactPhone: varchar("emergency_contact_phone", { length: 50 }),
   emergencyContactRelation: varchar("emergency_contact_relation", { length: 50 }),
   
+  // Logistics - group coordination
+  arrivalDatetime: timestamp("arrival_datetime"), // when this participant arrives
+  departureDatetime: timestamp("departure_datetime"), // when this participant departs
+  mobilityLevel: varchar("mobility_level", { length: 20 }).default("high"), // high, medium, low
+  mandatoryEventIds: jsonb("mandatory_event_ids").default([]), // itinerary item IDs they MUST attend
+  optionalEventIds: jsonb("optional_event_ids").default([]), // itinerary item IDs they CAN attend
+
   // Metadata
   metadata: jsonb("metadata").default({}),
   createdAt: timestamp("created_at").defaultNow(),
@@ -2607,7 +2625,14 @@ export const itineraryItems = pgTable("itinerary_items", {
   participantIds: jsonb("participant_ids").default([]), // IDs of participants attending
   minParticipants: integer("min_participants"),
   maxParticipants: integer("max_participants"),
-  
+
+  // Logistics - energy and scheduling
+  energyCost: integer("energy_cost").default(20), // 0-100 scale (complements energyLevel varchar)
+  energyType: varchar("energy_type", { length: 20 }), // physical, mental, social, mixed
+  attendanceRequirement: varchar("attendance_requirement", { length: 20 }).default("optional"), // all, subset, optional
+  conflictsWith: jsonb("conflicts_with").default([]), // itinerary item IDs that can't overlap
+  peakTimingPreference: varchar("peak_timing_preference", { length: 20 }), // morning, afternoon, evening, night, flexible
+
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
@@ -2620,11 +2645,93 @@ export const itineraryItems = pgTable("itinerary_items", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Temporal Anchors - Fixed time commitments that constrain all other scheduling
+export const temporalAnchors = pgTable("temporal_anchors", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  userExperienceId: varchar("user_experience_id").references(() => userExperiences.id, { onDelete: "cascade" }),
+
+  // Anchor details
+  anchorType: varchar("anchor_type", { length: 50 }).notNull(), // temporalAnchorTypeEnum
+  anchorDatetime: timestamp("anchor_datetime").notNull(),
+  bufferBefore: integer("buffer_before").default(0), // minutes before anchor that must be kept free
+  bufferAfter: integer("buffer_after").default(0), // minutes after anchor that must be kept free
+
+  // Location
+  location: varchar("location", { length: 255 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  radiusKm: integer("radius_km").default(5),
+
+  // Constraints
+  mustReturnToHotel: boolean("must_return_to_hotel").default(false),
+  isImmovable: boolean("is_immovable").default(false),
+  dependsOnItemIds: jsonb("depends_on_item_ids").default([]), // itinerary item IDs this anchor depends on
+
+  description: varchar("description", { length: 500 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Day Boundaries - Per-day constraints like hotel relocations, end-of-day limits
+export const dayBoundaries = pgTable("day_boundaries", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  dayNumber: integer("day_number").notNull(),
+
+  // End-of-day constraints
+  endLocation: varchar("end_location", { length: 255 }),
+  mustReturnToHotel: boolean("must_return_to_hotel").default(false),
+  latestActivityEnd: varchar("latest_activity_end", { length: 10 }), // "22:00"
+  reasonForConstraint: varchar("reason_for_constraint", { length: 500 }),
+
+  // Relocation details
+  relocationRequired: boolean("relocation_required").default(false),
+  transitDurationMinutes: integer("transit_duration_minutes").default(0),
+  earliestActivityStart: varchar("earliest_activity_start", { length: 10 }), // "13:00"
+  nextDayHotelLocation: varchar("next_day_hotel_location", { length: 255 }),
+
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Energy Tracking - Per-day energy budget to prevent burnout across multi-day trips
+export const energyTracking = pgTable("energy_tracking", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  dayNumber: integer("day_number").notNull(),
+
+  // Energy budget
+  startingEnergy: integer("starting_energy").default(100), // 0-100 scale
+  activityDepletion: integer("activity_depletion").default(0), // total energy used
+  endingEnergy: integer("ending_energy").default(100), // remaining energy
+
+  // Recovery
+  recoveryNeeded: boolean("recovery_needed").default(false),
+  recoveryReason: varchar("recovery_reason", { length: 500 }),
+  energyBreakdown: jsonb("energy_breakdown").default([]), // [{itemId, energyCost, reason}]
+
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Logistics Relations
+export const temporalAnchorsRelations = relations(temporalAnchors, ({ one }) => ({
+  trip: one(trips, { fields: [temporalAnchors.tripId], references: [trips.id] }),
+  userExperience: one(userExperiences, { fields: [temporalAnchors.userExperienceId], references: [userExperiences.id] }),
+}));
+
+export const dayBoundariesRelations = relations(dayBoundaries, ({ one }) => ({
+  trip: one(trips, { fields: [dayBoundaries.tripId], references: [trips.id] }),
+}));
+
+export const energyTrackingRelations = relations(energyTracking, ({ one }) => ({
+  trip: one(trips, { fields: [energyTracking.tripId], references: [trips.id] }),
+}));
+
 // Emergency Contacts - Per-trip emergency information
 export const tripEmergencyContacts = pgTable("trip_emergency_contacts", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
-  
+
   // Contact type
   contactType: varchar("contact_type", { length: 50 }).notNull(), // local_expert, embassy, hospital, police, hotel, airline, insurance, custom
   
@@ -4035,3 +4142,15 @@ export type ServiceGapAnalysis = typeof serviceGapAnalysis.$inferSelect;
 export type InsertServiceGapAnalysis = z.infer<typeof insertServiceGapAnalysisSchema>;
 export type SeasonalOpportunity = typeof seasonalOpportunities.$inferSelect;
 export type InsertSeasonalOpportunity = z.infer<typeof insertSeasonalOpportunitySchema>;
+
+// Logistics schemas
+export const insertTemporalAnchorSchema = createInsertSchema(temporalAnchors).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDayBoundarySchema = createInsertSchema(dayBoundaries).omit({ id: true, createdAt: true });
+export const insertEnergyTrackingSchema = createInsertSchema(energyTracking).omit({ id: true, createdAt: true });
+
+export type TemporalAnchor = typeof temporalAnchors.$inferSelect;
+export type InsertTemporalAnchor = z.infer<typeof insertTemporalAnchorSchema>;
+export type DayBoundary = typeof dayBoundaries.$inferSelect;
+export type InsertDayBoundary = z.infer<typeof insertDayBoundarySchema>;
+export type EnergyTracking = typeof energyTracking.$inferSelect;
+export type InsertEnergyTracking = z.infer<typeof insertEnergyTrackingSchema>;
