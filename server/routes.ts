@@ -14,7 +14,9 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems,
-  insertCustomVenueSchema, insertGeneratedItinerarySchema
+  insertCustomVenueSchema, insertGeneratedItinerarySchema,
+  insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
+  temporalAnchors, itineraryItems
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
@@ -9850,12 +9852,208 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user?.claims?.metadata?.id) {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      
+
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
       const details = await revenueTrackingService.getExpertRevenueDetails(user.claims.metadata.id);
       res.json(details);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get expert earnings details", error: error.message });
+    }
+  });
+
+  // === Logistics: Temporal Anchors ===
+
+  app.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const anchors = await storage.getTemporalAnchors(req.params.tripId);
+      res.json(anchors);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get temporal anchors", error: error.message });
+    }
+  });
+
+  app.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const input = insertTemporalAnchorSchema.parse({ ...req.body, tripId: req.params.tripId });
+      const anchor = await storage.createTemporalAnchor(input);
+      res.status(201).json(anchor);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ message: "Anchor not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update anchor", error: error.message });
+    }
+  });
+
+  app.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTemporalAnchor(req.params.id);
+      res.status(204).send();
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete anchor", error: error.message });
+    }
+  });
+
+  // === Logistics: Day Boundaries ===
+
+  app.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const boundaries = await storage.getDayBoundaries(req.params.tripId);
+      res.json(boundaries);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get day boundaries", error: error.message });
+    }
+  });
+
+  app.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const input = insertDayBoundarySchema.parse({ ...req.body, tripId: req.params.tripId });
+      const boundary = await storage.createDayBoundary(input);
+      res.status(201).json(boundary);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // === Logistics: Schedule Validation ===
+
+  app.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const anchors = await storage.getTemporalAnchors(req.params.tripId);
+      const boundaries = await storage.getDayBoundaries(req.params.tripId);
+
+      // Check for conflicts: activities overlapping anchor buffer zones
+      const conflicts: Array<{ anchorId: string; anchorType: string; conflict: string }> = [];
+
+      for (const anchor of anchors) {
+        const anchorTime = new Date(anchor.anchorDatetime).getTime();
+        const bufferStart = anchorTime - (anchor.bufferBefore || 0) * 60000;
+        const bufferEnd = anchorTime + (anchor.bufferAfter || 0) * 60000;
+
+        // Check against proposed items in the request body
+        const proposedItems = req.body.items || [];
+        for (const item of proposedItems) {
+          if (item.startTime && item.dayNumber) {
+            const itemStart = new Date(`${item.date || ''}T${item.startTime}`).getTime();
+            const itemEnd = item.endTime ? new Date(`${item.date || ''}T${item.endTime}`).getTime() : itemStart + (item.durationMinutes || 60) * 60000;
+
+            if (itemStart < bufferEnd && itemEnd > bufferStart) {
+              conflicts.push({
+                anchorId: anchor.id,
+                anchorType: anchor.anchorType,
+                conflict: `Activity "${item.title}" overlaps with ${anchor.anchorType} buffer zone (${anchor.description || ''})`,
+              });
+            }
+          }
+        }
+      }
+
+      res.json({
+        valid: conflicts.length === 0,
+        conflicts,
+        anchorsChecked: anchors.length,
+        boundariesChecked: boundaries.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to validate schedule", error: error.message });
+    }
+  });
+
+  // === Logistics: Energy Calculation ===
+
+  app.post("/api/trips/:tripId/calculate-energy", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      // Get all itinerary items for the trip grouped by day
+      const items = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, req.params.tripId));
+
+      const dayMap = new Map<number, typeof items>();
+      for (const item of items) {
+        const day = item.dayNumber;
+        if (!dayMap.has(day)) dayMap.set(day, []);
+        dayMap.get(day)!.push(item);
+      }
+
+      const energyByDay: Array<{ dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; breakdown: Array<{ itemId: string; title: string; energyCost: number }> }> = [];
+
+      for (const [dayNumber, dayItems] of Array.from(dayMap)) {
+        let depletion = 0;
+        const breakdown: Array<{ itemId: string; title: string; energyCost: number }> = [];
+
+        for (const item of dayItems) {
+          const cost = item.energyCost || 20;
+          depletion += cost;
+          breakdown.push({ itemId: item.id, title: item.title, energyCost: cost });
+        }
+
+        const startingEnergy = 100;
+        const endingEnergy = Math.max(0, startingEnergy - depletion);
+
+        energyByDay.push({ dayNumber, startingEnergy, activityDepletion: depletion, endingEnergy, breakdown });
+
+        // Save to database
+        await storage.saveEnergyTracking({
+          tripId: req.params.tripId,
+          dayNumber,
+          startingEnergy,
+          activityDepletion: depletion,
+          endingEnergy,
+          recoveryNeeded: endingEnergy < 20,
+          recoveryReason: endingEnergy < 20 ? `Energy critically low (${endingEnergy}%) - consider lighter activities` : null,
+          energyBreakdown: breakdown,
+        });
+      }
+
+      res.json({
+        tripId: req.params.tripId,
+        totalDays: energyByDay.length,
+        energyByDay,
+        warnings: energyByDay.filter(d => d.endingEnergy < 30).map(d => `Day ${d.dayNumber}: energy drops to ${d.endingEnergy}%`),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to calculate energy", error: error.message });
     }
   });
 }
