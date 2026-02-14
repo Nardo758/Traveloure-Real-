@@ -151,7 +151,7 @@ const navItems = [
       },
     ],
   },
-  { name: "Experts", href: "/experts" },
+  { name: "Local Experts", href: "/experts" },
   { name: "Contact", href: "/contact" },
 ];
 
