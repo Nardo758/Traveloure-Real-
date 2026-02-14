@@ -66,7 +66,11 @@ import {
   type ProviderEarning, type InsertProviderEarning,
   type ProviderPayout, type InsertProviderPayout,
   type PlatformRevenue, type InsertPlatformRevenue,
-  type DailyRevenueSummary, type InsertDailyRevenueSummary
+  type DailyRevenueSummary, type InsertDailyRevenueSummary,
+  temporalAnchors, dayBoundaries, energyTracking,
+  type TemporalAnchor, type InsertTemporalAnchor,
+  type DayBoundary, type InsertDayBoundary,
+  type EnergyTracking, type InsertEnergyTracking,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -409,6 +413,20 @@ export interface IStorage {
   // Daily Revenue Summary
   getDailyRevenueSummary(date: string): Promise<DailyRevenueSummary | undefined>;
   updateDailyRevenueSummary(date: string, updates: Partial<InsertDailyRevenueSummary>): Promise<DailyRevenueSummary>;
+
+  // Logistics - Temporal Anchors
+  getTemporalAnchors(tripId: string): Promise<TemporalAnchor[]>;
+  createTemporalAnchor(anchor: InsertTemporalAnchor): Promise<TemporalAnchor>;
+  updateTemporalAnchor(id: string, updates: Partial<InsertTemporalAnchor>): Promise<TemporalAnchor | undefined>;
+  deleteTemporalAnchor(id: string): Promise<void>;
+
+  // Logistics - Day Boundaries
+  getDayBoundaries(tripId: string): Promise<DayBoundary[]>;
+  createDayBoundary(boundary: InsertDayBoundary): Promise<DayBoundary>;
+
+  // Logistics - Energy Tracking
+  getEnergyTracking(tripId: string): Promise<EnergyTracking[]>;
+  saveEnergyTracking(entry: InsertEnergyTracking): Promise<EnergyTracking>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2884,6 +2902,45 @@ export class DatabaseStorage implements IStorage {
       flaggedCount: byStatus['flagged'] || 0,
       recentContent,
     };
+  }
+
+  // === Logistics: Temporal Anchors ===
+  async getTemporalAnchors(tripId: string): Promise<TemporalAnchor[]> {
+    return await db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, tripId));
+  }
+
+  async createTemporalAnchor(anchor: InsertTemporalAnchor): Promise<TemporalAnchor> {
+    const [created] = await db.insert(temporalAnchors).values(anchor).returning();
+    return created;
+  }
+
+  async updateTemporalAnchor(id: string, updates: Partial<InsertTemporalAnchor>): Promise<TemporalAnchor | undefined> {
+    const [updated] = await db.update(temporalAnchors).set({ ...updates, updatedAt: new Date() }).where(eq(temporalAnchors.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTemporalAnchor(id: string): Promise<void> {
+    await db.delete(temporalAnchors).where(eq(temporalAnchors.id, id));
+  }
+
+  // === Logistics: Day Boundaries ===
+  async getDayBoundaries(tripId: string): Promise<DayBoundary[]> {
+    return await db.select().from(dayBoundaries).where(eq(dayBoundaries.tripId, tripId));
+  }
+
+  async createDayBoundary(boundary: InsertDayBoundary): Promise<DayBoundary> {
+    const [created] = await db.insert(dayBoundaries).values(boundary).returning();
+    return created;
+  }
+
+  // === Logistics: Energy Tracking ===
+  async getEnergyTracking(tripId: string): Promise<EnergyTracking[]> {
+    return await db.select().from(energyTracking).where(eq(energyTracking.tripId, tripId));
+  }
+
+  async saveEnergyTracking(entry: InsertEnergyTracking): Promise<EnergyTracking> {
+    const [saved] = await db.insert(energyTracking).values(entry).returning();
+    return saved;
   }
 }
 
