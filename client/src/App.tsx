@@ -121,7 +121,7 @@ import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import { Loader2 } from "lucide-react";
 
-function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest }: any) {
+function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
@@ -141,6 +141,17 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, ...rest 
   if (!skipTermsCheck && user && (!user.termsAcceptedAt || !user.privacyAcceptedAt)) {
     window.location.href = "/accept-terms";
     return null;
+  }
+
+  // Check role-based access
+  if (requiredRole && user.role !== requiredRole && user.role !== "admin") {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
+        <p className="text-muted-foreground mb-4">You don't have permission to access this page.</p>
+        <a href="/dashboard"><button className="px-4 py-2 bg-primary text-white rounded-lg">Back to Dashboard</button></a>
+      </div>
+    );
   }
 
   return <Component {...rest} />;
@@ -196,13 +207,13 @@ function Router() {
         {() => <ProtectedRoute component={ItineraryComparisonPage} />}
       </Route>
       <Route path="/my-itinerary/:id">
-        <MyItineraryPage />
+        {() => <ProtectedRoute component={MyItineraryPage} />}
       </Route>
       <Route path="/bookings">
-        <MyBookingsPage />
+        {() => <ProtectedRoute component={MyBookingsPage} />}
       </Route>
       <Route path="/contracts/:id">
-        <ContractViewPage />
+        {() => <ProtectedRoute component={ContractViewPage} />}
       </Route>
       <Route path="/global-calendar">
         <Layout><GlobalCalendarPage /></Layout>
@@ -320,172 +331,172 @@ function Router() {
 
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
       <Route path="/expert/dashboard">
-        {() => <ProtectedRoute component={ExpertDashboard} />}
+        {() => <ProtectedRoute component={ExpertDashboard} requiredRole="expert" />}
       </Route>
       <Route path="/expert/ai-assistant">
-        {() => <ProtectedRoute component={ExpertAIAssistant} />}
+        {() => <ProtectedRoute component={ExpertAIAssistant} requiredRole="expert" />}
       </Route>
       <Route path="/expert/messages">
-        {() => <ProtectedRoute component={ExpertMessages} />}
+        {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients">
-        {() => <ProtectedRoute component={ExpertClients} />}
+        {() => <ProtectedRoute component={ExpertClients} requiredRole="expert" />}
       </Route>
       <Route path="/expert/bookings">
-        {() => <ProtectedRoute component={ExpertBookings} />}
+        {() => <ProtectedRoute component={ExpertBookings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services">
-        {() => <ProtectedRoute component={ExpertServices} />}
+        {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/new">
-        {() => <ProtectedRoute component={ServiceWizard} />}
+        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/templates">
-        {() => <ProtectedRoute component={ServiceTemplates} />}
+        {() => <ProtectedRoute component={ServiceTemplates} requiredRole="expert" />}
       </Route>
       <Route path="/expert/custom-services">
-        {() => <ProtectedRoute component={ExpertCustomServices} />}
+        {() => <ProtectedRoute component={ExpertCustomServices} requiredRole="expert" />}
       </Route>
       <Route path="/expert/earnings">
-        {() => <ProtectedRoute component={ExpertEarnings} />}
+        {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/performance">
-        {() => <ProtectedRoute component={ExpertPerformance} />}
+        {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
       </Route>
       <Route path="/expert/revenue-optimization">
-        {() => <ProtectedRoute component={ExpertRevenueOptimization} />}
+        {() => <ProtectedRoute component={ExpertRevenueOptimization} requiredRole="expert" />}
       </Route>
       <Route path="/expert/leaderboard">
-        {() => <ProtectedRoute component={ExpertLeaderboard} />}
+        {() => <ProtectedRoute component={ExpertLeaderboard} requiredRole="expert" />}
       </Route>
       <Route path="/expert/analytics">
-        {() => <ProtectedRoute component={ExpertAnalytics} />}
+        {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
       <Route path="/expert/templates">
-        {() => <ProtectedRoute component={ExpertTemplates} />}
+        {() => <ProtectedRoute component={ExpertTemplates} requiredRole="expert" />}
       </Route>
       <Route path="/expert/content-studio">
-        {() => <ProtectedRoute component={ExpertContentStudio} />}
+        {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/profile">
-        {() => <ProtectedRoute component={ExpertProfile} />}
+        {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
       </Route>
       <Route path="/expert/contract-categories">
-        {() => <ProtectedRoute component={ExpertContractCategories} />}
+        {() => <ProtectedRoute component={ExpertContractCategories} requiredRole="expert" />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
       <Route path="/ea/dashboard">
-        {() => <ProtectedRoute component={EADashboard} />}
+        {() => <ProtectedRoute component={EADashboard} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/executives">
-        {() => <ProtectedRoute component={EAExecutives} />}
+        {() => <ProtectedRoute component={EAExecutives} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/calendar">
-        {() => <ProtectedRoute component={EACalendar} />}
+        {() => <ProtectedRoute component={EACalendar} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/events">
-        {() => <ProtectedRoute component={EAEvents} />}
+        {() => <ProtectedRoute component={EAEvents} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/communications">
-        {() => <ProtectedRoute component={EACommunications} />}
+        {() => <ProtectedRoute component={EACommunications} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/ai-assistant">
-        {() => <ProtectedRoute component={EAAIAssistant} />}
+        {() => <ProtectedRoute component={EAAIAssistant} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/travel">
-        {() => <ProtectedRoute component={EATravel} />}
+        {() => <ProtectedRoute component={EATravel} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/venues">
-        {() => <ProtectedRoute component={EAVenues} />}
+        {() => <ProtectedRoute component={EAVenues} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/gifts">
-        {() => <ProtectedRoute component={EAGifts} />}
+        {() => <ProtectedRoute component={EAGifts} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/reports">
-        {() => <ProtectedRoute component={EAReports} />}
+        {() => <ProtectedRoute component={EAReports} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/profile">
-        {() => <ProtectedRoute component={EAProfile} />}
+        {() => <ProtectedRoute component={EAProfile} requiredRole="executive_assistant" />}
       </Route>
       <Route path="/ea/settings">
-        {() => <ProtectedRoute component={EASettings} />}
+        {() => <ProtectedRoute component={EASettings} requiredRole="executive_assistant" />}
       </Route>
 
       {/* Service Provider Dashboard Routes (use ProviderLayout - no global Layout) */}
       <Route path="/provider/dashboard">
-        {() => <ProtectedRoute component={ProviderDashboard} />}
+        {() => <ProtectedRoute component={ProviderDashboard} requiredRole="provider" />}
       </Route>
       <Route path="/provider/bookings">
-        {() => <ProtectedRoute component={ProviderBookings} />}
+        {() => <ProtectedRoute component={ProviderBookings} requiredRole="provider" />}
       </Route>
       <Route path="/provider/services">
-        {() => <ProtectedRoute component={ProviderServices} />}
+        {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
       </Route>
       <Route path="/provider/earnings">
-        {() => <ProtectedRoute component={ProviderEarnings} />}
+        {() => <ProtectedRoute component={ProviderEarnings} requiredRole="provider" />}
       </Route>
       <Route path="/provider/performance">
-        {() => <ProtectedRoute component={ProviderPerformance} />}
+        {() => <ProtectedRoute component={ProviderPerformance} requiredRole="provider" />}
       </Route>
       <Route path="/provider/calendar">
-        {() => <ProtectedRoute component={ProviderCalendar} />}
+        {() => <ProtectedRoute component={ProviderCalendar} requiredRole="provider" />}
       </Route>
       <Route path="/provider/profile">
-        {() => <ProtectedRoute component={ProviderProfile} />}
+        {() => <ProtectedRoute component={ProviderProfile} requiredRole="provider" />}
       </Route>
       <Route path="/provider/settings">
-        {() => <ProtectedRoute component={ProviderSettings} />}
+        {() => <ProtectedRoute component={ProviderSettings} requiredRole="provider" />}
       </Route>
       <Route path="/provider/resources">
-        {() => <ProtectedRoute component={ProviderResources} />}
+        {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
       </Route>
 
       {/* Admin Dashboard Routes (use AdminLayout - no global Layout) */}
       <Route path="/admin/dashboard">
-        {() => <ProtectedRoute component={AdminDashboard} />}
+        {() => <ProtectedRoute component={AdminDashboard} requiredRole="admin" />}
       </Route>
       <Route path="/admin/users">
-        {() => <ProtectedRoute component={AdminUsers} />}
+        {() => <ProtectedRoute component={AdminUsers} requiredRole="admin" />}
       </Route>
       <Route path="/admin/experts">
-        {() => <ProtectedRoute component={AdminExperts} />}
+        {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
       </Route>
       <Route path="/admin/providers">
-        {() => <ProtectedRoute component={AdminProviders} />}
+        {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
       </Route>
       <Route path="/admin/plans">
-        {() => <ProtectedRoute component={AdminPlans} />}
+        {() => <ProtectedRoute component={AdminPlans} requiredRole="admin" />}
       </Route>
       <Route path="/admin/revenue">
-        {() => <ProtectedRoute component={AdminRevenue} />}
+        {() => <ProtectedRoute component={AdminRevenue} requiredRole="admin" />}
       </Route>
       <Route path="/admin/analytics">
-        {() => <ProtectedRoute component={AdminAnalytics} />}
+        {() => <ProtectedRoute component={AdminAnalytics} requiredRole="admin" />}
       </Route>
       <Route path="/admin/categories">
-        {() => <ProtectedRoute component={AdminCategories} />}
+        {() => <ProtectedRoute component={AdminCategories} requiredRole="admin" />}
       </Route>
       <Route path="/admin/search">
-        {() => <ProtectedRoute component={AdminSearch} />}
+        {() => <ProtectedRoute component={AdminSearch} requiredRole="admin" />}
       </Route>
       <Route path="/admin/notifications">
-        {() => <ProtectedRoute component={AdminNotifications} />}
+        {() => <ProtectedRoute component={AdminNotifications} requiredRole="admin" />}
       </Route>
       <Route path="/admin/system">
-        {() => <ProtectedRoute component={AdminSystem} />}
+        {() => <ProtectedRoute component={AdminSystem} requiredRole="admin" />}
       </Route>
       <Route path="/admin/data">
-        {() => <ProtectedRoute component={AdminData} />}
+        {() => <ProtectedRoute component={AdminData} requiredRole="admin" />}
       </Route>
       <Route path="/admin/affiliate-partners">
-        {() => <ProtectedRoute component={AdminAffiliatePartners} />}
+        {() => <ProtectedRoute component={AdminAffiliatePartners} requiredRole="admin" />}
       </Route>
       <Route path="/admin/content-tracking">
-        {() => <ProtectedRoute component={AdminContentTracking} />}
+        {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
       </Route>
       <Route path="/admin/ai-costs">
-        {() => <ProtectedRoute component={AdminAICosts} />}
+        {() => <ProtectedRoute component={AdminAICosts} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

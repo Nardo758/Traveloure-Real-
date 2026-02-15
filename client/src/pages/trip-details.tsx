@@ -1,6 +1,7 @@
 import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
 import { useParams, Link } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star } from "lucide-react";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package } from "lucide-react";
+import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -190,6 +191,10 @@ export default function TripDetails() {
                     <TabsTrigger value="itinerary" data-testid="tab-itinerary">Itinerary</TabsTrigger>
                     <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
                     <TabsTrigger value="expert" data-testid="tab-expert">Ask an Expert</TabsTrigger>
+                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1">
+                      <Package className="w-3.5 h-3.5" />
+                      Logistics
+                    </TabsTrigger>
                   </TabsList>
 
                   <Button 
@@ -391,6 +396,32 @@ export default function TripDetails() {
                       )}
                     </div>
                   </div>
+                </TabsContent>
+
+                <TabsContent value="logistics" className="mt-0 space-y-6">
+                  {id && (
+                    <>
+                      <TripLogisticsDashboard
+                        tripId={id}
+                        tripName={trip?.title || trip?.destination || "Trip"}
+                        budget={typeof trip?.budget === 'number' ? trip.budget : 0}
+                        destination={trip?.destination || "destination"}
+                      />
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <TemporalAnchorManager tripId={id} />
+                        <ScheduleValidator tripId={id} />
+                      </div>
+                      <EnergyBudgetDisplay tripId={id} />
+                      <AnchorSuggestionsPanel tripId={id} />
+                      {trip?.eventType === "wedding" && (
+                        <WeddingAnchorPresets
+                          tripId={id}
+                          templateSlug="wedding"
+                          eventDate={trip.startDate ? new Date(trip.startDate).toISOString().slice(0, 10) : ""}
+                        />
+                      )}
+                    </>
+                  )}
                 </TabsContent>
               </div>
             </Tabs>

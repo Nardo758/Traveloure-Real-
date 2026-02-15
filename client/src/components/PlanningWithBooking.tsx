@@ -184,7 +184,7 @@ export default function PlanningWithBooking({
     setShowBookingModal(false);
     onClose(); // Close planning modal too
     // Optionally navigate to trips page
-    window.location.href = '/trips';
+    window.location.href = '/my-trips';
   };
 
   if (!isOpen) return null;

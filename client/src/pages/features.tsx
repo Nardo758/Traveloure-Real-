@@ -20,6 +20,13 @@ import {
   CheckCircle,
   Zap,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+
+function formatStat(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K+`;
+  return `${n}+`;
+}
 
 const mainFeatures = [
   {
@@ -93,14 +100,18 @@ const additionalFeatures = [
   },
 ];
 
-const stats = [
-  { value: "50K+", label: "Trips Planned" },
-  { value: "500+", label: "Local Experts" },
-  { value: "98%", label: "Satisfaction Rate" },
-  { value: "50+", label: "Countries" },
-];
-
 export default function FeaturesPage() {
+  const { data: platformStats } = useQuery<{
+    totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
+  }>({ queryKey: ["/api/platform/stats"] });
+
+  const stats = [
+    { value: platformStats ? formatStat(platformStats.totalTrips) : "0+", label: "Trips Planned" },
+    { value: platformStats ? formatStat(platformStats.totalExperts) : "0+", label: "Local Experts" },
+    { value: platformStats ? formatStat(platformStats.totalReviews) : "0+", label: "Reviews" },
+    { value: platformStats ? formatStat(platformStats.totalCountries) : "0+", label: "Countries" },
+  ];
+
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       {/* Hero Section */}

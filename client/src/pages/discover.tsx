@@ -839,6 +839,33 @@ export default function DiscoverPage() {
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
   });
+
+  // Trending destinations from TravelPulse (replaces hardcoded trip packages)
+  const { data: trendingCitiesData, isLoading: trendingLoading } = useQuery<{ cities: any[]; count: number }>({
+    queryKey: ["/api/travelpulse/cities"],
+  });
+
+  // Map trending cities to trip package format for the Trip Packages tab
+  const trendingTrips = useMemo(() => {
+    if (!trendingCitiesData?.cities?.length) return preResearchedTrips;
+    return trendingCitiesData.cities.map((city: any, idx: number) => ({
+      id: idx + 1,
+      title: `Discover ${city.cityName}`,
+      destination: `${city.cityName}, ${city.country}`,
+      duration: city.aiOptimalDuration || "5 days",
+      travelers: "2-4",
+      category: city.vibeTags?.[0] || "adventure",
+      rating: city.pulseScore ? (city.pulseScore / 20).toFixed(1) : "4.5",
+      reviews: city.activeTravelers || 0,
+      price: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 5) : 1999,
+      originalPrice: city.avgHotelPrice ? Math.round(parseFloat(city.avgHotelPrice) * 6) : 2499,
+      highlights: (city.aiMustSeeAttractions || []).slice(0, 3),
+      expertPick: city.trendingScore > 70,
+      imageUrl: city.imageUrl || `https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=600&q=80`,
+      vibeTags: city.vibeTags?.slice(0, 3) || [],
+      citySlug: city.cityName?.toLowerCase().replace(/\s+/g, "-"),
+    }));
+  }, [trendingCitiesData]);
   
   // Experts query for handoff - fetch experts filtered by destination/experience type
   const expertsApiUrl = useMemo(() => {
@@ -978,8 +1005,8 @@ export default function DiscoverPage() {
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
 
-  // Trip filtering
-  const filteredTrips = preResearchedTrips.filter((trip) => {
+  // Trip filtering (uses API-driven trending data with hardcoded fallback)
+  const filteredTrips = trendingTrips.filter((trip: any) => {
     const matchesSearch =
       tripSearchQuery === "" ||
       trip.title.toLowerCase().includes(tripSearchQuery.toLowerCase()) ||
@@ -1736,7 +1763,7 @@ export default function DiscoverPage() {
                   </div>
                 )}
 
-                <h2 className="text-xl font-semibold mb-4">Pre-Researched Trip Packages</h2>
+                <h2 className="text-xl font-semibold mb-4">Trending Destinations</h2>
                 
                 {/* Category Filters */}
                 <div className="flex flex-wrap gap-2 mb-8">
@@ -1810,7 +1837,7 @@ export default function DiscoverPage() {
 
                             <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
                               <div className="flex flex-wrap gap-1">
-                                {trip.vibeTags?.slice(0, 2).map((tag) => (
+                                {trip.vibeTags?.slice(0, 2).map((tag: string) => (
                                   <Badge 
                                     key={tag} 
                                     variant="secondary" 
@@ -1857,7 +1884,7 @@ export default function DiscoverPage() {
                             </div>
 
                             <div className="flex flex-wrap gap-1 mb-4 flex-1">
-                              {trip.highlights.slice(0, 2).map((h) => (
+                              {trip.highlights.slice(0, 2).map((h: string) => (
                                 <Badge key={h} variant="outline" className="text-xs">
                                   <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
                                   {h}
@@ -1870,10 +1897,12 @@ export default function DiscoverPage() {
                               )}
                             </div>
 
-                            <Button className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-trip-${trip.id}`}>
-                              View Details
-                              <ArrowRight className="w-4 h-4 ml-2" />
-                            </Button>
+                            <Link href={(trip as any).citySlug ? `/discover?tab=travelpulse&city=${encodeURIComponent(trip.destination)}` : `/discover?tab=services&location=${encodeURIComponent(trip.destination)}`}>
+                              <Button className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-trip-${trip.id}`}>
+                                View Details
+                                <ArrowRight className="w-4 h-4 ml-2" />
+                              </Button>
+                            </Link>
                           </div>
                         </CardContent>
                       </Card>

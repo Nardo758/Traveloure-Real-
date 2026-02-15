@@ -4,63 +4,78 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Bell, MessageSquare, Calendar, CreditCard, Bot, Check, Trash2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-const initialNotifications = [
-  {
-    id: 1,
-    type: "message",
-    title: "New message from Expert Yuki M.",
-    description: "Regarding your Tokyo trip itinerary",
-    time: "2 hours ago",
-    read: false,
-    icon: MessageSquare,
-    color: "bg-blue-100 text-blue-600"
-  },
-  {
-    id: 2,
-    type: "ai",
-    title: "AI Itinerary Complete",
-    description: "Your Paris trip itinerary is ready for review",
-    time: "5 hours ago",
-    read: false,
-    icon: Bot,
-    color: "bg-[#FFE3E8] text-[#FF385C]"
-  },
-  {
-    id: 3,
-    type: "reminder",
-    title: "Trip Reminder",
-    description: "Your Tokyo trip starts in 15 days",
-    time: "Yesterday",
-    read: true,
-    icon: Calendar,
-    color: "bg-green-100 text-green-600"
-  },
-  {
-    id: 4,
-    type: "credits",
-    title: "Low Credit Balance",
-    description: "You have 15 credits remaining. Top up to continue using premium features.",
-    time: "2 days ago",
-    read: true,
-    icon: CreditCard,
-    color: "bg-yellow-100 text-yellow-600"
-  },
-  {
-    id: 5,
-    type: "message",
-    title: "Expert Marie L. replied",
-    description: "Your question about Paris restaurants",
-    time: "3 days ago",
-    read: true,
-    icon: MessageSquare,
-    color: "bg-blue-100 text-blue-600"
-  },
-];
+function getRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) > 1 ? "s" : ""} ago`;
+  return `${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) > 1 ? "s" : ""} ago`;
+}
+
+function getNotificationIcon(type: string) {
+  switch (type) {
+    case "message": return MessageSquare;
+    case "ai": return Bot;
+    case "reminder": return Calendar;
+    case "credits": return CreditCard;
+    default: return Bell;
+  }
+}
+
+function getNotificationColor(type: string) {
+  switch (type) {
+    case "message": return "bg-blue-100 text-blue-600";
+    case "ai": return "bg-[#FFE3E8] text-[#FF385C]";
+    case "reminder": return "bg-green-100 text-green-600";
+    case "credits": return "bg-yellow-100 text-yellow-600";
+    default: return "bg-gray-100 text-gray-600";
+  }
+}
 
 export default function Notifications() {
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const { data: notificationsFromApi } = useQuery<Array<{
+    id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string;
+  }>>({ queryKey: ["/api/notifications"] });
+
+  const [notifications, setNotifications] = useState<Array<{
+    id: number;
+    type: string;
+    title: string;
+    description: string;
+    time: string;
+    read: boolean;
+    icon: any;
+    color: string;
+  }>>([]);
+
+  useEffect(() => {
+    if (notificationsFromApi) {
+      const mapped = notificationsFromApi.map((n, index) => ({
+        id: index + 1,
+        type: n.type ?? "message",
+        title: n.title,
+        description: n.message,
+        time: getRelativeTime(n.createdAt),
+        read: n.isRead ?? false,
+        icon: getNotificationIcon(n.type),
+        color: getNotificationColor(n.type),
+      }));
+      setNotifications(mapped);
+    }
+  }, [notificationsFromApi]);
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const markAllRead = () => {
@@ -68,7 +83,7 @@ export default function Notifications() {
   };
 
   const markAsRead = (id: number) => {
-    setNotifications(prev => prev.map(n => 
+    setNotifications(prev => prev.map(n =>
       n.id === id ? { ...n, read: true } : n
     ));
   };
@@ -93,9 +108,9 @@ export default function Notifications() {
             )}
           </div>
           {unreadCount > 0 && (
-            <Button 
-              variant="ghost" 
-              className="text-[#FF385C]" 
+            <Button
+              variant="ghost"
+              className="text-[#FF385C]"
               onClick={markAllRead}
               data-testid="button-mark-all-read"
             >
@@ -115,7 +130,7 @@ export default function Notifications() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
               >
-                <Card 
+                <Card
                   className={`border ${notification.read ? 'border-[#E5E7EB] bg-white dark:bg-gray-800' : 'border-[#FF385C]/20 bg-[#FFF1F3] dark:bg-[#FF385C]/10'}`}
                   data-testid={`notification-${notification.id}`}
                 >

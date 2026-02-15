@@ -3,10 +3,10 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  Target, 
-  Heart, 
-  Globe, 
+import {
+  Target,
+  Heart,
+  Globe,
   Users,
   ArrowRight,
   Sparkles,
@@ -15,6 +15,13 @@ import {
 } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useQuery } from "@tanstack/react-query";
+
+function formatStat(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K+`;
+  return `${n}+`;
+}
 
 const values = [
   {
@@ -73,19 +80,23 @@ const milestones = [
   { year: "2025", title: "Global Expansion", description: "Expanding to 25+ countries with 500+ verified experts." }
 ];
 
-const stats = [
-  { value: "8M+", label: "Trips Planned" },
-  { value: "500+", label: "Local Experts" },
-  { value: "25+", label: "Countries" },
-  { value: "4.9", label: "Average Rating" }
-];
-
 export default function AboutPage() {
   const { openSignInModal } = useSignInModal();
-  
+
+  const { data: platformStats } = useQuery<{
+    totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
+  }>({ queryKey: ["/api/platform/stats"] });
+
+  const stats = [
+    { value: platformStats ? formatStat(platformStats.totalTrips) : "0+", label: "Trips Planned" },
+    { value: platformStats ? formatStat(platformStats.totalExperts) : "0+", label: "Local Experts" },
+    { value: platformStats ? formatStat(platformStats.totalCountries) : "0+", label: "Countries" },
+    { value: platformStats?.avgRating ?? "0", label: "Average Rating" }
+  ];
+
   return (
     <div className="min-h-screen bg-background">
-      <SEOHead 
+      <SEOHead
         title="About Us"
         description="Learn about Traveloure's mission to transform travel planning through AI and human expertise. Meet our team and discover our values."
         keywords={["about traveloure", "travel platform", "AI travel", "company mission"]}
@@ -104,7 +115,7 @@ export default function AboutPage() {
                 Revolutionizing How the World Plans Travel
               </h1>
               <p className="text-lg text-muted-foreground mb-8">
-                We're on a mission to make personalized travel planning accessible to everyone, 
+                We're on a mission to make personalized travel planning accessible to everyone,
                 combining the power of AI with the wisdom of local experts.
               </p>
               <div className="flex flex-wrap gap-4">
@@ -170,8 +181,8 @@ export default function AboutPage() {
                 Our Mission
               </h2>
               <p className="text-lg text-muted-foreground leading-relaxed">
-                We believe everyone deserves incredible travel experiences, regardless of how much time 
-                they have to plan. By combining advanced AI technology with a curated network of local 
+                We believe everyone deserves incredible travel experiences, regardless of how much time
+                they have to plan. By combining advanced AI technology with a curated network of local
                 experts, we're making personalized, authentic travel accessible to millions of people worldwide.
               </p>
             </motion.div>
@@ -349,7 +360,7 @@ export default function AboutPage() {
               Join Our Growing Community
             </h2>
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
-              Whether you're a traveler seeking adventure or an expert wanting to share your knowledge, 
+              Whether you're a traveler seeking adventure or an expert wanting to share your knowledge,
               there's a place for you at Traveloure.
             </p>
             <div className="flex flex-wrap justify-center gap-4">

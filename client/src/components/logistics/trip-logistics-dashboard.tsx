@@ -22,6 +22,9 @@ import {
   RefreshCw
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
+import { TemporalAnchorManager } from "./temporal-anchor-manager";
+import { ScheduleValidator } from "./schedule-validator";
+import { EnergyBudgetDisplay } from "./energy-budget-display";
 
 interface TripLogisticsDashboardProps {
   tripId: string;
@@ -430,6 +433,15 @@ export function TripLogisticsDashboard({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Logistics: Temporal Anchors, Schedule Validation, Energy Budget */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <TemporalAnchorManager tripId={tripId} />
+        <div className="space-y-4">
+          <ScheduleValidator tripId={tripId} />
+          <EnergyBudgetDisplay tripId={tripId} />
+        </div>
       </div>
 
       {alertSummary && alertSummary.critical > 0 && (

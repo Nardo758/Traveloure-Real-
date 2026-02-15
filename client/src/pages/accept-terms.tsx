@@ -33,7 +33,7 @@ export default function AcceptTermsPage() {
         title: "Welcome to Traveloure!",
         description: "Thank you for accepting our terms. You now have full access to the platform.",
       });
-      setLocation("/");
+      setLocation("/dashboard");
     },
     onError: (error: any) => {
       toast({
@@ -52,7 +52,7 @@ export default function AcceptTermsPage() {
 
   useEffect(() => {
     if (user?.termsAcceptedAt && user?.privacyAcceptedAt) {
-      setLocation("/");
+      setLocation("/dashboard");
     }
   }, [user, setLocation]);
 

@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Settings, 
-  Server, 
-  Shield, 
+import {
+  Settings,
+  Server,
+  Shield,
   Database,
   Mail,
   CreditCard,
@@ -17,29 +17,42 @@ import {
   AlertTriangle,
   RefreshCw,
   Download,
-  Upload
+  Upload,
+  Loader2
 } from "lucide-react";
 import { useState } from "react";
-
-const systemStatus = [
-  { service: "Web Server", status: "operational", uptime: "99.98%" },
-  { service: "Database", status: "operational", uptime: "99.95%" },
-  { service: "AI Processing", status: "operational", uptime: "99.90%" },
-  { service: "Payment Gateway", status: "operational", uptime: "99.99%" },
-  { service: "Email Service", status: "degraded", uptime: "98.50%" },
-  { service: "CDN", status: "operational", uptime: "99.99%" },
-];
-
-const apiUsage = {
-  claude: { used: 850000, limit: 1000000, cost: "$425" },
-  stripe: { transactions: 1247, volume: "$125,600" },
-  email: { sent: 15420, bounceRate: "0.8%" },
-};
+import { useQuery } from "@tanstack/react-query";
 
 export default function AdminSystem() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [newUserRegistration, setNewUserRegistration] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
+
+  const { data: healthData, isLoading } = useQuery<{
+    services: Array<{ service: string; status: string; uptime: string }>;
+    apiUsage: {
+      claude: { used: number; limit: number; cost: string };
+      stripe: { transactions: number; volume: string };
+      email: { sent: number; bounceRate: string };
+    };
+  }>({ queryKey: ["/api/admin/system/health"] });
+
+  if (isLoading) {
+    return (
+      <AdminLayout title="System Settings">
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const services = healthData?.services ?? [];
+  const apiUsage = healthData?.apiUsage ?? {
+    claude: { used: 0, limit: 1, cost: "$0" },
+    stripe: { transactions: 0, volume: "$0" },
+    email: { sent: 0, bounceRate: "0%" },
+  };
 
   return (
     <AdminLayout title="System Settings">
@@ -55,8 +68,8 @@ export default function AdminSystem() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {systemStatus.map((service, index) => (
-                <div 
+              {services.map((service, index) => (
+                <div
                   key={service.service}
                   className="flex items-center justify-between p-3 border border-gray-200 rounded-lg"
                   data-testid={`service-${index}`}
@@ -72,9 +85,9 @@ export default function AdminSystem() {
                       <p className="text-xs text-gray-500">Uptime: {service.uptime}</p>
                     </div>
                   </div>
-                  <Badge 
-                    className={service.status === "operational" 
-                      ? "bg-green-100 text-green-700 border-green-200" 
+                  <Badge
+                    className={service.status === "operational"
+                      ? "bg-green-100 text-green-700 border-green-200"
                       : "bg-amber-100 text-amber-700 border-amber-200"
                     }
                   >
@@ -163,7 +176,7 @@ export default function AdminSystem() {
                   <span className="text-sm text-gray-500">{apiUsage.claude.cost} this month</span>
                 </div>
                 <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-purple-500 rounded-full"
                     style={{ width: `${(apiUsage.claude.used / apiUsage.claude.limit) * 100}%` }}
                   />

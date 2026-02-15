@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { format, differenceInDays } from "date-fns";
 import { UserTemplateRecommendations } from "@/components/user/template-recommendations";
+import { useQuery } from "@tanstack/react-query";
 
 const eventTypeIcons: Record<string, any> = {
   vacation: Plane,
@@ -22,16 +23,27 @@ const eventTypeIcons: Record<string, any> = {
   adventure: Plane,
 };
 
-const recentActivity = [
-  { id: 1, message: "AI completed your Tokyo itinerary", time: "2 hours ago" },
-  { id: 2, message: "You saved a restaurant in Paris", time: "5 hours ago" },
-  { id: 3, message: "Expert Yuki M. sent you a message", time: "Yesterday" },
-  { id: 4, message: "New deal available for Bali trips", time: "2 days ago" },
-];
+function getRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? "s" : ""} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) > 1 ? "s" : ""} ago`;
+}
 
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
+  const { data: notificationsData } = useQuery<any[]>({ queryKey: ["/api/notifications"] });
+  const { data: walletData } = useQuery<{ credits: number }>({ queryKey: ["/api/wallet"] });
 
   if (isLoading) {
     return (
@@ -60,15 +72,21 @@ export default function Dashboard() {
     const end = new Date(t.endDate);
     return start <= now && end >= now;
   }) || [];
-  
+
   const upcomingTrips = trips?.filter(t => new Date(t.startDate) > now) || [];
   const allPlans = trips || [];
+
+  const recentActivity = (notificationsData ?? []).slice(0, 4).map((n: any, index: number) => ({
+    id: index + 1,
+    message: n.title ?? n.message ?? "New notification",
+    time: n.createdAt ? getRelativeTime(n.createdAt) : "Recently",
+  }));
 
   const stats = [
     { label: "Active Plans", value: activeTrips.length + upcomingTrips.filter(t => t.status === "planning").length, icon: Calendar, color: "bg-[#FFE3E8] text-[#FF385C]" },
     { label: "Upcoming Events", value: upcomingTrips.length, icon: Clock, color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
-    { label: "Credits Balance", value: 150, icon: CreditCard, color: "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" },
-    { label: "Saved Items", value: 12, icon: Bookmark, color: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" },
+    { label: "Credits Balance", value: walletData?.credits ?? 0, icon: CreditCard, color: "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" },
+    { label: "Saved Items", value: 0, icon: Bookmark, color: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" },
   ];
 
   const getProgressValue = (trip: any) => {
@@ -154,7 +172,7 @@ export default function Dashboard() {
                 const Icon = eventTypeIcons[trip.eventType || "vacation"] || Plane;
                 const progress = getProgressValue(trip);
                 const status = getStatusBadge(trip);
-                
+
                 return (
                   <motion.div
                     key={trip.id}
@@ -182,7 +200,7 @@ export default function Dashboard() {
                                 {status.label}
                               </Badge>
                             </div>
-                            
+
                             <div className="mb-3">
                               <div className="flex items-center justify-between text-sm mb-1">
                                 <span className="text-[#6B7280]">Progress</span>
@@ -315,15 +333,19 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-3" data-testid={`activity-${activity.id}`}>
-                    <div className="w-2 h-2 rounded-full bg-[#FF385C] mt-2 flex-shrink-0"></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-[#111827] dark:text-white">{activity.message}</p>
-                      <p className="text-xs text-[#9CA3AF]">{activity.time}</p>
+                {recentActivity.length > 0 ? (
+                  recentActivity.map((activity: any) => (
+                    <div key={activity.id} className="flex items-start gap-3" data-testid={`activity-${activity.id}`}>
+                      <div className="w-2 h-2 rounded-full bg-[#FF385C] mt-2 flex-shrink-0"></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[#111827] dark:text-white">{activity.message}</p>
+                        <p className="text-xs text-[#9CA3AF]">{activity.time}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-[#6B7280]">No recent activity</p>
+                )}
               </div>
             </CardContent>
           </Card>
