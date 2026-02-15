@@ -55,6 +55,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { format, addDays } from "date-fns";
+import { TripLogisticsDashboard } from "@/components/logistics";
 
 // Booking types: 'inApp' = API-based (book on our site), 'partner' = affiliate links (external)
 type BookingType = 'inApp' | 'partner';
@@ -864,6 +865,14 @@ export default function ItineraryPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Trip Logistics Dashboard */}
+            <TripLogisticsDashboard
+              tripId={tripId}
+              tripName={tripData?.title || tripData?.destination || "Trip"}
+              budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
+              destination={tripData?.destination || "destination"}
+            />
 
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-4">

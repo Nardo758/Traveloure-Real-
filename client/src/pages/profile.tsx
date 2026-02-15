@@ -7,13 +7,37 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Profile() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "File too large", description: "Please select an image under 5MB.", variant: "destructive" });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileImage(reader.result as string);
+        toast({ title: "Photo updated", description: "Your profile photo has been updated." });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setProfileImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    toast({ title: "Photo removed", description: "Your profile photo has been removed." });
+  };
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -41,9 +65,17 @@ export default function Profile() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center gap-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+              data-testid="input-photo-file"
+            />
             <div className="relative">
               <Avatar className="h-24 w-24 border-4 border-[#E5E7EB]">
-                <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
+                <AvatarImage src={profileImage || user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
                 <AvatarFallback className="bg-[#FFE3E8] text-[#FF385C] text-2xl font-bold">
                   {user?.firstName?.[0] || "U"}
                 </AvatarFallback>
@@ -52,16 +84,17 @@ export default function Profile() {
                 size="icon"
                 variant="outline"
                 className="absolute -bottom-2 -right-2 rounded-full bg-white border-[#E5E7EB]"
+                onClick={() => fileInputRef.current?.click()}
                 data-testid="button-change-photo"
               >
                 <Camera className="w-4 h-4 text-[#6B7280]" />
               </Button>
             </div>
             <div>
-              <Button variant="outline" className="mr-2" data-testid="button-upload-photo">
+              <Button variant="outline" className="mr-2" onClick={() => fileInputRef.current?.click()} data-testid="button-upload-photo">
                 Upload Photo
               </Button>
-              <Button variant="ghost" className="text-[#6B7280]" data-testid="button-remove-photo">
+              <Button variant="ghost" className="text-[#6B7280]" onClick={handleRemovePhoto} data-testid="button-remove-photo">
                 Remove
               </Button>
             </div>

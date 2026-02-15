@@ -153,7 +153,7 @@ export function ExperienceTemplates({
     if (onTemplateClick) {
       onTemplateClick(slug);
     } else {
-      navigate(`/experience/${slug}`);
+      navigate(`/experiences/${slug}`);
     }
   };
 
@@ -189,7 +189,7 @@ export function ExperienceTemplates({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate("/experience")}
+            onClick={() => navigate("/experiences")}
             data-testid="button-view-all-experiences"
           >
             View All

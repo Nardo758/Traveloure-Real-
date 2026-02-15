@@ -12,13 +12,20 @@ import {
   InsertItineraryVariantItem,
   InsertItineraryVariantMetric,
   ProviderService,
+  temporalAnchors,
+  dayBoundaries,
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
-import { 
-  reorderItinerary, 
-  calculateItineraryMetrics, 
+import {
+  reorderItinerary,
+  calculateItineraryMetrics,
   SequencedActivity,
-  MethodologyNote 
+  MethodologyNote,
+  parseAnchorConstraints,
+  applyAnchorConstraints,
+  applyEnergyBalancing,
+  AnchorConstraint,
+  DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
 
 // Use Grok for faster optimization (xAI API with OpenAI-compatible interface)
@@ -99,6 +106,16 @@ interface AIResponse {
   variants: OptimizedVariant[];
 }
 
+function formatAnchorForPrompt(anchor: AnchorConstraint): string {
+  const time = new Date(anchor.anchorDatetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const type = anchor.anchorType.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  let desc = `${type} at ${time}`;
+  if (anchor.bufferBefore > 0) desc += `, ${anchor.bufferBefore}min buffer before`;
+  if (anchor.bufferAfter > 0) desc += `, ${anchor.bufferAfter}min buffer after`;
+  if (anchor.location) desc += ` (${anchor.location})`;
+  return desc;
+}
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -108,9 +125,40 @@ export async function generateOptimizedItineraries(
   startDate: string,
   endDate: string,
   budget?: number,
-  travelers?: number
+  travelers?: number,
+  tripId?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    let anchorConstraints: AnchorConstraint[] = [];
+    let boundaryConstraints: DayBoundaryConstraint[] = [];
+    let anchorPromptSection = '';
+
+    if (tripId) {
+      const [anchors, boundaries] = await Promise.all([
+        db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, tripId)),
+        db.select().from(dayBoundaries).where(eq(dayBoundaries.tripId, tripId)),
+      ]);
+
+      if (anchors.length > 0) {
+        anchorConstraints = parseAnchorConstraints(anchors, startDate);
+        anchorPromptSection = `\n\nTEMPORAL ANCHORS (IMMOVABLE CONSTRAINTS - DO NOT SCHEDULE ACTIVITIES DURING THESE TIMES):
+${anchorConstraints.map(a => `- Day ${a.dayNumber}: ${formatAnchorForPrompt(a)}`).join('\n')}
+
+IMPORTANT: These are fixed commitments (flights, reservations, ceremonies). You MUST NOT place activities during anchor times or their buffer zones. Plan around them.`;
+      }
+
+      if (boundaries.length > 0) {
+        boundaryConstraints = boundaries.map(b => ({
+          dayNumber: b.dayNumber,
+          earliestActivityStart: b.earliestActivityStart || undefined,
+          latestActivityEnd: b.latestActivityEnd || undefined,
+          mustReturnToHotel: b.mustReturnToHotel ?? false,
+        }));
+        anchorPromptSection += `\n\nDAY BOUNDARIES:
+${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart ? `starts at ${b.earliestActivityStart}` : 'normal start'}${b.latestActivityEnd ? `, must end by ${b.latestActivityEnd}` : ''}${b.mustReturnToHotel ? ' (must return to hotel)' : ''}`).join('\n')}`;
+      }
+    }
+
     await db
       .update(itineraryComparisons)
       .set({ status: "generating" })
@@ -270,7 +318,7 @@ export async function generateOptimizedItineraries(
 DESTINATION: ${destination}
 DATES: ${startDate} to ${endDate}
 TRAVELERS: ${travelers || 1}
-BUDGET: ${budget ? `$${budget}` : "Not specified"}
+BUDGET: ${budget ? `$${budget}` : "Not specified"}${anchorPromptSection}
 
 USER'S CURRENT ITINERARY:
 ${JSON.stringify(baselineItems, null, 2)}
@@ -372,9 +420,39 @@ Respond with valid JSON in this exact format:
 
       // Apply smart sequencing to reorder activities
       const sequencingResult = reorderItinerary(activitiesForSequencing);
-      const reorderedItems = sequencingResult.reorderedItems;
-      const methodologyNotes = sequencingResult.allMethodologyNotes;
+      let reorderedItems = sequencingResult.reorderedItems;
+      const methodologyNotes = [...sequencingResult.allMethodologyNotes];
       const sequencingScore = sequencingResult.overallScore;
+
+      if (anchorConstraints.length > 0 || boundaryConstraints.length > 0) {
+        const dayGroups: Record<number, SequencedActivity[]> = {};
+        for (const item of reorderedItems) {
+          const day = item.dayNumber || 1;
+          if (!dayGroups[day]) dayGroups[day] = [];
+          dayGroups[day].push(item);
+        }
+
+        const anchorAdjusted: SequencedActivity[] = [];
+        for (const [dayStr, dayItems] of Object.entries(dayGroups)) {
+          const dayNum = parseInt(dayStr);
+          const dayAnchors = anchorConstraints.filter(a => a.dayNumber === dayNum);
+          const dayBoundary = boundaryConstraints.find(b => b.dayNumber === dayNum);
+
+          let adjusted = dayItems;
+          if (dayAnchors.length > 0) {
+            const result = applyAnchorConstraints(adjusted, dayAnchors, dayBoundary);
+            adjusted = result.activities;
+            methodologyNotes.push(...result.anchorNotes);
+          }
+          {
+            const result = applyEnergyBalancing(adjusted);
+            adjusted = result.activities;
+            methodologyNotes.push(...result.energyNotes);
+          }
+          anchorAdjusted.push(...adjusted);
+        }
+        reorderedItems = anchorAdjusted;
+      }
 
       // Calculate enhanced metrics
       const enhancedMetrics = calculateItineraryMetrics(

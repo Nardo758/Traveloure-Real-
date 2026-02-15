@@ -2103,7 +2103,11 @@ export const travelPulseCities = pgTable("travel_pulse_cities", {
   aiBudgetEstimate: jsonb("ai_budget_estimate").default({}), // { low: 100, mid: 200, high: 400 }
   aiMustSeeAttractions: jsonb("ai_must_see_attractions").default([]), // Top attractions
   aiAvoidDates: jsonb("ai_avoid_dates").default([]), // Dates to avoid
-  
+
+  expiresAt: timestamp("expires_at"),
+  aiRefreshErrorCount: integer("ai_refresh_error_count").default(0),
+  lastRefreshStatus: varchar("last_refresh_status", { length: 20 }),
+
   // Timestamps
   lastUpdated: timestamp("last_updated").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -4154,3 +4158,175 @@ export type DayBoundary = typeof dayBoundaries.$inferSelect;
 export type InsertDayBoundary = z.infer<typeof insertDayBoundarySchema>;
 export type EnergyTracking = typeof energyTracking.$inferSelect;
 export type InsertEnergyTracking = z.infer<typeof insertEnergyTrackingSchema>;
+
+// === Expert/Provider Logistics Integration ===
+
+export const providerAvailabilitySchedule = pgTable("provider_availability_schedule", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week").notNull(),
+  startTime: varchar("start_time", { length: 10 }).notNull(),
+  endTime: varchar("end_time", { length: 10 }).notNull(),
+  isAvailable: boolean("is_available").default(true),
+  preferredSlots: jsonb("preferred_slots").default([]).$type<{
+    label: string;
+    startTime: string;
+    endTime: string;
+    isPreferred: boolean;
+    reason: string;
+  }[]>(),
+  pricingModifier: integer("pricing_modifier").default(0),
+  pricingReason: varchar("pricing_reason", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const providerBlackoutDates = pgTable("provider_blackout_dates", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  reason: varchar("reason", { length: 500 }),
+  isRecurring: boolean("is_recurring").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const providerBookingRequests = pgTable("provider_booking_requests", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expertId: varchar("expert_id").references(() => users.id, { onDelete: "set null" }),
+  serviceType: varchar("service_type", { length: 100 }).notNull(),
+  serviceDescription: text("service_description"),
+  requestedDate: date("requested_date").notNull(),
+  requestedStartTime: varchar("requested_start_time", { length: 10 }).notNull(),
+  requestedEndTime: varchar("requested_end_time", { length: 10 }).notNull(),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  clientContext: jsonb("client_context").default({}).$type<{
+    tripDay: number;
+    energyLevel: string;
+    priorActivity: string | null;
+    nextActivity: string | null;
+    clientAvailableFrom: string;
+    clientAvailableUntil: string;
+    dietaryRestrictions: string[];
+    mobilityLevel: string;
+    specialNotes: string;
+  }>(),
+  anchorConstraints: jsonb("anchor_constraints").default([]).$type<{
+    anchorType: string;
+    time: string;
+    constraint: string;
+  }[]>(),
+  expertNotes: text("expert_notes"),
+  status: varchar("status", { length: 30 }).default("pending"),
+  counterOffer: jsonb("counter_offer").default(null).$type<{
+    newStartTime: string;
+    newEndTime: string;
+    newPrice: number;
+    reason: string;
+  } | null>(),
+  providerResponse: text("provider_response"),
+  respondedAt: timestamp("responded_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const expertVendorCoordination = pgTable("expert_vendor_coordination", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  vendorName: varchar("vendor_name", { length: 255 }).notNull(),
+  vendorCategory: varchar("vendor_category", { length: 100 }).notNull(),
+  vendorEmail: varchar("vendor_email", { length: 255 }),
+  vendorPhone: varchar("vendor_phone", { length: 50 }),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "set null" }),
+  setupTime: varchar("setup_time", { length: 10 }),
+  arrivalTime: varchar("arrival_time", { length: 10 }),
+  startTime: varchar("start_time", { length: 10 }),
+  endTime: varchar("end_time", { length: 10 }),
+  serviceDate: date("service_date"),
+  status: varchar("status", { length: 30 }).default("pending"),
+  contractStatus: varchar("contract_status", { length: 30 }).default("none"),
+  depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),
+  totalAmount: decimal("total_amount", { precision: 10, scale: 2 }),
+  primaryAnchorId: varchar("primary_anchor_id"),
+  anchorConstraintNote: text("anchor_constraint_note"),
+  notes: text("notes"),
+  lastContactedAt: timestamp("last_contacted_at"),
+  confirmedAt: timestamp("confirmed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProviderAvailabilityScheduleSchema = createInsertSchema(providerAvailabilitySchedule).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProviderBlackoutDateSchema = createInsertSchema(providerBlackoutDates).omit({ id: true, createdAt: true });
+export const insertProviderBookingRequestSchema = createInsertSchema(providerBookingRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertExpertVendorCoordinationSchema = createInsertSchema(expertVendorCoordination).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type ProviderAvailabilitySchedule = typeof providerAvailabilitySchedule.$inferSelect;
+export type InsertProviderAvailabilitySchedule = z.infer<typeof insertProviderAvailabilityScheduleSchema>;
+export type ProviderBlackoutDate = typeof providerBlackoutDates.$inferSelect;
+export type InsertProviderBlackoutDate = z.infer<typeof insertProviderBlackoutDateSchema>;
+export type ProviderBookingRequest = typeof providerBookingRequests.$inferSelect;
+export type InsertProviderBookingRequest = z.infer<typeof insertProviderBookingRequestSchema>;
+export type ExpertVendorCoordination = typeof expertVendorCoordination.$inferSelect;
+export type InsertExpertVendorCoordination = z.infer<typeof insertExpertVendorCoordinationSchema>;
+
+// === GROK ANALYTICS & TREND STORAGE TABLES ===
+
+export const expertMatchAnalytics = pgTable("expert_match_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "set null" }),
+  matchScore: integer("match_score").notNull(),
+  breakdown: jsonb("breakdown").default({}),
+  reasoning: text("reasoning"),
+  travelerDestination: varchar("traveler_destination", { length: 255 }),
+  travelerBudget: decimal("traveler_budget", { precision: 10, scale: 2 }),
+  travelerInterests: jsonb("traveler_interests").default([]),
+  travelerGroupSize: integer("traveler_group_size"),
+  expertSelected: boolean("expert_selected").default(false),
+  bookingCompleted: boolean("booking_completed").default(false),
+  feedback: jsonb("feedback").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const destinationSearchPatterns = pgTable("destination_search_patterns", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  searchQuery: varchar("search_query", { length: 500 }),
+  searchType: varchar("search_type", { length: 50 }).notNull(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  resultsViewed: integer("results_viewed").default(0),
+  itemsClicked: integer("items_clicked").default(0),
+  itemSelected: boolean("item_selected").default(false),
+  bookingValue: decimal("booking_value", { precision: 10, scale: 2 }),
+  dwellTimeSeconds: integer("dwell_time_seconds").default(0),
+  date: date("date").notNull(),
+  hour: integer("hour"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const destinationMetricsHistory = pgTable("destination_metrics_history", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  metricType: varchar("metric_type", { length: 50 }).notNull(),
+  metricValue: decimal("metric_value", { precision: 10, scale: 2 }).notNull(),
+  recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+});
+
+export const insertExpertMatchAnalyticsSchema = createInsertSchema(expertMatchAnalytics).omit({ id: true, createdAt: true });
+export const insertDestinationSearchPatternSchema = createInsertSchema(destinationSearchPatterns).omit({ id: true, createdAt: true });
+export const insertDestinationMetricsHistorySchema = createInsertSchema(destinationMetricsHistory).omit({ id: true });
+
+export type ExpertMatchAnalytics = typeof expertMatchAnalytics.$inferSelect;
+export type InsertExpertMatchAnalytics = z.infer<typeof insertExpertMatchAnalyticsSchema>;
+export type DestinationSearchPattern = typeof destinationSearchPatterns.$inferSelect;
+export type InsertDestinationSearchPattern = z.infer<typeof insertDestinationSearchPatternSchema>;
+export type DestinationMetricsHistory = typeof destinationMetricsHistory.$inferSelect;
+export type InsertDestinationMetricsHistory = z.infer<typeof insertDestinationMetricsHistorySchema>;

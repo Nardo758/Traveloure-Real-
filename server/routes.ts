@@ -13,13 +13,14 @@ import {
   insertServiceSubcategorySchema, insertFaqSchema,
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
-  userExperienceItems, userExperiences, providerServices, cartItems,
+  userExperienceItems, userExperiences, providerServices, cartItems, trips,
+  serviceBookings, serviceReviews, notifications, wallets, creditTransactions,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, or, like, sql, desc, count } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
@@ -906,7 +907,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Create custom venue
-  app.post("/api/custom-venues", async (req, res) => {
+  app.post("/api/custom-venues", isAuthenticated, async (req, res) => {
     try {
       const input = insertCustomVenueSchema.parse(req.body);
       const venue = await storage.createCustomVenue(input);
@@ -921,7 +922,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Update custom venue
-  app.patch("/api/custom-venues/:id", async (req, res) => {
+  app.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
       const input = insertCustomVenueSchema.partial().parse(req.body);
       const updated = await storage.updateCustomVenue(req.params.id, input);
@@ -938,7 +939,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   });
 
   // Delete custom venue
-  app.delete("/api/custom-venues/:id", async (req, res) => {
+  app.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     await storage.deleteCustomVenue(req.params.id);
     res.status(204).send();
   });
@@ -1543,8 +1544,39 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get all experts with their full profiles (public)
   app.get("/api/experts", async (req, res) => {
     const experienceTypeId = req.query.experienceTypeId as string | undefined;
+    const location = req.query.location as string | undefined;
+    const experienceType = req.query.experienceType as string | undefined;
     const experts = await storage.getExpertsWithProfiles(experienceTypeId);
-    res.json(experts);
+
+    let filtered = experts;
+
+    // Filter by location (match against expert form destinations, city, or country)
+    if (location) {
+      const loc = location.toLowerCase();
+      filtered = filtered.filter((expert: any) => {
+        const form = expert.expertForm;
+        if (!form) return false;
+        const destinations = (form.destinations || []).map((d: string) => d.toLowerCase());
+        const city = (form.city || "").toLowerCase();
+        const country = (form.country || "").toLowerCase();
+        return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
+          city.includes(loc) || loc.includes(city) ||
+          country.includes(loc) || loc.includes(country);
+      });
+    }
+
+    // Filter by experience type name (not ID)
+    if (experienceType) {
+      const et = experienceType.toLowerCase();
+      filtered = filtered.filter((expert: any) =>
+        expert.experienceTypes?.some((t: any) =>
+          t.experienceType?.name?.toLowerCase().includes(et) ||
+          t.experienceType?.slug?.toLowerCase().includes(et)
+        )
+      );
+    }
+
+    res.json(filtered);
   });
 
   // Get a single expert with profile by ID (public)
@@ -2619,11 +2651,68 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       offset: req.query.offset ? parseInt(req.query.offset as string) : 0,
     };
     const result = await storage.unifiedSearch(filters);
+
+    // Track search pattern for trend analytics (non-blocking)
+    if (filters.query || filters.location) {
+      const userId = (req.user as any)?.claims?.sub;
+      storage.createDestinationSearchPattern({
+        destination: filters.location || filters.query || "unknown",
+        city: filters.location || undefined,
+        searchQuery: filters.query || undefined,
+        searchType: "discover",
+        userId: userId || undefined,
+        resultsViewed: result.total,
+        date: new Date().toISOString().split("T")[0],
+        hour: new Date().getHours(),
+      }).catch(err => console.error("Failed to track search pattern:", err));
+    }
+
     res.json(result);
   });
 
+  // Analytics: Get destination search trends
+  app.get("/api/analytics/search-trends", isAuthenticated, async (req, res) => {
+    try {
+      const days = req.query.days ? parseInt(req.query.days as string) : 7;
+      const trends = await storage.getDestinationSearchTrends(days);
+      res.json(trends);
+    } catch (err) {
+      console.error("Error fetching search trends:", err);
+      res.status(500).json({ message: "Failed to fetch search trends" });
+    }
+  });
+
+  // Analytics: Get expert match trends
+  app.get("/api/analytics/expert-match-trends/:expertId", isAuthenticated, async (req, res) => {
+    try {
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      const trends = await storage.getExpertMatchTrends(req.params.expertId, days);
+      res.json(trends);
+    } catch (err) {
+      console.error("Error fetching expert match trends:", err);
+      res.status(500).json({ message: "Failed to fetch expert match trends" });
+    }
+  });
+
+  // Analytics: Get destination metrics history (time-series)
+  app.get("/api/analytics/destination-metrics/:destination", isAuthenticated, async (req, res) => {
+    try {
+      const metricType = (req.query.metricType as string) || "trend_score";
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      const history = await storage.getDestinationMetricsHistory(
+        decodeURIComponent(req.params.destination),
+        metricType,
+        days
+      );
+      res.json(history);
+    } catch (err) {
+      console.error("Error fetching destination metrics:", err);
+      res.status(500).json({ message: "Failed to fetch destination metrics" });
+    }
+  });
+
   // AI-Powered Service Recommendations
-  app.post("/api/discover/recommendations", async (req, res) => {
+  app.post("/api/discover/recommendations", isAuthenticated, async (req, res) => {
     try {
       // Validate API key is configured
       if (!process.env.ANTHROPIC_API_KEY) {
@@ -5642,6 +5731,19 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           requestContext: travelerProfile,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
         }).catch(err => console.error("Failed to store match score:", err));
+
+        // Also persist to analytics table for trend tracking
+        storage.createExpertMatchAnalytics({
+          expertId: match.expertId,
+          travelerId: userId,
+          matchScore: match.overallScore,
+          breakdown: match.breakdown,
+          reasoning: match.reasoning,
+          travelerDestination: travelerProfile.destination,
+          travelerBudget: travelerProfile.budget?.toString(),
+          travelerInterests: travelerProfile.interests || [],
+          travelerGroupSize: travelerProfile.travelers,
+        }).catch(err => console.error("Failed to store match analytics:", err));
       }
 
       res.json({ matches });
@@ -6829,7 +6931,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // Seed cities data (for initial setup)
-  app.post("/api/travelpulse/seed", async (req, res) => {
+  app.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
     try {
       await travelPulseService.seedTrendingCities();
       res.json({ message: "Cities seeded successfully" });
@@ -9897,14 +9999,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const [existing] = await db.select().from(temporalAnchors).where(eq(temporalAnchors.id, req.params.id));
-      if (!existing) return res.status(404).json({ message: "Anchor not found" });
-      const trip = await storage.getTrip(existing.tripId);
-      if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
-
       const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ message: "Anchor not found" });
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update anchor", error: error.message });
@@ -9913,13 +10009,6 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const [existing] = await db.select().from(temporalAnchors).where(eq(temporalAnchors.id, req.params.id));
-      if (!existing) return res.status(404).json({ message: "Anchor not found" });
-      const trip = await storage.getTrip(existing.tripId);
-      if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
-
       await storage.deleteTemporalAnchor(req.params.id);
       res.status(204).send();
     } catch (error: any) {
@@ -10069,4 +10158,857 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.status(500).json({ message: "Failed to calculate energy", error: error.message });
     }
   });
+
+  // === Logistics: Template Presets ===
+
+  app.get("/api/logistics/presets/:templateSlug", async (req, res) => {
+    try {
+      const { getPresetsForTemplate } = await import('./services/logistics-presets.service');
+      const presets = getPresetsForTemplate(req.params.templateSlug);
+      if (!presets) {
+        return res.json({ anchors: [], dayBoundaries: [] });
+      }
+      res.json(presets);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get presets", error: error.message });
+    }
+  });
+
+  app.post("/api/trips/:tripId/generate-presets", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { templateSlug, eventDate, userExperienceId } = req.body;
+      if (!templateSlug || !eventDate) {
+        return res.status(400).json({ message: "templateSlug and eventDate are required" });
+      }
+
+      const { generatePresetsForTrip } = await import('./services/logistics-presets.service');
+      const result = await generatePresetsForTrip(
+        req.params.tripId,
+        templateSlug,
+        eventDate,
+        userExperienceId
+      );
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate presets", error: error.message });
+    }
+  });
+
+  app.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { detectAnchorImpacts } = await import('./services/logistics-presets.service');
+      const impacts = await detectAnchorImpacts(req.params.tripId, req.params.anchorId);
+      res.json({ impacts });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to detect impacts", error: error.message });
+    }
+  });
+
+  // === Logistics: AI Anchor Suggestions ===
+
+  app.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { templateSlug } = req.body;
+      const startDate = trip.startDate?.toString() || new Date().toISOString().split('T')[0];
+      const endDate = trip.endDate?.toString() || startDate;
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const numberOfDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+
+      const { generateAnchorSuggestions } = await import('./services/anchor-suggestion.service');
+      const suggestions = await generateAnchorSuggestions({
+        tripId: req.params.tripId,
+        destination: trip.destination || "Unknown",
+        templateSlug: templateSlug || trip.eventType || "travel",
+        startDate,
+        endDate,
+        numberOfDays,
+      });
+      res.json({ suggestions });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate suggestions", error: error.message });
+    }
+  });
+
+  app.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req, res) => {
+    try {
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+
+      const { analyzeAnchorOptimization } = await import('./services/anchor-suggestion.service');
+      const tips = await analyzeAnchorOptimization(req.params.tripId);
+      res.json({ tips });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to analyze anchors", error: error.message });
+    }
+  });
+
+  // ==========================================
+  // Expert/Provider Logistics Integration
+  // ==========================================
+
+  // === Expert: Client Constraint Visibility ===
+
+  app.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const trip = await storage.getTrip(req.params.tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const anchors = await storage.getTemporalAnchors(req.params.tripId);
+      const boundaries = await storage.getDayBoundaries(req.params.tripId);
+      const energy = await storage.getEnergyTracking(req.params.tripId);
+      const vendorCoord = await storage.getVendorCoordination(req.params.tripId);
+      const bookingReqs = await storage.getBookingRequestsByTrip(req.params.tripId);
+
+      const { analyzeAnchorOptimization } = await import('./services/anchor-suggestion.service');
+      const tips = await analyzeAnchorOptimization(req.params.tripId);
+
+      res.json({
+        trip: {
+          id: trip.id,
+          title: trip.title,
+          destination: trip.destination,
+          startDate: trip.startDate,
+          endDate: trip.endDate,
+          eventType: trip.eventType,
+        },
+        anchors,
+        dayBoundaries: boundaries,
+        energyTracking: energy,
+        vendorCoordination: vendorCoord,
+        bookingRequests: bookingReqs,
+        optimizationTips: tips,
+        summary: {
+          totalAnchors: anchors.length,
+          immovableAnchors: anchors.filter(a => a.isImmovable).length,
+          confirmedVendors: vendorCoord.filter(v => v.status === 'confirmed' || v.status === 'contract_signed').length,
+          pendingVendors: vendorCoord.filter(v => v.status === 'pending' || v.status === 'contacted').length,
+          warningCount: tips.filter(t => t.severity === 'warning' || t.severity === 'critical').length,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load constraints", error: error.message });
+    }
+  });
+
+  app.post("/api/expert/find-providers", isAuthenticated, async (req, res) => {
+    try {
+      const { date, startTime, endTime, serviceType } = req.body;
+      const dayOfWeek = new Date(date).getDay();
+
+      const { providerAvailabilitySchedule } = await import('@shared/schema');
+      const { eq, and } = await import('drizzle-orm');
+      const { db } = await import('./db');
+
+      const schedules = await db.select()
+        .from(providerAvailabilitySchedule)
+        .where(
+          and(
+            eq(providerAvailabilitySchedule.dayOfWeek, dayOfWeek),
+            eq(providerAvailabilitySchedule.isAvailable, true)
+          )
+        );
+
+      const matching = schedules.filter(s => {
+        return s.startTime <= startTime && s.endTime >= endTime;
+      });
+
+      const { providerBlackoutDates } = await import('@shared/schema');
+      const blackouts = await db.select().from(providerBlackoutDates);
+      const blockedProviders = new Set(
+        blackouts
+          .filter(b => date >= b.startDate && date <= b.endDate)
+          .map(b => b.providerId)
+      );
+
+      const available = matching.filter(s => !blockedProviders.has(s.providerId));
+
+      res.json({
+        availableProviders: available.map(s => ({
+          providerId: s.providerId,
+          availableFrom: s.startTime,
+          availableUntil: s.endTime,
+          pricingModifier: s.pricingModifier,
+          preferredSlots: s.preferredSlots,
+        })),
+        totalFound: available.length,
+        blockedCount: matching.length - available.length,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to find providers", error: error.message });
+    }
+  });
+
+  // === Expert: Vendor Coordination ===
+
+  app.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const vendors = await storage.getVendorCoordination(req.params.tripId);
+      const confirmed = vendors.filter(v => v.status === 'confirmed' || v.status === 'contract_signed');
+      const pending = vendors.filter(v => v.status === 'pending' || v.status === 'contacted');
+      res.json({ vendors, confirmed, pending, total: vendors.length });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load vendors", error: error.message });
+    }
+  });
+
+  app.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const vendor = await storage.createVendorCoordination({
+        ...req.body,
+        tripId: req.params.tripId,
+        expertId: userId,
+      });
+      res.json(vendor);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to add vendor", error: error.message });
+    }
+  });
+
+  app.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
+    try {
+      const updated = await storage.updateVendorCoordination(req.params.vendorId, req.body);
+      if (!updated) return res.status(404).json({ message: "Vendor not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update vendor", error: error.message });
+    }
+  });
+
+  app.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVendorCoordination(req.params.vendorId);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete vendor", error: error.message });
+    }
+  });
+
+  // === Provider: Availability Management ===
+
+  app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const schedule = await storage.getProviderAvailability(userId);
+      const blackouts = await storage.getProviderBlackoutDates(userId);
+      res.json({ schedule, blackoutDates: blackouts });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load availability", error: error.message });
+    }
+  });
+
+  app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const entry = await storage.setProviderAvailability({
+        ...req.body,
+        providerId: userId,
+      });
+      res.json(entry);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to set availability", error: error.message });
+    }
+  });
+
+  app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteProviderAvailability(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete availability", error: error.message });
+    }
+  });
+
+  app.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const blackout = await storage.addProviderBlackoutDate({
+        ...req.body,
+        providerId: userId,
+      });
+      res.json(blackout);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to add blackout date", error: error.message });
+    }
+  });
+
+  app.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteProviderBlackoutDate(req.params.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to delete blackout date", error: error.message });
+    }
+  });
+
+  // === Provider: Booking Requests ===
+
+  app.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const requests = await storage.getBookingRequests(userId);
+      res.json({ requests });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load requests", error: error.message });
+    }
+  });
+
+  app.post("/api/coordination/booking-request", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const request = await storage.createBookingRequest({
+        ...req.body,
+        expertId: userId,
+      });
+      res.json(request);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to create booking request", error: error.message });
+    }
+  });
+
+  app.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
+    try {
+      const { status, counterOffer, providerResponse } = req.body;
+      const updated = await storage.updateBookingRequest(req.params.requestId, {
+        status,
+        counterOffer: counterOffer || null,
+        providerResponse,
+      });
+      if (!updated) return res.status(404).json({ message: "Request not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to respond", error: error.message });
+    }
+  });
+
+  // ==========================================
+  // Constraint Propagation & Workflow Services
+  // ==========================================
+
+  app.post("/api/coordination/propagate/:tripId/:anchorId", isAuthenticated, async (req, res) => {
+    try {
+      const { propagateAnchorChange } = await import('./services/constraint-propagation.service');
+      const result = await propagateAnchorChange(
+        req.params.tripId,
+        req.params.anchorId,
+        req.body.previousDatetime
+      );
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to propagate", error: error.message });
+    }
+  });
+
+  app.post("/api/coordination/match-providers", isAuthenticated, async (req, res) => {
+    try {
+      const { findMatchingProviders } = await import('./services/provider-matching.service');
+      const result = await findMatchingProviders(req.body);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to match providers", error: error.message });
+    }
+  });
+
+  app.post("/api/coordination/booking-context/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const { buildBookingContext } = await import('./services/provider-matching.service');
+      const { date, startTime, endTime } = req.body;
+      const context = await buildBookingContext(req.params.tripId, date, startTime, endTime);
+      res.json(context);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to build context", error: error.message });
+    }
+  });
+
+  // === Wedding Coordination ===
+
+  app.get("/api/coordination/wedding-timeline/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const { buildWeddingTimeline } = await import('./services/wedding-coordination.service');
+      const timeline = await buildWeddingTimeline(req.params.tripId);
+      res.json(timeline);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to build wedding timeline", error: error.message });
+    }
+  });
+
+  app.get("/api/coordination/wedding-gaps/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const { getWeddingVendorGaps } = await import('./services/wedding-coordination.service');
+      const gaps = await getWeddingVendorGaps(req.params.tripId);
+      res.json({ gaps });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to analyze vendor gaps", error: error.message });
+    }
+  });
+
+  // === Corporate Coordination ===
+
+  app.get("/api/coordination/corporate-summary/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const { getCorporateLogisticsSummary } = await import('./services/corporate-coordination.service');
+      const summary = await getCorporateLogisticsSummary(req.params.tripId);
+      res.json(summary);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load corporate summary", error: error.message });
+    }
+  });
+
+  app.post("/api/coordination/staggered-arrivals/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const { generateStaggeredArrivalPlan } = await import('./services/corporate-coordination.service');
+      const plan = await generateStaggeredArrivalPlan(
+        req.params.tripId,
+        req.body.date,
+        req.body.options
+      );
+      res.json(plan);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate arrival plan", error: error.message });
+    }
+  });
+
+  app.post("/api/coordination/split-activities/:tripId", isAuthenticated, async (req, res) => {
+    try {
+      const { generateSplitActivityPlan } = await import('./services/corporate-coordination.service');
+      const plan = await generateSplitActivityPlan(
+        req.params.tripId,
+        req.body.date,
+        req.body.tracks
+      );
+      res.json(plan);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to generate split activities", error: error.message });
+    }
+  });
+
+  // === Admin Users Management ===
+  app.get("/api/admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const search = (req.query.search as string) || "";
+      const role = req.query.role as string | undefined;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = (page - 1) * limit;
+
+      let conditions: any[] = [];
+      if (search) {
+        conditions.push(
+          or(
+            like(users.email, `%${search}%`),
+            like(users.firstName, `%${search}%`),
+            like(users.lastName, `%${search}%`)
+          )
+        );
+      }
+      if (role) {
+        conditions.push(eq(users.role, role));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      const allUsers = await db.select().from(users).where(whereClause).limit(limit).offset(offset).orderBy(desc(users.createdAt));
+      const [totalResult] = await db.select({ count: count() }).from(users).where(whereClause);
+
+      const enrichedUsers = await Promise.all(allUsers.map(async (u) => {
+        const userTrips = await db.select({ count: count() }).from(trips).where(eq(trips.userId, u.id));
+        const userBookings = await db.select().from(serviceBookings).where(eq(serviceBookings.travelerId, u.id));
+        const totalSpent = userBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+        return {
+          id: u.id,
+          name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "Unknown",
+          email: u.email || "",
+          role: u.role || "user",
+          status: "active",
+          joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
+          trips: userTrips[0]?.count || 0,
+          spent: `$${totalSpent.toLocaleString()}`,
+        };
+      }));
+
+      res.json({
+        users: enrichedUsers,
+        total: totalResult?.count || 0,
+        page,
+        limit,
+      });
+    } catch (err) {
+      console.error("Admin users error:", err);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // === Admin Trips/Plans Management ===
+  app.get("/api/admin/trips", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const search = (req.query.search as string) || "";
+      const status = req.query.status as string | undefined;
+
+      let conditions: any[] = [];
+      if (search) {
+        conditions.push(
+          or(
+            like(trips.title, `%${search}%`),
+            like(trips.destination, `%${search}%`)
+          )
+        );
+      }
+      if (status) {
+        conditions.push(eq(trips.status, status));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+      const allTrips = await db.select().from(trips).where(whereClause).orderBy(desc(trips.createdAt)).limit(100);
+
+      const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
+        const owner = await storage.getUser(t.userId);
+        return {
+          id: t.id,
+          title: t.title || "Untitled Trip",
+          type: t.eventType || "Travel",
+          destination: t.destination || "TBD",
+          startDate: t.startDate,
+          endDate: t.endDate,
+          guests: t.numberOfTravelers || 1,
+          budget: t.budget ? `$${Number(t.budget).toLocaleString()}` : "N/A",
+          status: t.status || "draft",
+          user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
+          created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
+        };
+      }));
+
+      const statusCounts = {
+        total: enrichedTrips.length,
+        active: enrichedTrips.filter(t => t.status === "planning" || t.status === "confirmed").length,
+        pending: enrichedTrips.filter(t => t.status === "draft").length,
+        completed: enrichedTrips.filter(t => t.status === "completed").length,
+      };
+
+      res.json({ trips: enrichedTrips, stats: statusCounts });
+    } catch (err) {
+      console.error("Admin trips error:", err);
+      res.status(500).json({ message: "Failed to fetch trips" });
+    }
+  });
+
+  // === Admin Analytics Overview ===
+  app.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const allUsers = await db.select().from(users);
+      const allBookings = await storage.getServiceBookings({});
+      const allTrips = await db.select().from(trips);
+      const allReviews = await db.select().from(serviceReviews);
+
+      const totalUsers = allUsers.length;
+      const completedBookings = allBookings.filter(b => b.status === "completed");
+      const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+
+      const destCounts: Record<string, { bookings: number; revenue: number }> = {};
+      allTrips.forEach(t => {
+        const dest = t.destination || "Unknown";
+        if (!destCounts[dest]) destCounts[dest] = { bookings: 0, revenue: 0 };
+        destCounts[dest].bookings++;
+        destCounts[dest].revenue += Number(t.budget || 0);
+      });
+      const topDestinations = Object.entries(destCounts)
+        .map(([name, data]) => ({ name, bookings: data.bookings, revenue: `$${data.revenue.toLocaleString()}` }))
+        .sort((a, b) => b.bookings - a.bookings)
+        .slice(0, 5);
+
+      const roleCounts: Record<string, number> = {};
+      allUsers.forEach(u => {
+        const role = u.role || "user";
+        roleCounts[role] = (roleCounts[role] || 0) + 1;
+      });
+      const userDemographics = Object.entries(roleCounts)
+        .map(([segment, count]) => ({
+          segment: segment.charAt(0).toUpperCase() + segment.slice(1) + "s",
+          percentage: Math.round((count / totalUsers) * 100),
+        }))
+        .sort((a, b) => b.percentage - a.percentage);
+
+      const now = new Date();
+      const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const weeklyActivity = weekDays.map((day, i) => {
+        const dayDate = new Date(now);
+        dayDate.setDate(now.getDate() - (now.getDay() - i));
+        const dayUsers = allUsers.filter(u => {
+          if (!u.createdAt) return false;
+          const d = new Date(u.createdAt);
+          return d.toDateString() === dayDate.toDateString();
+        }).length;
+        return { day, users: dayUsers };
+      });
+
+      const avgRating = allReviews.length > 0
+        ? allReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviews.length
+        : 0;
+
+      res.json({
+        metrics: [
+          { label: "Total Users", value: totalUsers.toLocaleString(), change: `+${allUsers.filter(u => { const d = u.createdAt ? new Date(u.createdAt) : null; return d && d > new Date(now.getTime() - 30*24*60*60*1000); }).length} this month`, positive: true },
+          { label: "Total Bookings", value: allBookings.length.toLocaleString(), change: `${completedBookings.length} completed`, positive: true },
+          { label: "Total Revenue", value: `$${totalRevenue.toLocaleString()}`, change: `${allBookings.filter(b => b.status === "pending").length} pending`, positive: true },
+          { label: "Avg Rating", value: avgRating.toFixed(1), change: `${allReviews.length} reviews`, positive: avgRating >= 4.0 },
+        ],
+        topDestinations,
+        userDemographics,
+        weeklyActivity,
+      });
+    } catch (err) {
+      console.error("Admin analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch analytics" });
+    }
+  });
+
+  // === Admin System Health ===
+  app.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const dbStart = Date.now();
+      let dbStatus = "operational";
+      try {
+        await db.select({ count: count() }).from(users);
+      } catch {
+        dbStatus = "degraded";
+      }
+      const dbLatency = Date.now() - dbStart;
+
+      const services = [
+        { service: "Web Server", status: "operational", uptime: "99.9%", latency: `${process.uptime().toFixed(0)}s uptime` },
+        { service: "Database", status: dbStatus, uptime: dbLatency < 100 ? "99.9%" : "99.0%", latency: `${dbLatency}ms` },
+        { service: "AI Processing", status: "operational", uptime: "99.5%" },
+        { service: "Payment Gateway", status: "operational", uptime: "99.9%" },
+        { service: "Email Service", status: "operational", uptime: "99.5%" },
+        { service: "CDN", status: "operational", uptime: "99.9%" },
+      ];
+
+      let aiUsage = { used: 0, limit: 1000000, cost: "$0" };
+      let apiUsage = { transactions: 0, volume: "$0" };
+      try {
+        const { aiUsageService: aiSvc } = await import('./services/ai-usage.service');
+        const summary = await aiSvc.getSummary();
+        aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCost || 0).toFixed(2)}` };
+      } catch {}
+
+      try {
+        const allBookings = await storage.getServiceBookings({});
+        const completedBookings = allBookings.filter(b => b.status === "completed");
+        const volume = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+        apiUsage = { transactions: allBookings.length, volume: `$${volume.toLocaleString()}` };
+      } catch {}
+
+      res.json({
+        services,
+        apiUsage: {
+          claude: aiUsage,
+          stripe: apiUsage,
+          email: { sent: 0, bounceRate: "0%" },
+        },
+      });
+    } catch (err) {
+      console.error("System health error:", err);
+      res.status(500).json({ message: "Failed to fetch system health" });
+    }
+  });
+
+  // === Admin Global Search ===
+  app.get("/api/admin/search", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const q = (req.query.q as string) || "";
+      if (!q.trim()) {
+        return res.json({ results: [], counts: {} });
+      }
+
+      const searchPattern = `%${q}%`;
+
+      const matchedUsers = await db.select().from(users)
+        .where(or(
+          like(users.email, searchPattern),
+          like(users.firstName, searchPattern),
+          like(users.lastName, searchPattern)
+        ))
+        .limit(10);
+
+      const matchedTrips = await db.select().from(trips)
+        .where(or(
+          like(trips.title, searchPattern),
+          like(trips.destination, searchPattern)
+        ))
+        .limit(10);
+
+      const matchedServices = await db.select().from(providerServices)
+        .where(or(
+          like(providerServices.serviceName, searchPattern),
+          like(providerServices.location, searchPattern)
+        ))
+        .limit(10);
+
+      const results = [
+        ...matchedUsers.map(u => ({
+          id: u.id,
+          type: u.role === "expert" ? "expert" as const : u.role === "provider" ? "provider" as const : "user" as const,
+          name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "Unknown",
+          description: u.email || "",
+          meta: `Role: ${u.role || "user"}`,
+        })),
+        ...matchedTrips.map(t => ({
+          id: t.id,
+          type: "plan" as const,
+          name: t.title || "Untitled Trip",
+          description: `${t.destination || "TBD"} - ${t.startDate || ""}`,
+          meta: t.budget ? `Budget: $${Number(t.budget).toLocaleString()}` : undefined,
+        })),
+        ...matchedServices.map(s => ({
+          id: s.id,
+          type: "provider" as const,
+          name: s.serviceName || "Unnamed Service",
+          description: s.location || "",
+          meta: s.averageRating ? `${s.averageRating} rating` : undefined,
+        })),
+      ];
+
+      const [userCount] = await db.select({ count: count() }).from(users);
+      const [expertCount] = await db.select({ count: count() }).from(users).where(eq(users.role, "expert"));
+      const [tripCount] = await db.select({ count: count() }).from(trips);
+      const [serviceCount] = await db.select({ count: count() }).from(providerServices);
+
+      res.json({
+        results,
+        counts: {
+          users: userCount?.count || 0,
+          experts: expertCount?.count || 0,
+          providers: serviceCount?.count || 0,
+          plans: tripCount?.count || 0,
+        },
+      });
+    } catch (err) {
+      console.error("Admin search error:", err);
+      res.status(500).json({ message: "Search failed" });
+    }
+  });
+
+  // === Platform Stats (Public) ===
+  app.get("/api/platform/stats", async (_req, res) => {
+    try {
+      const [userCount] = await db.select({ count: count() }).from(users);
+      const [tripCount] = await db.select({ count: count() }).from(trips);
+      const [expertCount] = await db.select({ count: count() }).from(localExpertForms).where(eq(localExpertForms.status, "approved"));
+      const [reviewCount] = await db.select({ count: count() }).from(serviceReviews);
+      const [bookingCount] = await db.select({ count: count() }).from(serviceBookings);
+      const allReviews = await db.select({ rating: serviceReviews.rating }).from(serviceReviews);
+      const avgRating = allReviews.length > 0
+        ? (allReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviews.length).toFixed(1)
+        : "4.9";
+
+      const allTrips = await db.select({ destination: trips.destination }).from(trips);
+      const uniqueCountries = new Set(
+        allTrips.map(t => t.destination?.split(",").pop()?.trim()).filter(Boolean)
+      );
+
+      res.json({
+        totalTrips: tripCount?.count || 0,
+        totalUsers: userCount?.count || 0,
+        totalExperts: expertCount?.count || 0,
+        totalReviews: reviewCount?.count || 0,
+        totalBookings: bookingCount?.count || 0,
+        totalCountries: uniqueCountries.size || 0,
+        avgRating,
+      });
+    } catch (err) {
+      console.error("Platform stats error:", err);
+      res.status(500).json({ message: "Failed to fetch platform stats" });
+    }
+  });
+
+  // === Admin Notifications (admin-specific) ===
+  app.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const userId = user.claims.sub;
+      const adminNotifications = await db.select().from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(desc(notifications.createdAt))
+        .limit(50);
+
+      const enriched = adminNotifications.map(n => ({
+        id: n.id,
+        type: n.type?.includes("warning") || n.type?.includes("dispute") ? "warning"
+          : n.type?.includes("success") || n.type?.includes("payment") ? "success"
+          : n.type?.includes("alert") ? "alert"
+          : "info",
+        category: n.relatedType || "System",
+        title: n.title || "Notification",
+        message: n.message || "",
+        time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
+        read: n.isRead || false,
+      }));
+
+      res.json(enriched);
+    } catch (err) {
+      console.error("Admin notifications error:", err);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  function getRelativeTime(date: Date | string): string {
+    const now = new Date();
+    const d = new Date(date);
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} min ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
 }

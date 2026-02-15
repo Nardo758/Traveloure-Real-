@@ -183,7 +183,7 @@ export default function BookingFlowModal({
   const handleComplete = () => {
     onClose();
     // Navigate to trips page
-    window.location.href = '/trips';
+    window.location.href = '/my-trips';
   };
 
   if (!isOpen) return null;

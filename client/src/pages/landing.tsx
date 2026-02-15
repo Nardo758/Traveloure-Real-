@@ -7,7 +7,7 @@ import { TrendingCities } from "@/components/TrendingCities";
 import { ExperienceCard } from "@/components/ui/experience-card";
 import { TestimonialCard } from "@/components/ui/testimonial-card";
 import { StatCard } from "@/components/ui/stat-card";
-import { 
+import {
   ArrowRight,
   Rocket,
   Plane,
@@ -55,6 +55,13 @@ import {
 } from "@/components/ui/accordion";
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useQuery } from "@tanstack/react-query";
+
+function formatStat(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K+`;
+  return `${n}+`;
+}
 
 const experienceTemplates = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500", bgColor: "bg-blue-500/10 dark:bg-blue-500/20" },
@@ -96,9 +103,9 @@ const platformBenefits = [
 
 // Experience Categories data
 const experienceCategories = [
-  { 
-    icon: Plane, 
-    label: "Travel", 
+  {
+    icon: Plane,
+    label: "Travel",
     description: "Plan your next adventure",
     image: "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=80",
     trending: 89,
@@ -117,9 +124,9 @@ const experienceCategories = [
     activeCount: 247,
     isHot: true,
   },
-  { 
-    icon: Heart, 
-    label: "Weddings", 
+  {
+    icon: Heart,
+    label: "Weddings",
     description: "Plan the perfect day",
     image: "https://images.unsplash.com/photo-1519741497674-611481863552?w=600&q=80",
     trending: 74,
@@ -138,9 +145,9 @@ const experienceCategories = [
     activeCount: 156,
     isHot: true,
   },
-  { 
-    icon: Gem, 
-    label: "Proposals", 
+  {
+    icon: Gem,
+    label: "Proposals",
     description: "Make it unforgettable",
     image: "https://images.unsplash.com/photo-1515934751635-c81c6bc9a2d8?w=600&q=80",
     trending: 68,
@@ -159,9 +166,9 @@ const experienceCategories = [
     activeCount: 45,
     isHot: true,
   },
-  { 
-    icon: PartyPopper, 
-    label: "Celebrations", 
+  {
+    icon: PartyPopper,
+    label: "Celebrations",
     description: "Mark special moments",
     image: "https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&q=80",
     trending: 62,
@@ -180,9 +187,9 @@ const experienceCategories = [
     activeCount: 189,
     isHot: true,
   },
-  { 
-    icon: Sparkles, 
-    label: "Date Nights", 
+  {
+    icon: Sparkles,
+    label: "Date Nights",
     description: "Plan something special",
     image: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&q=80",
     trending: 81,
@@ -201,9 +208,9 @@ const experienceCategories = [
     activeCount: 312,
     isHot: true,
   },
-  { 
-    icon: Building2, 
-    label: "Corporate", 
+  {
+    icon: Building2,
+    label: "Corporate",
     description: "Team building & events",
     image: "https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=600&q=80",
     trending: 52,
@@ -338,41 +345,10 @@ const faqItems = [
   },
 ];
 
-const impactStats = [
-  { 
-    value: "8M+", 
-    label: "Trips Planned", 
-    description: "Join the millions who've seamlessly planned their journeys—from weekend getaways to month-long adventures.",
-    icon: MapPin,
-    color: "text-[#FF385C]"
-  },
-  { 
-    value: "500K+", 
-    label: "Custom Itineraries", 
-    description: "Unique, tailored itineraries built using real-time preferences—no two plans are the same.",
-    icon: Calendar,
-    color: "text-emerald-500"
-  },
-  { 
-    value: "$500+", 
-    label: "Average Savings", 
-    description: "AI-route optimization and bundled planning reduce spend dramatically on multi-destination travel.",
-    icon: Zap,
-    color: "text-violet-500"
-  },
-  { 
-    value: "33K+", 
-    label: "5-Star Reviews", 
-    description: "With tens of thousands of 5-star reviews, our platform is trusted by travelers worldwide.",
-    icon: Star,
-    color: "text-amber-500"
-  },
-];
-
 const testimonials = [
-  { 
-    text: "Sofia helped us navigate Porto wine country and saved us $2,400 on venue negotiations. Her local connections got us exclusive tastings we never could have found ourselves!", 
-    author: "Sarah Johnson", 
+  {
+    text: "Sofia helped us navigate Porto wine country and saved us $2,400 on venue negotiations. Her local connections got us exclusive tastings we never could have found ourselves!",
+    author: "Sarah Johnson",
     location: "New York, USA",
     rating: 5,
     avatar: "SJ",
@@ -384,9 +360,9 @@ const testimonials = [
     expertRate: "$65/hr",
     tripImage: "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=400&q=80"
   },
-  { 
-    text: "Hiroshi's insider knowledge of Kyoto transformed our cherry blossom trip. We visited secret gardens at sunrise before any tourists arrived. Truly magical!", 
-    author: "David Chen", 
+  {
+    text: "Hiroshi's insider knowledge of Kyoto transformed our cherry blossom trip. We visited secret gardens at sunrise before any tourists arrived. Truly magical!",
+    author: "David Chen",
     location: "Toronto, Canada",
     rating: 5,
     avatar: "DC",
@@ -398,9 +374,9 @@ const testimonials = [
     expertRate: "$120/hr",
     tripImage: "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=400&q=80"
   },
-  { 
-    text: "Priya made our Mumbai wedding seamless. She coordinated 12 vendors, saved us 3 weeks of planning, and the ceremony was absolutely perfect. Worth every penny!", 
-    author: "Maria Rodriguez", 
+  {
+    text: "Priya made our Mumbai wedding seamless. She coordinated 12 vendors, saved us 3 weeks of planning, and the ceremony was absolutely perfect. Worth every penny!",
+    author: "Maria Rodriguez",
     location: "Madrid, Spain",
     rating: 5,
     avatar: "MR",
@@ -431,10 +407,45 @@ const itemVariants = {
 
 export default function LandingPage() {
   const { openSignInModal } = useSignInModal();
-  
+
+  const { data: platformStats } = useQuery<{
+    totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
+  }>({ queryKey: ["/api/platform/stats"] });
+
+  const impactStats = [
+    {
+      value: platformStats ? formatStat(platformStats.totalTrips) : "0+",
+      label: "Trips Planned",
+      description: "Join the millions who've seamlessly planned their journeys--from weekend getaways to month-long adventures.",
+      icon: MapPin,
+      color: "text-[#FF385C]"
+    },
+    {
+      value: platformStats ? formatStat(platformStats.totalReviews) : "0+",
+      label: "Reviews",
+      description: "Unique, tailored itineraries built using real-time preferences--no two plans are the same.",
+      icon: Calendar,
+      color: "text-emerald-500"
+    },
+    {
+      value: platformStats ? formatStat(platformStats.totalExperts) : "0+",
+      label: "Local Experts",
+      description: "Verified local experts across the globe ready to help you plan unforgettable experiences.",
+      icon: Zap,
+      color: "text-violet-500"
+    },
+    {
+      value: platformStats ? formatStat(platformStats.totalCountries) : "0+",
+      label: "Countries",
+      description: "Our platform spans destinations worldwide, connecting you with experts in every corner of the globe.",
+      icon: Star,
+      color: "text-amber-500"
+    },
+  ];
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <SEOHead 
+      <SEOHead
         title="Home"
         description="Plan unforgettable experiences with Traveloure. From romantic getaways to corporate events, our AI-powered platform connects you with expert travel planners and service providers worldwide."
         keywords={["travel platform", "AI travel planning", "event planning", "vacation booking", "travel services"]}
@@ -442,7 +453,7 @@ export default function LandingPage() {
       />
       <CityTickerTape />
 
-      <section 
+      <section
         className="relative min-h-[650px] lg:min-h-[750px] flex items-center"
         style={{
           backgroundImage: `url(${lakeImage})`,
@@ -452,7 +463,7 @@ export default function LandingPage() {
       >
         <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-black/40" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-        
+
         <div className="container mx-auto px-4 max-w-6xl relative z-10 py-12">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -460,7 +471,7 @@ export default function LandingPage() {
             transition={{ duration: 0.6 }}
             className="text-center mb-12"
           >
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.2 }}
@@ -477,7 +488,7 @@ export default function LandingPage() {
                 Life Experiences
               </span>
             </h1>
-            
+
             <p className="text-lg md:text-xl text-white/90 leading-relaxed max-w-2xl mx-auto">
               From dream vacations to unforgettable celebrations — plan it yourself with AI or get personalized help from experts.
             </p>
@@ -545,7 +556,7 @@ export default function LandingPage() {
                         <p className="text-xs text-white/70">Get personalized guidance from locals</p>
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4">
                       <span className="flex items-center gap-1.5 text-xs text-white/90 bg-white/10 px-2.5 py-1 rounded-full">
                         <Sparkles className="w-3 h-3 text-emerald-400" /> Local tips
@@ -557,9 +568,9 @@ export default function LandingPage() {
                         <Shield className="w-3 h-3 text-emerald-400" /> Verified experts
                       </span>
                     </div>
-                    
+
                     <Link href="/experts">
-                      <Button 
+                      <Button
                         size="default"
                         className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold shadow-lg"
                         data-testid="button-find-expert"
@@ -585,7 +596,7 @@ export default function LandingPage() {
                     transition={{ delay: 0.6 + index * 0.1 }}
                   >
                     <Link href={feature.href}>
-                      <div 
+                      <div
                         className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-4 hover-elevate cursor-pointer group h-full"
                         data-testid={`link-feature-${feature.label.toLowerCase().replace(/\s+/g, '-')}`}
                       >
@@ -663,7 +674,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative">
             {/* Connecting line (desktop only) */}
             <div className="hidden lg:block absolute top-16 left-[12%] right-[12%] h-0.5 bg-gradient-to-r from-[#FF385C] via-emerald-500 via-violet-500 to-amber-500 opacity-30" />
-            
+
             {howItWorksSteps.map((step, idx) => (
               <motion.div
                 key={step.step}
@@ -731,7 +742,7 @@ export default function LandingPage() {
               Real-time collective intelligence from travelers worldwide
             </p>
           </motion.div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {impactStats.map((stat, idx) => (
               <StatCard
@@ -761,10 +772,10 @@ export default function LandingPage() {
               </h2>
             </div>
             <p className="text-muted-foreground">
-              Real results from <span className="font-semibold text-foreground">102,530+</span> travelers worldwide
+              Real results from <span className="font-semibold text-foreground">{platformStats ? formatStat(platformStats.totalUsers) : "0+"}</span> travelers worldwide
             </p>
           </motion.div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {testimonials.map((testimonial, idx) => (
               <TestimonialCard
@@ -774,7 +785,7 @@ export default function LandingPage() {
               />
             ))}
           </div>
-          
+
           {/* Platform Stats Bar */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -784,11 +795,11 @@ export default function LandingPage() {
             data-testid="platform-stats-bar"
           >
             <div className="text-center" data-testid="stat-avg-rating">
-              <p className="text-2xl font-bold text-[#FF385C]">4.9/5</p>
+              <p className="text-2xl font-bold text-[#FF385C]">{platformStats?.avgRating ?? "4.9"}/5</p>
               <p className="text-xs text-muted-foreground">Average Rating</p>
             </div>
             <div className="text-center" data-testid="stat-reviews">
-              <p className="text-2xl font-bold text-foreground">50K+</p>
+              <p className="text-2xl font-bold text-foreground">{platformStats ? formatStat(platformStats.totalReviews) : "0+"}</p>
               <p className="text-xs text-muted-foreground">Reviews</p>
             </div>
             <div className="text-center" data-testid="stat-recommend">
@@ -796,7 +807,7 @@ export default function LandingPage() {
               <p className="text-xs text-muted-foreground">Would Recommend</p>
             </div>
             <div className="text-center" data-testid="stat-travelers">
-              <p className="text-2xl font-bold text-foreground">2M+</p>
+              <p className="text-2xl font-bold text-foreground">{platformStats ? formatStat(platformStats.totalUsers) : "0+"}</p>
               <p className="text-xs text-muted-foreground">Happy Travelers</p>
             </div>
           </motion.div>
@@ -818,9 +829,9 @@ export default function LandingPage() {
               Join thousands who've planned unforgettable trips with local experts and AI
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Button 
-                size="lg" 
-                className="bg-white text-[#FF385C] font-semibold px-8 h-12 shadow-xl" 
+              <Button
+                size="lg"
+                className="bg-white text-[#FF385C] font-semibold px-8 h-12 shadow-xl"
                 onClick={() => openSignInModal()}
                 data-testid="button-cta-get-started"
               >
@@ -828,20 +839,20 @@ export default function LandingPage() {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
               <Link href="/experts">
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="border-2 border-white text-white font-medium px-8 h-12 backdrop-blur-sm" 
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-2 border-white text-white font-medium px-8 h-12 backdrop-blur-sm"
                   data-testid="button-cta-browse"
                 >
                   Browse Experts
                 </Button>
               </Link>
               <Link href="/pricing">
-                <Button 
-                  size="lg" 
-                  variant="outline" 
-                  className="border-2 border-white text-white font-medium px-8 h-12 backdrop-blur-sm" 
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-2 border-white text-white font-medium px-8 h-12 backdrop-blur-sm"
                   data-testid="button-cta-pricing"
                 >
                   See Pricing

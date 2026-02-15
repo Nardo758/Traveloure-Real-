@@ -2,62 +2,48 @@ import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Users, 
+import { useQuery } from "@tanstack/react-query";
+import {
+  BarChart3,
+  TrendingUp,
+  Users,
   MapPin,
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
   Download,
-  Eye
+  Eye,
+  Loader2
 } from "lucide-react";
 
-const metrics = [
-  { label: "Page Views", value: "245,892", change: "+18%", positive: true },
-  { label: "Active Users", value: "12,450", change: "+12%", positive: true },
-  { label: "Conversion Rate", value: "3.8%", change: "+0.5%", positive: true },
-  { label: "Avg Session", value: "4m 32s", change: "-8%", positive: false },
-];
-
-const topDestinations = [
-  { name: "Paris, France", bookings: 342, revenue: "$156,000" },
-  { name: "Tokyo, Japan", bookings: 287, revenue: "$128,500" },
-  { name: "New York, USA", bookings: 256, revenue: "$115,200" },
-  { name: "Bali, Indonesia", bookings: 198, revenue: "$89,100" },
-  { name: "Barcelona, Spain", bookings: 176, revenue: "$79,200" },
-];
-
-const userDemographics = [
-  { segment: "Age 25-34", percentage: 38 },
-  { segment: "Age 35-44", percentage: 28 },
-  { segment: "Age 45-54", percentage: 18 },
-  { segment: "Age 18-24", percentage: 10 },
-  { segment: "Age 55+", percentage: 6 },
-];
-
-const trafficSources = [
-  { source: "Organic Search", visits: 85420, percentage: 42 },
-  { source: "Direct", visits: 52340, percentage: 26 },
-  { source: "Social Media", visits: 34210, percentage: 17 },
-  { source: "Referral", visits: 20180, percentage: 10 },
-  { source: "Paid Ads", visits: 10120, percentage: 5 },
-];
-
-const weeklyActivity = [
-  { day: "Mon", users: 1850 },
-  { day: "Tue", users: 2100 },
-  { day: "Wed", users: 1950 },
-  { day: "Thu", users: 2300 },
-  { day: "Fri", users: 2150 },
-  { day: "Sat", users: 1420 },
-  { day: "Sun", users: 1280 },
-];
+interface AnalyticsData {
+  metrics: Array<{ label: string; value: string; change: string; positive: boolean }>;
+  topDestinations: Array<{ name: string; bookings: number; revenue: string }>;
+  userDemographics: Array<{ segment: string; percentage: number }>;
+  weeklyActivity: Array<{ day: string; users: number }>;
+}
 
 export default function AdminAnalytics() {
-  const maxUsers = Math.max(...weeklyActivity.map(d => d.users));
-  const maxVisits = Math.max(...trafficSources.map(s => s.visits));
+  const { data: analytics, isLoading } = useQuery<AnalyticsData>({
+    queryKey: ["/api/admin/analytics/overview"],
+  });
+
+  const metrics = analytics?.metrics ?? [];
+  const topDestinations = analytics?.topDestinations ?? [];
+  const userDemographics = analytics?.userDemographics ?? [];
+  const weeklyActivity = analytics?.weeklyActivity ?? [];
+
+  const maxUsers = Math.max(...weeklyActivity.map(d => d.users), 1);
+
+  if (isLoading) {
+    return (
+      <AdminLayout title="Analytics">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout title="Analytics">
@@ -104,77 +90,14 @@ export default function AdminAnalytics() {
             </CardHeader>
             <CardContent>
               <div className="flex items-end justify-between h-48 gap-2">
-                {weeklyActivity.map((day, index) => (
+                {weeklyActivity.map((day) => (
                   <div key={day.day} className="flex flex-col items-center flex-1" data-testid={`chart-bar-${day.day.toLowerCase()}`}>
-                    <div 
+                    <div
                       className="w-full bg-blue-500 rounded-t-md transition-all"
                       style={{ height: `${(day.users / maxUsers) * 150}px` }}
                     />
                     <span className="text-xs text-gray-500 mt-2">{day.day}</span>
                     <span className="text-xs font-medium">{day.users.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Traffic Sources */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="w-5 h-5 text-green-600" />
-                Traffic Sources
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {trafficSources.map((source, index) => (
-                <div key={source.source} className="space-y-1" data-testid={`row-traffic-${index}`}>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">{source.source}</span>
-                    <div>
-                      <span className="font-medium">{source.visits.toLocaleString()}</span>
-                      <span className="text-gray-500 ml-1">({source.percentage}%)</span>
-                    </div>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-green-500 rounded-full"
-                      style={{ width: `${source.percentage}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Top Destinations */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="w-5 h-5 text-[#FF385C]" />
-                Top Destinations
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {topDestinations.map((dest, index) => (
-                  <div 
-                    key={dest.name}
-                    className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                    data-testid={`row-destination-${index}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">
-                        {index + 1}
-                      </span>
-                      <div>
-                        <p className="font-medium text-gray-900">{dest.name}</p>
-                        <p className="text-sm text-gray-500">{dest.bookings} bookings</p>
-                      </div>
-                    </div>
-                    <span className="font-semibold text-green-600">{dest.revenue}</span>
                   </div>
                 ))}
               </div>
@@ -197,10 +120,67 @@ export default function AdminAnalytics() {
                     <span className="font-medium">{demo.percentage}%</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-purple-500 rounded-full"
                       style={{ width: `${demo.percentage}%` }}
                     />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top Destinations */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-[#FF385C]" />
+                Top Destinations
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {topDestinations.map((dest, index) => (
+                  <div
+                    key={dest.name}
+                    className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                    data-testid={`row-destination-${index}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-sm font-medium text-gray-600">
+                        {index + 1}
+                      </span>
+                      <div>
+                        <p className="font-medium text-gray-900">{dest.name}</p>
+                        <p className="text-sm text-gray-500">{dest.bookings} bookings</p>
+                      </div>
+                    </div>
+                    <span className="font-semibold text-green-600">{dest.revenue}</span>
+                  </div>
+                ))}
+                {topDestinations.length === 0 && (
+                  <p className="text-gray-500 text-center py-4">No destination data yet</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Empty placeholder for layout balance */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Eye className="w-5 h-5 text-green-600" />
+                Platform Overview
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {metrics.map((metric, index) => (
+                <div key={metric.label} className="space-y-1" data-testid={`row-traffic-${index}`}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600">{metric.label}</span>
+                    <span className="font-medium">{metric.value}</span>
                   </div>
                 </div>
               ))}

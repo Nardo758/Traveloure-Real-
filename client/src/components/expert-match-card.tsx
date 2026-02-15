@@ -19,7 +19,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useState } from "react";
 
 interface MatchScoreBreakdown {
@@ -112,6 +112,7 @@ export function ExpertMatchCard({
 }: ExpertMatchCardProps) {
   const [isFavorite, setIsFavorite] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const [, setLocation] = useLocation();
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Travel Expert";
   const initials = `${expert.firstName?.[0] || "T"}${expert.lastName?.[0] || "E"}`;
@@ -335,7 +336,13 @@ export function ExpertMatchCard({
         )}
 
         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#E5E7EB] dark:border-gray-700">
-          <Button variant="outline" size="sm" className="flex-1 gap-1 h-7 text-xs" data-testid="button-message">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 gap-1 h-7 text-xs"
+            data-testid="button-message"
+            onClick={() => setLocation(`/chat?expertId=${expert.id}`)}
+          >
             <MessageCircle className="w-3 h-3" />
             Message
           </Button>

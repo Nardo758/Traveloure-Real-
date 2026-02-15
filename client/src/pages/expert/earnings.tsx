@@ -1,47 +1,80 @@
+import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Calendar, 
+import {
+  DollarSign,
+  TrendingUp,
+  Calendar,
   CreditCard,
   ArrowUpRight,
   ArrowDownRight,
   Clock,
   CheckCircle,
-  Download
+  Download,
+  Loader2
 } from "lucide-react";
 
+interface EarningsData {
+  earnings: Array<{
+    id: string;
+    amount: string;
+    type: string;
+    status: string;
+    createdAt: string;
+    description?: string;
+  }>;
+  summary: {
+    totalEarnings: number;
+    monthlyEarnings: number;
+    pendingPayout: number;
+    lastPayout: number;
+    lastPayoutDate?: string;
+  };
+}
+
 export default function ExpertEarnings() {
+  const { data, isLoading } = useQuery<EarningsData>({
+    queryKey: ["/api/expert/earnings"],
+  });
+
+  const summary = data?.summary;
+  const earnings = data?.earnings || [];
+
   const stats = [
-    { label: "Total Earnings", value: "$12,450", change: "+15%", trend: "up", icon: DollarSign },
-    { label: "This Month", value: "$4,850", change: "+8%", trend: "up", icon: Calendar },
-    { label: "Pending Payout", value: "$2,100", icon: Clock },
-    { label: "Last Payout", value: "$3,500", date: "Dec 28", icon: CreditCard },
+    { label: "Total Earnings", value: `$${(summary?.totalEarnings ?? 0).toLocaleString()}`, icon: DollarSign },
+    { label: "This Month", value: `$${(summary?.monthlyEarnings ?? 0).toLocaleString()}`, icon: Calendar },
+    { label: "Pending Payout", value: `$${(summary?.pendingPayout ?? 0).toLocaleString()}`, icon: Clock },
+    { label: "Last Payout", value: `$${(summary?.lastPayout ?? 0).toLocaleString()}`, date: summary?.lastPayoutDate, icon: CreditCard },
   ];
 
-  const recentTransactions = [
-    { id: 1, client: "Sarah & Mike", service: "Tokyo Trip Planning", amount: 850, status: "completed", date: "Dec 30" },
-    { id: 2, client: "Jennifer", service: "Proposal Planning", amount: 650, status: "pending", date: "Dec 28" },
-    { id: 3, client: "David & Emma", service: "Anniversary Dinner", amount: 300, status: "completed", date: "Dec 25" },
-    { id: 4, client: "Corporate Tech Inc", service: "Team Retreat", amount: 1200, status: "completed", date: "Dec 20" },
-    { id: 5, client: "Amanda", service: "Birthday Celebration", amount: 200, status: "pending", date: "Dec 18" },
-  ];
+  const recentTransactions = earnings.slice(0, 5);
 
-  const payoutHistory = [
-    { id: 1, amount: 3500, method: "Bank Transfer", date: "Dec 28, 2025", status: "completed" },
-    { id: 2, amount: 2800, method: "Bank Transfer", date: "Nov 28, 2025", status: "completed" },
-    { id: 3, amount: 4100, method: "Bank Transfer", date: "Oct 28, 2025", status: "completed" },
-  ];
+  // Group by month for breakdown
+  const monthlyBreakdown: Record<string, { earnings: number; clients: number }> = {};
+  earnings.forEach((e) => {
+    const date = new Date(e.createdAt);
+    const month = date.toLocaleString("en-US", { month: "long" });
+    if (!monthlyBreakdown[month]) monthlyBreakdown[month] = { earnings: 0, clients: 0 };
+    monthlyBreakdown[month].earnings += parseFloat(e.amount || "0");
+    monthlyBreakdown[month].clients++;
+  });
+  const monthlyData = Object.entries(monthlyBreakdown).slice(0, 4).map(([month, data]) => ({
+    month,
+    earnings: data.earnings,
+    clients: data.clients,
+  }));
 
-  const monthlyBreakdown = [
-    { month: "December", earnings: 4850, clients: 8 },
-    { month: "November", earnings: 3200, clients: 6 },
-    { month: "October", earnings: 4100, clients: 9 },
-    { month: "September", earnings: 2800, clients: 5 },
-  ];
+  if (isLoading) {
+    return (
+      <ExpertLayout title="Earnings">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+        </div>
+      </ExpertLayout>
+    );
+  }
 
   return (
     <ExpertLayout title="Earnings">
@@ -66,12 +99,6 @@ export default function ExpertEarnings() {
                   <div>
                     <p className="text-sm text-gray-500">{stat.label}</p>
                     <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                    {stat.change && (
-                      <p className={`text-sm flex items-center gap-1 ${stat.trend === "up" ? "text-green-600" : "text-red-600"}`}>
-                        {stat.trend === "up" ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                        {stat.change} from last month
-                      </p>
-                    )}
                     {stat.date && <p className="text-sm text-gray-500">{stat.date}</p>}
                   </div>
                   <div className="w-12 h-12 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
@@ -97,7 +124,7 @@ export default function ExpertEarnings() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {recentTransactions.map((transaction) => (
+                  {recentTransactions.length > 0 ? recentTransactions.map((transaction) => (
                     <div
                       key={transaction.id}
                       className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50"
@@ -108,18 +135,18 @@ export default function ExpertEarnings() {
                           <TrendingUp className="w-5 h-5 text-green-600" />
                         </div>
                         <div>
-                          <p className="font-medium text-gray-900">{transaction.client}</p>
-                          <p className="text-sm text-gray-500">{transaction.service}</p>
+                          <p className="font-medium text-gray-900">{transaction.type || "Earning"}</p>
+                          <p className="text-sm text-gray-500">{transaction.description || ""}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-gray-900">+${transaction.amount}</p>
+                        <p className="font-semibold text-gray-900">+${parseFloat(transaction.amount || "0").toLocaleString()}</p>
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-500">{transaction.date}</span>
-                          <Badge 
-                            variant="outline" 
-                            className={transaction.status === "completed" 
-                              ? "bg-green-50 text-green-700 border-green-200" 
+                          <span className="text-sm text-gray-500">{new Date(transaction.createdAt).toLocaleDateString()}</span>
+                          <Badge
+                            variant="outline"
+                            className={transaction.status === "completed"
+                              ? "bg-green-50 text-green-700 border-green-200"
                               : "bg-yellow-50 text-yellow-700 border-yellow-200"}
                           >
                             {transaction.status}
@@ -127,7 +154,9 @@ export default function ExpertEarnings() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )) : (
+                    <p className="text-gray-500 text-center py-4">No transactions yet</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -142,46 +171,17 @@ export default function ExpertEarnings() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {monthlyBreakdown.map((month, index) => (
+                  {monthlyData.length > 0 ? monthlyData.map((month, index) => (
                     <div key={index} className="flex items-center justify-between p-2 rounded-lg hover-elevate" data-testid={`monthly-breakdown-${index}`}>
                       <div>
                         <p className="font-medium text-gray-900">{month.month}</p>
-                        <p className="text-sm text-gray-500">{month.clients} clients</p>
+                        <p className="text-sm text-gray-500">{month.clients} transactions</p>
                       </div>
                       <p className="font-semibold text-gray-900">${month.earnings.toLocaleString()}</p>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Payout History */}
-            <Card className="border border-gray-200">
-              <CardHeader>
-                <CardTitle className="text-lg">Payout History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {payoutHistory.map((payout) => (
-                    <div 
-                      key={payout.id} 
-                      className="flex items-center justify-between p-3 rounded-lg border border-gray-100"
-                      data-testid={`payout-${payout.id}`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-gray-900">${payout.amount.toLocaleString()}</p>
-                          <p className="text-xs text-gray-500">{payout.date}</p>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="icon" data-testid={`button-download-${payout.id}`}>
-                        <Download className="w-4 h-4 text-gray-500" />
-                      </Button>
-                    </div>
-                  ))}
+                  )) : (
+                    <p className="text-gray-500 text-center py-2">No data yet</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -198,7 +198,7 @@ export default function ExpertEarnings() {
                   </div>
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">Bank Account</p>
-                    <p className="text-sm text-gray-500">**** **** **** 4829</p>
+                    <p className="text-sm text-gray-500">Set up your payment method</p>
                   </div>
                 </div>
                 <Button variant="outline" className="w-full mt-3" data-testid="button-update-payment">

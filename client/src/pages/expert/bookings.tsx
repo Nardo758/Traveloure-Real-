@@ -202,6 +202,15 @@ export default function ExpertBookings() {
             ))}
           </CardContent>
         </Card>
+        {/* Booking Analytics */}
+        <Card className="border border-gray-200">
+          <CardHeader>
+            <CardTitle className="text-lg">Booking Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600">View vendor management and detailed booking analytics from the trip logistics dashboard when managing specific trips.</p>
+          </CardContent>
+        </Card>
       </div>
     </ExpertLayout>
   );

@@ -67,6 +67,17 @@ import {
   Ticket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogisticsIntelligencePanel, type LogisticsIntelligenceConfig } from "@/components/logistics";
+
+const logisticsConfigs: Record<string, { name: string; config: LogisticsIntelligenceConfig }> = {
+  travel: { name: "Travel", config: { paymentFlowType: "joint", paymentComplexity: "medium", timingComplexity: "medium", contingencyLevel: "important", typicalGroupSizeMin: 1, typicalGroupSizeMax: 8, typicalDurationMinDays: 3, typicalDurationMaxDays: 14 } },
+  wedding: { name: "Wedding", config: { paymentFlowType: "multi_stakeholder", paymentComplexity: "very_high", timingComplexity: "very_high", contingencyLevel: "critical", typicalGroupSizeMin: 20, typicalGroupSizeMax: 200, typicalDurationMinDays: 1, typicalDurationMaxDays: 3 } },
+  proposal: { name: "Proposal", config: { paymentFlowType: "single_payer", paymentComplexity: "low", timingComplexity: "high", contingencyLevel: "critical", typicalGroupSizeMin: 2, typicalGroupSizeMax: 2, typicalDurationMinDays: 1, typicalDurationMaxDays: 1 } },
+  birthday: { name: "Birthday", config: { paymentFlowType: "single_payer", paymentComplexity: "low", timingComplexity: "low", contingencyLevel: "flexible", typicalGroupSizeMin: 5, typicalGroupSizeMax: 50, typicalDurationMinDays: 1, typicalDurationMaxDays: 1 } },
+  "date-night": { name: "Date Night", config: { paymentFlowType: "joint", paymentComplexity: "low", timingComplexity: "medium", contingencyLevel: "flexible", typicalGroupSizeMin: 2, typicalGroupSizeMax: 2, typicalDurationMinDays: 1, typicalDurationMaxDays: 1 } },
+  "corporate-events": { name: "Corporate", config: { paymentFlowType: "single_payer", paymentComplexity: "high", timingComplexity: "very_high", contingencyLevel: "critical", typicalGroupSizeMin: 10, typicalGroupSizeMax: 200, typicalDurationMinDays: 1, typicalDurationMaxDays: 5 } },
+  "wedding-anniversaries": { name: "Anniversary", config: { paymentFlowType: "joint", paymentComplexity: "low", timingComplexity: "medium", contingencyLevel: "important", typicalGroupSizeMin: 2, typicalGroupSizeMax: 20, typicalDurationMinDays: 1, typicalDurationMaxDays: 3 } },
+};
 import { format } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -177,6 +188,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
       { id: "flights", label: "Flights", icon: Plane, category: "flights" },
       { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "logistics", label: "Logistics", icon: Package, category: null },
     ],
     filters: ["Budget", "Luxury", "Family", "Adventure", "Business", "Beach", "City", "Nature"],
     locationLabel: "Destination:",
@@ -191,6 +203,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "guest-accommodations", label: "Guest Accommodations", icon: Hotel, category: "accommodations" },
       { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
       { id: "rehearsal", label: "Rehearsal", icon: Utensils, category: "rehearsal" },
+      { id: "logistics", label: "Logistics", icon: Package, category: null },
     ],
     filters: ["Indoor", "Outdoor", "Beach", "Garden", "Ballroom", "Rustic", "Modern", "Traditional"],
     locationLabel: "Wedding Location:",
@@ -205,6 +218,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
           { id: "guest-accommodations", label: "Guest Accommodations", icon: Hotel, category: "accommodations" },
           { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
           { id: "rehearsal", label: "Rehearsal", icon: Utensils, category: "rehearsal" },
+          { id: "logistics", label: "Logistics", icon: Package, category: null },
         ],
       },
       guest: {
@@ -228,6 +242,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "celebration-dining", label: "Celebration Dining", icon: Utensils, category: "dining" },
       { id: "post-proposal", label: "Post-Proposal Activities", icon: Heart, category: "activities" },
       { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "logistics", label: "Logistics", icon: Package, category: null },
     ],
     filters: ["Romantic", "Private", "Scenic", "Restaurant", "Beach", "Rooftop", "Garden", "Sunset"],
     locationLabel: "Proposal Location:",
@@ -242,6 +257,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "services", label: "Services", icon: Wrench, category: "services-birthday" },
       { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "logistics", label: "Logistics", icon: Package, category: null },
     ],
     filters: ["Kids", "Teens", "Adults", "Milestone", "Outdoor", "Indoor", "Theme Party", "Elegant"],
     locationLabel: "Party Location:",
@@ -281,6 +297,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "entertainment", label: "Entertainment", icon: Music, category: "entertainment" },
       { id: "services", label: "Services", icon: Wrench, category: "services-romance" },
       { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
+      { id: "logistics", label: "Logistics", icon: Package, category: null },
     ],
     filters: ["Romantic", "Casual", "Upscale", "Adventure", "Foodie", "First Date", "Anniversary"],
     locationLabel: "Location:",
@@ -295,6 +312,7 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
       { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
       { id: "accommodations", label: "Accommodations", icon: Hotel, category: "accommodations" },
+      { id: "logistics", label: "Logistics", icon: Package, category: null },
     ],
     filters: ["Conference", "Retreat", "Workshop", "Team Building", "Seminar", "Gala", "Networking"],
     locationLabel: "Event Location:",
@@ -2575,19 +2593,26 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
+          {/* Logistics Intelligence Panel */}
+          {activeTab === "logistics" && (() => {
+            const lc = logisticsConfigs[slug || "travel"] || logisticsConfigs.travel;
+            return (
+              <div className="mb-6">
+                <LogisticsIntelligencePanel
+                  experienceType={slug || "travel"}
+                  experienceName={lc.name}
+                  config={lc.config}
+                  groupSize={travelers}
+                />
+              </div>
+            );
+          })()}
+
           {/* Venue Search Panel - Google Places Integration */}
           {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "logistics" && (
             (activeTab === "venues" || activeTab === "venue" || activeTab === "vendors" || 
              activeTab === "guest-accommodations" || activeTab === "rehearsal" || 
-             activeTab === "team-activities" || activeTab === "nightlife" || activeTab === "dining" ||
-             activeTab === "sports" || activeTab === "spa" || activeTab === "spa-wellness" ||
-             activeTab === "shopping" || activeTab === "entertainment" || activeTab === "catering" ||
-             activeTab === "decorations" || activeTab === "photography" || activeTab === "wellness" ||
-             activeTab === "rentals" || activeTab === "av" || activeTab === "destinations" ||
-             activeTab === "locations" || activeTab === "celebration-dining" || activeTab === "post-proposal" ||
-             activeTab === "welcome-events" || activeTab === "local-experiences" || activeTab === "daytime-activities" ||
-             activeTab === "party-services" || activeTab === "experiences" || activeTab === "special-touches" ||
-             activeTab === "itinerary-builder" || activeTab === "accommodations") && (
+             activeTab === "team-activities" || activeTab === "nightlife" || activeTab === "dining") && (
               <div className="mb-6">
                 <VenueSearchPanel
                   template={slug || ''}

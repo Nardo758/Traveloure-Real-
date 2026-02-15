@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import {
   CreditCard,
@@ -20,40 +22,11 @@ import {
   Users,
   Sparkles,
   Gift,
+  Loader2,
 } from "lucide-react";
 import { SiVisa, SiMastercard, SiApplepay, SiPaypal } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
-
-const mockCartItems = [
-  {
-    id: 1,
-    name: "Bali Paradise Villa - 5 nights",
-    category: "Accommodation",
-    price: 1250,
-    originalPrice: 1500,
-  },
-  {
-    id: 2,
-    name: "Temple Tour with Local Guide",
-    category: "Activity",
-    price: 85,
-    originalPrice: 100,
-  },
-  {
-    id: 3,
-    name: "Ubud Rice Terrace Trekking",
-    category: "Activity",
-    price: 65,
-    originalPrice: 75,
-  },
-  {
-    id: 4,
-    name: "Traditional Balinese Cooking Class",
-    category: "Activity",
-    price: 55,
-    originalPrice: 65,
-  },
-];
+import { apiRequest } from "@/lib/queryClient";
 
 const paymentMethods = [
   { id: "card", label: "Credit/Debit Card", icons: [SiVisa, SiMastercard] },
@@ -68,26 +41,56 @@ export default function PaymentPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
+  const [promoDiscount, setPromoDiscount] = useState(0);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
 
-  const subtotal = mockCartItems.reduce((sum, item) => sum + item.price, 0);
-  const discount = promoApplied ? subtotal * 0.1 : 0;
-  const serviceFee = 45;
+  // Fetch real cart items from API
+  const { data: cartData, isLoading: cartLoading } = useQuery<any[]>({
+    queryKey: ["/api/cart"],
+  });
+
+  const cartItems = (cartData || []).map((item: any) => ({
+    id: item.id,
+    name: item.service?.name || item.name || "Service",
+    category: item.service?.categoryId || "Service",
+    price: parseFloat(item.service?.basePrice || item.price || "0"),
+    originalPrice: parseFloat(item.service?.basePrice || item.price || "0"),
+  }));
+
+  const subtotal = cartItems.reduce((sum: number, item: any) => sum + item.price, 0);
+  const discount = promoDiscount;
+  const serviceFee = subtotal > 0 ? 45 : 0;
   const total = subtotal - discount + serviceFee;
 
-  const handleApplyPromo = () => {
-    if (promoCode.toLowerCase() === "travel10") {
+  // Use real promo code API
+  const promoMutation = useMutation({
+    mutationFn: async (code: string) => {
+      const res = await apiRequest("POST", "/api/bookings/apply-promo", {
+        code,
+        amount: subtotal,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
       setPromoApplied(true);
+      setPromoDiscount(data.discount || subtotal * 0.1);
       toast({
         title: "Promo applied!",
-        description: "10% discount has been applied to your order.",
+        description: data.message || "Discount has been applied to your order.",
       });
-    } else {
+    },
+    onError: () => {
       toast({
         title: "Invalid code",
         description: "This promo code is not valid.",
         variant: "destructive",
       });
+    },
+  });
+
+  const handleApplyPromo = () => {
+    if (promoCode.trim()) {
+      promoMutation.mutate(promoCode);
     }
   };
 
@@ -125,16 +128,45 @@ export default function PaymentPage() {
     }
 
     setIsProcessing(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setIsProcessing(false);
-
-    toast({
-      title: "Payment successful!",
-      description: "Your booking has been confirmed.",
-    });
-
-    setLocation("/dashboard");
+    try {
+      const res = await apiRequest("POST", "/api/bookings/process-cart", {
+        cartItems: cartItems.map((item: any) => ({ id: item.id, quantity: 1 })),
+        paymentMethod,
+      });
+      const result = await res.json();
+      toast({
+        title: "Payment successful!",
+        description: result.message || "Your booking has been confirmed.",
+      });
+      setLocation("/bookings");
+    } catch {
+      toast({
+        title: "Payment failed",
+        description: "Please try again or contact support.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
+
+  if (cartLoading) {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
+      </div>
+    );
+  }
+
+  if (cartItems.length === 0) {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] flex flex-col items-center justify-center gap-4">
+        <h2 className="text-2xl font-bold text-[#111827]">Your cart is empty</h2>
+        <p className="text-[#6B7280]">Add items to your cart before proceeding to payment.</p>
+        <Link href="/cart"><Button>Go to Cart</Button></Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
@@ -362,11 +394,11 @@ export default function PaymentPage() {
                 />
                 <label htmlFor="terms" className="text-sm text-[#6B7280]">
                   I agree to the{" "}
-                  <Link href="/terms-conditions" className="text-[#FF385C] underline">
+                  <Link href="/terms" className="text-[#FF385C] underline">
                     Terms & Conditions
                   </Link>{" "}
                   and{" "}
-                  <Link href="/privacy-policy" className="text-[#FF385C] underline">
+                  <Link href="/privacy" className="text-[#FF385C] underline">
                     Privacy Policy
                   </Link>
                   . I understand that my booking is subject to the cancellation
@@ -393,7 +425,7 @@ export default function PaymentPage() {
                 <CardContent className="space-y-4">
                   {/* Cart Items */}
                   <div className="space-y-3">
-                    {mockCartItems.map((item) => (
+                    {cartItems.map((item) => (
                       <div
                         key={item.id}
                         className="flex items-start justify-between text-sm"

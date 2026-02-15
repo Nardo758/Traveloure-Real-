@@ -2,10 +2,10 @@ import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Users, 
-  ClipboardList, 
-  DollarSign, 
+import {
+  Users,
+  ClipboardList,
+  DollarSign,
   UserPlus,
   UserCheck,
   Building2,
@@ -30,13 +30,6 @@ interface AdminStats {
   pendingProviderApplications: number;
 }
 
-const systemHealth = [
-  { metric: "System Status", value: "All Systems Operational", status: "good" },
-  { metric: "API Response Time", value: "45ms", status: "excellent" },
-  { metric: "Server Load", value: "32%", status: "normal" },
-  { metric: "Database", value: "Connected", status: "good" },
-];
-
 export default function AdminDashboard() {
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
@@ -49,6 +42,16 @@ export default function AdminDashboard() {
   const { data: providerApps } = useQuery<ServiceProviderForm[]>({
     queryKey: ["/api/admin/provider-applications"],
   });
+
+  const { data: healthData } = useQuery<{ services: any[] }>({
+    queryKey: ["/api/admin/system/health"],
+  });
+
+  const systemHealth = healthData?.services?.slice(0, 4).map(s => ({
+    metric: s.service,
+    value: s.status === "operational" ? s.uptime || "Operational" : s.status,
+    status: s.status === "operational" ? "good" : "normal",
+  })) || [];
 
   const pendingExperts = expertApps?.filter(e => e.status === "pending") || [];
   const pendingProviders = providerApps?.filter(p => p.status === "pending") || [];
@@ -100,7 +103,7 @@ export default function AdminDashboard() {
             <CardContent className="space-y-3">
               {pendingExperts.length > 0 ? (
                 pendingExperts.slice(0, 5).map((expert, index) => (
-                  <div 
+                  <div
                     key={expert.id}
                     className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
                     data-testid={`row-expert-application-${index}`}
@@ -133,7 +136,7 @@ export default function AdminDashboard() {
             <CardContent className="space-y-3">
               {pendingProviders.length > 0 ? (
                 pendingProviders.slice(0, 5).map((provider, index) => (
-                  <div 
+                  <div
                     key={provider.id}
                     className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
                     data-testid={`row-provider-application-${index}`}
@@ -167,7 +170,7 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="space-y-3">
               {systemHealth.map((item, index) => (
-                <div 
+                <div
                   key={index}
                   className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-800 last:border-0"
                   data-testid={`row-health-${index}`}
@@ -176,7 +179,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-gray-900 dark:text-gray-100">{item.value}</span>
                     <CheckCircle className={`w-4 h-4 ${
-                      item.status === "excellent" ? "text-green-500" : 
+                      item.status === "excellent" ? "text-green-500" :
                       item.status === "good" ? "text-blue-500" : "text-gray-400"
                     }`} />
                   </div>
