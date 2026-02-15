@@ -57,8 +57,10 @@ import {
   Navigation,
   ArrowRight,
   CircleDot,
+  Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, TripLogisticsDashboard } from "@/components/logistics";
 
 interface ItineraryItem {
   id: string;
@@ -447,6 +449,10 @@ export default function MyItineraryPage() {
             <TabsTrigger value="metrics" data-testid="tab-metrics">
               <BarChart3 className="h-4 w-4 mr-1" />
               Metrics
+            </TabsTrigger>
+            <TabsTrigger value="logistics" data-testid="tab-logistics">
+              <Package className="h-4 w-4 mr-1" />
+              Logistics
             </TabsTrigger>
           </TabsList>
 
@@ -870,6 +876,25 @@ export default function MyItineraryPage() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="logistics" className="space-y-4">
+            {id && (
+              <>
+                <TripLogisticsDashboard
+                  tripId={id}
+                  tripName={data?.title || data?.destination || "Trip"}
+                  budget={0}
+                  destination={data?.destination || "destination"}
+                />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <TemporalAnchorManager tripId={id} />
+                  <ScheduleValidator tripId={id} />
+                </div>
+                <EnergyBudgetDisplay tripId={id} />
+                <AnchorSuggestionsPanel tripId={id} />
+              </>
+            )}
           </TabsContent>
         </Tabs>
 

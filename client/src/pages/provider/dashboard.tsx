@@ -1,61 +1,78 @@
+import { useQuery } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  CalendarCheck, 
-  Calendar, 
-  DollarSign, 
-  Star, 
-  MessageSquare, 
-  TrendingUp, 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  CalendarCheck,
+  Calendar,
+  DollarSign,
+  Star,
+  MessageSquare,
+  TrendingUp,
   Clock,
   Users,
-  ChevronRight
+  ChevronRight,
+  Package,
+  Loader2
 } from "lucide-react";
+import { ProviderAvailabilityManager, ProviderBookingContextPanel } from "@/components/logistics";
 
-const stats = [
-  { label: "Pending Bookings", value: "8", icon: Clock, color: "text-amber-600" },
-  { label: "This Month", value: "12", icon: Calendar, color: "text-blue-600" },
-  { label: "Revenue (MTD)", value: "$45,200", icon: DollarSign, color: "text-green-600" },
-  { label: "Rating Average", value: "4.9", icon: Star, color: "text-amber-500" },
-];
+interface ProviderAnalytics {
+  summary: {
+    totalRevenue: number;
+    totalBookings: number;
+    avgRating: number;
+    activeServices: number;
+    pendingBookings: number;
+    completedBookings: number;
+  };
+}
 
-const pendingRequests = [
-  {
-    id: 1,
-    type: "Wedding",
-    clientName: "Sarah & Mike Johnson",
-    date: "September 15, 2024",
-    guests: 150,
-    budget: "$25,000",
-    style: "Rustic elegance, outdoor ceremony",
-    services: ["Venue rental (6 hours)", "Catering for 150 guests", "Bar service", "Tables, chairs, linens"],
-    expertNote: "Client loves your venue! Priority request.",
-    urgent: true,
-  },
-  {
-    id: 2,
-    type: "Birthday Party",
-    clientName: "David Thompson",
-    date: "June 5, 2024",
-    guests: 60,
-    budget: "$8,000",
-    style: "Elegant garden party",
-    services: ["Venue rental (4 hours)", "Light catering"],
-    expertNote: null,
-    urgent: false,
-  },
-];
-
-const upcomingBookings = [
-  { day: "Saturday", event: "Corporate event", guests: 100, amount: "$12,000" },
-  { day: "Sunday", event: "Wedding", guests: 180, amount: "$28,000" },
-  { day: "Next Friday", event: "Anniversary dinner", guests: 2, amount: "$500" },
-  { day: "Next Saturday", event: "Birthday party", guests: 75, amount: "$9,500" },
-];
+interface BookingRequest {
+  id: string;
+  status: string;
+  totalAmount: string;
+  bookingDetails: any;
+  traveler?: { displayName: string };
+  service?: { serviceName: string; serviceType: string };
+  createdAt: string;
+}
 
 export default function ProviderDashboard() {
+  const { data: analytics, isLoading: analyticsLoading } = useQuery<ProviderAnalytics>({
+    queryKey: ["/api/provider/analytics/dashboard"],
+  });
+
+  const { data: bookings } = useQuery<BookingRequest[]>({
+    queryKey: ["/api/provider/bookings"],
+  });
+
+  const { data: requestsData } = useQuery<{ requests: any[] }>({
+    queryKey: ["/api/provider/booking-requests"],
+  });
+
+  const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
+  const confirmedBookings = bookings?.filter(b => b.status === "confirmed") || [];
+
+  const stats = [
+    { label: "Pending Bookings", value: String(analytics?.summary?.pendingBookings ?? 0), icon: Clock, color: "text-amber-600" },
+    { label: "This Month", value: String(analytics?.summary?.totalBookings ?? 0), icon: Calendar, color: "text-blue-600" },
+    { label: "Revenue (MTD)", value: `$${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}`, icon: DollarSign, color: "text-green-600" },
+    { label: "Rating Average", value: (analytics?.summary?.avgRating ?? 0).toFixed(1), icon: Star, color: "text-amber-500" },
+  ];
+
+  if (analyticsLoading) {
+    return (
+      <ProviderLayout title="Dashboard">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+        </div>
+      </ProviderLayout>
+    );
+  }
+
   return (
     <ProviderLayout title="Dashboard">
       <div className="p-6 space-y-6">
@@ -63,7 +80,7 @@ export default function ProviderDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-gray-900" data-testid="text-welcome">
-              Welcome back, Grand Estate Venue!
+              Welcome back!
             </h2>
             <p className="text-gray-600">Manage your bookings and services</p>
           </div>
@@ -91,50 +108,30 @@ export default function ProviderDashboard() {
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <CardTitle className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-amber-600" />
-              Pending Requests ({pendingRequests.length})
+              Pending Requests ({pendingBookings.length})
             </CardTitle>
             <Button variant="ghost" size="sm" data-testid="button-view-all-pending">
               View All <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
-            {pendingRequests.map((request) => (
-              <div 
-                key={request.id} 
+            {pendingBookings.length > 0 ? pendingBookings.slice(0, 3).map((request) => (
+              <div
+                key={request.id}
                 className="p-4 border border-gray-200 rounded-lg space-y-3"
                 data-testid={`card-request-${request.id}`}
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {request.urgent && (
-                        <Badge variant="destructive" className="text-xs" data-testid={`badge-urgent-${request.id}`}>
-                          Urgent
-                        </Badge>
-                      )}
-                      <span className="font-semibold text-gray-900">{request.type}</span>
+                      <span className="font-semibold text-gray-900">{request.service?.serviceName || "Service"}</span>
                       <span className="text-gray-500">-</span>
-                      <span className="text-gray-700">{request.clientName}</span>
+                      <span className="text-gray-700">{request.traveler?.displayName || "Client"}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 mt-1 text-sm text-gray-600">
-                      <span>Date: {request.date}</span>
-                      <span>Guests: {request.guests}</span>
-                      <span>Budget: {request.budget}</span>
+                      <span>Amount: ${parseFloat(request.totalAmount || "0").toLocaleString()}</span>
+                      <span>Status: {request.status}</span>
                     </div>
-                    <p className="text-sm text-gray-600 mt-1">Style: {request.style}</p>
-                    <div className="mt-2">
-                      <p className="text-sm font-medium text-gray-700">Requested Services:</p>
-                      <ul className="text-sm text-gray-600 list-disc list-inside">
-                        {request.services.map((service, idx) => (
-                          <li key={idx}>{service}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    {request.expertNote && (
-                      <p className="text-sm text-[#FF385C] mt-2 italic">
-                        Expert Note: "{request.expertNote}"
-                      </p>
-                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -152,7 +149,9 @@ export default function ProviderDashboard() {
                   </Button>
                 </div>
               </div>
-            ))}
+            )) : (
+              <p className="text-gray-500 text-center py-4">No pending requests</p>
+            )}
           </CardContent>
         </Card>
 
@@ -167,22 +166,24 @@ export default function ProviderDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {upcomingBookings.map((booking, index) => (
-                  <div 
-                    key={index}
+                {confirmedBookings.length > 0 ? confirmedBookings.slice(0, 4).map((booking, index) => (
+                  <div
+                    key={booking.id}
                     className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
                     data-testid={`row-booking-${index}`}
                   >
                     <div className="flex items-center gap-3">
                       <Users className="w-4 h-4 text-gray-400" />
                       <div>
-                        <p className="font-medium text-gray-900">{booking.day}: {booking.event}</p>
-                        <p className="text-sm text-gray-500">{booking.guests} guests</p>
+                        <p className="font-medium text-gray-900">{booking.service?.serviceName || "Booking"}</p>
+                        <p className="text-sm text-gray-500">{booking.traveler?.displayName || "Client"}</p>
                       </div>
                     </div>
-                    <span className="font-semibold text-green-600">{booking.amount}</span>
+                    <span className="font-semibold text-green-600">${parseFloat(booking.totalAmount || "0").toLocaleString()}</span>
                   </div>
-                ))}
+                )) : (
+                  <p className="text-gray-500 text-center py-4">No upcoming bookings</p>
+                )}
               </div>
               <Button variant="ghost" className="w-full mt-4" data-testid="button-view-full-calendar">
                 View Full Calendar
@@ -219,6 +220,29 @@ export default function ProviderDashboard() {
             </CardContent>
           </Card>
         </div>
+        {/* Logistics & Availability Management */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-blue-600" />
+              <CardTitle>Logistics & Availability</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="availability">
+              <TabsList>
+                <TabsTrigger value="availability">My Availability</TabsTrigger>
+                <TabsTrigger value="booking-requests">Booking Requests</TabsTrigger>
+              </TabsList>
+              <TabsContent value="availability" className="mt-4">
+                <ProviderAvailabilityManager />
+              </TabsContent>
+              <TabsContent value="booking-requests" className="mt-4">
+                <ProviderBookingContextPanel />
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </ProviderLayout>
   );

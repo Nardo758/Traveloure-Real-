@@ -24,6 +24,13 @@ import {
   Laptop,
   HeartHandshake,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+
+function formatStat(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K+`;
+  return `${n}+`;
+}
 
 const partnerTypes = [
   {
@@ -128,13 +135,6 @@ const partnerTypes = [
   },
 ];
 
-const stats = [
-  { value: "500+", label: "Active Partners" },
-  { value: "$2M+", label: "Partner Earnings" },
-  { value: "50+", label: "Countries" },
-  { value: "4.9", label: "Partner Rating" },
-];
-
 const testimonials = [
   {
     quote: "Traveloure has transformed my passion for Paris into a thriving business. I now help 20+ travelers every month.",
@@ -197,6 +197,17 @@ const howItWorks = [
 ];
 
 export default function PartnerWithUsPage() {
+  const { data: platformStats } = useQuery<{
+    totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
+  }>({ queryKey: ["/api/platform/stats"] });
+
+  const stats = [
+    { value: platformStats ? formatStat(platformStats.totalExperts) : "0+", label: "Active Partners" },
+    { value: platformStats ? formatStat(platformStats.totalTrips) : "0+", label: "Trips Planned" },
+    { value: platformStats ? formatStat(platformStats.totalCountries) : "0+", label: "Countries" },
+    { value: platformStats?.avgRating ?? "0", label: "Partner Rating" },
+  ];
+
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       {/* Hero Section */}
@@ -365,7 +376,7 @@ export default function PartnerWithUsPage() {
               Platform Benefits
             </h2>
             <p className="text-lg text-[#6B7280] max-w-2xl mx-auto">
-              Join a platform designed to help you succeed. We provide the tools, 
+              Join a platform designed to help you succeed. We provide the tools,
               clients, and support you need to grow your travel business.
             </p>
           </div>
@@ -378,7 +389,7 @@ export default function PartnerWithUsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}
               >
-                <Card 
+                <Card
                   className="h-full border-[#E5E7EB] hover:shadow-lg transition-shadow"
                   data-testid={`card-benefit-${benefit.title.toLowerCase().replace(/\s+/g, '-')}`}
                 >

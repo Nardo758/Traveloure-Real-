@@ -1,13 +1,18 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Users, 
-  DollarSign, 
-  Star, 
-  Clock, 
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Users,
+  DollarSign,
+  Star,
+  Clock,
   AlertCircle,
   MessageSquare,
   Calendar,
@@ -16,82 +21,64 @@ import {
   CheckCircle,
   Plane,
   Heart,
-  Gift
+  Gift,
+  Package,
+  Loader2,
 } from "lucide-react";
 import { Link } from "wouter";
+import { ExpertConstraintDashboard, ExpertCoordinationHub } from "@/components/logistics";
+
+interface AnalyticsDashboard {
+  summary: {
+    totalRevenue: number;
+    totalBookings: number;
+    avgRating: number;
+    activeServices: number;
+    pendingBookings: number;
+    completedBookings: number;
+  };
+  earnings: any[];
+}
+
+interface AiStats {
+  tasksDelegated: number;
+  tasksCompleted: number;
+  timeSaved: number;
+  avgQualityScore: string;
+}
+
+interface Booking {
+  id: string;
+  status: string;
+  totalAmount: string;
+  bookingDetails: any;
+  traveler?: { displayName: string };
+  createdAt: string;
+}
 
 export default function ExpertDashboard() {
+  const [selectedTripId, setSelectedTripId] = useState("");
+
+  const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsDashboard>({
+    queryKey: ["/api/expert/analytics/dashboard"],
+  });
+
+  const { data: bookings } = useQuery<Booking[]>({
+    queryKey: ["/api/expert/bookings"],
+  });
+
+  const { data: aiStats } = useQuery<AiStats>({
+    queryKey: ["/api/expert/ai-stats"],
+  });
+
+  const pendingBookings = bookings?.filter(b => b.status === "pending" || b.status === "confirmed") || [];
+  const activeClients = pendingBookings.slice(0, 3);
+
   const stats = [
-    { label: "Active Clients", value: 12, icon: Users, color: "bg-blue-100 text-blue-600" },
-    { label: "Revenue This Month", value: "$4,850", icon: DollarSign, color: "bg-green-100 text-green-600" },
-    { label: "Rating Average", value: "4.9", icon: Star, suffix: "/5", color: "bg-yellow-100 text-yellow-600" },
-    { label: "AI Hours Saved", value: "38 hrs", icon: Clock, color: "bg-purple-100 text-purple-600" },
-  ];
-
-  const urgentItems = [
-    {
-      id: 1,
-      client: "Sarah & Mike",
-      event: "Tokyo Trip",
-      priority: "urgent",
-      message: "Restaurant reservation needed (today!)",
-      icon: Plane,
-    },
-    {
-      id: 2,
-      client: "Jennifer",
-      event: "Proposal Planning",
-      priority: "high",
-      message: "Response needed: Venue options review",
-      icon: Heart,
-    },
-    {
-      id: 3,
-      client: "David & Emma",
-      event: "Anniversary Dinner",
-      priority: "medium",
-      message: "Reminder: Menu selection due tomorrow",
-      icon: Gift,
-    },
-  ];
-
-  const activeClients = [
-    {
-      id: 1,
-      name: "Sarah & Mike",
-      event: "Tokyo Trip",
-      status: "Currently traveling",
-      statusDetail: "Day 3 of 10",
-      lastContact: "2 hours ago",
-      action: "Restaurant reservation needed",
-      progress: 30,
-      icon: Plane,
-    },
-    {
-      id: 2,
-      name: "Jennifer",
-      event: "Proposal Planning",
-      status: "Planning phase",
-      statusDetail: "60% complete",
-      eventDate: "April 28",
-      daysAway: 29,
-      action: "Review venue options",
-      progress: 60,
-      icon: Heart,
-    },
-  ];
-
-  const aiActivity = [
-    { text: "Researched 3 new restaurants for Sarah & Mike", time: "2 hours ago" },
-    { text: "Updated Jennifer's proposal timeline", time: "4 hours ago" },
-    { text: "Drafted response to David's menu question", time: "6 hours ago" },
-    { text: "Optimized next week's booking calendar", time: "8 hours ago" },
-  ];
-
-  const upcomingEvents = [
-    { day: "Tuesday", event: "Sarah & Mike check-in call", time: "3:00 PM" },
-    { day: "Wednesday", event: "Jennifer venue viewing", time: "10:00 AM" },
-    { day: "Friday", event: "David & Emma final menu review", time: "2:00 PM" },
+    { label: "Active Clients", value: analytics?.summary?.pendingBookings ?? 0, icon: Users, color: "bg-blue-100 text-blue-600" },
+    { label: "Revenue This Month", value: `$${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}`, icon: DollarSign, color: "bg-green-100 text-green-600" },
+    { label: "Rating Average", value: (analytics?.summary?.avgRating ?? 0).toFixed(1), icon: Star, suffix: "/5", color: "bg-yellow-100 text-yellow-600" },
+    { label: "AI Hours Saved", value: `${aiStats?.timeSaved ?? 0} hrs`, icon: Clock, color: "bg-purple-100 text-purple-600" },
   ];
 
   const getPriorityStyles = (priority: string) => {
@@ -106,6 +93,16 @@ export default function ExpertDashboard() {
         return "bg-gray-100 text-gray-700 border-gray-200";
     }
   };
+
+  if (analyticsLoading) {
+    return (
+      <ExpertLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+        </div>
+      </ExpertLayout>
+    );
+  }
 
   return (
     <ExpertLayout>
@@ -148,38 +145,40 @@ export default function ExpertDashboard() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-red-500" />
-                  <CardTitle className="text-lg">Needs Attention ({urgentItems.length})</CardTitle>
+                  <CardTitle className="text-lg">Needs Attention ({pendingBookings.length})</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {urgentItems.map((item) => (
+                {pendingBookings.length > 0 ? pendingBookings.slice(0, 3).map((booking) => (
                   <div
-                    key={item.id}
-                    className={`p-4 rounded-lg border ${getPriorityStyles(item.priority)}`}
-                    data-testid={`card-urgent-item-${item.id}`}
+                    key={booking.id}
+                    className={`p-4 rounded-lg border ${booking.status === "pending" ? getPriorityStyles("urgent") : getPriorityStyles("medium")}`}
+                    data-testid={`card-urgent-item-${booking.id}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3">
-                        <item.icon className="w-5 h-5 mt-0.5" />
+                        <Plane className="w-5 h-5 mt-0.5" />
                         <div>
-                          <p className="font-medium">{item.client} - {item.event}</p>
-                          <p className="text-sm opacity-80">{item.message}</p>
+                          <p className="font-medium">{booking.traveler?.displayName || "Client"} - Booking</p>
+                          <p className="text-sm opacity-80">${parseFloat(booking.totalAmount || "0").toLocaleString()} - {booking.status}</p>
                         </div>
                       </div>
-                      <Badge variant="outline" className={getPriorityStyles(item.priority)}>
-                        {item.priority}
+                      <Badge variant="outline" className={getPriorityStyles(booking.status === "pending" ? "urgent" : "medium")}>
+                        {booking.status}
                       </Badge>
                     </div>
                     <div className="mt-3 flex gap-2">
-                      <Button size="sm" className="bg-[#FF385C] " data-testid={`button-handle-${item.id}`}>
+                      <Button size="sm" className="bg-[#FF385C] " data-testid={`button-handle-${booking.id}`}>
                         Handle Now
                       </Button>
-                      <Button size="sm" variant="outline" data-testid={`button-delegate-${item.id}`}>
+                      <Button size="sm" variant="outline" data-testid={`button-delegate-${booking.id}`}>
                         Delegate to AI
                       </Button>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <p className="text-gray-500 text-center py-4">No urgent items - you're all caught up!</p>
+                )}
               </CardContent>
             </Card>
 
@@ -187,7 +186,7 @@ export default function ExpertDashboard() {
             <Card className="border border-gray-200">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Active Clients (12)</CardTitle>
+                  <CardTitle className="text-lg">Active Clients ({analytics?.summary?.pendingBookings || 0})</CardTitle>
                   <Link href="/expert/clients">
                     <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="link-view-all-clients">
                       View All <ArrowRight className="w-4 h-4 ml-1" />
@@ -196,7 +195,7 @@ export default function ExpertDashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {activeClients.map((client) => (
+                {activeClients.length > 0 ? activeClients.map((client) => (
                   <div
                     key={client.id}
                     className="p-4 rounded-lg border border-gray-200 bg-white"
@@ -204,33 +203,18 @@ export default function ExpertDashboard() {
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
-                        <client.icon className="w-5 h-5 text-[#FF385C]" />
+                        <Plane className="w-5 h-5 text-[#FF385C]" />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <p className="font-semibold text-gray-900">{client.name} - {client.event}</p>
+                          <p className="font-semibold text-gray-900">{client.traveler?.displayName || "Client"}</p>
                           <Badge variant="outline" className="text-xs">
                             {client.status}
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-500 mt-1">
-                          {client.statusDetail}
-                          {client.lastContact && ` • Last contact: ${client.lastContact}`}
-                          {client.eventDate && ` • Event: ${client.eventDate} (${client.daysAway} days away)`}
+                          ${parseFloat(client.totalAmount || "0").toLocaleString()}
                         </p>
-                        {client.action && (
-                          <p className="text-sm text-red-600 mt-1 flex items-center gap-1">
-                            <AlertCircle className="w-3 h-3" />
-                            Action: {client.action}
-                          </p>
-                        )}
-                        <div className="mt-3">
-                          <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                            <span>Progress</span>
-                            <span>{client.progress}%</span>
-                          </div>
-                          <Progress value={client.progress} className="h-2" />
-                        </div>
                         <div className="mt-3 flex gap-2">
                           <Button size="sm" variant="outline" data-testid={`button-chat-${client.id}`}>
                             <MessageSquare className="w-3 h-3 mr-1" /> Chat
@@ -245,7 +229,9 @@ export default function ExpertDashboard() {
                       </div>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <p className="text-gray-500 text-center py-4">No active clients yet</p>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -263,26 +249,24 @@ export default function ExpertDashboard() {
               <CardContent>
                 <p className="text-sm text-gray-600 mb-3">
                   <CheckCircle className="w-4 h-4 inline text-green-500 mr-1" />
-                  Completed 8 tasks in last 24 hours
+                  {aiStats?.tasksCompleted ?? 0} tasks completed (last 30 days)
                 </p>
                 <div className="space-y-2">
-                  {aiActivity.map((activity, index) => (
-                    <div key={index} className="flex items-start gap-2 text-sm" data-testid={`ai-activity-${index}`}>
-                      <span className="text-gray-400 mt-0.5">•</span>
-                      <div>
-                        <span className="text-gray-700">{activity.text}</span>
-                        <span className="text-gray-400 ml-2">({activity.time})</span>
-                      </div>
-                    </div>
-                  ))}
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-gray-400 mt-0.5">•</span>
+                    <span className="text-gray-700">Tasks delegated: {aiStats?.tasksDelegated ?? 0}</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-gray-400 mt-0.5">•</span>
+                    <span className="text-gray-700">Time saved: {aiStats?.timeSaved ?? 0} hours</span>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <span className="text-gray-400 mt-0.5">•</span>
+                    <span className="text-gray-700">Quality score: {aiStats?.avgQualityScore ?? "N/A"}</span>
+                  </div>
                 </div>
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-sm text-blue-800">
-                    <span className="font-medium">5 drafts</span> waiting for your review
-                  </p>
-                </div>
-                <Button 
-                  className="w-full mt-4 bg-[#FF385C] " 
+                <Button
+                  className="w-full mt-4 bg-[#FF385C] "
                   data-testid="button-review-ai-work"
                 >
                   Review AI Work <ArrowRight className="w-4 h-4 ml-1" />
@@ -290,24 +274,27 @@ export default function ExpertDashboard() {
               </CardContent>
             </Card>
 
-            {/* Upcoming Events */}
+            {/* Recent Earnings */}
             <Card className="border border-gray-200">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-[#FF385C]" />
-                  <CardTitle className="text-lg">This Week</CardTitle>
+                  <DollarSign className="w-5 h-5 text-green-600" />
+                  <CardTitle className="text-lg">Recent Earnings</CardTitle>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {upcomingEvents.map((event, index) => (
-                  <div key={index} className="flex items-start gap-3 text-sm" data-testid={`event-${index}`}>
-                    <span className="font-medium text-gray-700 min-w-20">{event.day}</span>
+                {(analytics?.earnings || []).slice(0, 3).map((earning: any, index: number) => (
+                  <div key={index} className="flex items-start gap-3 text-sm" data-testid={`earning-${index}`}>
+                    <span className="font-medium text-gray-700 min-w-20">${Number(earning.amount || 0).toLocaleString()}</span>
                     <div>
-                      <p className="text-gray-800">{event.event}</p>
-                      <p className="text-gray-500">{event.time}</p>
+                      <p className="text-gray-800">{earning.type || "Earning"}</p>
+                      <p className="text-gray-500">{earning.createdAt ? new Date(earning.createdAt).toLocaleDateString() : ""}</p>
                     </div>
                   </div>
                 ))}
+                {(!analytics?.earnings || analytics.earnings.length === 0) && (
+                  <p className="text-gray-500 text-center py-2">No recent earnings</p>
+                )}
               </CardContent>
             </Card>
 
@@ -333,6 +320,47 @@ export default function ExpertDashboard() {
             </Card>
           </div>
         </div>
+        {/* Trip Logistics Coordination */}
+        <Card className="border border-gray-200">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="w-5 h-5 text-blue-600" />
+                <CardTitle className="text-lg">Trip Logistics</CardTitle>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-gray-500">Trip ID:</Label>
+                <Input
+                  value={selectedTripId}
+                  onChange={(e) => setSelectedTripId(e.target.value)}
+                  placeholder="Enter trip ID"
+                  className="w-48 h-8 text-sm"
+                />
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {selectedTripId ? (
+              <Tabs defaultValue="constraints">
+                <TabsList>
+                  <TabsTrigger value="constraints">Client Constraints</TabsTrigger>
+                  <TabsTrigger value="vendors">Vendor Coordination</TabsTrigger>
+                </TabsList>
+                <TabsContent value="constraints" className="mt-4">
+                  <ExpertConstraintDashboard tripId={selectedTripId} />
+                </TabsContent>
+                <TabsContent value="vendors" className="mt-4">
+                  <ExpertCoordinationHub tripId={selectedTripId} />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <div className="text-center py-8 text-gray-500 text-sm">
+                Enter a trip ID above to view client constraints and coordinate vendors.
+                Select a client from the Active Clients list to get started.
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </ExpertLayout>
   );

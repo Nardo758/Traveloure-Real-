@@ -4,80 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  Search, 
-  Filter, 
-  Users, 
+import {
+  Search,
+  Filter,
+  Users,
   UserPlus,
   MoreVertical,
   Mail,
   Ban,
-  Eye
+  Eye,
+  Loader2
 } from "lucide-react";
 import { useState } from "react";
-
-const users = [
-  {
-    id: 1,
-    name: "Sarah Mitchell",
-    email: "sarah.m@email.com",
-    role: "user",
-    status: "active",
-    joined: "Jan 2, 2026",
-    trips: 5,
-    spent: "$2,450",
-  },
-  {
-    id: 2,
-    name: "John Davidson",
-    email: "john.d@email.com",
-    role: "user",
-    status: "active",
-    joined: "Jan 1, 2026",
-    trips: 2,
-    spent: "$850",
-  },
-  {
-    id: 3,
-    name: "Emily Chen",
-    email: "emily.c@email.com",
-    role: "expert",
-    status: "active",
-    joined: "Dec 15, 2025",
-    trips: 0,
-    spent: "$0",
-  },
-  {
-    id: 4,
-    name: "Michael Torres",
-    email: "michael.t@email.com",
-    role: "user",
-    status: "suspended",
-    joined: "Nov 20, 2025",
-    trips: 8,
-    spent: "$4,200",
-  },
-  {
-    id: 5,
-    name: "Lisa Parker",
-    email: "lisa.p@email.com",
-    role: "ea",
-    status: "active",
-    joined: "Oct 10, 2025",
-    trips: 0,
-    spent: "$0",
-  },
-  {
-    id: 6,
-    name: "Grand Estate Venue",
-    email: "events@grandestate.com",
-    role: "provider",
-    status: "active",
-    joined: "Mar 5, 2022",
-    trips: 0,
-    spent: "$0",
-  },
-];
+import { useQuery } from "@tanstack/react-query";
 
 const roleColors: Record<string, string> = {
   user: "bg-blue-100 text-blue-700 border-blue-200",
@@ -99,6 +38,23 @@ export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
 
+  const { data: usersData, isLoading } = useQuery<{
+    users: Array<{ id: string; name: string; email: string; role: string; status: string; joined: string; trips: number; spent: string }>;
+    total: number;
+  }>({ queryKey: ["/api/admin/users", { search: searchQuery, role: roleFilter }] });
+
+  if (isLoading) {
+    return (
+      <AdminLayout title="User Management">
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const users = usersData?.users ?? [];
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           user.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -107,7 +63,7 @@ export default function AdminUsers() {
   });
 
   const stats = {
-    total: users.length,
+    total: usersData?.total ?? users.length,
     active: users.filter(u => u.status === "active").length,
     suspended: users.filter(u => u.status === "suspended").length,
   };
@@ -158,8 +114,8 @@ export default function AdminUsers() {
                 />
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Button 
-                  variant={roleFilter === null ? "default" : "outline"} 
+                <Button
+                  variant={roleFilter === null ? "default" : "outline"}
                   size="sm"
                   onClick={() => setRoleFilter(null)}
                   data-testid="button-filter-all"
@@ -167,9 +123,9 @@ export default function AdminUsers() {
                   All
                 </Button>
                 {Object.entries(roleLabels).map(([key, label]) => (
-                  <Button 
+                  <Button
                     key={key}
-                    variant={roleFilter === key ? "default" : "outline"} 
+                    variant={roleFilter === key ? "default" : "outline"}
                     size="sm"
                     onClick={() => setRoleFilter(key)}
                     data-testid={`button-filter-${key}`}
@@ -229,9 +185,9 @@ export default function AdminUsers() {
                         </Badge>
                       </td>
                       <td className="py-3 px-2">
-                        <Badge 
-                          className={user.status === "active" 
-                            ? "bg-green-100 text-green-700 border-green-200" 
+                        <Badge
+                          className={user.status === "active"
+                            ? "bg-green-100 text-green-700 border-green-200"
                             : "bg-red-100 text-red-700 border-red-200"
                           }
                         >

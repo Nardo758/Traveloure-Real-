@@ -13,6 +13,7 @@ import {
   travelPulseHappeningNow,
   destinationSeasons,
   destinationEvents,
+  destinationMetricsHistory,
   TravelPulseTrending,
   TravelPulseTruthCheck,
   TravelPulseCalendarEvent,
@@ -1243,9 +1244,39 @@ Return JSON:
         updatedCity = inserted;
       }
 
+      // Record metrics history for time-series trend analysis
+      const destination = `${cityName}, ${country}`;
+      const metricsToTrack = [
+        { metricType: "trend_score", metricValue: String(result.pulseMetrics.trendingScore || 0) },
+        { metricType: "pulse_score", metricValue: String(result.pulseMetrics.pulseScore || 0) },
+        { metricType: "crowd_level", metricValue: String(result.pulseMetrics.crowdLevel || 0) },
+        { metricType: "weather_score", metricValue: String(result.pulseMetrics.weatherScore || 0) },
+        { metricType: "avg_hotel_price", metricValue: String(result.priceIntelligence.avgHotelPriceUsd || 0) },
+      ];
+      for (const metric of metricsToTrack) {
+        await db.insert(destinationMetricsHistory).values({
+          destination,
+          city: cityName,
+          country,
+          metricType: metric.metricType,
+          metricValue: metric.metricValue,
+          recordedAt: new Date(),
+        }).catch(err => console.error(`[TravelPulse] Failed to record metric ${metric.metricType}:`, err.message));
+      }
+
+      // Set expiresAt for stale data protection (48 hours from refresh)
+      await db.update(travelPulseCities)
+        .set({
+          expiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000),
+          lastRefreshStatus: "success",
+          aiRefreshErrorCount: 0,
+        })
+        .where(eq(travelPulseCities.id, updatedCity.id))
+        .catch(err => console.error("[TravelPulse] Failed to set expiresAt:", err.message));
+
       // Merge AI data into destination calendar tables
       await this.mergeAIToCalendar(result, cityName, country);
-      
+
       // Create/update hidden gems from AI recommendations
       await this.mergeAIHiddenGems(result.travelRecommendations.hiddenGems, cityName, country);
 
@@ -1269,6 +1300,17 @@ Return JSON:
       return { success: true, city: updatedCity };
     } catch (error: any) {
       console.error(`[TravelPulse] Error updating ${cityName} with AI:`, error.message);
+      // Track refresh failure in the city record
+      await db.update(travelPulseCities)
+        .set({
+          lastRefreshStatus: "failed",
+          aiRefreshErrorCount: sql`COALESCE(ai_refresh_error_count, 0) + 1`,
+        })
+        .where(and(
+          eq(travelPulseCities.cityName, cityName),
+          eq(travelPulseCities.country, country)
+        ))
+        .catch(err => console.error("[TravelPulse] Failed to track refresh error:", err.message));
       return { success: false, error: error.message };
     }
   }

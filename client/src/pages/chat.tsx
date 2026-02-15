@@ -106,7 +106,7 @@ export default function Chat() {
     userId: user?.id,
     onMessage: handleNewMessage,
     onTyping: handleTyping,
-    onConnected: () => console.log("WebSocket connected"),
+    onConnected: () => {},
     onError: handleWsError,
   });
 

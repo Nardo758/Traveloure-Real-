@@ -1,17 +1,24 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Download, 
-  ExternalLink, 
-  Mail, 
-  FileText, 
+import {
+  Download,
+  ExternalLink,
+  Mail,
+  FileText,
   Image as ImageIcon,
   Award,
   TrendingUp,
   Users,
   Globe
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+
+function formatStat(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
+  if (n >= 1000) return `${(n / 1000).toFixed(0)}K+`;
+  return `${n}+`;
+}
 
 const pressReleases = [
   {
@@ -61,13 +68,6 @@ const mediaKit = [
   },
 ];
 
-const stats = [
-  { label: "Active Users", value: "1M+", icon: Users },
-  { label: "Countries", value: "150+", icon: Globe },
-  { label: "Local Experts", value: "5,000+", icon: Award },
-  { label: "Growth Rate", value: "300%", icon: TrendingUp },
-];
-
 const coverage = [
   {
     outlet: "TechCrunch",
@@ -92,6 +92,17 @@ const coverage = [
 ];
 
 export default function PressPage() {
+  const { data: platformStats } = useQuery<{
+    totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
+  }>({ queryKey: ["/api/platform/stats"] });
+
+  const stats = [
+    { label: "Active Users", value: platformStats ? formatStat(platformStats.totalUsers) : "0+", icon: Users },
+    { label: "Countries", value: platformStats ? formatStat(platformStats.totalCountries) : "0+", icon: Globe },
+    { label: "Local Experts", value: platformStats ? formatStat(platformStats.totalExperts) : "0+", icon: Award },
+    { label: "Trips Planned", value: platformStats ? formatStat(platformStats.totalTrips) : "0+", icon: TrendingUp },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
@@ -140,10 +151,10 @@ export default function PressPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="text-sm text-muted-foreground mb-2">
-                        {new Date(release.date).toLocaleDateString('en-US', { 
-                          year: 'numeric', 
-                          month: 'long', 
-                          day: 'numeric' 
+                        {new Date(release.date).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
                         })}
                       </div>
                       <h3 className="text-xl font-bold mb-3">{release.title}</h3>

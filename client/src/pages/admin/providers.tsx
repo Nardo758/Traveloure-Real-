@@ -4,82 +4,95 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  Search, 
-  Building2, 
-  Star, 
-  MapPin, 
+import {
+  Search,
+  Building2,
+  MapPin,
   CheckCircle,
   XCircle,
   Eye,
   Clock,
-  DollarSign
+  Loader2,
+  Calendar
 } from "lucide-react";
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
-const applications = [
-  {
-    id: 1,
-    name: "Sunset Restaurant Group",
-    email: "contact@sunsetrestaurants.com",
-    type: "Restaurant",
-    location: "Los Angeles, CA",
-    services: ["Fine Dining", "Private Events", "Catering"],
-    appliedAt: "2 days ago",
-  },
-  {
-    id: 2,
-    name: "Elite Photography Studios",
-    email: "bookings@elitephoto.com",
-    type: "Photography",
-    location: "New York, NY",
-    services: ["Wedding Photography", "Event Coverage", "Portrait Sessions"],
-    appliedAt: "3 days ago",
-  },
-];
-
-const activeProviders = [
-  {
-    id: 101,
-    name: "Grand Estate Venue",
-    email: "events@grandestate.com",
-    type: "Venue",
-    location: "Napa Valley, CA",
-    rating: 4.9,
-    reviews: 127,
-    bookings: 342,
-    revenue: "$125,450",
-    status: "active",
-  },
-  {
-    id: 102,
-    name: "Azure Catering Co.",
-    email: "info@azurecatering.com",
-    type: "Catering",
-    location: "San Francisco, CA",
-    rating: 4.8,
-    reviews: 89,
-    bookings: 215,
-    revenue: "$82,300",
-    status: "active",
-  },
-  {
-    id: 103,
-    name: "Bloom Florists",
-    email: "orders@bloomflorists.com",
-    type: "Florist",
-    location: "Miami, FL",
-    rating: 4.7,
-    reviews: 64,
-    bookings: 178,
-    revenue: "$45,600",
-    status: "active",
-  },
-];
+interface ProviderApplication {
+  id: string;
+  userId: string;
+  businessName: string;
+  name?: string;
+  email: string;
+  mobile?: string;
+  website?: string;
+  country: string;
+  address: string;
+  businessType: string;
+  serviceOffers?: string[];
+  description?: string;
+  status: string;
+  createdAt: string;
+}
 
 export default function AdminProviders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"applications" | "active">("applications");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: applications = [], isLoading } = useQuery<ProviderApplication[]>({
+    queryKey: ["/api/admin/provider-applications"],
+  });
+
+  const pendingApps = applications.filter(a => a.status === "pending");
+  const approvedApps = applications.filter(a => a.status === "approved");
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status, rejectionMessage }: { id: string; status: string; rejectionMessage?: string }) => {
+      return apiRequest("PATCH", `/api/admin/provider-applications/${id}/status`, { status, rejectionMessage });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/provider-applications"] });
+      toast({
+        title: variables.status === "approved" ? "Provider Approved" : "Application Rejected",
+        description: variables.status === "approved"
+          ? "The provider has been approved and can now list services."
+          : "The application has been rejected.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Action failed",
+        description: error.message || "Failed to update application status.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const filteredPending = pendingApps.filter(app => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return app.businessName.toLowerCase().includes(q) || app.email.toLowerCase().includes(q) || app.country.toLowerCase().includes(q);
+  });
+
+  const filteredApproved = approvedApps.filter(app => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return app.businessName.toLowerCase().includes(q) || app.email.toLowerCase().includes(q);
+  });
+
+  if (isLoading) {
+    return (
+      <AdminLayout title="Provider Management">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout title="Provider Management">
@@ -88,45 +101,45 @@ export default function AdminProviders() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card data-testid="card-stat-total">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">89</p>
-              <p className="text-sm text-gray-500">Total Providers</p>
+              <p className="text-2xl font-bold text-gray-900">{applications.length}</p>
+              <p className="text-sm text-gray-500">Total Applications</p>
             </CardContent>
           </Card>
           <Card data-testid="card-stat-active">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">82</p>
-              <p className="text-sm text-gray-500">Active</p>
+              <p className="text-2xl font-bold text-green-600">{approvedApps.length}</p>
+              <p className="text-sm text-gray-500">Approved</p>
             </CardContent>
           </Card>
           <Card data-testid="card-stat-pending">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-amber-600">{applications.length}</p>
+              <p className="text-2xl font-bold text-amber-600">{pendingApps.length}</p>
               <p className="text-sm text-gray-500">Pending Approval</p>
             </CardContent>
           </Card>
-          <Card data-testid="card-stat-revenue">
+          <Card data-testid="card-stat-rejected">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-purple-600">$2.4M</p>
-              <p className="text-sm text-gray-500">Total Revenue</p>
+              <p className="text-2xl font-bold text-red-600">{applications.filter(a => a.status === "rejected").length}</p>
+              <p className="text-sm text-gray-500">Rejected</p>
             </CardContent>
           </Card>
         </div>
 
         {/* Tab Navigation */}
         <div className="flex gap-2">
-          <Button 
+          <Button
             variant={activeTab === "applications" ? "default" : "outline"}
             onClick={() => setActiveTab("applications")}
             data-testid="button-tab-applications"
           >
-            <Clock className="w-4 h-4 mr-2" /> Pending Applications ({applications.length})
+            <Clock className="w-4 h-4 mr-2" /> Pending Applications ({pendingApps.length})
           </Button>
-          <Button 
+          <Button
             variant={activeTab === "active" ? "default" : "outline"}
             onClick={() => setActiveTab("active")}
             data-testid="button-tab-active"
           >
-            <Building2 className="w-4 h-4 mr-2" /> Active Providers
+            <Building2 className="w-4 h-4 mr-2" /> Approved Providers ({approvedApps.length})
           </Button>
         </div>
 
@@ -155,61 +168,87 @@ export default function AdminProviders() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {applications.map((app) => (
-                <div 
-                  key={app.id}
-                  className="p-4 border border-gray-200 rounded-lg space-y-3"
-                  data-testid={`card-application-${app.id}`}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarFallback className="bg-green-100 text-green-700">
-                          {app.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
+              {filteredPending.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No pending applications</p>
+              ) : (
+                filteredPending.map((app) => (
+                  <div
+                    key={app.id}
+                    className="p-4 border border-gray-200 rounded-lg space-y-3"
+                    data-testid={`card-application-${app.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-12 w-12">
+                          <AvatarFallback className="bg-green-100 text-green-700">
+                            {app.businessName.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{app.businessName}</h3>
+                          <p className="text-sm text-gray-500">{app.email}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        <Calendar className="w-3 h-3 mr-1" />
+                        {new Date(app.createdAt).toLocaleDateString()}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                       <div>
-                        <h3 className="font-semibold text-gray-900">{app.name}</h3>
-                        <p className="text-sm text-gray-500">{app.email}</p>
+                        <p className="text-gray-500">Business Type</p>
+                        <p className="font-medium">{app.businessType}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Location</p>
+                        <p className="font-medium flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> {app.address}, {app.country}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Services</p>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(Array.isArray(app.serviceOffers) ? app.serviceOffers : []).slice(0, 2).map((s: string, i: number) => (
+                            <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
+                          ))}
+                          {(Array.isArray(app.serviceOffers) ? app.serviceOffers : []).length > 2 && (
+                            <Badge variant="outline" className="text-xs">+{(app.serviceOffers as string[]).length - 2}</Badge>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <Badge variant="outline" className="text-xs">{app.appliedAt}</Badge>
-                  </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-500">Type</p>
-                      <p className="font-medium">{app.type}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Location</p>
-                      <p className="font-medium flex items-center gap-1">
-                        <MapPin className="w-3 h-3" /> {app.location}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Services</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {app.services.slice(0, 2).map((s, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                    {app.description && (
+                      <p className="text-sm text-gray-600 italic">"{app.description.slice(0, 150)}{app.description.length > 150 ? "..." : ""}"</p>
+                    )}
 
-                  <div className="flex gap-2 pt-2">
-                    <Button size="sm" data-testid={`button-approve-${app.id}`}>
-                      <CheckCircle className="w-4 h-4 mr-1" /> Approve
-                    </Button>
-                    <Button variant="outline" size="sm" data-testid={`button-reject-${app.id}`}>
-                      <XCircle className="w-4 h-4 mr-1" /> Reject
-                    </Button>
-                    <Button variant="ghost" size="sm" data-testid={`button-view-${app.id}`}>
-                      <Eye className="w-4 h-4 mr-1" /> View Details
-                    </Button>
+                    {app.website && (
+                      <p className="text-sm text-blue-600">{app.website}</p>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        size="sm"
+                        onClick={() => updateStatusMutation.mutate({ id: app.id, status: "approved" })}
+                        disabled={updateStatusMutation.isPending}
+                        data-testid={`button-approve-${app.id}`}
+                      >
+                        <CheckCircle className="w-4 h-4 mr-1" /> Approve
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateStatusMutation.mutate({ id: app.id, status: "rejected", rejectionMessage: "Does not meet requirements at this time." })}
+                        disabled={updateStatusMutation.isPending}
+                        data-testid={`button-reject-${app.id}`}
+                      >
+                        <XCircle className="w-4 h-4 mr-1" /> Reject
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </CardContent>
           </Card>
         ) : (
@@ -217,65 +256,56 @@ export default function AdminProviders() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-green-600" />
-                Active Providers
+                Approved Providers
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Provider</th>
-                      <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Type</th>
-                      <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Location</th>
-                      <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Rating</th>
-                      <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Bookings</th>
-                      <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Revenue</th>
-                      <th className="text-right py-3 px-2 text-sm font-medium text-gray-500">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeProviders.map((provider) => (
-                      <tr key={provider.id} className="border-b border-gray-100 last:border-0" data-testid={`row-provider-${provider.id}`}>
-                        <td className="py-3 px-2">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarFallback className="bg-green-100 text-green-700 text-xs">
-                                {provider.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-gray-900">{provider.name}</p>
-                              <p className="text-xs text-gray-500">{provider.email}</p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-2">
-                          <Badge variant="outline">{provider.type}</Badge>
-                        </td>
-                        <td className="py-3 px-2 text-gray-600">
-                          <span className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3" /> {provider.location}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2">
-                          <span className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                            {provider.rating} ({provider.reviews})
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-gray-600">{provider.bookings}</td>
-                        <td className="py-3 px-2 font-medium text-green-600">{provider.revenue}</td>
-                        <td className="py-3 px-2">
-                          <Button variant="ghost" size="sm" data-testid={`button-view-provider-${provider.id}`}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                        </td>
+              {filteredApproved.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No approved providers yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Provider</th>
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Type</th>
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Location</th>
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Approved</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {filteredApproved.map((provider) => (
+                        <tr key={provider.id} className="border-b border-gray-100 last:border-0" data-testid={`row-provider-${provider.id}`}>
+                          <td className="py-3 px-2">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8">
+                                <AvatarFallback className="bg-green-100 text-green-700 text-xs">
+                                  {provider.businessName.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium text-gray-900">{provider.businessName}</p>
+                                <p className="text-xs text-gray-500">{provider.email}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2">
+                            <Badge variant="outline">{provider.businessType}</Badge>
+                          </td>
+                          <td className="py-3 px-2 text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3" /> {provider.country}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-sm text-gray-500">
+                            {new Date(provider.createdAt).toLocaleDateString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}

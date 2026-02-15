@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 const steps = [
   { id: 1, title: "Business Info" },
@@ -144,17 +146,48 @@ export default function ServicesProviderPage() {
     }
   };
 
+  const submitMutation = useMutation({
+    mutationFn: async () => {
+      const applicationData = {
+        businessName: formData.businessName,
+        name: formData.businessName,
+        email: formData.email,
+        mobile: formData.phone,
+        country: formData.country,
+        address: `${formData.address}, ${formData.city}`,
+        businessType: formData.businessType,
+        website: formData.website || undefined,
+        gst: formData.registrationNumber || undefined,
+        serviceOffers: formData.serviceCategories,
+        description: formData.description,
+        termsAndConditions: formData.agreeToTerms,
+        infoConfirmation: formData.hasLicense,
+      };
+      return apiRequest("POST", "/api/provider-application", applicationData);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Registration submitted!",
+        description: "We'll review your application and get back to you within 48-72 hours.",
+      });
+      setLocation("/dashboard");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Submission failed",
+        description: error.message || "There was an error submitting your registration. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setIsSubmitting(false);
-
-    toast({
-      title: "Registration submitted!",
-      description: "We'll review your application and get back to you within 48-72 hours.",
-    });
-
-    setLocation("/dashboard");
+    try {
+      await submitMutation.mutateAsync();
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

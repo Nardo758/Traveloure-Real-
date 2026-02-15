@@ -71,8 +71,18 @@ import {
   type TemporalAnchor, type InsertTemporalAnchor,
   type DayBoundary, type InsertDayBoundary,
   type EnergyTracking, type InsertEnergyTracking,
+  providerAvailabilitySchedule, providerBlackoutDates,
+  providerBookingRequests, expertVendorCoordination,
+  type ProviderAvailabilitySchedule, type InsertProviderAvailabilitySchedule,
+  type ProviderBlackoutDate, type InsertProviderBlackoutDate,
+  type ProviderBookingRequest, type InsertProviderBookingRequest,
+  type ExpertVendorCoordination, type InsertExpertVendorCoordination,
+  expertMatchAnalytics, destinationSearchPatterns, destinationMetricsHistory,
+  type ExpertMatchAnalytics, type InsertExpertMatchAnalytics,
+  type DestinationSearchPattern, type InsertDestinationSearchPattern,
+  type DestinationMetricsHistory, type InsertDestinationMetricsHistory,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, avg } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
@@ -427,6 +437,30 @@ export interface IStorage {
   // Logistics - Energy Tracking
   getEnergyTracking(tripId: string): Promise<EnergyTracking[]>;
   saveEnergyTracking(entry: InsertEnergyTracking): Promise<EnergyTracking>;
+
+  // Expert/Provider Logistics
+  getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
+  setProviderAvailability(schedule: InsertProviderAvailabilitySchedule): Promise<ProviderAvailabilitySchedule>;
+  deleteProviderAvailability(id: string): Promise<void>;
+  getProviderBlackoutDates(providerId: string): Promise<ProviderBlackoutDate[]>;
+  addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate>;
+  deleteProviderBlackoutDate(id: string): Promise<void>;
+  getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
+  getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]>;
+  createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest>;
+  updateBookingRequest(id: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined>;
+  getVendorCoordination(tripId: string): Promise<ExpertVendorCoordination[]>;
+  createVendorCoordination(vendor: InsertExpertVendorCoordination): Promise<ExpertVendorCoordination>;
+  updateVendorCoordination(id: string, updates: Partial<InsertExpertVendorCoordination>): Promise<ExpertVendorCoordination | undefined>;
+  deleteVendorCoordination(id: string): Promise<void>;
+  // Grok Analytics
+  createExpertMatchAnalytics(data: InsertExpertMatchAnalytics): Promise<ExpertMatchAnalytics>;
+  getExpertMatchAnalytics(expertId: string): Promise<ExpertMatchAnalytics[]>;
+  getExpertMatchTrends(expertId: string, days?: number): Promise<{ avgScore: number; matchCount: number; selectionRate: number }>;
+  createDestinationSearchPattern(data: InsertDestinationSearchPattern): Promise<DestinationSearchPattern>;
+  getDestinationSearchTrends(days?: number): Promise<Array<{ destination: string; searchCount: number; conversionRate: number }>>;
+  createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory>;
+  getDestinationMetricsHistory(destination: string, metricType: string, days?: number): Promise<DestinationMetricsHistory[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2941,6 +2975,156 @@ export class DatabaseStorage implements IStorage {
   async saveEnergyTracking(entry: InsertEnergyTracking): Promise<EnergyTracking> {
     const [saved] = await db.insert(energyTracking).values(entry).returning();
     return saved;
+  }
+
+  // === Expert/Provider Logistics ===
+
+  async getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]> {
+    return await db.select().from(providerAvailabilitySchedule)
+      .where(eq(providerAvailabilitySchedule.providerId, providerId))
+      .orderBy(providerAvailabilitySchedule.dayOfWeek);
+  }
+
+  async setProviderAvailability(schedule: InsertProviderAvailabilitySchedule): Promise<ProviderAvailabilitySchedule> {
+    const [created] = await db.insert(providerAvailabilitySchedule).values(schedule).returning();
+    return created;
+  }
+
+  async deleteProviderAvailability(id: string): Promise<void> {
+    await db.delete(providerAvailabilitySchedule).where(eq(providerAvailabilitySchedule.id, id));
+  }
+
+  async getProviderBlackoutDates(providerId: string): Promise<ProviderBlackoutDate[]> {
+    return await db.select().from(providerBlackoutDates)
+      .where(eq(providerBlackoutDates.providerId, providerId))
+      .orderBy(providerBlackoutDates.startDate);
+  }
+
+  async addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate> {
+    const [created] = await db.insert(providerBlackoutDates).values(blackout).returning();
+    return created;
+  }
+
+  async deleteProviderBlackoutDate(id: string): Promise<void> {
+    await db.delete(providerBlackoutDates).where(eq(providerBlackoutDates.id, id));
+  }
+
+  async getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]> {
+    return await db.select().from(providerBookingRequests)
+      .where(eq(providerBookingRequests.providerId, providerId))
+      .orderBy(desc(providerBookingRequests.createdAt));
+  }
+
+  async getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]> {
+    return await db.select().from(providerBookingRequests)
+      .where(eq(providerBookingRequests.tripId, tripId))
+      .orderBy(providerBookingRequests.requestedDate);
+  }
+
+  async createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest> {
+    const [created] = await db.insert(providerBookingRequests).values(request).returning();
+    return created;
+  }
+
+  async updateBookingRequest(id: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined> {
+    const [updated] = await db.update(providerBookingRequests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(providerBookingRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getVendorCoordination(tripId: string): Promise<ExpertVendorCoordination[]> {
+    return await db.select().from(expertVendorCoordination)
+      .where(eq(expertVendorCoordination.tripId, tripId))
+      .orderBy(expertVendorCoordination.serviceDate);
+  }
+
+  async createVendorCoordination(vendor: InsertExpertVendorCoordination): Promise<ExpertVendorCoordination> {
+    const [created] = await db.insert(expertVendorCoordination).values(vendor).returning();
+    return created;
+  }
+
+  async updateVendorCoordination(id: string, updates: Partial<InsertExpertVendorCoordination>): Promise<ExpertVendorCoordination | undefined> {
+    const [updated] = await db.update(expertVendorCoordination)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(expertVendorCoordination.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteVendorCoordination(id: string): Promise<void> {
+    await db.delete(expertVendorCoordination).where(eq(expertVendorCoordination.id, id));
+  }
+
+  // === Grok Analytics ===
+
+  async createExpertMatchAnalytics(data: InsertExpertMatchAnalytics): Promise<ExpertMatchAnalytics> {
+    const [created] = await db.insert(expertMatchAnalytics).values(data).returning();
+    return created;
+  }
+
+  async getExpertMatchAnalytics(expertId: string): Promise<ExpertMatchAnalytics[]> {
+    return await db.select().from(expertMatchAnalytics)
+      .where(eq(expertMatchAnalytics.expertId, expertId))
+      .orderBy(desc(expertMatchAnalytics.createdAt));
+  }
+
+  async getExpertMatchTrends(expertId: string, days: number = 30): Promise<{ avgScore: number; matchCount: number; selectionRate: number }> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const matches = await db.select().from(expertMatchAnalytics)
+      .where(and(
+        eq(expertMatchAnalytics.expertId, expertId),
+        gte(expertMatchAnalytics.createdAt, cutoff)
+      ));
+
+    const matchCount = matches.length;
+    const avgScore = matchCount > 0 ? matches.reduce((sum, m) => sum + m.matchScore, 0) / matchCount : 0;
+    const selectionRate = matchCount > 0 ? matches.filter(m => m.expertSelected).length / matchCount : 0;
+    return { avgScore: Math.round(avgScore), matchCount, selectionRate: Math.round(selectionRate * 100) / 100 };
+  }
+
+  async createDestinationSearchPattern(data: InsertDestinationSearchPattern): Promise<DestinationSearchPattern> {
+    const [created] = await db.insert(destinationSearchPatterns).values(data).returning();
+    return created;
+  }
+
+  async getDestinationSearchTrends(days: number = 7): Promise<Array<{ destination: string; searchCount: number; conversionRate: number }>> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const patterns = await db.select().from(destinationSearchPatterns)
+      .where(gte(destinationSearchPatterns.createdAt, cutoff));
+
+    const grouped = patterns.reduce((acc, p) => {
+      const key = p.destination;
+      if (!acc[key]) acc[key] = { searches: 0, conversions: 0 };
+      acc[key].searches++;
+      if (p.itemSelected) acc[key].conversions++;
+      return acc;
+    }, {} as Record<string, { searches: number; conversions: number }>);
+
+    return Object.entries(grouped)
+      .map(([destination, stats]) => ({
+        destination,
+        searchCount: stats.searches,
+        conversionRate: stats.searches > 0 ? Math.round((stats.conversions / stats.searches) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.searchCount - a.searchCount);
+  }
+
+  async createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory> {
+    const [created] = await db.insert(destinationMetricsHistory).values(data).returning();
+    return created;
+  }
+
+  async getDestinationMetricsHistory(destination: string, metricType: string, days: number = 30): Promise<DestinationMetricsHistory[]> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return await db.select().from(destinationMetricsHistory)
+      .where(and(
+        eq(destinationMetricsHistory.destination, destination),
+        eq(destinationMetricsHistory.metricType, metricType),
+        gte(destinationMetricsHistory.recordedAt, cutoff)
+      ))
+      .orderBy(desc(destinationMetricsHistory.recordedAt));
   }
 }
 

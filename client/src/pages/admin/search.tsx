@@ -4,45 +4,26 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  Search as SearchIcon, 
-  Users, 
-  UserCheck, 
-  Building2, 
+import {
+  Search as SearchIcon,
+  Users,
+  UserCheck,
+  Building2,
   ClipboardList,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from "lucide-react";
 import { useState } from "react";
-
-const recentSearches = [
-  "Sarah Mitchell",
-  "Grand Estate Venue",
-  "Tokyo wedding",
-  "Refund #4521",
-];
-
-const quickFilters = [
-  { label: "Users", icon: Users, count: 12450 },
-  { label: "Experts", icon: UserCheck, count: 156 },
-  { label: "Providers", icon: Building2, count: 89 },
-  { label: "Plans", icon: ClipboardList, count: 342 },
-];
+import { useQuery } from "@tanstack/react-query";
 
 interface SearchResult {
-  id: number;
+  id: string;
   type: "user" | "expert" | "provider" | "plan";
   name: string;
   description: string;
   meta?: string;
 }
-
-const mockResults: SearchResult[] = [
-  { id: 1, type: "user", name: "Sarah Mitchell", description: "sarah.m@email.com", meta: "5 trips, $2,450 spent" },
-  { id: 2, type: "expert", name: "Sarah Chen", description: "Wedding Planner - Paris, France", meta: "4.9 rating, 127 reviews" },
-  { id: 3, type: "provider", name: "Sarah's Catering", description: "Catering Service - Los Angeles, CA", meta: "4.7 rating, 52 bookings" },
-  { id: 4, type: "plan", name: "Wedding - Sarah & Mike Johnson", description: "Napa Valley, CA - September 15, 2024", meta: "Budget: $50,000" },
-];
 
 const typeColors: Record<string, string> = {
   user: "bg-blue-100 text-blue-700 border-blue-200",
@@ -53,26 +34,30 @@ const typeColors: Record<string, string> = {
 
 export default function AdminSearch() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+
+  const { data: searchData, isLoading } = useQuery<{
+    results: Array<{ id: string; type: string; name: string; description: string; meta?: string }>;
+    counts: { users: number; experts: number; providers: number; plans: number };
+  }>({
+    queryKey: ["/api/admin/search", { q: searchQuery }],
+    enabled: hasSearched && searchQuery.trim().length > 0,
+  });
+
+  const results = (searchData?.results ?? []) as SearchResult[];
+  const counts = searchData?.counts ?? { users: 0, experts: 0, providers: 0, plans: 0 };
+
+  const quickFilters = [
+    { label: "Users", icon: Users, count: counts.users },
+    { label: "Experts", icon: UserCheck, count: counts.experts },
+    { label: "Providers", icon: Building2, count: counts.providers },
+    { label: "Plans", icon: ClipboardList, count: counts.plans },
+  ];
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
-      setResults(mockResults.filter(r => 
-        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        r.description.toLowerCase().includes(searchQuery.toLowerCase())
-      ));
       setHasSearched(true);
     }
-  };
-
-  const handleRecentSearch = (term: string) => {
-    setSearchQuery(term);
-    setResults(mockResults.filter(r => 
-      r.name.toLowerCase().includes(term.toLowerCase()) ||
-      r.description.toLowerCase().includes(term.toLowerCase())
-    ));
-    setHasSearched(true);
   };
 
   return (
@@ -103,9 +88,9 @@ export default function AdminSearch() {
         {/* Quick Filters */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {quickFilters.map((filter) => (
-            <Button 
+            <Button
               key={filter.label}
-              variant="outline" 
+              variant="outline"
               className="h-auto py-4 flex flex-col items-center gap-2"
               data-testid={`button-filter-${filter.label.toLowerCase()}`}
             >
@@ -117,36 +102,23 @@ export default function AdminSearch() {
         </div>
 
         {!hasSearched ? (
-          /* Recent Searches */
+          /* Empty state before searching */
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-gray-500" />
-                Recent Searches
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {recentSearches.map((term, index) => (
-                  <Button 
-                    key={index}
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleRecentSearch(term)}
-                    data-testid={`button-recent-${index}`}
-                  >
-                    {term}
-                  </Button>
-                ))}
-              </div>
+            <CardContent className="p-8 text-center">
+              <SearchIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500">Enter a search term to find users, experts, providers, and plans.</p>
             </CardContent>
           </Card>
+        ) : isLoading ? (
+          <div className="flex items-center justify-center h-48">
+            <Loader2 className="w-8 h-8 animate-spin text-gray-600" />
+          </div>
         ) : (
           /* Search Results */
           <Card>
             <CardHeader>
               <CardTitle>
-                {results.length > 0 
+                {results.length > 0
                   ? `Found ${results.length} results for "${searchQuery}"`
                   : `No results found for "${searchQuery}"`
                 }
@@ -154,7 +126,7 @@ export default function AdminSearch() {
             </CardHeader>
             <CardContent className="space-y-3">
               {results.map((result) => (
-                <div 
+                <div
                   key={result.id}
                   className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
                   data-testid={`result-${result.type}-${result.id}`}

@@ -3,92 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { 
-  Search, 
-  ClipboardList, 
-  Calendar, 
-  MapPin, 
+import {
+  Search,
+  ClipboardList,
+  Calendar,
+  MapPin,
   Users,
   DollarSign,
   Eye,
   Clock,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from "lucide-react";
 import { useState } from "react";
-
-const plans = [
-  {
-    id: 1,
-    title: "Wedding - Sarah & Mike Johnson",
-    type: "Wedding",
-    destination: "Napa Valley, CA",
-    date: "September 15, 2024",
-    guests: 150,
-    budget: "$50,000",
-    status: "active",
-    expert: "Emily Rose",
-    user: "Sarah Mitchell",
-    created: "Dec 15, 2025",
-    progress: 75,
-  },
-  {
-    id: 2,
-    title: "Tokyo Cultural Experience",
-    type: "Travel",
-    destination: "Tokyo, Japan",
-    date: "March 10-20, 2024",
-    guests: 2,
-    budget: "$8,000",
-    status: "active",
-    expert: "Yuki Tanaka",
-    user: "John Davidson",
-    created: "Jan 1, 2026",
-    progress: 30,
-  },
-  {
-    id: 3,
-    title: "Company Retreat - Tech Corp",
-    type: "Corporate",
-    destination: "Aspen, CO",
-    date: "February 5-8, 2024",
-    guests: 50,
-    budget: "$75,000",
-    status: "completed",
-    expert: "David Chen",
-    user: "Lisa Parker",
-    created: "Nov 20, 2025",
-    progress: 100,
-  },
-  {
-    id: 4,
-    title: "Romantic Paris Getaway",
-    type: "Travel",
-    destination: "Paris, France",
-    date: "February 14-18, 2024",
-    guests: 2,
-    budget: "$5,000",
-    status: "active",
-    expert: "Marie Dubois",
-    user: "Robert Adams",
-    created: "Dec 28, 2025",
-    progress: 45,
-  },
-  {
-    id: 5,
-    title: "50th Birthday Celebration",
-    type: "Event",
-    destination: "Los Angeles, CA",
-    date: "June 15, 2024",
-    guests: 75,
-    budget: "$15,000",
-    status: "pending",
-    expert: null,
-    user: "Michael Torres",
-    created: "Jan 2, 2026",
-    progress: 10,
-  },
-];
+import { useQuery } from "@tanstack/react-query";
 
 const typeColors: Record<string, string> = {
   Wedding: "bg-pink-100 text-pink-700 border-pink-200",
@@ -108,6 +37,60 @@ export default function AdminPlans() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
+  const { data: plansData, isLoading } = useQuery<{
+    trips: Array<{ id: string; title: string; type: string; destination: string; startDate: string; endDate: string; guests: number; budget: string; status: string; user: string; created: string }>;
+    stats: { total: number; active: number; pending: number; completed: number };
+  }>({ queryKey: ["/api/admin/trips", { search: searchQuery, status: statusFilter }] });
+
+  if (isLoading) {
+    return (
+      <AdminLayout title="Plan Management">
+        <div className="flex items-center justify-center h-96">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  const trips = plansData?.trips ?? [];
+
+  // Map API status values to display status
+  const mapStatus = (status: string): string => {
+    switch (status) {
+      case "planning":
+      case "confirmed":
+        return "active";
+      case "draft":
+        return "pending";
+      case "completed":
+        return "completed";
+      case "cancelled":
+        return "cancelled";
+      default:
+        return status;
+    }
+  };
+
+  // Capitalize first letter of type (eventType)
+  const formatType = (type: string): string => {
+    return type.charAt(0).toUpperCase() + type.slice(1);
+  };
+
+  const plans = trips.map((trip) => ({
+    id: trip.id,
+    title: trip.title,
+    type: formatType(trip.type),
+    destination: trip.destination,
+    date: trip.startDate && trip.endDate
+      ? `${trip.startDate} - ${trip.endDate}`
+      : trip.startDate || trip.endDate || "",
+    guests: trip.guests,
+    budget: trip.budget,
+    status: mapStatus(trip.status),
+    user: trip.user,
+    created: trip.created,
+  }));
+
   const filteredPlans = plans.filter((plan) => {
     const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           plan.destination.toLowerCase().includes(searchQuery.toLowerCase());
@@ -115,7 +98,7 @@ export default function AdminPlans() {
     return matchesSearch && matchesStatus;
   });
 
-  const stats = {
+  const stats = plansData?.stats ?? {
     total: plans.length,
     active: plans.filter(p => p.status === "active").length,
     pending: plans.filter(p => p.status === "pending").length,
@@ -168,32 +151,32 @@ export default function AdminPlans() {
                 />
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Button 
-                  variant={statusFilter === null ? "default" : "outline"} 
+                <Button
+                  variant={statusFilter === null ? "default" : "outline"}
                   size="sm"
                   onClick={() => setStatusFilter(null)}
                   data-testid="button-filter-all"
                 >
                   All
                 </Button>
-                <Button 
-                  variant={statusFilter === "active" ? "default" : "outline"} 
+                <Button
+                  variant={statusFilter === "active" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setStatusFilter("active")}
                   data-testid="button-filter-active"
                 >
                   Active
                 </Button>
-                <Button 
-                  variant={statusFilter === "pending" ? "default" : "outline"} 
+                <Button
+                  variant={statusFilter === "pending" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setStatusFilter("pending")}
                   data-testid="button-filter-pending"
                 >
                   Pending
                 </Button>
-                <Button 
-                  variant={statusFilter === "completed" ? "default" : "outline"} 
+                <Button
+                  variant={statusFilter === "completed" ? "default" : "outline"}
                   size="sm"
                   onClick={() => setStatusFilter("completed")}
                   data-testid="button-filter-completed"
@@ -215,7 +198,7 @@ export default function AdminPlans() {
           </CardHeader>
           <CardContent className="space-y-4">
             {filteredPlans.map((plan) => (
-              <div 
+              <div
                 key={plan.id}
                 className="p-4 border border-gray-200 rounded-lg"
                 data-testid={`card-plan-${plan.id}`}
@@ -223,8 +206,8 @@ export default function AdminPlans() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                   <div className="flex-1 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className={typeColors[plan.type]}>{plan.type}</Badge>
-                      <Badge className={statusColors[plan.status]}>{plan.status}</Badge>
+                      <Badge className={typeColors[plan.type] ?? "bg-gray-100 text-gray-700 border-gray-200"}>{plan.type}</Badge>
+                      <Badge className={statusColors[plan.status] ?? "bg-gray-100 text-gray-700 border-gray-200"}>{plan.status}</Badge>
                       <h3 className="font-semibold text-gray-900">{plan.title}</h3>
                     </div>
 
@@ -245,19 +228,7 @@ export default function AdminPlans() {
 
                     <div className="flex items-center gap-4 text-sm text-gray-500">
                       <span>User: {plan.user}</span>
-                      {plan.expert && <span>Expert: {plan.expert}</span>}
                       <span>Created: {plan.created}</span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-[#FF385C] rounded-full"
-                          style={{ width: `${plan.progress}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-medium text-gray-600">{plan.progress}%</span>
                     </div>
                   </div>
 
