@@ -4314,9 +4314,20 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const slot = await storage.createVendorAvailabilitySlot({ ...req.body, providerId: userId });
+      const availabilityInput = z.object({
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        date: z.string().optional(),
+        isAvailable: z.boolean().optional(),
+        notes: z.string().max(500).optional(),
+      }).parse(req.body);
+      const slot = await storage.createVendorAvailabilitySlot({ ...availabilityInput, providerId: userId });
       res.status(201).json(slot);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error creating availability slot:", error);
       res.status(500).json({ message: "Failed to create availability slot" });
     }
@@ -4325,12 +4336,23 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.patch("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const updateInput = z.object({
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        date: z.string().optional(),
+        isAvailable: z.boolean().optional(),
+        notes: z.string().max(500).optional(),
+      }).parse(req.body);
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
       if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      const slot = await storage.updateVendorAvailabilitySlot(req.params.id, req.body);
+      const slot = await storage.updateVendorAvailabilitySlot(req.params.id, updateInput);
       res.json(slot);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error updating availability slot:", error);
       res.status(500).json({ message: "Failed to update availability slot" });
     }
@@ -4400,9 +4422,18 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const state = await storage.createCoordinationState({ ...req.body, userId });
+      const coordInput = z.object({
+        experienceType: z.string().min(1).max(100),
+        title: z.string().min(1).max(255).optional(),
+        status: z.string().max(50).optional(),
+        metadata: z.record(z.any()).optional(),
+      }).parse(req.body);
+      const state = await storage.createCoordinationState({ ...coordInput, userId });
       res.status(201).json(state);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error creating coordination state:", error);
       res.status(500).json({ message: "Failed to create coordination state" });
     }
@@ -4410,13 +4441,21 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/coordination-states/:id", isAuthenticated, async (req, res) => {
     try {
+      const coordUpdateInput = z.object({
+        title: z.string().min(1).max(255).optional(),
+        status: z.string().max(50).optional(),
+        metadata: z.record(z.any()).optional(),
+      }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       const userId = (req.user as any).claims.sub;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      const updated = await storage.updateCoordinationState(req.params.id, req.body);
+      const updated = await storage.updateCoordinationState(req.params.id, coordUpdateInput);
       res.json(updated);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error updating coordination state:", error);
       res.status(500).json({ message: "Failed to update coordination state" });
     }
@@ -4468,16 +4507,27 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/coordination-states/:coordinationId/bookings", isAuthenticated, async (req, res) => {
     try {
+      const bookingInput = z.object({
+        vendorName: z.string().min(1).max(255).optional(),
+        serviceType: z.string().max(100).optional(),
+        status: z.string().max(50).optional(),
+        amount: z.string().optional(),
+        scheduledDate: z.string().optional(),
+        notes: z.string().max(1000).optional(),
+      }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       const userId = (req.user as any).claims.sub;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const booking = await storage.createCoordinationBooking({ 
-        ...req.body, 
+        ...bookingInput, 
         coordinationId: req.params.coordinationId 
       });
       res.status(201).json(booking);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error creating coordination booking:", error);
       res.status(500).json({ message: "Failed to create booking" });
     }
@@ -4485,14 +4535,25 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.patch("/api/coordination-bookings/:id", isAuthenticated, async (req, res) => {
     try {
+      const bookingUpdateInput = z.object({
+        vendorName: z.string().min(1).max(255).optional(),
+        serviceType: z.string().max(100).optional(),
+        status: z.string().max(50).optional(),
+        amount: z.string().optional(),
+        scheduledDate: z.string().optional(),
+        notes: z.string().max(1000).optional(),
+      }).parse(req.body);
       const userId = (req.user as any).claims.sub;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
       if (!state || state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      const updated = await storage.updateCoordinationBooking(req.params.id, req.body);
+      const updated = await storage.updateCoordinationBooking(req.params.id, bookingUpdateInput);
       res.json(updated);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       console.error("Error updating coordination booking:", error);
       res.status(500).json({ message: "Failed to update booking" });
     }
@@ -7992,9 +8053,11 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Get comprehensive location summary for admin panel
   app.get("/api/admin/data/location-summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { feverEventCache, hotelCache, activityCache, flightCache } = await import("@shared/schema");
@@ -9328,9 +9391,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get content tracking summary (admin only)
   app.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const summary = await storage.getContentTrackingSummary();
@@ -9343,9 +9408,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get all content registry entries (admin only)
   app.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { status, contentType, ownerId, flagged, limit, offset } = req.query;
@@ -9367,9 +9434,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get content by tracking number
   app.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { trackingNumber } = req.params;
@@ -9397,9 +9466,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Register new content (manual registration via API)
   app.post("/api/admin/content/register", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { contentType, contentId, ownerId, title, description, status, metadata } = req.body;
@@ -9431,9 +9502,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get moderation queue (flagged content)
   app.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const queue = await storage.getModerationQueue();
@@ -9446,9 +9519,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Moderate content
   app.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { trackingNumber } = req.params;
@@ -9460,7 +9535,7 @@ export async function registerDiscoveryRoutes(app: Express) {
 
       const result = await storage.moderateContent(
         trackingNumber,
-        user.claims.sub,
+        userId,
         action,
         notes
       );
@@ -9504,9 +9579,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get pending flags (admin only)
   app.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const flags = await storage.getPendingFlags();
@@ -9519,9 +9596,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Resolve flag (admin only)
   app.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { flagId } = req.params;
@@ -9531,7 +9610,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ message: "resolution is required" });
       }
 
-      const result = await storage.resolveFlag(flagId, user.claims.sub, resolution);
+      const result = await storage.resolveFlag(flagId, userId, resolution);
       if (!result) {
         return res.status(404).json({ message: "Flag not found" });
       }
@@ -9547,9 +9626,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Create invoice for content
   app.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { trackingNumber, customerId, providerId, invoiceType, amount, currency, taxAmount, discountAmount, notes, dueDate } = req.body;
@@ -9584,9 +9665,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get invoice by number
   app.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { invoiceNumber } = req.params;
@@ -9605,9 +9688,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Update invoice status
   app.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { invoiceNumber } = req.params;
@@ -9646,9 +9731,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get AI usage summary with cost breakdown
   app.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { startDate, endDate } = req.query;
@@ -9665,9 +9752,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get daily AI usage for charts
   app.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const days = parseInt(req.query.days as string) || 30;
@@ -9681,9 +9770,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get recent AI usage logs
   app.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const limit = parseInt(req.query.limit as string) || 100;
@@ -9697,9 +9788,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Get AI pricing info
   app.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       res.json({
@@ -9731,9 +9824,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // External API Usage Tracking (Amadeus, etc.)
   app.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { apiUsageService } = await import('./services/api-usage.service');
@@ -9746,9 +9841,11 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/admin/api-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { apiUsageService } = await import('./services/api-usage.service');
@@ -9761,9 +9858,11 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/admin/api-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { apiUsageService } = await import('./services/api-usage.service');
@@ -9776,9 +9875,11 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/admin/api-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { apiUsageService } = await import('./services/api-usage.service');
@@ -9794,9 +9895,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Admin unified revenue dashboard
   app.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
@@ -9810,9 +9913,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Platform revenue summary with filters
   app.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const startDate = req.query.startDate ? new Date(String(req.query.startDate)) : undefined;
@@ -9828,9 +9933,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Platform revenue transactions list
   app.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const startDate = req.query.startDate ? new Date(String(req.query.startDate)) : undefined;
@@ -9847,9 +9954,11 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Revenue report by content tracking number
   app.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
       }
 
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
@@ -9969,10 +10078,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       res.json(anchors);
@@ -9983,12 +10097,31 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
-      const input = insertTemporalAnchorSchema.parse({ ...req.body, tripId: req.params.tripId });
+      const body = { ...req.body, tripId: req.params.tripId };
+
+      if (!body.anchorDatetime && body.dayNumber && body.suggestedTime) {
+        const startDate = trip.startDate?.toString() || new Date().toISOString().split('T')[0];
+        const tripStart = new Date(startDate);
+        const anchorDate = new Date(tripStart);
+        anchorDate.setDate(anchorDate.getDate() + (body.dayNumber - 1));
+        const [h, m] = body.suggestedTime.split(':');
+        anchorDate.setHours(parseInt(h), parseInt(m), 0, 0);
+        body.anchorDatetime = anchorDate.toISOString();
+        delete body.dayNumber;
+        delete body.suggestedTime;
+      }
+
+      const input = insertTemporalAnchorSchema.parse(body);
       const anchor = await storage.createTemporalAnchor(input);
       res.status(201).json(anchor);
     } catch (err) {
@@ -10001,6 +10134,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
       if (!updated) return res.status(404).json({ message: "Anchor not found" });
       res.json(updated);
@@ -10011,6 +10148,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       await storage.deleteTemporalAnchor(req.params.id);
       res.status(204).send();
     } catch (error: any) {
@@ -10022,10 +10163,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
       res.json(boundaries);
@@ -10036,10 +10182,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const input = insertDayBoundarySchema.parse({ ...req.body, tripId: req.params.tripId });
       const boundary = await storage.createDayBoundary(input);
@@ -10056,10 +10207,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
@@ -10105,10 +10261,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/calculate-energy", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       // Get all itinerary items for the trip grouped by day
       const items = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, req.params.tripId));
@@ -10178,10 +10339,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/generate-presets", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const { templateSlug, eventDate, userExperienceId } = req.body;
       if (!templateSlug || !eventDate) {
@@ -10203,10 +10369,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const { detectAnchorImpacts } = await import('./services/logistics-presets.service');
       const impacts = await detectAnchorImpacts(req.params.tripId, req.params.anchorId);
@@ -10220,10 +10391,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const { templateSlug } = req.body;
       const startDate = trip.startDate?.toString() || new Date().toISOString().split('T')[0];
@@ -10249,10 +10425,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const userId = (req.user as any).claims.sub;
-      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+        return res.status(403).json({ message: "Not authorized to access this trip" });
+      }
 
       const { analyzeAnchorOptimization } = await import('./services/anchor-suggestion.service');
       const tips = await analyzeAnchorOptimization(req.params.tripId);
@@ -10270,7 +10451,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
@@ -10313,6 +10499,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/expert/find-providers", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
       const { date, startTime, endTime, serviceType } = req.body;
       const dayOfWeek = new Date(date).getDay();
 
@@ -10363,6 +10555,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
       const vendors = await storage.getVendorCoordination(req.params.tripId);
       const confirmed = vendors.filter(v => v.status === 'confirmed' || v.status === 'contract_signed');
       const pending = vendors.filter(v => v.status === 'pending' || v.status === 'contacted');
@@ -10374,30 +10572,71 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
+      const vendorInput = z.object({
+        vendorName: z.string().min(1).max(255),
+        serviceType: z.string().min(1).max(100),
+        status: z.string().max(50).optional(),
+        contactEmail: z.string().email().optional(),
+        contactPhone: z.string().max(50).optional(),
+        notes: z.string().max(1000).optional(),
+        quotedAmount: z.string().optional(),
+      }).parse(req.body);
       const vendor = await storage.createVendorCoordination({
-        ...req.body,
+        ...vendorInput,
         tripId: req.params.tripId,
         expertId: userId,
       });
       res.json(vendor);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to add vendor", error: error.message });
     }
   });
 
   app.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const updated = await storage.updateVendorCoordination(req.params.vendorId, req.body);
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
+      const vendorUpdateInput = z.object({
+        vendorName: z.string().min(1).max(255).optional(),
+        serviceType: z.string().min(1).max(100).optional(),
+        status: z.string().max(50).optional(),
+        contactEmail: z.string().email().optional(),
+        contactPhone: z.string().max(50).optional(),
+        notes: z.string().max(1000).optional(),
+        quotedAmount: z.string().optional(),
+      }).parse(req.body);
+      const updated = await storage.updateVendorCoordination(req.params.vendorId, vendorUpdateInput);
       if (!updated) return res.status(404).json({ message: "Vendor not found" });
       res.json(updated);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to update vendor", error: error.message });
     }
   });
 
   app.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Expert access required" });
+      }
       await storage.deleteVendorCoordination(req.params.vendorId);
       res.json({ success: true });
     } catch (error: any) {
@@ -10409,7 +10648,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
       const schedule = await storage.getProviderAvailability(userId);
       const blackouts = await storage.getProviderBlackoutDates(userId);
       res.json({ schedule, blackoutDates: blackouts });
@@ -10420,19 +10664,39 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
+      const scheduleInput = z.object({
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        startTime: z.string().optional(),
+        endTime: z.string().optional(),
+        isAvailable: z.boolean().optional(),
+      }).parse(req.body);
       const entry = await storage.setProviderAvailability({
-        ...req.body,
+        ...scheduleInput,
         providerId: userId,
       });
       res.json(entry);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to set availability", error: error.message });
     }
   });
 
   app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
       await storage.deleteProviderAvailability(req.params.id);
       res.json({ success: true });
     } catch (error: any) {
@@ -10442,19 +10706,38 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
+      const blackoutInput = z.object({
+        startDate: z.string().min(1),
+        endDate: z.string().min(1),
+        reason: z.string().max(500).optional(),
+      }).parse(req.body);
       const blackout = await storage.addProviderBlackoutDate({
-        ...req.body,
+        ...blackoutInput,
         providerId: userId,
       });
       res.json(blackout);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to add blackout date", error: error.message });
     }
   });
 
   app.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
       await storage.deleteProviderBlackoutDate(req.params.id);
       res.json({ success: true });
     } catch (error: any) {
@@ -10466,7 +10749,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
       const requests = await storage.getBookingRequests(userId);
       res.json({ requests });
     } catch (error: any) {
@@ -10477,27 +10765,51 @@ export async function registerDiscoveryRoutes(app: Express) {
   app.post("/api/coordination/booking-request", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const requestInput = z.object({
+        providerId: z.string().min(1),
+        tripId: z.string().min(1),
+        serviceType: z.string().min(1).max(100),
+        requestedDate: z.string().optional(),
+        message: z.string().max(2000).optional(),
+        budget: z.string().optional(),
+      }).parse(req.body);
       const request = await storage.createBookingRequest({
-        ...req.body,
+        ...requestInput,
         expertId: userId,
       });
       res.json(request);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to create booking request", error: error.message });
     }
   });
 
   app.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
     try {
-      const { status, counterOffer, providerResponse } = req.body;
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
+      const responseInput = z.object({
+        status: z.enum(["accepted", "rejected", "counter_offered"]),
+        counterOffer: z.string().optional().nullable(),
+        providerResponse: z.string().max(2000).optional(),
+      }).parse(req.body);
       const updated = await storage.updateBookingRequest(req.params.requestId, {
-        status,
-        counterOffer: counterOffer || null,
-        providerResponse,
+        status: responseInput.status,
+        counterOffer: responseInput.counterOffer || null,
+        providerResponse: responseInput.providerResponse,
       });
       if (!updated) return res.status(404).json({ message: "Request not found" });
       res.json(updated);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to respond", error: error.message });
     }
   });

@@ -78,11 +78,12 @@ export function AnchorSuggestionsPanel({
     mutationFn: async (suggestion: AnchorSuggestion) => {
       const response = await apiRequest("POST", `/api/trips/${tripId}/anchors`, {
         anchorType: suggestion.anchorType,
-        anchorDatetime: buildDatetime(suggestion.suggestedDayNumber, suggestion.suggestedTime),
+        dayNumber: suggestion.suggestedDayNumber,
+        suggestedTime: suggestion.suggestedTime,
         bufferBefore: suggestion.bufferBefore,
         bufferAfter: suggestion.bufferAfter,
         isImmovable: suggestion.confidence === "high",
-        description: suggestion.reason.split('.')[0], // First sentence as description
+        description: suggestion.reason.split('.')[0],
       });
       return response.json();
     },
@@ -94,15 +95,6 @@ export function AnchorSuggestionsPanel({
       toast({ variant: "destructive", title: "Failed to apply", description: error.message });
     },
   });
-
-  function buildDatetime(dayNumber: number, time: string): string {
-    // Creates a relative datetime — the server will resolve against trip start
-    const date = new Date();
-    date.setDate(date.getDate() + dayNumber - 1);
-    const [h, m] = time.split(':');
-    date.setHours(parseInt(h), parseInt(m), 0, 0);
-    return date.toISOString();
-  }
 
   function formatAnchorType(type: string): string {
     return type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
