@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { db } from "./db";
 import {
   itineraryComparisons,
@@ -28,18 +29,59 @@ import {
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
 
-// Use Grok for faster optimization (xAI API with OpenAI-compatible interface)
-const GROK_MODEL = "grok-3";
+const GROK_MODEL = "grok-2-1212";
+const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 
-function getGrokClient(): OpenAI {
+function getGrokClient(): OpenAI | null {
   const apiKey = process.env.XAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("XAI_API_KEY is not configured");
-  }
+  if (!apiKey) return null;
   return new OpenAI({
     baseURL: "https://api.x.ai/v1",
     apiKey,
   });
+}
+
+function getAnthropicClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  return new Anthropic({ apiKey });
+}
+
+async function callAI(systemPrompt: string, userPrompt: string): Promise<string> {
+  const grok = getGrokClient();
+  if (grok) {
+    try {
+      const response = await grok.chat.completions.create({
+        model: GROK_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.7,
+        max_tokens: 16384,
+      });
+      const content = response.choices[0]?.message?.content;
+      if (content) return content;
+    } catch (grokError: any) {
+      console.warn("Grok API failed, falling back to Anthropic:", grokError.message);
+    }
+  }
+
+  const anthropic = getAnthropicClient();
+  if (anthropic) {
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 16384,
+      system: systemPrompt,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+    });
+    const textBlock = response.content.find((b: any) => b.type === "text");
+    if (textBlock && textBlock.type === "text") return textBlock.text;
+  }
+
+  throw new Error("No AI provider available. Configure XAI_API_KEY or ANTHROPIC_API_KEY.");
 }
 
 // Helper to extract JSON from markdown code blocks or raw text
@@ -369,21 +411,10 @@ Respond with valid JSON in this exact format:
   ]
 }`;
 
-    const grok = getGrokClient();
-    const response = await grok.chat.completions.create({
-      model: GROK_MODEL,
-      messages: [
-        { 
-          role: "system", 
-          content: "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits." 
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 16384,
-    });
-
-    const content = response.choices[0]?.message?.content;
+    const content = await callAI(
+      "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
+      prompt
+    );
     if (!content) {
       throw new Error("No response from AI");
     }
