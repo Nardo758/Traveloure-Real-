@@ -1,7 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Plane, 
   Hotel, 
@@ -14,8 +23,18 @@ import {
   Train,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles,
+  Leaf,
+  Clock,
+  DollarSign,
+  Star,
+  Loader2,
+  RotateCcw,
+  Pencil,
 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 
 interface CartItem {
   id: string;
@@ -67,7 +86,28 @@ interface TransportSegment {
   date: string;
   status: 'covered' | 'needs_transport' | 'optional';
   coveredBy?: string;
-  options?: TransportOption[];
+}
+
+interface PackageLeg {
+  segmentId: string;
+  mode: string;
+  provider: string;
+  estimatedCost: { min: number; max: number };
+  estimatedDuration: string;
+  notes: string;
+}
+
+interface TransportPackage {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  totalCost: { min: number; max: number };
+  totalTime: string;
+  convenience: number;
+  ecoScore: number;
+  bestFor: string;
+  legs: PackageLeg[];
 }
 
 interface TransportOption {
@@ -91,6 +131,63 @@ interface TripTransportPlannerProps {
   onBookTransfer?: (segment: TransportSegment, option: TransportOption) => void;
 }
 
+const TRANSPORT_MODES = [
+  { value: "private_car", label: "Private Car", icon: Car },
+  { value: "rideshare", label: "Rideshare/Taxi", icon: Car },
+  { value: "public_transit", label: "Public Transit", icon: Train },
+  { value: "shuttle", label: "Shared Shuttle", icon: Bus },
+  { value: "walking", label: "Walking", icon: MapPin },
+];
+
+function getModeIcon(mode: string) {
+  switch (mode) {
+    case "private_car": return <Car className="h-4 w-4" />;
+    case "rideshare": return <Car className="h-4 w-4" />;
+    case "public_transit": return <Train className="h-4 w-4" />;
+    case "shuttle": return <Bus className="h-4 w-4" />;
+    case "walking": return <MapPin className="h-4 w-4" />;
+    default: return <Car className="h-4 w-4" />;
+  }
+}
+
+function getPackageIcon(icon: string) {
+  switch (icon) {
+    case "car": return <Car className="h-5 w-5" />;
+    case "train": return <Train className="h-5 w-5" />;
+    case "sparkles": return <Sparkles className="h-5 w-5" />;
+    default: return <Car className="h-5 w-5" />;
+  }
+}
+
+function getModeMultiplier(newMode: string, originalMode: string): number {
+  const costIndex: Record<string, number> = {
+    private_car: 1.0,
+    rideshare: 0.7,
+    shuttle: 0.4,
+    public_transit: 0.2,
+    walking: 0,
+  };
+  const origCost = costIndex[originalMode] ?? 0.5;
+  const newCost = costIndex[newMode] ?? 0.5;
+  if (origCost === 0) return newCost > 0 ? 1 : 0;
+  return newCost / origCost;
+}
+
+function getConvenienceColor(score: number) {
+  if (score >= 80) return "text-green-600";
+  if (score >= 60) return "text-amber-600";
+  return "text-red-600";
+}
+
+function getLocationIcon(type: string) {
+  switch (type) {
+    case "airport": return <Plane className="h-3.5 w-3.5 text-blue-600 shrink-0" />;
+    case "hotel": return <Hotel className="h-3.5 w-3.5 text-purple-600 shrink-0" />;
+    case "activity": return <MapPin className="h-3.5 w-3.5 text-orange-600 shrink-0" />;
+    default: return <MapPin className="h-3.5 w-3.5 shrink-0" />;
+  }
+}
+
 export function TripTransportPlanner({
   cart,
   destination,
@@ -100,7 +197,10 @@ export function TripTransportPlanner({
   arrivalAirport,
   onBookTransfer
 }: TripTransportPlannerProps) {
-  const [expandedSegments, setExpandedSegments] = useState<Set<string>>(new Set());
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [customOverrides, setCustomOverrides] = useState<Record<string, string>>({});
+  const [showLegs, setShowLegs] = useState(false);
+  const [packagesGenerated, setPackagesGenerated] = useState(false);
 
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
@@ -147,7 +247,6 @@ export function TripTransportPlanner({
         date: arrivalFlight.date || startDate?.toISOString().split('T')[0] || '',
         status: hotelIncludesTransfer ? 'covered' : 'needs_transport',
         coveredBy: hotelIncludesTransfer ? 'Hotel provides free airport transfer' : undefined,
-        options: hotelIncludesTransfer ? [] : generateTransportOptions('airport_to_hotel', destination, travelers)
       });
     } else if (hotel && startDate) {
       result.push({
@@ -165,7 +264,6 @@ export function TripTransportPlanner({
         date: startDate.toISOString().split('T')[0],
         status: hotelIncludesTransfer ? 'covered' : 'needs_transport',
         coveredBy: hotelIncludesTransfer ? 'Hotel provides free airport transfer' : undefined,
-        options: hotelIncludesTransfer ? [] : generateTransportOptions('airport_to_hotel', destination, travelers)
       });
     }
 
@@ -191,7 +289,6 @@ export function TripTransportPlanner({
           },
           date: activityDate,
           status: 'needs_transport',
-          options: generateTransportOptions('hotel_to_activity', destination, travelers)
         });
       }
     });
@@ -213,27 +310,90 @@ export function TripTransportPlanner({
         date: departureFlight?.date || endDate?.toISOString().split('T')[0] || '',
         status: hotelIncludesTransfer ? 'covered' : 'needs_transport',
         coveredBy: hotelIncludesTransfer ? 'Hotel provides free airport transfer' : undefined,
-        options: hotelIncludesTransfer ? [] : generateTransportOptions('hotel_to_airport', destination, travelers)
       });
     }
 
     return result;
   }, [cart, destination, startDate, endDate, travelers, arrivalAirport]);
 
-  const toggleSegment = (id: string) => {
-    setExpandedSegments(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
+  const needsTransportSegments = useMemo(
+    () => segments.filter(s => s.status === 'needs_transport'),
+    [segments]
+  );
 
-  const needsTransportCount = segments.filter(s => s.status === 'needs_transport').length;
-  const coveredCount = segments.filter(s => s.status === 'covered').length;
+  const tripDays = useMemo(() => {
+    if (startDate && endDate) {
+      return Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+    return 3;
+  }, [startDate, endDate]);
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const segmentsForAI = needsTransportSegments.map(s => ({
+        id: s.id,
+        type: s.type,
+        from: { name: s.from.name, type: s.from.type },
+        to: { name: s.to.name, type: s.to.type },
+        date: s.date,
+      }));
+
+      const res = await apiRequest("POST", "/api/transport-packages/generate", {
+        segments: segmentsForAI,
+        destination,
+        travelers,
+        tripDays,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setPackagesGenerated(true);
+      if (data.packages && data.packages.length > 0) {
+        setSelectedPackageId(data.packages.find((p: TransportPackage) => p.id === 'hybrid')?.id || data.packages[0].id);
+      }
+    },
+  });
+
+  const packages: TransportPackage[] = generateMutation.data?.packages || [];
+
+  const selectedPackage = packages.find(p => p.id === selectedPackageId);
+
+  const effectiveLegs = useMemo(() => {
+    if (!selectedPackage) return [];
+    return selectedPackage.legs.map(leg => {
+      const override = customOverrides[leg.segmentId];
+      if (override && override !== leg.mode) {
+        const costMultiplier = getModeMultiplier(override, leg.mode);
+        return {
+          ...leg,
+          mode: override,
+          isCustomized: true,
+          estimatedCost: {
+            min: Math.round(leg.estimatedCost.min * costMultiplier),
+            max: Math.round(leg.estimatedCost.max * costMultiplier),
+          },
+        };
+      }
+      return { ...leg, isCustomized: false };
+    });
+  }, [selectedPackage, customOverrides]);
+
+  const derivedTotals = useMemo(() => {
+    if (effectiveLegs.length === 0) return null;
+    const totalMin = effectiveLegs.reduce((sum, l) => sum + l.estimatedCost.min, 0);
+    const totalMax = effectiveLegs.reduce((sum, l) => sum + l.estimatedCost.max, 0);
+    return { min: totalMin, max: totalMax };
+  }, [effectiveLegs]);
+
+  const handleOverrideLeg = useCallback((segmentId: string, mode: string) => {
+    setCustomOverrides(prev => ({ ...prev, [segmentId]: mode }));
+  }, []);
+
+  const handleResetOverrides = useCallback(() => {
+    setCustomOverrides({});
+  }, []);
+
+  const customCount = Object.keys(customOverrides).length;
 
   if (segments.length === 0) {
     return (
@@ -257,211 +417,357 @@ export function TripTransportPlanner({
   return (
     <Card data-testid="transport-planner">
       <CardHeader>
-        <CardTitle className="flex items-center justify-between">
+        <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
             <Car className="h-5 w-5 text-[#FF385C]" />
             Trip Transportation
           </div>
-          <div className="flex gap-2">
-            {coveredCount > 0 && (
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200" data-testid="badge-covered-count">
+          <div className="flex gap-2 flex-wrap">
+            {segments.filter(s => s.status === 'covered').length > 0 && (
+              <Badge variant="outline" data-testid="badge-covered-count">
                 <Check className="h-3 w-3 mr-1" />
-                {coveredCount} covered
+                {segments.filter(s => s.status === 'covered').length} covered
               </Badge>
             )}
-            {needsTransportCount > 0 && (
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200" data-testid="badge-needs-count">
-                <AlertCircle className="h-3 w-3 mr-1" />
-                {needsTransportCount} need transport
-              </Badge>
-            )}
+            <Badge variant="outline" data-testid="badge-needs-count">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {needsTransportSegments.length} legs
+            </Badge>
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {segments.map((segment) => (
-          <div 
-            key={segment.id}
-            className={`border rounded-lg p-4 ${
-              segment.status === 'covered' 
-                ? 'bg-green-50/50 border-green-200' 
-                : 'bg-amber-50/50 border-amber-200'
-            }`}
-            data-testid={`transport-segment-${segment.id}`}
-          >
-            <div 
-              className="flex items-center justify-between cursor-pointer"
-              onClick={() => segment.status === 'needs_transport' && toggleSegment(segment.id)}
-              data-testid={`segment-header-${segment.id}`}
+      <CardContent className="space-y-4">
+        {!packagesGenerated && !generateMutation.isPending && (
+          <div className="text-center py-6 space-y-4" data-testid="transport-generate-prompt">
+            <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 flex items-center justify-center">
+              <Sparkles className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-lg">Smart Transport Packages</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                We'll analyze your {needsTransportSegments.length} transport legs and build 3 complete packages: 
+                private car, public transit, and a smart hybrid mix.
+              </p>
+            </div>
+            <Button
+              onClick={() => generateMutation.mutate()}
+              data-testid="button-generate-packages"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  {segment.from.type === 'airport' && <Plane className="h-4 w-4 text-blue-600" />}
-                  {segment.from.type === 'hotel' && <Hotel className="h-4 w-4 text-purple-600" />}
-                  {segment.from.type === 'activity' && <MapPin className="h-4 w-4 text-orange-600" />}
-                  <span className="font-medium text-sm">{segment.from.name}</span>
-                </div>
-                <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                <div className="flex items-center gap-2">
-                  {segment.to.type === 'airport' && <Plane className="h-4 w-4 text-blue-600" />}
-                  {segment.to.type === 'hotel' && <Hotel className="h-4 w-4 text-purple-600" />}
-                  {segment.to.type === 'activity' && <MapPin className="h-4 w-4 text-orange-600" />}
-                  <span className="font-medium text-sm">{segment.to.name}</span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                {segment.date && (
-                  <span className="text-xs text-muted-foreground">{segment.date}</span>
-                )}
-                {segment.status === 'covered' ? (
-                  <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
-                    <Check className="h-3 w-3 mr-1" />
-                    Covered
-                  </Badge>
-                ) : (
-                  <>
-                    <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-300">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      Need Transport
-                    </Badge>
-                    {expandedSegments.has(segment.id) ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    )}
-                  </>
-                )}
-              </div>
+              <Sparkles className="h-4 w-4 mr-2" />
+              Generate Transport Packages
+            </Button>
+
+            <div className="pt-2">
+              <button
+                className="text-xs text-muted-foreground underline"
+                onClick={() => setShowLegs(!showLegs)}
+                data-testid="button-toggle-legs-preview"
+              >
+                {showLegs ? "Hide" : "Show"} {needsTransportSegments.length} transport legs
+              </button>
             </div>
 
-            {segment.status === 'covered' && segment.coveredBy && (
-              <p className="text-sm text-green-700 mt-2 flex items-center gap-2">
-                <Check className="h-4 w-4" />
-                {segment.coveredBy}
-              </p>
-            )}
-
-            {segment.status === 'needs_transport' && expandedSegments.has(segment.id) && segment.options && (
-              <div className="mt-4 pt-4 border-t border-amber-200 space-y-3">
-                <p className="text-sm font-medium text-gray-700">Transport Options:</p>
-                {segment.options.map((option, idx) => (
-                  <div 
-                    key={idx}
-                    className="flex items-center justify-between bg-white rounded-lg p-3 border"
-                    data-testid={`transport-option-${segment.id}-${idx}`}
+            {showLegs && (
+              <div className="text-left space-y-2 mt-3">
+                {segments.map(seg => (
+                  <div
+                    key={seg.id}
+                    className={cn(
+                      "flex items-center gap-2 p-2.5 rounded-md border text-sm",
+                      seg.status === 'covered' 
+                        ? "bg-green-50/50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
+                        : "bg-muted/30 border-border"
+                    )}
+                    data-testid={`transport-segment-${seg.id}`}
                   >
-                    <div className="flex items-center gap-3">
-                      {option.type === 'google_transit' && <Train className="h-5 w-5 text-blue-600" />}
-                      {option.type === 'amadeus_transfer' && <Car className="h-5 w-5 text-purple-600" />}
-                      {option.type === '12go' && <Bus className="h-5 w-5 text-green-600" />}
-                      {option.type === 'taxi' && <Car className="h-5 w-5 text-yellow-600" />}
-                      {option.type === 'hotel_shuttle' && <Bus className="h-5 w-5 text-teal-600" />}
-                      <div>
-                        <p className="font-medium text-sm">{option.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {option.provider}
-                          {option.duration && ` • ${option.duration}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {option.isFree ? (
-                        <Badge variant="outline" className="bg-green-50 text-green-700">Free</Badge>
-                      ) : option.price ? (
-                        <span className="font-semibold">${option.price}</span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">Check price</span>
-                      )}
-                      {option.actionUrl ? (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => window.open(option.actionUrl, '_blank')}
-                          data-testid={`button-book-${segment.id}-${idx}`}
-                        >
-                          Book <ExternalLink className="h-3 w-3 ml-1" />
-                        </Button>
-                      ) : (
-                        <Button 
-                          size="sm"
-                          onClick={() => onBookTransfer?.(segment, option)}
-                          data-testid={`button-select-${segment.id}-${idx}`}
-                        >
-                          Select
-                        </Button>
-                      )}
-                    </div>
+                    {getLocationIcon(seg.from.type)}
+                    <span className="truncate max-w-[140px]">{seg.from.name}</span>
+                    <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                    {getLocationIcon(seg.to.type)}
+                    <span className="truncate max-w-[140px]">{seg.to.name}</span>
+                    {seg.date && <span className="text-xs text-muted-foreground ml-auto shrink-0">{seg.date}</span>}
+                    {seg.status === 'covered' && (
+                      <Badge variant="outline" className="ml-auto shrink-0">
+                        <Check className="h-3 w-3 mr-1" /> Covered
+                      </Badge>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
-        ))}
+        )}
 
-        <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="flex items-start gap-3">
-            <Train className="h-5 w-5 text-blue-600 mt-0.5" />
-            <div>
-              <p className="font-medium text-blue-900">Need trains, buses, or ferries?</p>
-              <p className="text-sm text-blue-700 mt-1">
-                Book ground transportation for longer journeys between cities.
-              </p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="mt-3"
+        {generateMutation.isPending && (
+          <div className="py-8 space-y-4" data-testid="transport-loading">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-[#FF385C]" />
+              <p className="font-medium">Analyzing {needsTransportSegments.length} transport legs...</p>
+              <p className="text-sm text-muted-foreground mt-1">Building personalized transport packages for {destination}</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {[1, 2, 3].map(i => (
+                <Card key={i} className="border-dashed">
+                  <CardContent className="p-4 space-y-3">
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-8 w-20" />
+                    <Skeleton className="h-4 w-16" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {generateMutation.isError && (
+          <div className="text-center py-6 space-y-3" data-testid="transport-error">
+            <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
+            <p className="text-sm text-destructive">Failed to generate transport packages. Please try again.</p>
+            <Button variant="outline" onClick={() => generateMutation.mutate()} data-testid="button-retry-packages">
+              <RotateCcw className="h-4 w-4 mr-2" /> Retry
+            </Button>
+          </div>
+        )}
+
+        {packagesGenerated && packages.length > 0 && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-testid="transport-packages">
+              {packages.map((pkg) => {
+                const isSelected = selectedPackageId === pkg.id;
+                return (
+                  <Card
+                    key={pkg.id}
+                    className={cn(
+                      "cursor-pointer transition-all relative",
+                      isSelected
+                        ? "ring-2 ring-[#FF385C] border-[#FF385C]"
+                        : "hover-elevate"
+                    )}
+                    onClick={() => {
+                      setSelectedPackageId(pkg.id);
+                      setCustomOverrides({});
+                    }}
+                    data-testid={`transport-package-${pkg.id}`}
+                  >
+                    {isSelected && (
+                      <div className="absolute -top-2.5 left-3">
+                        <Badge className="bg-[#FF385C] text-white border-0">Selected</Badge>
+                      </div>
+                    )}
+                    <CardContent className="p-4 pt-5 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "p-1.5 rounded-md",
+                          pkg.id === 'private' ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" :
+                          pkg.id === 'public' ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
+                          "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                        )}>
+                          {getPackageIcon(pkg.icon)}
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-sm">{pkg.name}</h4>
+                          <p className="text-xs text-muted-foreground">{pkg.bestFor}</p>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground leading-relaxed">{pkg.description}</p>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <DollarSign className="h-3.5 w-3.5" /> Cost
+                          </span>
+                          <span className="font-semibold">${pkg.totalCost.min}–${pkg.totalCost.max}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock className="h-3.5 w-3.5" /> Travel Time
+                          </span>
+                          <span className="font-medium">{pkg.totalTime}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <Star className="h-3.5 w-3.5" /> Convenience
+                          </span>
+                          <span className={cn("font-medium", getConvenienceColor(pkg.convenience))}>
+                            {pkg.convenience}/100
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-1.5 text-muted-foreground">
+                            <Leaf className="h-3.5 w-3.5" /> Eco Score
+                          </span>
+                          <span className={cn("font-medium", getConvenienceColor(pkg.ecoScore))}>
+                            {pkg.ecoScore}/100
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+
+            {selectedPackage && (
+              <div className="mt-4 space-y-3" data-testid="transport-leg-details">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-semibold text-sm">Leg-by-Leg Breakdown</h4>
+                    <Badge variant="outline">
+                      <Pencil className="h-3 w-3 mr-1" />
+                      Customize per leg
+                    </Badge>
+                  </div>
+                  {customCount > 0 && (
+                    <Button variant="ghost" size="sm" onClick={handleResetOverrides} data-testid="button-reset-overrides">
+                      <RotateCcw className="h-3 w-3 mr-1" />
+                      Reset {customCount} change{customCount > 1 ? 's' : ''}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {effectiveLegs.map((leg, idx) => {
+                    const segment = segments.find(s => s.id === leg.segmentId);
+                    if (!segment) return null;
+                    const isCustomized = (leg as any).isCustomized;
+                    return (
+                      <div
+                        key={leg.segmentId}
+                        className={cn(
+                          "border rounded-md p-3 space-y-2",
+                          isCustomized ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-700" : "bg-muted/20"
+                        )}
+                        data-testid={`transport-leg-${leg.segmentId}`}
+                      >
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2 text-sm min-w-0">
+                            {getLocationIcon(segment.from.type)}
+                            <span className="truncate max-w-[120px] font-medium">{segment.from.name}</span>
+                            <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                            {getLocationIcon(segment.to.type)}
+                            <span className="truncate max-w-[120px] font-medium">{segment.to.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {segment.date && (
+                              <span className="text-xs text-muted-foreground">{segment.date}</span>
+                            )}
+                            <Select
+                              value={customOverrides[leg.segmentId] || leg.mode}
+                              onValueChange={(val) => handleOverrideLeg(leg.segmentId, val)}
+                            >
+                              <SelectTrigger className="w-[150px] h-8 text-xs" data-testid={`select-mode-${leg.segmentId}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {TRANSPORT_MODES.map(m => (
+                                  <SelectItem key={m.value} value={m.value}>
+                                    <span className="flex items-center gap-1.5">
+                                      <m.icon className="h-3 w-3" />
+                                      {m.label}
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                          <span className="flex items-center gap-1">
+                            {getModeIcon(leg.mode)}
+                            {leg.provider}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {leg.estimatedDuration}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <DollarSign className="h-3 w-3" />
+                            ${leg.estimatedCost.min}–${leg.estimatedCost.max}
+                          </span>
+                          {isCustomized && (
+                            <Badge variant="outline" className="text-xs h-5">
+                              Customized
+                            </Badge>
+                          )}
+                        </div>
+                        {leg.notes && (
+                          <p className="text-xs text-muted-foreground">{leg.notes}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {customCount > 0 && derivedTotals && selectedPackage && (
+                  <div className="mt-3 p-3 rounded-md bg-muted/30 border border-border" data-testid="transport-custom-totals">
+                    <div className="flex items-center justify-between gap-4 flex-wrap text-sm">
+                      <span className="font-medium">Updated Estimate</span>
+                      <div className="flex items-center gap-4">
+                        <span className="flex items-center gap-1.5">
+                          <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="line-through text-muted-foreground text-xs">
+                            ${selectedPackage.totalCost.min}–${selectedPackage.totalCost.max}
+                          </span>
+                          <span className="font-semibold">${derivedTotals.min}–${derivedTotals.max}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setPackagesGenerated(false);
+                  setSelectedPackageId(null);
+                  setCustomOverrides({});
+                  generateMutation.reset();
+                }}
+                data-testid="button-regenerate"
+              >
+                <RotateCcw className="h-4 w-4 mr-2" />
+                Regenerate Packages
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => window.open(`https://12go.asia/en?z=13805109&curr=USD&departcity=${encodeURIComponent(destination)}`, '_blank')}
                 data-testid="button-browse-12go"
               >
                 Browse 12Go Transportation <ExternalLink className="h-3 w-3 ml-1" />
               </Button>
             </div>
+          </>
+        )}
+
+        {segments.filter(s => s.status === 'covered').length > 0 && !packagesGenerated && (
+          <div className="space-y-2 pt-2 border-t">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Already Covered</p>
+            {segments.filter(s => s.status === 'covered').map(seg => (
+              <div
+                key={seg.id}
+                className="flex items-center gap-2 p-2.5 rounded-md bg-green-50/50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 text-sm"
+                data-testid={`transport-covered-${seg.id}`}
+              >
+                <Check className="h-4 w-4 text-green-600 shrink-0" />
+                {getLocationIcon(seg.from.type)}
+                <span className="truncate">{seg.from.name}</span>
+                <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                {getLocationIcon(seg.to.type)}
+                <span className="truncate">{seg.to.name}</span>
+                <span className="ml-auto text-xs text-green-600 shrink-0">{seg.coveredBy}</span>
+              </div>
+            ))}
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
-}
-
-function generateTransportOptions(
-  segmentType: string, 
-  destination: string, 
-  travelers: number
-): TransportOption[] {
-  const options: TransportOption[] = [];
-
-  options.push({
-    type: 'google_transit',
-    name: 'Public Transit',
-    provider: 'Via Google Maps',
-    description: 'Check local bus, metro, or train options'
-  });
-
-  if (segmentType === 'airport_to_hotel' || segmentType === 'hotel_to_airport') {
-    options.push({
-      type: 'amadeus_transfer',
-      name: 'Private Transfer',
-      provider: 'Book via Amadeus',
-      description: 'Door-to-door pickup service'
-    });
-  }
-
-  options.push({
-    type: 'taxi',
-    name: 'Taxi / Ride-share',
-    provider: 'Grab, Uber, or local taxi',
-    description: 'On-demand pickup available locally'
-  });
-
-  if (segmentType === 'airport_to_hotel' || segmentType === 'hotel_to_airport') {
-    options.push({
-      type: '12go',
-      name: 'Shared Shuttle or Bus',
-      provider: '12Go Asia',
-      actionUrl: `https://12go.asia/en?z=13805109&curr=USD&departcity=${encodeURIComponent(destination)}`,
-      description: 'Book shared transport online'
-    });
-  }
-
-  return options;
 }

@@ -4315,10 +4315,11 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const userId = (req.user as any).claims.sub;
       const availabilityInput = z.object({
+        serviceId: z.string().min(1),
         dayOfWeek: z.number().min(0).max(6).optional(),
         startTime: z.string().optional(),
         endTime: z.string().optional(),
-        date: z.string().optional(),
+        date: z.string().min(1),
         isAvailable: z.boolean().optional(),
         notes: z.string().max(500).optional(),
       }).parse(req.body);
@@ -4508,6 +4509,9 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/coordination-states/:coordinationId/bookings", isAuthenticated, async (req, res) => {
     try {
       const bookingInput = z.object({
+        itemType: z.string().min(1),
+        itemId: z.string().min(1),
+        itemName: z.string().min(1).max(255),
         vendorName: z.string().min(1).max(255).optional(),
         serviceType: z.string().max(100).optional(),
         status: z.string().max(50).optional(),
@@ -5536,6 +5540,138 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error: any) {
       console.error('Claude transportation analysis error:', error);
       res.status(500).json({ message: error.message || "Transportation analysis failed" });
+    }
+  });
+
+  // Generate transport packages for trip segments
+  const transportPackageSegmentSchema = z.object({
+    id: z.string(),
+    type: z.string(),
+    from: z.object({ name: z.string(), type: z.string() }),
+    to: z.object({ name: z.string(), type: z.string() }),
+    date: z.string().optional(),
+  });
+
+  const transportPackageRequestSchema = z.object({
+    segments: z.array(transportPackageSegmentSchema).min(1),
+    destination: z.string().min(1),
+    travelers: z.number().int().min(1).default(1),
+    tripDays: z.number().int().min(1).default(1),
+  });
+
+  app.post("/api/transport-packages/generate", isAuthenticated, async (req, res) => {
+    try {
+      const parsed = transportPackageRequestSchema.parse(req.body);
+      const { segments, destination, travelers, tripDays } = parsed;
+
+      const segmentsDescription = segments.map(s =>
+        `- Segment "${s.id}" (${s.type}): from ${s.from.name} (${s.from.type}) to ${s.to.name} (${s.to.type})${s.date ? ` on ${s.date}` : ''}`
+      ).join('\n');
+
+      const systemPrompt = `You are a transportation planning expert. Generate exactly 3 transport packages for a trip. Always respond with valid JSON only, no markdown or explanation outside the JSON.`;
+
+      const userPrompt = `Generate 3 transport packages for a ${tripDays}-day trip to ${destination} with ${travelers} traveler(s).
+
+TRANSPORT SEGMENTS NEEDED:
+${segmentsDescription}
+
+Generate exactly 3 packages:
+1. "Private Car Service" (id: "private") - Private car/taxi for all legs. Icon: "car". High convenience, low eco score.
+2. "Public Transit" (id: "public") - Buses, metro, trains for all legs. Icon: "train". Low cost, high eco score.
+3. "Smart Hybrid" (id: "hybrid") - AI picks the best mode per leg balancing cost, time, and convenience. Icon: "sparkles". Best overall value.
+
+For each package, provide:
+- Realistic cost estimates (min/max in USD) based on ${destination} local transport prices
+- Total estimated travel time across all legs
+- Convenience score (0-100)
+- Eco score (0-100)
+- Best for description
+- Per-leg details with mode, provider name, estimated cost range, estimated duration, and notes
+
+Respond with this exact JSON structure:
+{
+  "packages": [
+    {
+      "id": "private",
+      "name": "Private Car Service",
+      "icon": "car",
+      "description": "Door-to-door private car for all legs",
+      "totalCost": { "min": <number>, "max": <number> },
+      "totalTime": "<e.g. 2h 30m>",
+      "convenience": <0-100>,
+      "ecoScore": <0-100>,
+      "bestFor": "<short description>",
+      "legs": [
+        {
+          "segmentId": "<matching segment id>",
+          "mode": "<private_car|taxi|uber|metro|bus|train|shuttle|rideshare|walk|ferry>",
+          "provider": "<provider name>",
+          "estimatedCost": { "min": <number>, "max": <number> },
+          "estimatedDuration": "<e.g. 35 min>",
+          "notes": "<helpful note about this leg>"
+        }
+      ]
+    }
+  ]
+}`;
+
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      });
+
+      const responseText = aiResponse.content[0]?.type === "text" ? aiResponse.content[0].text : "";
+
+      let jsonText = responseText;
+      const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1].trim();
+      } else {
+        const jsonObjMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonObjMatch) {
+          jsonText = jsonObjMatch[0];
+        }
+      }
+
+      const result = JSON.parse(jsonText);
+
+      const packageResponseSchema = z.object({
+        packages: z.array(z.object({
+          id: z.string(),
+          name: z.string(),
+          icon: z.string(),
+          description: z.string(),
+          totalCost: z.object({ min: z.number(), max: z.number() }),
+          totalTime: z.string(),
+          convenience: z.number().min(0).max(100),
+          ecoScore: z.number().min(0).max(100),
+          bestFor: z.string(),
+          legs: z.array(z.object({
+            segmentId: z.string(),
+            mode: z.string(),
+            provider: z.string(),
+            estimatedCost: z.object({ min: z.number(), max: z.number() }),
+            estimatedDuration: z.string(),
+            notes: z.string(),
+          })),
+        })).min(1),
+      });
+
+      const validated = packageResponseSchema.safeParse(result);
+      if (!validated.success) {
+        console.error("AI response validation failed:", validated.error.flatten());
+        return res.status(500).json({ message: "AI generated an invalid response format. Please try again." });
+      }
+
+      res.json(validated.data);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request", errors: error.flatten() });
+      }
+      console.error("Transport package generation error:", error);
+      res.status(500).json({ message: error.message || "Failed to generate transport packages" });
     }
   });
 
@@ -10581,6 +10717,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const vendorInput = z.object({
         vendorName: z.string().min(1).max(255),
         serviceType: z.string().min(1).max(100),
+        vendorCategory: z.string().min(1).max(100),
         status: z.string().max(50).optional(),
         contactEmail: z.string().email().optional(),
         contactPhone: z.string().max(50).optional(),
@@ -10671,9 +10808,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const scheduleInput = z.object({
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
+        dayOfWeek: z.number().min(0).max(6),
+        startTime: z.string().min(1),
+        endTime: z.string().min(1),
         isAvailable: z.boolean().optional(),
       }).parse(req.body);
       const entry = await storage.setProviderAvailability({
@@ -10769,7 +10906,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         providerId: z.string().min(1),
         tripId: z.string().min(1),
         serviceType: z.string().min(1).max(100),
-        requestedDate: z.string().optional(),
+        requestedDate: z.string().min(1),
+        requestedStartTime: z.string().min(1),
+        requestedEndTime: z.string().min(1),
         message: z.string().max(2000).optional(),
         budget: z.string().optional(),
       }).parse(req.body);
