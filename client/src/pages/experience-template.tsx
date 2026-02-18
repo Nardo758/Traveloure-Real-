@@ -1990,7 +1990,32 @@ export default function ExperienceTemplatePage() {
         </div>
 
         <div className="container mx-auto px-4 py-6">
-          <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+          {activeTab === "transportation" && (
+            <div className="mb-6">
+              <TripTransportPlanner
+                cart={cart}
+                destination={destination}
+                startDate={startDate}
+                endDate={endDate}
+                travelers={travelers}
+                onBookTransfer={(segment, option) => {
+                  addToCart({
+                    id: `transport-${segment.id}-${Date.now()}`,
+                    type: "transportation",
+                    name: `${option.name}: ${segment.from.name} → ${segment.to.name}`,
+                    price: option.price || 0,
+                    quantity: 1,
+                    provider: option.provider,
+                    details: option.description,
+                    isExternal: true,
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          <Collapsible open={activeTab === "transportation" ? false : filtersOpen} onOpenChange={setFiltersOpen}>
+            {activeTab !== "transportation" && (
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
                 <SlidersHorizontal className="w-4 h-4" />
@@ -1998,6 +2023,7 @@ export default function ExperienceTemplatePage() {
                 <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
               </Button>
             </CollapsibleTrigger>
+            )}
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
@@ -2476,29 +2502,6 @@ export default function ExperienceTemplatePage() {
                   />
                 </div>
               )}
-              
-              {/* Trip Transport Planner - Intelligent transport analysis based on bookings */}
-              <div className="mt-6 border-t pt-6">
-                <TripTransportPlanner
-                  cart={cart}
-                  destination={destination}
-                  startDate={startDate}
-                  endDate={endDate}
-                  travelers={travelers}
-                  onBookTransfer={(segment, option) => {
-                    addToCart({
-                      id: `transport-${segment.id}-${Date.now()}`,
-                      type: "transportation",
-                      name: `${option.name}: ${segment.from.name} → ${segment.to.name}`,
-                      price: option.price || 0,
-                      quantity: 1,
-                      provider: option.provider,
-                      details: option.description,
-                      isExternal: true,
-                    });
-                  }}
-                />
-              </div>
             </div>
           )}
 
