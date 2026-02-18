@@ -3546,7 +3546,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       
       // Get provider's service locations
       const services = await storage.getProviderServicesByStatus(userId);
-      const locations = [...new Set(services.map(s => s.location).filter(Boolean))] as string[];
+      const locations = Array.from(new Set(services.map(s => s.location).filter((l): l is string => Boolean(l))));
       const location = locations[0] || (req.query.city as string);
       
       if (!location) {
@@ -4601,7 +4601,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           const scoreB = b.analytics?.travelers?.score ?? 0;
           return scoreB - scoreA;
         });
-        console.log(`[Amadeus Locations] Sorted results - first: ${formattedLocations[0]?.name} (score: ${formattedLocations[0]?.analytics?.travelers?.score ?? 0})`);
+        console.log(`[Amadeus Locations] Sorted results - first: ${(formattedLocations[0] as any)?.name} (score: ${(formattedLocations[0] as any)?.analytics?.travelers?.score ?? 0})`);
         return res.json(formattedLocations);
       }
       
@@ -4830,8 +4830,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         startLocationCode,
         endAddressLine,
         endCityName,
-        endGeoCode,
-        transferType,
+        endGeoCode: endGeoCode as any,
+        transferType: transferType as any,
         startDateTime,
         passengers,
       });
@@ -5138,7 +5138,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.json({ 
         items: results,
         allAvailable: results.every(r => r.available),
-        priceChanges: results.filter(r => r.priceChanged),
+        priceChanges: results.filter((r: any) => r.priceChanged),
       });
     } catch (error: any) {
       console.error('Availability verification error:', error);
@@ -6389,8 +6389,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       }
 
       // Fetch fresh intelligence using Grok
-      const { getRealTimeIntelligence } = await import("./services/grok.service");
-      const { result, usage } = await getRealTimeIntelligence({
+      const { grokService: grokSvc } = await import("./services/grok.service");
+      const { result, usage } = await grokSvc.getRealTimeIntelligence({
         destination,
         dates,
         topics: ["events", "weather", "safety", "trending", "deals"]
@@ -6569,7 +6569,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           dates.start,
           dates.end,
           budget,
-          travelers
+          travelers,
+          tripId || undefined
         ).catch(err => {
           console.error('Optimization error:', err);
           db.update(itineraryComparisons)
@@ -8031,13 +8032,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
       // Get flights by origin/destination
       const flightData = await db.select({
-        origin: flightCache.origin,
-        destination: flightCache.destination,
+        origin: flightCache.originCode,
+        destination: flightCache.destinationCode,
         count: sql<number>`count(*)::int`,
         lastUpdated: sql<string>`max(${flightCache.lastUpdated})`,
       })
       .from(flightCache)
-      .groupBy(flightCache.origin, flightCache.destination);
+      .groupBy(flightCache.originCode, flightCache.destinationCode);
 
       // Get totals
       const totals = {
@@ -9560,6 +9561,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const totalAmount = amount + (taxAmount || 0) - (discountAmount || 0);
 
       const invoice = await storage.createContentInvoice({
+        invoiceNumber: `INV-${trackingNumber}`,
         trackingNumber,
         customerId,
         providerId,
@@ -10690,7 +10692,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const allTrips = await db.select().from(trips).where(whereClause).orderBy(desc(trips.createdAt)).limit(100);
 
       const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
-        const owner = await storage.getUser(t.userId);
+        const owner = await storage.getUser(t.userId || '');
         return {
           id: t.id,
           title: t.title || "Untitled Trip",
@@ -10826,7 +10828,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       try {
         const { aiUsageService: aiSvc } = await import('./services/ai-usage.service');
         const summary = await aiSvc.getSummary();
-        aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCost || 0).toFixed(2)}` };
+        aiUsage = { used: summary.totalTokens || 0, limit: 1000000, cost: `$${(summary.totalCostDollars || 0).toFixed(2)}` };
       } catch {}
 
       try {

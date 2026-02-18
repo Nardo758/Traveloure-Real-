@@ -60,6 +60,7 @@ interface AIItineraryBuilderProps {
   endDate?: Date;
   travelers: number;
   experienceType?: string;
+  tripId?: string;
   onClose?: () => void;
   onSave?: (tripId: string) => void;
 }
@@ -175,6 +176,7 @@ export function AIItineraryBuilder({
   endDate,
   travelers,
   experienceType,
+  tripId,
   onClose,
   onSave,
 }: AIItineraryBuilderProps) {
@@ -248,6 +250,7 @@ export function AIItineraryBuilder({
         mustSeeAttractions: mustSeeAttractions.split(",").map(s => s.trim()).filter(Boolean),
         dietaryRestrictions,
         mobilityConsiderations,
+        tripId: tripId || undefined,
       });
       return response.json();
     },

@@ -36,7 +36,7 @@ interface VenueResult {
   source: string;
 }
 
-const TAB_FALLBACK_CONFIG: Record<string, { type: string; keyword?: string; label: string }> = {
+export const TAB_FALLBACK_CONFIG: Record<string, { type: string; keyword?: string; label: string }> = {
   venues: { type: 'venue', keyword: 'event venues', label: 'Venues' },
   venue: { type: 'venue', keyword: 'event venues', label: 'Venues' },
   dining: { type: 'restaurant', label: 'Restaurants' },
@@ -68,6 +68,17 @@ const TAB_FALLBACK_CONFIG: Record<string, { type: string; keyword?: string; labe
   transportation: { type: 'venue', keyword: 'transportation services', label: 'Transportation' },
   rehearsal: { type: 'restaurant', keyword: 'private dining rehearsal dinner', label: 'Rehearsal Venues' },
   'team-activities': { type: 'venue', keyword: 'team building activities', label: 'Team Activities' },
+  decor: { type: 'venue', keyword: 'event decor party decorations', label: 'Decor' },
+  'decor-setup': { type: 'venue', keyword: 'event setup decoration services', label: 'Decor & Setup' },
+  'decor-supplies': { type: 'venue', keyword: 'party supplies decorations', label: 'Decor & Supplies' },
+  gifts: { type: 'venue', keyword: 'gift shops luxury gifts', label: 'Gifts' },
+  'gifts-keepsakes': { type: 'venue', keyword: 'gift shops keepsakes souvenirs', label: 'Gifts & Keepsakes' },
+  keepsakes: { type: 'venue', keyword: 'keepsakes souvenirs personalized gifts', label: 'Keepsakes' },
+  tickets: { type: 'venue', keyword: 'event tickets box office', label: 'Tickets' },
+  pregame: { type: 'venue', keyword: 'sports bars pre-game tailgate', label: 'Pre-Game' },
+  'pre-game': { type: 'venue', keyword: 'sports bars pre-game tailgate', label: 'Pre-Game' },
+  vip: { type: 'venue', keyword: 'VIP experiences luxury services', label: 'VIP Experiences' },
+  'vip-experiences': { type: 'venue', keyword: 'VIP experiences luxury services', label: 'VIP Experiences' },
 };
 
 const VENUE_TYPE_CONFIG: Record<string, Record<string, { type: string; keyword?: string; label: string }>> = {
