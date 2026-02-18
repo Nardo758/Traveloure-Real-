@@ -101,7 +101,7 @@ import { AffiliateTransportProducts } from "@/components/affiliate-transport-pro
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
-import { VenueSearchPanel } from "@/components/venue-search-panel";
+import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 
 interface CartItem {
   id: string;
@@ -2608,11 +2608,9 @@ export default function ExperienceTemplatePage() {
             );
           })()}
 
-          {/* Venue Search Panel - Google Places Integration */}
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "logistics" && (
-            (activeTab === "venues" || activeTab === "venue" || activeTab === "vendors" || 
-             activeTab === "guest-accommodations" || activeTab === "rehearsal" || 
-             activeTab === "team-activities" || activeTab === "nightlife" || activeTab === "dining") && (
+          {/* Venue Search Panel - Google Places Integration (dynamically wired to all supported tabs) */}
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "logistics" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
+            (activeTab === "vendors" || activeTab in TAB_FALLBACK_CONFIG) && (
               <div className="mb-6">
                 <VenueSearchPanel
                   template={slug || ''}
