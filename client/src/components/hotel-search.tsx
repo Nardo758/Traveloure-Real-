@@ -265,15 +265,35 @@ export function HotelSearch({
     queryKey: ["/api/amadeus/locations", "autodetect-hotel", destination],
     enabled: !!destination && destination.length >= 2 && !cityCode,
     queryFn: async () => {
-      const params = new URLSearchParams({
-        keyword: destination!,
-        subType: "CITY",
-      });
-      const res = await fetch(`/api/amadeus/locations?${params}`, {
-        credentials: "include",
-      });
+      const keyword = destination!.trim();
+      const params = new URLSearchParams({ keyword, subType: "CITY" });
+      const res = await fetch(`/api/amadeus/locations?${params}`, { credentials: "include" });
       if (!res.ok) return [];
-      return res.json();
+      const results = await res.json();
+      if (results.length > 0) return results;
+
+      const regionCityMap: Record<string, string> = {
+        "california": "Los Angeles", "florida": "Miami", "texas": "Houston",
+        "new york": "New York", "hawaii": "Honolulu", "nevada": "Las Vegas",
+        "arizona": "Phoenix", "colorado": "Denver", "washington": "Seattle",
+        "oregon": "Portland", "illinois": "Chicago", "massachusetts": "Boston",
+        "georgia": "Atlanta", "pennsylvania": "Philadelphia", "ohio": "Columbus",
+        "michigan": "Detroit", "tennessee": "Nashville", "louisiana": "New Orleans",
+        "bali": "Denpasar", "tuscany": "Florence", "provence": "Marseille",
+        "andalusia": "Seville", "bavaria": "Munich", "patagonia": "Buenos Aires",
+        "caribbean": "San Juan", "french riviera": "Nice", "amalfi coast": "Naples",
+        "costa brava": "Barcelona", "algarve": "Faro",
+      };
+      const mapped = regionCityMap[keyword.toLowerCase()];
+      if (mapped) {
+        const fallbackParams = new URLSearchParams({ keyword: mapped, subType: "CITY" });
+        const fallbackRes = await fetch(`/api/amadeus/locations?${fallbackParams}`, { credentials: "include" });
+        if (fallbackRes.ok) {
+          const fallbackResults = await fallbackRes.json();
+          if (fallbackResults.length > 0) return fallbackResults;
+        }
+      }
+      return [];
     },
     staleTime: 30000,
     refetchOnMount: true,
