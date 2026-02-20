@@ -4600,7 +4600,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   // Amadeus Travel API Routes
   
   // Search airports/cities for autocomplete - uses database cache first
-  app.get("/api/amadeus/locations", isAuthenticated, async (req, res) => {
+  app.get("/api/amadeus/locations", async (req, res) => {
     try {
       const { keyword, subType } = req.query;
       if (!keyword || typeof keyword !== 'string') {
@@ -5065,7 +5065,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   // Get cached activities with location data for mapping
-  app.get("/api/cache/activities", isAuthenticated, async (req, res) => {
+  app.get("/api/cache/activities", async (req, res) => {
     try {
       const { destination, currency, count } = req.query;
       
@@ -5803,6 +5803,29 @@ Respond with this exact JSON structure:
     address: z.string().min(1),
   });
 
+  const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number; formattedAddress: string }> = {
+    "rome": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
+    "paris": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
+    "london": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
+    "tokyo": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
+    "new york": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
+    "barcelona": { lat: 41.3874, lng: 2.1686, formattedAddress: "Barcelona, Spain" },
+    "bangkok": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
+    "sydney": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
+    "dubai": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
+    "marrakech": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
+    "bali": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
+    "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
+    "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
+    "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
+    "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
+    "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
+    "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
+    "berlin": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
+    "hong kong": { lat: 22.3193, lng: 114.1694, formattedAddress: "Hong Kong" },
+    "goa": { lat: 15.2993, lng: 74.1240, formattedAddress: "Goa, India" },
+  };
+
   // Geocoding endpoint - public access since it's just a geographic lookup
   app.post("/api/geocode", async (req, res) => {
     try {
@@ -5814,27 +5837,33 @@ Respond with this exact JSON structure:
       const { address } = parsed.data;
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       
-      if (!apiKey) {
-        console.error("GOOGLE_MAPS_API_KEY not configured for geocoding");
-        return res.status(500).json({ message: "Geocoding service not configured" });
+      if (apiKey) {
+        try {
+          const response = await fetch(
+            `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+          );
+          const data = await response.json();
+          
+          if (data.status === "OK" && data.results && data.results.length > 0) {
+            const location = data.results[0].geometry.location;
+            const formattedAddress = data.results[0].formatted_address;
+            return res.json({ lat: location.lat, lng: location.lng, formattedAddress });
+          }
+        } catch (geoErr) {
+          console.warn("Google geocoding failed, trying fallback:", geoErr);
+        }
       }
       
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`
+      const normalizedAddress = address.toLowerCase().trim();
+      const fallback = Object.entries(FALLBACK_COORDINATES).find(([key]) => 
+        normalizedAddress.includes(key) || key.includes(normalizedAddress)
       );
-      const data = await response.json();
       
-      if (data.status === "OK" && data.results && data.results.length > 0) {
-        const location = data.results[0].geometry.location;
-        const formattedAddress = data.results[0].formatted_address;
-        res.json({ 
-          lat: location.lat, 
-          lng: location.lng,
-          formattedAddress 
-        });
-      } else {
-        res.status(404).json({ message: "Location not found", status: data.status });
+      if (fallback) {
+        return res.json(fallback[1]);
       }
+      
+      res.status(404).json({ message: "Location not found" });
     } catch (error: any) {
       console.error('Geocoding API error:', error);
       res.status(500).json({ message: error.message || "Geocoding failed" });
