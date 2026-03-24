@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -148,13 +148,31 @@ const TRANSPORT_MODES = [
   { value: "walking", label: "Walking", icon: MapPin },
 ];
 
-const IMMEDIATE_MODE_TIME_MIN: Record<string, number> = {
-  private_car: 20, rideshare: 25, shuttle: 35, public_transit: 45, walking: 60,
-};
 const BASE_RIDESHARE_COST = 20;
-function getImmediateCostEstimate(mode: string): number {
+const BASE_RIDESHARE_DURATION = 20;
+
+const MODE_DURATION_MULTIPLIER: Record<string, number> = {
+  private_car: 1.0,
+  rideshare: 1.1,
+  shuttle: 1.6,
+  public_transit: 2.2,
+  walking: 5.5,
+};
+
+function getImmediateCostRange(mode: string): { min: number; max: number } {
   const mult = getModeMultiplier(mode, "rideshare");
-  return Math.round(BASE_RIDESHARE_COST * mult);
+  const mid = BASE_RIDESHARE_COST * mult;
+  return { min: Math.round(mid * 0.8), max: Math.round(mid * 1.25) };
+}
+
+function getImmediateDurationRange(mode: string): { min: number; max: number } {
+  const mult = MODE_DURATION_MULTIPLIER[mode] ?? 1.1;
+  const mid = BASE_RIDESHARE_DURATION * mult;
+  return { min: Math.round(mid * 0.8), max: Math.round(mid * 1.25) };
+}
+
+function getImmediateCostEstimate(mode: string): number {
+  return Math.round(BASE_RIDESHARE_COST * getModeMultiplier(mode, "rideshare"));
 }
 
 
@@ -242,7 +260,14 @@ export function TripTransportPlanner({
   const [showLegs, setShowLegs] = useState(false);
   const [packagesGenerated, setPackagesGenerated] = useState(false);
   const [dbSyncDone, setDbSyncDone] = useState(false);
-  const resolvedLegs = existingTransportLegs ?? [];
+
+  const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
+    queryKey: ["/api/transport-legs/user"],
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  const resolvedLegs = existingTransportLegs ?? fetchedLegs ?? [];
 
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
@@ -357,12 +382,16 @@ export function TripTransportPlanner({
 
     if (resolvedLegs.length > 0) {
       for (const seg of result) {
+        const segFrom = seg.from.name.toLowerCase().trim();
+        const segTo = seg.to.name.toLowerCase().trim();
         const matched = resolvedLegs.find(etl => {
-          const fromMatch = etl.fromName?.toLowerCase().includes(seg.from.name.toLowerCase()) ||
-            seg.from.name.toLowerCase().includes(etl.fromName?.toLowerCase() || "");
-          const toMatch = etl.toName?.toLowerCase().includes(seg.to.name.toLowerCase()) ||
-            seg.to.name.toLowerCase().includes(etl.toName?.toLowerCase() || "");
-          return fromMatch && toMatch;
+          const legFrom = (etl.fromName ?? "").toLowerCase().trim();
+          const legTo = (etl.toName ?? "").toLowerCase().trim();
+          const fromScore = legFrom && segFrom &&
+            (legFrom === segFrom || legFrom.startsWith(segFrom.slice(0, 6)) || segFrom.startsWith(legFrom.slice(0, 6)));
+          const toScore = legTo && segTo &&
+            (legTo === segTo || legTo.startsWith(segTo.slice(0, 6)) || segTo.startsWith(legTo.slice(0, 6)));
+          return fromScore && toScore;
         });
         if (matched) {
           seg.transportLegId = matched.id;
@@ -459,15 +488,19 @@ export function TripTransportPlanner({
     return { min: totalMin, max: totalMax };
   }, [effectiveLegs]);
 
-  const totalImmediateCost = useMemo(() => {
+  const totalImmediateCostRange = useMemo(() => {
     const needSegs = segments.filter(s => s.status === 'needs_transport');
     if (needSegs.length === 0) return null;
-    let total = 0;
+    let totalMin = 0;
+    let totalMax = 0;
     for (const seg of needSegs) {
       const mode = immediateOverrides[seg.id] || "rideshare";
-      total += getImmediateCostEstimate(mode);
+      if (mode === "walking") continue;
+      const range = getImmediateCostRange(mode);
+      totalMin += range.min;
+      totalMax += range.max;
     }
-    return total;
+    return { min: totalMin, max: totalMax };
   }, [segments, immediateOverrides]);
 
   const immediateModeMutation = useMutation({
@@ -562,8 +595,9 @@ export function TripTransportPlanner({
             <div className="space-y-2">
               {needsTransportSegments.map((seg) => {
                 const selectedMode = immediateOverrides[seg.id] || "rideshare";
-                const costEst = getImmediateCostEstimate(selectedMode);
-                const timeMin = IMMEDIATE_MODE_TIME_MIN[selectedMode] ?? 25;
+                const costRange = getImmediateCostRange(selectedMode);
+                const durationRange = getImmediateDurationRange(selectedMode);
+                const isWalking = selectedMode === "walking";
                 const isChanged = immediateOverrides[seg.id] !== undefined;
                 return (
                   <div
@@ -617,11 +651,11 @@ export function TripTransportPlanner({
                     <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                       <span className="flex items-center gap-1">
                         <DollarSign className="h-3 w-3" />
-                        {costEst === 0 ? "Free" : `~$${costEst}`}
+                        {isWalking ? "Free" : `$${costRange.min}–$${costRange.max}`}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        ~{timeMin} min
+                        {durationRange.min}–{durationRange.max} min
                       </span>
                       {isChanged && (
                         <Badge variant="outline" className="text-xs h-5 border-amber-300 text-amber-700 dark:text-amber-400">
@@ -634,14 +668,16 @@ export function TripTransportPlanner({
               })}
             </div>
 
-            {totalImmediateCost !== null && (
+            {totalImmediateCostRange !== null && (
               <div className="p-3 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
                 <span className="text-sm font-medium flex items-center gap-1.5">
                   <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
                   Estimated Transport Cost
                 </span>
                 <span className="text-sm font-bold">
-                  {totalImmediateCost === 0 ? "Free" : `~$${totalImmediateCost}`}
+                  {totalImmediateCostRange.max === 0
+                    ? "Free"
+                    : `$${totalImmediateCostRange.min}–$${totalImmediateCostRange.max}`}
                 </span>
               </div>
             )}
