@@ -140,13 +140,14 @@ const TRANSPORT_MODES = [
   { value: "walking", label: "Walking", icon: MapPin },
 ];
 
-const IMMEDIATE_MODE_COSTS: Record<string, { min: number; max: number; timeMin: number }> = {
-  private_car:    { min: 25, max: 60,  timeMin: 20 },
-  rideshare:      { min: 12, max: 35,  timeMin: 25 },
-  shuttle:        { min: 8,  max: 20,  timeMin: 35 },
-  public_transit: { min: 2,  max: 8,   timeMin: 45 },
-  walking:        { min: 0,  max: 0,   timeMin: 60 },
+const IMMEDIATE_MODE_TIME_MIN: Record<string, number> = {
+  private_car: 20, rideshare: 25, shuttle: 35, public_transit: 45, walking: 60,
 };
+const BASE_RIDESHARE_COST = 20;
+function getImmediateCostEstimate(mode: string): number {
+  const mult = getModeMultiplier(mode, "rideshare");
+  return Math.round(BASE_RIDESHARE_COST * mult);
+}
 
 
 function getModeIcon(mode: string) {
@@ -399,14 +400,12 @@ export function TripTransportPlanner({
   const totalImmediateCost = useMemo(() => {
     const needSegs = segments.filter(s => s.status === 'needs_transport');
     if (needSegs.length === 0) return null;
-    let totalMin = 0, totalMax = 0;
+    let total = 0;
     for (const seg of needSegs) {
       const mode = immediateOverrides[seg.id] || "rideshare";
-      const est = IMMEDIATE_MODE_COSTS[mode] || { min: 12, max: 35 };
-      totalMin += est.min;
-      totalMax += est.max;
+      total += getImmediateCostEstimate(mode);
     }
-    return { min: totalMin, max: totalMax };
+    return total;
   }, [segments, immediateOverrides]);
 
   const immediateModeMutation = useMutation({
@@ -475,7 +474,7 @@ export function TripTransportPlanner({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {needsTransportSegments.length > 0 && !packagesGenerated && (
+        {needsTransportSegments.length > 0 && (
           <div className="space-y-3" data-testid="immediate-legs-section">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
@@ -501,7 +500,8 @@ export function TripTransportPlanner({
             <div className="space-y-2">
               {needsTransportSegments.map((seg) => {
                 const selectedMode = immediateOverrides[seg.id] || "rideshare";
-                const costEst = IMMEDIATE_MODE_COSTS[selectedMode] || { min: 12, max: 35, timeMin: 25 };
+                const costEst = getImmediateCostEstimate(selectedMode);
+                const timeMin = IMMEDIATE_MODE_TIME_MIN[selectedMode] ?? 25;
                 const isChanged = immediateOverrides[seg.id] !== undefined;
                 return (
                   <div
@@ -552,11 +552,11 @@ export function TripTransportPlanner({
                     <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                       <span className="flex items-center gap-1">
                         <DollarSign className="h-3 w-3" />
-                        {costEst.min === 0 ? "Free" : `$${costEst.min}–$${costEst.max}`}
+                        {costEst === 0 ? "Free" : `~$${costEst}`}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        ~{costEst.timeMin} min
+                        ~{timeMin} min
                       </span>
                       {isChanged && (
                         <Badge variant="outline" className="text-xs h-5 border-amber-300 text-amber-700 dark:text-amber-400">
@@ -569,14 +569,14 @@ export function TripTransportPlanner({
               })}
             </div>
 
-            {totalImmediateCost && (
+            {totalImmediateCost !== null && (
               <div className="p-3 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
                 <span className="text-sm font-medium flex items-center gap-1.5">
                   <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
                   Estimated Transport Cost
                 </span>
                 <span className="text-sm font-bold">
-                  ${totalImmediateCost.min}–${totalImmediateCost.max}
+                  {totalImmediateCost === 0 ? "Free" : `~$${totalImmediateCost}`}
                 </span>
               </div>
             )}

@@ -113,6 +113,17 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
       })),
   ];
 
+  // Ensure the current selected mode (e.g. userSelectedMode) is always in the list
+  // so the Select never renders an orphaned value.
+  if (!allOptions.find(o => o.mode === currentMode)) {
+    allOptions.push({
+      mode: currentMode,
+      durationMinutes: displayDuration,
+      costUsd: displayCost,
+      isRecommended: false,
+    });
+  }
+
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
       return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
