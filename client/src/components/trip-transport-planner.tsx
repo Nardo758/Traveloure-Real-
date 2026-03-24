@@ -548,7 +548,12 @@ export function TripTransportPlanner({
   }, []);
 
   const customCount = Object.keys(customOverrides).length;
-  const immediateCustomCount = Object.keys(immediateOverrides).length;
+  const immediateCustomCount = needsTransportSegments.filter(seg => {
+    const selected = immediateOverrides[seg.id];
+    if (!selected) return false;
+    const baseline = baselineModes[seg.id];
+    return baseline ? selected !== baseline : true;
+  }).length;
 
   if (segments.length === 0) {
     return (
@@ -628,7 +633,10 @@ export function TripTransportPlanner({
                 const costRange = getImmediateCostRange(selectedMode);
                 const durationRange = getImmediateDurationRange(selectedMode);
                 const isWalking = selectedMode === "walking";
-                const isChanged = immediateOverrides[seg.id] !== undefined;
+                const baseline = baselineModes[seg.id];
+                const isChanged = !!immediateOverrides[seg.id] && (
+                  baseline ? immediateOverrides[seg.id] !== baseline : true
+                );
                 return (
                   <div
                     key={seg.id}
