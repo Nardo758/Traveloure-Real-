@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { TransportLeg } from "@/components/itinerary/TransportLeg";
 import {
   Calendar,
   MapPin,
@@ -129,6 +130,40 @@ interface ItineraryMetrics {
   relaxationCount: number;
 }
 
+interface TransportAlternative {
+  mode: string;
+  durationMinutes: number;
+  costUsd: number | null;
+  energyCost: number;
+  reason: string;
+}
+
+interface TransportLegData {
+  id: string;
+  legOrder: number;
+  fromName: string;
+  toName: string;
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  distanceDisplay: string;
+  distanceMeters?: number;
+  estimatedDurationMinutes: number;
+  estimatedCostUsd: number | null;
+  energyCost?: number;
+  alternativeModes?: TransportAlternative[];
+  linkedProductUrl?: string | null;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+}
+
+interface ItineraryDay {
+  dayNumber: number;
+  activities: ItineraryItem[];
+  transportLegs: TransportLegData[];
+}
+
 interface ItineraryData {
   id: string;
   title: string;
@@ -138,6 +173,7 @@ interface ItineraryData {
   travelers: number;
   status: string;
   items: ItineraryItem[];
+  days?: ItineraryDay[];
   transportPackage: TransportPackage[];
   accommodations: AccommodationPackage[];
   metrics: ItineraryMetrics;
@@ -297,12 +333,18 @@ export default function MyItineraryPage() {
     );
   }
 
-  // Group items by day
+  // Group items and transport legs by day
+  // Prefer the days structure from API if available (has transport legs), otherwise build from items
   const itemsByDay = data.items.reduce((acc, item) => {
     if (!acc[item.dayNumber]) acc[item.dayNumber] = [];
     acc[item.dayNumber].push(item);
     return acc;
   }, {} as Record<number, ItineraryItem[]>);
+
+  const legsByDay = data.days?.reduce((acc, day) => {
+    acc[day.dayNumber] = day.transportLegs || [];
+    return acc;
+  }, {} as Record<number, TransportLegData[]>) || {};
 
   const numDays = Math.max(...Object.keys(itemsByDay).map(Number), 1);
 
@@ -517,84 +559,97 @@ export default function MyItineraryPage() {
                         {dayItems.map((item, idx) => {
                           const ServiceIcon = getServiceIcon(item.serviceType);
                           const TimeIcon = getTimeSlotIcon(item.timeSlot);
+                          const legAfter = legsByDay[dayNum]?.find(l => l.legOrder === idx + 1);
 
                           return (
-                            <div key={item.id} className="relative" data-testid={`activity-${item.id}`}>
-                              {/* Timeline dot */}
-                              <div className="absolute -left-4 top-3 h-3 w-3 rounded-full bg-primary border-2 border-background" />
+                            <div key={item.id}>
+                              <div className="relative" data-testid={`activity-${item.id}`}>
+                                {/* Timeline dot */}
+                                <div className="absolute -left-4 top-3 h-3 w-3 rounded-full bg-primary border-2 border-background" />
 
-                              {/* Travel time indicator */}
-                              {item.travelTimeFromPrevious > 0 && idx > 0 && (
-                                <div className="absolute -left-6 -top-3 text-xs text-muted-foreground flex items-center gap-1">
-                                  <Navigation className="h-3 w-3" />
-                                  {item.travelTimeFromPrevious} min
-                                </div>
-                              )}
-
-                              <div className="bg-muted/30 rounded-lg p-4 ml-2">
-                                <div className="flex items-start justify-between gap-4 flex-wrap">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <Badge variant="outline" className="text-xs shrink-0">
-                                        <TimeIcon className="h-3 w-3 mr-1" />
-                                        {item.startTime}
-                                      </Badge>
-                                      {item.bookingStatus === 'confirmed' && (
-                                        <Badge className="bg-green-100 text-green-700 text-xs">
-                                          <Check className="h-3 w-3 mr-1" />
-                                          Confirmed
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <h4 className="font-medium flex items-center gap-2">
-                                      <ServiceIcon className="h-4 w-4 text-primary shrink-0" />
-                                      {item.name}
-                                    </h4>
-                                    {item.description && (
-                                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                                        {item.description}
-                                      </p>
-                                    )}
-                                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
-                                      {item.location && (
-                                        <span className="flex items-center gap-1">
-                                          <MapPin className="h-3 w-3" />
-                                          {item.location}
-                                        </span>
-                                      )}
-                                      {item.duration && (
-                                        <span className="flex items-center gap-1">
-                                          <Timer className="h-3 w-3" />
-                                          {item.duration} min
-                                        </span>
-                                      )}
-                                      {parseFloat(item.rating) > 0 && (
-                                        <span className="flex items-center gap-1">
-                                          <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                                          {parseFloat(item.rating).toFixed(1)}
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* Methodology Note */}
-                                    {item.methodologyNote && (
-                                      <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 rounded text-xs flex items-start gap-2">
-                                        <Lightbulb className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
-                                        <span className="text-amber-800 dark:text-amber-200">{item.methodologyNote}</span>
-                                      </div>
-                                    )}
+                                {/* Travel time indicator */}
+                                {item.travelTimeFromPrevious > 0 && idx > 0 && (
+                                  <div className="absolute -left-6 -top-3 text-xs text-muted-foreground flex items-center gap-1">
+                                    <Navigation className="h-3 w-3" />
+                                    {item.travelTimeFromPrevious} min
                                   </div>
+                                )}
 
-                                  <div className="text-right shrink-0">
-                                    <div className="font-bold">${parseFloat(item.price || "0").toLocaleString()}</div>
-                                    {item.bookingReference && (
-                                      <div className="text-xs text-muted-foreground">
-                                        Ref: {item.bookingReference}
+                                <div className="bg-muted/30 rounded-lg p-4 ml-2">
+                                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <Badge variant="outline" className="text-xs shrink-0">
+                                          <TimeIcon className="h-3 w-3 mr-1" />
+                                          {item.startTime}
+                                        </Badge>
+                                        {item.bookingStatus === 'confirmed' && (
+                                          <Badge className="bg-green-100 text-green-700 text-xs">
+                                            <Check className="h-3 w-3 mr-1" />
+                                            Confirmed
+                                          </Badge>
+                                        )}
                                       </div>
-                                    )}
+                                      <h4 className="font-medium flex items-center gap-2">
+                                        <ServiceIcon className="h-4 w-4 text-primary shrink-0" />
+                                        {item.name}
+                                      </h4>
+                                      {item.description && (
+                                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                                          {item.description}
+                                        </p>
+                                      )}
+                                      <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
+                                        {item.location && (
+                                          <span className="flex items-center gap-1">
+                                            <MapPin className="h-3 w-3" />
+                                            {item.location}
+                                          </span>
+                                        )}
+                                        {item.duration && (
+                                          <span className="flex items-center gap-1">
+                                            <Timer className="h-3 w-3" />
+                                            {item.duration} min
+                                          </span>
+                                        )}
+                                        {parseFloat(item.rating) > 0 && (
+                                          <span className="flex items-center gap-1">
+                                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                                            {parseFloat(item.rating).toFixed(1)}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Methodology Note */}
+                                      {item.methodologyNote && (
+                                        <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 rounded text-xs flex items-start gap-2">
+                                          <Lightbulb className="h-3 w-3 text-amber-600 mt-0.5 shrink-0" />
+                                          <span className="text-amber-800 dark:text-amber-200">{item.methodologyNote}</span>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="text-right shrink-0">
+                                      <div className="font-bold">${parseFloat(item.price || "0").toLocaleString()}</div>
+                                      {item.bookingReference && (
+                                        <div className="text-xs text-muted-foreground">
+                                          Ref: {item.bookingReference}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
+
+                              {/* Render transport leg after activity */}
+                              {legAfter && (
+                                <TransportLeg
+                                  leg={legAfter}
+                                  readOnly={true}
+                                  dayNumber={dayNum}
+                                  className="my-2 ml-2"
+                                />
+                              )}
                             </div>
                           );
                         })}
