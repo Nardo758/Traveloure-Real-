@@ -73,7 +73,8 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
   const { data, isLoading, error } = useQuery<TransportHubData>({
     queryKey: ["/api/itinerary", tripId, "transport-hub"],
     queryFn: async () => {
-      return apiRequest("GET", `/api/itinerary/${tripId}/transport-hub`);
+      const res = await apiRequest("GET", `/api/itinerary/${tripId}/transport-hub`);
+      return res.json();
     },
   });
 
