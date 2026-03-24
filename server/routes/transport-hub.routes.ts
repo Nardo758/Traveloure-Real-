@@ -115,10 +115,8 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       legs: day.legs.map((leg: any) => {
         const activeMode = leg.userSelectedMode || leg.recommendedMode;
         const legOptions = allOptions.filter((opt) => opt.transportLegId === leg.id && !opt.isMultiDayPass);
-        // Filter booking options to only those matching the user's selected mode
-        const filteredOptions = legOptions.filter((opt) => opt.modeType === activeMode);
-        // Fall back to all options if none match the selected mode
-        const bookingOptions = filteredOptions.length > 0 ? filteredOptions : legOptions;
+        // Show only booking options matching the user's selected mode for this leg
+        const bookingOptions = legOptions.filter((opt) => opt.modeType === activeMode);
 
         return {
           id: leg.id,
