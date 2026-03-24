@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TransportBookingCard } from "./TransportBookingCard";
-import { MultiDayPassCard } from "./MultiDayPassCard";
+import { MultiDayPassCard, type MultiDayPass } from "./MultiDayPassCard";
 
 interface TransportHubProps {
   tripId: string;
@@ -84,7 +84,7 @@ interface TransportHubData {
     dayNumber: number;
     legs: TransportLeg[];
   }>;
-  multiDayPasses: BookingOption[];
+  multiDayPasses: MultiDayPass[];
 }
 
 export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
@@ -247,7 +247,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
           </div>
           <div className="grid gap-3">
             {multiDayPasses.map(pass => (
-              <MultiDayPassCard key={pass.id} pass={pass as any} readOnly={readOnly} />
+              <MultiDayPassCard key={pass.id} pass={pass} readOnly={readOnly} />
             ))}
           </div>
         </div>
