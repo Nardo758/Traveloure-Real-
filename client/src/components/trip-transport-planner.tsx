@@ -139,6 +139,14 @@ const TRANSPORT_MODES = [
   { value: "walking", label: "Walking", icon: MapPin },
 ];
 
+const IMMEDIATE_MODE_COSTS: Record<string, { min: number; max: number; timeMin: number }> = {
+  private_car:    { min: 25, max: 60,  timeMin: 20 },
+  rideshare:      { min: 12, max: 35,  timeMin: 25 },
+  shuttle:        { min: 8,  max: 20,  timeMin: 35 },
+  public_transit: { min: 2,  max: 8,   timeMin: 45 },
+  walking:        { min: 0,  max: 0,   timeMin: 60 },
+};
+
 function getModeIcon(mode: string) {
   switch (mode) {
     case "private_car": return <Car className="h-4 w-4" />;
@@ -199,6 +207,7 @@ export function TripTransportPlanner({
 }: TripTransportPlannerProps) {
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [customOverrides, setCustomOverrides] = useState<Record<string, string>>({});
+  const [immediateOverrides, setImmediateOverrides] = useState<Record<string, string>>({});
   const [showLegs, setShowLegs] = useState(false);
   const [packagesGenerated, setPackagesGenerated] = useState(false);
 
@@ -385,6 +394,19 @@ export function TripTransportPlanner({
     return { min: totalMin, max: totalMax };
   }, [effectiveLegs]);
 
+  const totalImmediateCost = useMemo(() => {
+    const needSegs = segments.filter(s => s.status === 'needs_transport');
+    if (needSegs.length === 0) return null;
+    let totalMin = 0, totalMax = 0;
+    for (const seg of needSegs) {
+      const mode = immediateOverrides[seg.id] || "rideshare";
+      const est = IMMEDIATE_MODE_COSTS[mode] || { min: 12, max: 35 };
+      totalMin += est.min;
+      totalMax += est.max;
+    }
+    return { min: totalMin, max: totalMax };
+  }, [segments, immediateOverrides]);
+
   const handleOverrideLeg = useCallback((segmentId: string, mode: string) => {
     setCustomOverrides(prev => ({ ...prev, [segmentId]: mode }));
   }, []);
@@ -394,6 +416,7 @@ export function TripTransportPlanner({
   }, []);
 
   const customCount = Object.keys(customOverrides).length;
+  const immediateCustomCount = Object.keys(immediateOverrides).length;
 
   if (segments.length === 0) {
     return (
@@ -437,62 +460,128 @@ export function TripTransportPlanner({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!packagesGenerated && !generateMutation.isPending && (
-          <div className="text-center py-6 space-y-4" data-testid="transport-generate-prompt">
-            <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 flex items-center justify-center">
-              <Sparkles className="h-7 w-7 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-lg">Smart Transport Packages</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                We'll analyze your {needsTransportSegments.length} transport legs and build 3 complete packages: 
-                private car, public transit, and a smart hybrid mix.
-              </p>
-            </div>
-            <Button
-              onClick={() => generateMutation.mutate()}
-              data-testid="button-generate-packages"
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Transport Packages
-            </Button>
-
-            <div className="pt-2">
-              <button
-                className="text-xs text-muted-foreground underline"
-                onClick={() => setShowLegs(!showLegs)}
-                data-testid="button-toggle-legs-preview"
-              >
-                {showLegs ? "Hide" : "Show"} {needsTransportSegments.length} transport legs
-              </button>
+        {needsTransportSegments.length > 0 && !packagesGenerated && (
+          <div className="space-y-3" data-testid="immediate-legs-section">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-sm">Select Transport per Leg</h4>
+                <Badge variant="outline">
+                  <Pencil className="h-3 w-3 mr-1" />
+                  {needsTransportSegments.length} leg{needsTransportSegments.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+              {immediateCustomCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setImmediateOverrides({})}
+                  data-testid="button-reset-immediate"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Reset {immediateCustomCount} change{immediateCustomCount !== 1 ? "s" : ""}
+                </Button>
+              )}
             </div>
 
-            {showLegs && (
-              <div className="text-left space-y-2 mt-3">
-                {segments.map(seg => (
+            <div className="space-y-2">
+              {needsTransportSegments.map((seg) => {
+                const selectedMode = immediateOverrides[seg.id] || "rideshare";
+                const costEst = IMMEDIATE_MODE_COSTS[selectedMode] || { min: 12, max: 35, timeMin: 25 };
+                const isChanged = immediateOverrides[seg.id] !== undefined;
+                return (
                   <div
                     key={seg.id}
                     className={cn(
-                      "flex items-center gap-2 p-2.5 rounded-md border text-sm",
-                      seg.status === 'covered' 
-                        ? "bg-green-50/50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                        : "bg-muted/30 border-border"
+                      "border rounded-md p-3 space-y-2",
+                      isChanged
+                        ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-700"
+                        : "bg-muted/20"
                     )}
-                    data-testid={`transport-segment-${seg.id}`}
+                    data-testid={`immediate-leg-${seg.id}`}
                   >
-                    {getLocationIcon(seg.from.type)}
-                    <span className="truncate max-w-[140px]">{seg.from.name}</span>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                    {getLocationIcon(seg.to.type)}
-                    <span className="truncate max-w-[140px]">{seg.to.name}</span>
-                    {seg.date && <span className="text-xs text-muted-foreground ml-auto shrink-0">{seg.date}</span>}
-                    {seg.status === 'covered' && (
-                      <Badge variant="outline" className="ml-auto shrink-0">
-                        <Check className="h-3 w-3 mr-1" /> Covered
-                      </Badge>
-                    )}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 text-sm min-w-0">
+                        {getLocationIcon(seg.from.type)}
+                        <span className="truncate max-w-[110px] font-medium">{seg.from.name}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        {getLocationIcon(seg.to.type)}
+                        <span className="truncate max-w-[110px] font-medium">{seg.to.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {seg.date && (
+                          <span className="text-xs text-muted-foreground hidden sm:inline">{seg.date}</span>
+                        )}
+                        <Select
+                          value={selectedMode}
+                          onValueChange={(val) =>
+                            setImmediateOverrides(prev => ({ ...prev, [seg.id]: val }))
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-[150px] h-8 text-xs"
+                            data-testid={`select-immediate-mode-${seg.id}`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TRANSPORT_MODES.map(m => (
+                              <SelectItem key={m.value} value={m.value}>
+                                <span className="flex items-center gap-1.5">
+                                  <m.icon className="h-3 w-3" />
+                                  {m.label}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <DollarSign className="h-3 w-3" />
+                        {costEst.min === 0 ? "Free" : `$${costEst.min}–$${costEst.max}`}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        ~{costEst.timeMin} min
+                      </span>
+                      {isChanged && (
+                        <Badge variant="outline" className="text-xs h-5 border-amber-300 text-amber-700 dark:text-amber-400">
+                          Customized
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+
+            {totalImmediateCost && (
+              <div className="p-3 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
+                <span className="text-sm font-medium flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                  Estimated Transport Cost
+                </span>
+                <span className="text-sm font-bold">
+                  ${totalImmediateCost.min}–${totalImmediateCost.max}
+                </span>
+              </div>
+            )}
+
+            {!generateMutation.isPending && (
+              <div className="pt-1 flex items-center gap-3 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => generateMutation.mutate()}
+                  data-testid="button-generate-packages"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Get AI Package Recommendations
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Analyzes all {needsTransportSegments.length} legs and suggests optimal packages
+                </span>
               </div>
             )}
           </div>
