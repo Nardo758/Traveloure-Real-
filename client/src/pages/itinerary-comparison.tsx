@@ -45,6 +45,7 @@ import {
   Palette,
   ListOrdered,
   Coffee,
+  Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +112,43 @@ interface Comparison {
 interface ComparisonData {
   comparison: Comparison;
   variants: Variant[];
+}
+
+function ShareVariantButton({ variantId }: { variantId: string }) {
+  const { toast } = useToast();
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const shareMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/itinerary-variants/${variantId}/share`, { permissions: "view" });
+      return res as { shareToken: string; shareUrl: string; expiresAt: string };
+    },
+    onSuccess: (data) => {
+      setShareUrl(data.shareUrl);
+      navigator.clipboard?.writeText(data.shareUrl).catch(() => {});
+      toast({ title: "Share link copied!", description: "Anyone with this link can view this itinerary." });
+    },
+    onError: () => {
+      toast({ title: "Could not create share link", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={(e) => { e.stopPropagation(); shareMutation.mutate(); }}
+      disabled={shareMutation.isPending}
+      className="w-full gap-2 text-muted-foreground hover:text-foreground"
+      data-testid={`button-share-variant-${variantId}`}
+    >
+      {shareMutation.isPending ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Share2 className="h-4 w-4" />
+      )}
+      {shareUrl ? "Link Copied!" : "Share This Plan"}
+    </Button>
+  );
 }
 
 export default function ItineraryComparisonPage() {
@@ -722,13 +760,14 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="justify-center">
+                  <CardFooter className="flex flex-col gap-2">
                     <BookThisTripButton
                       variant={userVariant}
                       comparison={data.comparison}
                       userId={userId}
                       userEmail={userEmail}
                     />
+                    <ShareVariantButton variantId={userVariant.id} />
                   </CardFooter>
                 </Card>
               )}
@@ -964,13 +1003,14 @@ export default function ItineraryComparisonPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="justify-center">
+                  <CardFooter className="flex flex-col gap-2">
                     <BookThisTripButton
                       variant={variant}
                       comparison={data.comparison}
                       userId={userId}
                       userEmail={userEmail}
                     />
+                    <ShareVariantButton variantId={variant.id} />
                   </CardFooter>
                 </Card>
               ))}

@@ -43,6 +43,11 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
+import { transportLegs, sharedItineraries, mapsExportCache } from "@shared/schema";
+import { calculateTransportLegs } from "./services/transport-leg-calculator";
+import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
+import { generateKml } from "./services/kml-generator";
+import { generateGpx } from "./services/gpx-generator";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import instagramRoutes from "./routes/instagram";
 import bookingsRoutes from "./routes/bookings";
@@ -11493,4 +11498,547 @@ export async function registerDiscoveryRoutes(app: Express) {
     if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   }
+
+  // ============================================================
+  // SHAREABLE ITINERARY CARD SYSTEM
+  // ============================================================
+
+  // POST /api/itinerary-variants/:variantId/share
+  app.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (req, res) => {
+    try {
+      const { variantId } = req.params;
+      const userId = (req as any).user?.id;
+      const { sharedWithUserId, permissions = "view", transportPreferences } = req.body;
+
+      const [variant] = await db
+        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, variantId));
+
+      if (!variant) return res.status(404).json({ error: "Variant not found" });
+
+      const [comparison] = await db
+        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+      if (!comparison || comparison.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const shareToken = crypto.randomUUID();
+      const replitDomains = process.env.REPLIT_DOMAINS;
+      const baseUrl = replitDomains
+        ? `https://${replitDomains.split(",")[0].trim()}`
+        : (process.env.REPL_SLUG
+          ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+          : `https://traveloure.com`);
+
+      await db.insert(sharedItineraries).values({
+        shareToken,
+        variantId,
+        sharedByUserId: userId,
+        sharedWithUserId: sharedWithUserId || null,
+        permissions,
+        transportPreferences: transportPreferences || null,
+      });
+
+      if (sharedWithUserId) {
+        await db.insert(notifications).values({
+          userId: sharedWithUserId,
+          type: "itinerary_shared",
+          title: "Itinerary shared with you",
+          message: `A traveler has shared their itinerary to ${comparison.destination} with you for review.`,
+          data: { shareToken, variantId, destination: comparison.destination },
+        } as any);
+      }
+
+      res.json({
+        shareToken,
+        shareUrl: `${baseUrl}/itinerary-view/${shareToken}`,
+        expiresAt: null,
+      });
+    } catch (err: any) {
+      console.error("Share itinerary error:", err);
+      res.status(500).json({ error: "Failed to share itinerary" });
+    }
+  });
+
+  // GET /api/itinerary-share/:token — PUBLIC
+  app.get("/api/itinerary-share/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Shared itinerary not found" });
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This share link has expired" });
+      }
+
+      await db
+        .update(sharedItineraries)
+        .set({ viewCount: (shared.viewCount || 0) + 1, lastViewedAt: new Date() })
+        .where(eq(sharedItineraries.id, shared.id));
+
+      const [variant] = await db
+        .select()
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, shared.variantId));
+
+      if (!variant) return res.status(404).json({ error: "Variant not found" });
+
+      const [comparison] = await db
+        .select()
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+      const items = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, shared.variantId));
+
+      const legs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, shared.variantId));
+
+      const [exportCache] = await db
+        .select()
+        .from(mapsExportCache)
+        .where(eq(mapsExportCache.variantId, shared.variantId));
+
+      const [sharer] = await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+        .from(users)
+        .where(eq(users.id, shared.sharedByUserId));
+
+      const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
+      const days = dayNumbers.map(dayNum => {
+        const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        const dayLegs = legs.filter(l => l.dayNumber === dayNum).sort((a, b) => a.legOrder - b.legOrder);
+
+        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
+        let dateStr = "";
+        if (startDate) {
+          const d = new Date(startDate);
+          d.setDate(d.getDate() + dayNum - 1);
+          dateStr = d.toISOString().split("T")[0];
+        }
+
+        return {
+          dayNumber: dayNum,
+          date: dateStr,
+          activities: dayItems.map(item => ({
+            id: item.id,
+            name: item.name,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            lat: item.latitude ? parseFloat(item.latitude as any) : null,
+            lng: item.longitude ? parseFloat(item.longitude as any) : null,
+            category: item.serviceType,
+            cost: item.price ? parseFloat(item.price as any) : 0,
+            description: item.description,
+            location: item.location,
+            duration: item.duration,
+          })),
+          transportLegs: dayLegs.map(leg => ({
+            id: leg.id,
+            legOrder: leg.legOrder,
+            fromName: leg.fromName,
+            toName: leg.toName,
+            recommendedMode: leg.recommendedMode,
+            userSelectedMode: leg.userSelectedMode,
+            distanceDisplay: leg.distanceDisplay,
+            distanceMeters: leg.distanceMeters,
+            estimatedDurationMinutes: leg.estimatedDurationMinutes,
+            estimatedCostUsd: leg.estimatedCostUsd,
+            energyCost: leg.energyCost,
+            alternativeModes: leg.alternativeModes,
+            linkedProductUrl: leg.linkedProductUrl,
+            fromLat: leg.fromLat,
+            fromLng: leg.fromLng,
+            toLat: leg.toLat,
+            toLng: leg.toLng,
+          })),
+        };
+      });
+
+      const totalTransportCost = legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
+      const totalTransportMinutes = legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
+
+      res.json({
+        variant: {
+          id: variant.id,
+          name: variant.name,
+          description: variant.description,
+          destination: comparison?.destination,
+          dateRange: {
+            start: comparison?.startDate,
+            end: comparison?.endDate,
+          },
+          totalCost: variant.totalCost,
+          optimizationScore: variant.optimizationScore,
+          days,
+          transportSummary: {
+            totalLegs: legs.length,
+            totalMinutes: totalTransportMinutes,
+            totalCostUsd: Math.round(totalTransportCost * 100) / 100,
+          },
+        },
+        mapsLinks: {
+          googleMapsPerDay: exportCache?.googleMapsUrls || {},
+          appleMapsPerDay: exportCache?.appleMapsUrls || {},
+          appleMapsWebPerDay: exportCache?.appleMapsWebUrls || {},
+          kmlDownloadUrl: `/api/itinerary-share/${token}/export/kml`,
+          gpxDownloadUrl: `/api/itinerary-share/${token}/export/gpx`,
+        },
+        sharedBy: sharer
+          ? {
+              name: [sharer.firstName, sharer.lastName].filter(Boolean).join(" ") || "A traveler",
+              avatarUrl: sharer.profileImageUrl,
+            }
+          : { name: "A traveler", avatarUrl: null },
+        permissions: shared.permissions,
+        transportPreferences: shared.transportPreferences,
+        shareToken: token,
+      });
+    } catch (err: any) {
+      console.error("Get shared itinerary error:", err);
+      res.status(500).json({ error: "Failed to load shared itinerary" });
+    }
+  });
+
+  // PATCH /api/transport-legs/:legId/mode
+  app.patch("/api/transport-legs/:legId/mode", isAuthenticated, async (req, res) => {
+    try {
+      const { legId } = req.params;
+      const { selectedMode } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+
+      const [leg] = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.id, legId));
+
+      if (!leg) return res.status(404).json({ error: "Transport leg not found" });
+
+      const alternatives = (leg.alternativeModes as any[]) || [];
+      const selected = alternatives.find((a: any) => a.mode === selectedMode);
+
+      let newDuration = leg.estimatedDurationMinutes;
+      let newCost = leg.estimatedCostUsd;
+      let newEnergy = leg.energyCost;
+
+      if (selected) {
+        newDuration = selected.durationMinutes;
+        newCost = selected.costUsd;
+        newEnergy = selected.energyCost;
+      }
+
+      const prevDuration = leg.estimatedDurationMinutes;
+      const timeDiff = newDuration - prevDuration;
+
+      await db
+        .update(transportLegs)
+        .set({
+          userSelectedMode: selectedMode,
+          estimatedDurationMinutes: newDuration,
+          estimatedCostUsd: newCost ?? null,
+          energyCost: newEnergy ?? 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(transportLegs.id, legId));
+
+      let downstreamMessage = "";
+      if (timeDiff < 0) {
+        downstreamMessage = `Switching to ${selectedMode} saves ${Math.abs(timeDiff)} minutes.`;
+      } else if (timeDiff > 0) {
+        downstreamMessage = `Switching to ${selectedMode} adds ${timeDiff} minutes.`;
+      } else {
+        downstreamMessage = `Transport mode updated to ${selectedMode}.`;
+      }
+
+      res.json({
+        updatedLeg: {
+          id: legId,
+          userSelectedMode: selectedMode,
+          estimatedDurationMinutes: newDuration,
+          estimatedCostUsd: newCost,
+          energyCost: newEnergy,
+        },
+        downstreamImpact: {
+          nextActivityStartTimeShift: -timeDiff,
+          message: downstreamMessage,
+        },
+      });
+    } catch (err: any) {
+      console.error("Update transport mode error:", err);
+      res.status(500).json({ error: "Failed to update transport mode" });
+    }
+  });
+
+  // GET /api/itinerary-share/:token/export/kml
+  app.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Not found" });
+
+      const [variant] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, shared.variantId));
+      const [comparison] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
+      const items = await db.select().from(itineraryVariantItems).where(eq(itineraryVariantItems.variantId, shared.variantId));
+      const legs = await db.select().from(transportLegs).where(eq(transportLegs.variantId, shared.variantId));
+
+      const [cached] = await db.select().from(mapsExportCache).where(eq(mapsExportCache.variantId, shared.variantId));
+
+      let kmlContent = cached?.kmlContent;
+
+      if (!kmlContent) {
+        const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
+        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
+
+        const days = dayNumbers.map(dayNum => {
+          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
+          let dateStr = "";
+          if (startDate) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + dayNum - 1);
+            dateStr = d.toISOString().split("T")[0];
+          }
+          return {
+            dayNumber: dayNum,
+            date: dateStr,
+            activities: dayItems.map(item => ({
+              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
+              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
+              name: item.name,
+              scheduledTime: item.startTime || "",
+            })),
+            transportLegs: dayLegs.map(l => ({
+              legOrder: l.legOrder,
+              fromName: l.fromName,
+              toName: l.toName,
+              recommendedMode: l.recommendedMode,
+              estimatedDurationMinutes: l.estimatedDurationMinutes,
+              estimatedCostUsd: l.estimatedCostUsd,
+              distanceDisplay: l.distanceDisplay,
+            })),
+          };
+        });
+
+        kmlContent = generateKml({
+          tripName: variant.name,
+          destination: comparison?.destination || "Trip",
+          days,
+        });
+
+        await db.update(mapsExportCache).set({ kmlContent }).where(eq(mapsExportCache.variantId, shared.variantId));
+      }
+
+      res.setHeader("Content-Type", "application/vnd.google-earth.kml+xml");
+      res.setHeader("Content-Disposition", `attachment; filename="traveloure-itinerary.kml"`);
+      res.send(kmlContent);
+    } catch (err: any) {
+      console.error("KML export error:", err);
+      res.status(500).json({ error: "Failed to generate KML" });
+    }
+  });
+
+  // GET /api/itinerary-share/:token/export/gpx
+  app.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
+    try {
+      const { token } = req.params;
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Not found" });
+
+      const [variant] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, shared.variantId));
+      const [comparison] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
+      const items = await db.select().from(itineraryVariantItems).where(eq(itineraryVariantItems.variantId, shared.variantId));
+      const legs = await db.select().from(transportLegs).where(eq(transportLegs.variantId, shared.variantId));
+
+      const [cached] = await db.select().from(mapsExportCache).where(eq(mapsExportCache.variantId, shared.variantId));
+
+      let gpxContent = cached?.gpxContent;
+
+      if (!gpxContent) {
+        const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
+        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
+
+        const days = dayNumbers.map(dayNum => {
+          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
+          let dateStr = "";
+          if (startDate) {
+            const d = new Date(startDate);
+            d.setDate(d.getDate() + dayNum - 1);
+            dateStr = d.toISOString().split("T")[0];
+          }
+          return {
+            dayNumber: dayNum,
+            date: dateStr,
+            activities: dayItems.map(item => ({
+              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
+              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
+              name: item.name,
+              scheduledTime: item.startTime || "",
+            })),
+            transportLegs: dayLegs.map(l => ({
+              legOrder: l.legOrder,
+              fromName: l.fromName,
+              toName: l.toName,
+              recommendedMode: l.recommendedMode,
+              estimatedDurationMinutes: l.estimatedDurationMinutes,
+              estimatedCostUsd: l.estimatedCostUsd,
+              distanceDisplay: l.distanceDisplay,
+            })),
+          };
+        });
+
+        gpxContent = generateGpx({
+          tripName: variant.name,
+          destination: comparison?.destination || "Trip",
+          days,
+        });
+
+        await db.update(mapsExportCache).set({ gpxContent }).where(eq(mapsExportCache.variantId, shared.variantId));
+      }
+
+      res.setHeader("Content-Type", "application/gpx+xml");
+      res.setHeader("Content-Disposition", `attachment; filename="traveloure-itinerary.gpx"`);
+      res.send(gpxContent);
+    } catch (err: any) {
+      console.error("GPX export error:", err);
+      res.status(500).json({ error: "Failed to generate GPX" });
+    }
+  });
+
+  // GET /api/itinerary-share/:token/navigate/:dayNumber/:legOrder
+  app.get("/api/itinerary-share/:token/navigate/:dayNumber/:legOrder", async (req, res) => {
+    try {
+      const { token, dayNumber, legOrder } = req.params;
+      const { platform = "google", currentLat, currentLng } = req.query as Record<string, string>;
+
+      const [shared] = await db
+        .select({ variantId: sharedItineraries.variantId })
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Not found" });
+
+      const [leg] = await db
+        .select()
+        .from(transportLegs)
+        .where(
+          and(
+            eq(transportLegs.variantId, shared.variantId),
+            eq(transportLegs.dayNumber, parseInt(dayNumber)),
+            eq(transportLegs.legOrder, parseInt(legOrder))
+          )
+        );
+
+      if (!leg) return res.status(404).json({ error: "Leg not found" });
+
+      const mode = leg.userSelectedMode || leg.recommendedMode;
+      const fromLat = currentLat ? parseFloat(currentLat) : leg.fromLat;
+      const fromLng = currentLng ? parseFloat(currentLng) : leg.fromLng;
+
+      let url: string;
+      if (platform === "apple") {
+        url = buildAppleNavUrl(fromLat, fromLng, leg.toLat, leg.toLng, mode);
+      } else {
+        url = buildGoogleNavUrl(fromLat, fromLng, leg.toLat, leg.toLng, mode);
+      }
+
+      res.redirect(302, url);
+    } catch (err: any) {
+      console.error("Navigate error:", err);
+      res.status(500).json({ error: "Failed to build navigation URL" });
+    }
+  });
+
+  // GET /api/itinerary-variants/:variantId/transport-legs
+  app.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
+    try {
+      const { variantId } = req.params;
+      const legs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, variantId));
+      res.json(legs);
+    } catch (err: any) {
+      console.error("Get transport legs error:", err);
+      res.status(500).json({ error: "Failed to get transport legs" });
+    }
+  });
+
+  // POST /api/itinerary-variants/:variantId/calculate-transport
+  app.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenticated, async (req, res) => {
+    try {
+      const { variantId } = req.params;
+      const userId = (req as any).user?.id;
+      const { userPrefs } = req.body;
+
+      const [variant] = await db
+        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, variantId));
+
+      if (!variant) return res.status(404).json({ error: "Variant not found" });
+
+      const [comparison] = await db
+        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+      if (!comparison || comparison.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const items = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, variantId));
+
+      const activities = items
+        .filter(item => item.latitude && item.longitude)
+        .map((item, idx) => ({
+          id: item.id,
+          name: item.name,
+          lat: parseFloat(item.latitude as any),
+          lng: parseFloat(item.longitude as any),
+          scheduledTime: item.startTime || `09:${String(idx * 30 % 60).padStart(2, "0")}`,
+          dayNumber: item.dayNumber,
+          order: item.sortOrder || idx,
+        }));
+
+      const legs = await calculateTransportLegs(
+        variantId,
+        activities,
+        comparison.destination || "",
+        userPrefs || {}
+      );
+
+      res.json({ legs, count: legs.length });
+    } catch (err: any) {
+      console.error("Calculate transport error:", err);
+      res.status(500).json({ error: "Failed to calculate transport legs" });
+    }
+  });
 }

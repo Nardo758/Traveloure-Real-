@@ -6,6 +6,18 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (March 2026)
+- **Shareable Itinerary Card System**: Complete shareable itinerary feature with:
+  - 3 new DB tables: `transport_legs`, `shared_itineraries`, `maps_export_cache`
+  - 8 new API endpoints: POST share, GET share (public), PATCH transport mode, GET KML export, GET GPX export, GET navigate redirect, GET transport-legs, POST calculate-transport
+  - Frontend components: `TransportLeg`, `DayMapsButton`, `TripExportButton`, `NavigateNextButton`, `ItineraryCard` in `client/src/components/itinerary/`
+  - Public shareable view at `/itinerary-view/:token` (no login required)
+  - Share button on all variant cards in itinerary comparison page
+  - KML export for Google My Maps import, GPX export for Apple Maps/Gaia GPS
+  - Platform-aware Maps deep links (Google/Apple auto-detected from UA)
+  - Transport leg swapping UI — users can switch between transport alternatives
+  - Backend services: `transport-leg-calculator.ts`, `maps-url-builder.ts`, `kml-generator.ts`, `gpx-generator.ts`, `transport-profiles.ts`
+
 ## Recent Changes (February 2026)
 - **Sign-In Modal System**: Implemented a benefits-first sign-in modal across 10+ pages using `useSignInModal()` hook from `SignInModalContext`. Shows platform benefits before redirecting to authentication.
 - **TravelPulse 7-Day Trend Data**: Updated TravelPulse to display 7-day trend data with "(7d)" labels in UI and AI prompts. Metrics include `growthPercent`, `mentionCount`, and `trendingScore`.
