@@ -6,6 +6,7 @@
 import Stripe from 'stripe';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { handleStripePaymentSuccess } from './stripe.service';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2025-08-27.basil',
@@ -103,6 +104,8 @@ class StripePaymentService {
           const session = event.data.object as Stripe.Checkout.Session;
           if (session.metadata?.type === 'expert_service') {
             await this.handleExpertServicePayment(session);
+          } else if (session.metadata?.type === 'transport_booking') {
+            await handleStripePaymentSuccess(session.id);
           }
           break;
 
