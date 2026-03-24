@@ -371,3 +371,58 @@ export function getDominantModeFromRows(legs: TransportLegRow[]): string {
   }
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || "transit";
 }
+
+/**
+ * Regenerate Google/Apple Maps URLs from current DB transport legs and cache them.
+ * Call after a mode change to keep maps URLs up to date.
+ * Returns the maps cache row's URL maps for the affected day.
+ */
+export async function regenerateMapsUrlsFromLegs(
+  variantId: string,
+  dayNumber: number
+): Promise<{ googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> }> {
+  const allLegs = await db
+    .select()
+    .from(transportLegs)
+    .where(eq(transportLegs.variantId, variantId));
+
+  const dayGroups: Record<number, typeof allLegs> = {};
+  for (const leg of allLegs) {
+    if (!dayGroups[leg.dayNumber]) dayGroups[leg.dayNumber] = [];
+    dayGroups[leg.dayNumber].push(leg);
+  }
+
+  const googleMapsUrls: Record<number, string> = {};
+  const appleMapsUrls: Record<number, string> = {};
+  const appleMapsWebUrls: Record<number, string> = {};
+
+  for (const [dayNumStr, dayLegs] of Object.entries(dayGroups)) {
+    const dayNum = parseInt(dayNumStr);
+    const sorted = dayLegs.sort((a, b) => a.legOrder - b.legOrder);
+    const dominantMode = getDominantModeFromRows(sorted);
+
+    const points: ActivityPoint[] = [];
+    if (sorted.length > 0) {
+      points.push({ lat: sorted[0].fromLat, lng: sorted[0].fromLng, name: sorted[0].fromName || "Start" });
+      for (const leg of sorted) {
+        points.push({ lat: leg.toLat, lng: leg.toLng, name: leg.toName || "Stop" });
+      }
+    }
+
+    googleMapsUrls[dayNum] = buildGoogleMapsUrl(points, dominantMode);
+    appleMapsUrls[dayNum] = buildAppleMapsUrl(points, dominantMode);
+    appleMapsWebUrls[dayNum] = buildAppleMapsWebUrl(points, dominantMode);
+  }
+
+  const hash = allLegs.map(l => `${l.dayNumber}:${l.legOrder}:${l.userSelectedMode ?? l.recommendedMode}`).join("|");
+  await db.delete(mapsExportCache).where(eq(mapsExportCache.variantId, variantId));
+  await db.insert(mapsExportCache).values({
+    variantId,
+    googleMapsUrls,
+    appleMapsUrls,
+    appleMapsWebUrls,
+    transportLegsHash: hash,
+  });
+
+  return { googleMapsUrls, appleMapsUrls, appleMapsWebUrls };
+}

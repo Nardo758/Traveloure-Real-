@@ -44,7 +44,7 @@ import { opportunityEngineService } from "./services/opportunity-engine.service"
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache } from "@shared/schema";
-import { calculateTransportLegs } from "./services/transport-leg-calculator";
+import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
 import { generateGpx } from "./services/gpx-generator";
@@ -6816,13 +6816,20 @@ Respond with this exact JSON structure:
                   .from(itineraryVariantItems)
                   .where(eq(itineraryVariantItems.variantId, v.id))
                   .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
-                if (items.length > 0) {
-                  const legs = await calculateTransportLegs(items, destination, v.id);
-                  if (legs.length > 0) {
-                    // Delete old legs if any, then insert fresh
-                    await db.delete(transportLegs).where(eq(transportLegs.variantId, v.id));
-                    await db.insert(transportLegs).values(legs);
-                  }
+                const geoItems = items.filter(
+                  (item) => item.latitude != null && item.longitude != null
+                );
+                if (geoItems.length > 0) {
+                  const activities = geoItems.map((item, idx) => ({
+                    id: item.id,
+                    name: item.activityName || item.placeName || `Stop ${idx + 1}`,
+                    lat: parseFloat(item.latitude as unknown as string),
+                    lng: parseFloat(item.longitude as unknown as string),
+                    scheduledTime: item.startTime || "09:00",
+                    dayNumber: item.dayNumber,
+                    order: item.sortOrder ?? idx,
+                  }));
+                  await calculateTransportLegs(v.id, activities, destination);
                 }
               }
               console.log(`Transport legs calculated for comparison ${comparison.id}`);
@@ -11817,11 +11824,13 @@ export async function registerDiscoveryRoutes(app: Express) {
         })
         .where(eq(transportLegs.id, legId));
 
-      // Clear stale export cache so KML/GPX regenerate with updated modes
-      await db
-        .update(mapsExportCache)
-        .set({ kmlContent: null, gpxContent: null })
-        .where(eq(mapsExportCache.variantId, leg.variantId));
+      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
+      let updatedMapsUrls: { googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> } | null = null;
+      try {
+        updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
+      } catch (mapsErr) {
+        console.error("Maps URL regeneration error (non-critical):", mapsErr);
+      }
 
       let downstreamMessage = "";
       if (timeDiff < 0) {
@@ -11844,6 +11853,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           nextActivityStartTimeShift: -timeDiff,
           message: downstreamMessage,
         },
+        updatedMapsUrls,
       });
     } catch (err: any) {
       console.error("Update transport mode error:", err);
