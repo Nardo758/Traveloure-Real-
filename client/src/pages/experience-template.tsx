@@ -2044,6 +2044,7 @@ export default function ExperienceTemplatePage() {
                 <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
               </Button>
             </CollapsibleTrigger>
+            )}
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
