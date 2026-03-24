@@ -425,12 +425,13 @@ export function TripTransportPlanner({
       if (!seg.transportLegId) continue;
       const etl = resolvedLegs.find(l => l.id === seg.transportLegId);
       if (!etl) continue;
-      if (etl.recommendedMode) {
-        const mappedBase = mapStoredModeToLocal(etl.recommendedMode);
-        if (mappedBase) baselines[seg.id] = mappedBase;
-      }
-      if (etl.userSelectedMode) {
-        const mapped = mapStoredModeToLocal(etl.userSelectedMode);
+      const mappedRecommended = etl.recommendedMode
+        ? mapStoredModeToLocal(etl.recommendedMode)
+        : null;
+      if (mappedRecommended) baselines[seg.id] = mappedRecommended;
+      const activeMode = etl.userSelectedMode || etl.recommendedMode;
+      if (activeMode) {
+        const mapped = mapStoredModeToLocal(activeMode);
         if (mapped) overrides[seg.id] = mapped;
       }
     }
