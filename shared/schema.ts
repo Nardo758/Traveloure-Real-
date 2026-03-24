@@ -4440,6 +4440,7 @@ export const transportBookingOptions = pgTable("transport_booking_options", {
 
   // Booking and pass metadata
   bookingStatus: text("booking_status").default("available"), // "available", "booked", "confirmed", "cancelled"
+  confirmationRef: text("confirmation_ref"),
   bookingId: integer("booking_id"),
   isMultiDayPass: boolean("is_multi_day_pass").default(false),
   passValidDays: integer("pass_valid_days"),
