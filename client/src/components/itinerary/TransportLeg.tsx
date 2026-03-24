@@ -1,17 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, ExternalLink, RotateCcw, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MapPin, ExternalLink, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
@@ -57,7 +50,25 @@ interface TransportLegProps {
   onModeChangeSuccess?: (legId: string, timeDiffMinutes: number) => void;
 }
 
-export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, className, onModeChangeSuccess }: TransportLegProps) {
+function getAppleFlag(mode: string): string {
+  const flags: Record<string, string> = {
+    walk: "w", transit: "r", train: "r", tram: "r", bus: "r",
+    taxi: "d", rideshare: "d", private_driver: "d", rental_car: "d",
+    bike: "c", ferry: "r", auto_rickshaw: "d", tuk_tuk: "d", cable_car: "w",
+  };
+  return flags[mode] || "r";
+}
+
+function getGoogleMode(mode: string): string {
+  const modes: Record<string, string> = {
+    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
+    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
+    bike: "bicycling", ferry: "transit", auto_rickshaw: "driving", tuk_tuk: "driving", cable_car: "walking",
+  };
+  return modes[mode] || "transit";
+}
+
+export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, className }: TransportLegProps) {
   const { toast } = useToast();
   const activeMode = leg.userSelectedMode || leg.recommendedMode;
   const [currentMode, setCurrentMode] = useState(activeMode);
@@ -66,6 +77,11 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const isCustomized = leg.userSelectedMode !== null && leg.userSelectedMode !== leg.recommendedMode;
+
+  const origDuration = useRef(leg.userSelectedMode ? null : leg.estimatedDurationMinutes);
+  const origCost = useRef(leg.userSelectedMode ? null : leg.estimatedCostUsd);
+
+  const isCustomized = currentMode !== leg.recommendedMode;
 
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
@@ -76,9 +92,15 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
       const updatedLeg = data?.updatedLeg || data?.leg;
       if (updatedLeg?.estimatedDurationMinutes !== undefined) {
         setDisplayDuration(updatedLeg.estimatedDurationMinutes);
+      } else {
+        const alt = leg.alternativeModes?.find(a => a.mode === selectedMode);
+        if (alt) setDisplayDuration(alt.durationMinutes);
       }
       if (updatedLeg?.estimatedCostUsd !== undefined) {
         setDisplayCost(updatedLeg.estimatedCostUsd);
+      } else {
+        const alt = leg.alternativeModes?.find(a => a.mode === selectedMode);
+        if (alt !== undefined) setDisplayCost(alt?.costUsd ?? null);
       }
       setDropdownOpen(false);
 
@@ -87,22 +109,12 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
       } else {
         queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share"] });
       }
-
-      // Calculate time difference for downstream cascading
-      const originalDuration = leg.estimatedDurationMinutes;
-      const newDuration = updatedLeg?.estimatedDurationMinutes || originalDuration;
-      const timeDiff = originalDuration - newDuration;
-
-      // Show time impact in toast message
-      let message = `Switched to ${TRANSPORT_MODE_LABELS[selectedMode] || selectedMode}`;
-      if (timeDiff !== 0) {
-        message = `Switched to ${TRANSPORT_MODE_LABELS[selectedMode] || selectedMode} — ${timeDiff > 0 ? 'saves' : 'adds'} ${Math.abs(timeDiff)} min`;
-      }
-      toast({ title: "Transport updated", description: message });
-
-      // Notify parent of time change for cascading updates
-      if (onModeChangeSuccess) {
-        onModeChangeSuccess(leg.id, timeDiff);
+      const impact = data?.downstreamImpact;
+      const modeLabel = TRANSPORT_MODE_LABELS[selectedMode] || selectedMode;
+      if (impact?.message) {
+        toast({ title: `Switched to ${modeLabel}`, description: impact.message });
+      } else {
+        toast({ title: "Transport updated", description: `Switched to ${modeLabel}` });
       }
     },
     onError: () => {
@@ -111,6 +123,9 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
   });
 
   const handleReset = () => {
+    setCurrentMode(leg.recommendedMode);
+    if (origDuration.current !== null) setDisplayDuration(origDuration.current);
+    if (origCost.current !== undefined) setDisplayCost(origCost.current);
     updateModeMutation.mutate(leg.recommendedMode);
   };
 
@@ -127,122 +142,82 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
     openInMaps(url);
   };
 
-  const handleNavigateViaApi = () => {
-    if (!shareToken || !dayNumber) return;
-    const platform = detectMapsPlatform();
-    window.open(
-      `/api/itinerary-share/${shareToken}/navigate/${dayNumber}/${leg.legOrder}?platform=${platform}`,
-      "_blank"
-    );
-  };
-
   const modeIcon = TRANSPORT_MODE_ICONS[currentMode] || "🚌";
   const modeLabel = TRANSPORT_MODE_LABELS[currentMode] || currentMode;
   const alternatives = leg.alternativeModes || [];
 
   return (
     <div className={cn("flex gap-3 py-2 px-3", className)} data-testid={`transport-leg-${leg.legOrder}`}>
-      <div className="flex flex-col items-center">
-        <div className="w-0.5 flex-1 bg-dashed border-l-2 border-dashed border-muted-foreground/30" />
+      <div className="flex flex-col items-center pt-1">
+        <div className="w-0.5 h-full border-l-2 border-dashed border-muted-foreground/30 min-h-[20px]" />
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pb-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-base">{modeIcon}</span>
-          <span className="text-sm font-medium text-foreground">{modeLabel}</span>
-          <span className="text-sm text-muted-foreground">•</span>
-          <span className="text-sm text-muted-foreground" data-testid={`leg-duration-${leg.legOrder}`}>{displayDuration} min</span>
+          <span className="text-base leading-none">{modeIcon}</span>
+          <span className="text-sm font-medium">{modeLabel}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-sm text-muted-foreground" data-testid={`leg-duration-${leg.legOrder}`}>
+            {displayDuration} min
+          </span>
           {displayCost !== null && displayCost !== undefined && displayCost > 0 && (
             <>
-              <span className="text-sm text-muted-foreground">•</span>
-              <span className="text-sm text-muted-foreground" data-testid={`leg-cost-${leg.legOrder}`}>${displayCost.toFixed(2)}</span>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-sm text-muted-foreground" data-testid={`leg-cost-${leg.legOrder}`}>
+                ${displayCost.toFixed(0)}
+              </span>
             </>
           )}
           {(displayCost === null || displayCost === 0) && (
             <>
-              <span className="text-sm text-muted-foreground">•</span>
+              <span className="text-muted-foreground">·</span>
               <span className="text-sm text-green-600 dark:text-green-400">Free</span>
             </>
           )}
-          <span className="text-sm text-muted-foreground">•</span>
+          <span className="text-muted-foreground">·</span>
           <span className="text-sm text-muted-foreground">{leg.distanceDisplay}</span>
+          {isCustomized && (
+            <Badge
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-5 px-1.5"
+              data-testid={`badge-customized-${leg.legOrder}`}
+            >
+              Customized
+            </Badge>
+          )}
         </div>
 
         {!readOnly && alternatives.length > 0 && (
-          <div className="flex gap-2 items-center mt-2 flex-wrap">
-            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
+          <div className="flex gap-1.5 mt-1.5 flex-wrap items-center">
+            {alternatives
+              .filter(alt => alt.mode !== currentMode)
+              .slice(0, 3)
+              .map((alt) => (
+                <button
+                  key={alt.mode}
+                  onClick={() => updateModeMutation.mutate(alt.mode)}
                   disabled={updateModeMutation.isPending}
-                  className="text-xs h-auto py-1"
-                  data-testid="button-transport-mode-selector"
+                  className={cn(
+                    "px-2 py-0.5 rounded-full text-xs border transition-colors",
+                    "bg-background text-muted-foreground border-border hover:border-primary hover:text-primary"
+                  )}
+                  title={`${alt.durationMinutes} min${alt.costUsd ? ` · $${alt.costUsd}` : ""} — ${alt.reason}`}
+                  data-testid={`transport-alt-${alt.mode}`}
                 >
-                  <span className="mr-1.5">{TRANSPORT_MODE_ICONS[currentMode] || "🚌"}</span>
-                  {TRANSPORT_MODE_LABELS[currentMode] || currentMode}
-                  <span className="text-muted-foreground ml-1.5">▼</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
-                {alternatives.map((alt) => {
-                  const isRecommended = alt.mode === leg.recommendedMode;
-                  const isSelected = currentMode === alt.mode;
-                  return (
-                    <DropdownMenuItem
-                      key={alt.mode}
-                      onClick={() => updateModeMutation.mutate(alt.mode)}
-                      disabled={updateModeMutation.isPending}
-                      className="flex flex-col gap-1 py-2 cursor-pointer"
-                      data-testid={`transport-mode-${alt.mode}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-base">{TRANSPORT_MODE_ICONS[alt.mode] || "🚌"}</span>
-                        <span className="font-medium text-sm">
-                          {TRANSPORT_MODE_LABELS[alt.mode] || alt.mode}
-                        </span>
-                        {isSelected && (
-                          <Badge variant="secondary" className="text-xs ml-auto">
-                            {isRecommended ? "Recommended" : "Selected"}
-                          </Badge>
-                        )}
-                        {isRecommended && !isSelected && (
-                          <Badge variant="outline" className="text-xs ml-auto">
-                            Recommended
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex gap-3 text-xs text-muted-foreground ml-6">
-                        <span>{alt.durationMinutes} min</span>
-                        {alt.costUsd !== null && alt.costUsd !== undefined && (
-                          <span>${alt.costUsd.toFixed(2)}</span>
-                        )}
-                        {(alt.costUsd === null || alt.costUsd === 0) && (
-                          <span className="text-green-600 dark:text-green-400">Free</span>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
+                  {TRANSPORT_MODE_ICONS[alt.mode] || "🚌"} {TRANSPORT_MODE_LABELS[alt.mode] || alt.mode}
+                </button>
+              ))}
             {isCustomized && (
-              <>
-                <Badge variant="secondary" className="bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
-                  Customized
-                </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleReset}
-                  disabled={updateModeMutation.isPending}
-                  className="h-auto py-1 px-2 text-xs"
-                  data-testid="button-reset-transport"
-                >
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  Reset
-                </Button>
-              </>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleReset}
+                disabled={updateModeMutation.isPending}
+                className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+                data-testid={`button-reset-mode-${leg.legOrder}`}
+              >
+                <RotateCcw className="h-3 w-3" />
+                Reset
+              </Button>
             )}
           </div>
         )}
@@ -255,7 +230,7 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
               data-testid="button-open-leg-maps"
             >
               <MapPin className="h-3 w-3" />
-              Open leg in Maps
+              Open in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
             </button>
           )}
           {leg.linkedProductUrl && (
@@ -274,22 +249,4 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
       </div>
     </div>
   );
-}
-
-function getAppleFlag(mode: string): string {
-  const flags: Record<string, string> = {
-    walk: "w", transit: "r", train: "r", tram: "r", bus: "r",
-    taxi: "d", rideshare: "d", private_driver: "d", rental_car: "d",
-    bike: "c", ferry: "r", auto_rickshaw: "d", tuk_tuk: "d", cable_car: "w",
-  };
-  return flags[mode] || "r";
-}
-
-function getGoogleMode(mode: string): string {
-  const modes: Record<string, string> = {
-    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
-    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
-    bike: "bicycling", ferry: "transit", auto_rickshaw: "driving", tuk_tuk: "driving", cable_car: "walking",
-  };
-  return modes[mode] || "transit";
 }
