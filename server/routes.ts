@@ -12089,6 +12089,34 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // GET /api/transport-legs/user — returns all transport legs for the current user across all shared itineraries
+  app.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const userLegs = await db
+        .select({
+          id: transportLegs.id,
+          variantId: transportLegs.variantId,
+          legOrder: transportLegs.legOrder,
+          fromName: transportLegs.fromName,
+          toName: transportLegs.toName,
+          userSelectedMode: transportLegs.userSelectedMode,
+          recommendedMode: transportLegs.recommendedMode,
+        })
+        .from(transportLegs)
+        .innerJoin(itineraryVariants, eq(itineraryVariants.id, transportLegs.variantId))
+        .innerJoin(itineraryComparisons, eq(itineraryComparisons.id, itineraryVariants.comparisonId))
+        .where(eq(itineraryComparisons.userId, userId));
+
+      res.json(userLegs);
+    } catch (err: any) {
+      console.error("Get user transport legs error:", err);
+      res.status(500).json({ error: "Failed to get transport legs" });
+    }
+  });
+
   // GET /api/itinerary-variants/:variantId/transport-legs
   app.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
     try {
