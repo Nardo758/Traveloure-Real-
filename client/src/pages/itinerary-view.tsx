@@ -156,17 +156,10 @@ export default function ItineraryViewPage() {
     transportSummary: data.variant.transportSummary,
   };
 
-  const title = `${data.variant.destination || data.variant.name} Itinerary • Traveloure`;
-  const description = `${data.variant.name} — ${data.variant.destination}`;
-
   const isExpertView = data.permissions === "suggest" || data.sharedWithExpert;
 
   return (
     <div className="min-h-screen bg-background">
-      <title>{title}</title>
-      <meta name="description" content={description} />
-      <meta property="og:title" content={title} />
-      <meta property="og:description" content={description} />
 
       <div className="max-w-2xl mx-auto p-4 pb-12">
         <div className="flex items-center justify-between mb-4">

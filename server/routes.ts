@@ -6804,41 +6804,10 @@ Respond with this exact JSON structure:
           budget,
           travelers,
           tripId || undefined
-        ).then(async (optimResult) => {
-          if (optimResult?.success) {
-            // After optimization, calculate transport legs for all variants
-            try {
-              const variants = await db
-                .select({ id: itineraryVariants.id })
-                .from(itineraryVariants)
-                .where(eq(itineraryVariants.comparisonId, comparison.id));
-              for (const v of variants) {
-                const items = await db
-                  .select()
-                  .from(itineraryVariantItems)
-                  .where(eq(itineraryVariantItems.variantId, v.id))
-                  .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
-                const geoItems = items.filter(
-                  (item) => item.latitude != null && item.longitude != null
-                );
-                if (geoItems.length > 0) {
-                  const activities = geoItems.map((item, idx) => ({
-                    id: item.id,
-                    name: item.activityName || item.placeName || `Stop ${idx + 1}`,
-                    lat: parseFloat(item.latitude as unknown as string),
-                    lng: parseFloat(item.longitude as unknown as string),
-                    scheduledTime: item.startTime || "09:00",
-                    dayNumber: item.dayNumber,
-                    order: item.sortOrder ?? idx,
-                  }));
-                  await calculateTransportLegs(v.id, activities, destination);
-                }
-              }
-              console.log(`Transport legs calculated for comparison ${comparison.id}`);
-            } catch (legErr) {
-              console.error('Transport leg calculation error (non-critical):', legErr);
-            }
-          }
+          // Transport leg calculation is handled inside generateOptimizedItineraries
+          // for each variant after metrics are finalized
+        ).then(async (_optimResult) => {
+          // Optimization complete — transport legs already calculated inside optimizer
         }).catch(err => {
           console.error('Optimization error:', err);
           db.update(itineraryComparisons)
