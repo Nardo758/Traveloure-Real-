@@ -20,7 +20,10 @@ import {
   MapPin,
   DollarSign,
   Zap,
+  Sparkles,
+  ExternalLink,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { TransportBookingCard } from "./TransportBookingCard";
 import { MultiDayPassCard } from "./MultiDayPassCard";
 
@@ -85,13 +88,49 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
     return <TransportHubSkeleton />;
   }
 
-  if (error || !data) {
+  if (error) {
     return (
       <Card className="border-destructive bg-destructive/5">
         <CardContent className="pt-6">
           <p className="text-sm text-destructive">Failed to load transport options</p>
         </CardContent>
       </Card>
+    );
+  }
+
+  if (!data || data.summary.totalLegs === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
+        <div className="p-5 rounded-full bg-gray-100 dark:bg-gray-800">
+          <MapPin className="w-10 h-10 text-gray-400" />
+        </div>
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No transport bookings yet</h3>
+          <p className="text-gray-500 max-w-md text-sm">
+            Run AI Optimization to generate itinerary variants — selecting a variant will automatically calculate transport legs between all your locations, with booking options.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <Button
+            className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+            onClick={() => window.location.href = `/itinerary-comparison/${tripId}`}
+            data-testid="button-run-optimization-hub"
+          >
+            <Sparkles className="w-4 h-4 mr-2" />
+            Run AI Optimization
+          </Button>
+          <a
+            href="https://12go.co/en?affiliate_id=13805109"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="outline">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Browse 12Go Transport
+            </Button>
+          </a>
+        </div>
+      </div>
     );
   }
 
