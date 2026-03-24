@@ -114,20 +114,10 @@ export const searchRateLimiter = createRateLimiter({
   keyGenerator: (req) => `search:${req.ip || "unknown"}`,
 });
 
-function getRealIp(req: Request): string {
-  const forwarded = req.headers["x-forwarded-for"];
-  if (forwarded) {
-    const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(",")[0].trim();
-    if (first) return first;
-  }
-  return req.ip || "unknown";
-}
-
 export const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  maxRequests: 120,
-  keyGenerator: (req) => `auth:${getRealIp(req)}`,
-  skip: (req) => req.path === "/user",
+  maxRequests: 5,
+  keyGenerator: (req) => `auth:${req.ip || "unknown"}`,
 });
 
 export const strictRateLimiter = createRateLimiter({
