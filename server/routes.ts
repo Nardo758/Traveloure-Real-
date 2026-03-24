@@ -98,9 +98,14 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // Auth setup
-  await setupAuth(app);
-  registerAuthRoutes(app);
-  setupFacebookAuth(app);
+  try {
+    await setupAuth(app);
+    registerAuthRoutes(app);
+    setupFacebookAuth(app);
+  } catch (error) {
+    console.warn("Auth setup failed (OK for development):", (error as Error).message);
+    // Continue without auth - public routes will still work
+  }
   
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);

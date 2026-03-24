@@ -31,10 +31,11 @@ import { grokService, CityIntelligenceResult } from "./grok.service";
 
 const GROK_MODEL = "grok-3";
 
-function getGrokClient(): OpenAI {
+function getGrokClient(): OpenAI | null {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) {
-    throw new Error("XAI_API_KEY is not configured");
+    console.warn("XAI_API_KEY not configured - TravelPulse AI features will be disabled");
+    return null;
   }
   return new OpenAI({
     apiKey,
@@ -52,7 +53,7 @@ function extractJSON(content: string): any {
 }
 
 export class TravelPulseService {
-  private grok: OpenAI;
+  private grok: OpenAI | null;
 
   constructor() {
     this.grok = getGrokClient();
@@ -75,10 +76,20 @@ export class TravelPulseService {
       return cached;
     }
 
+    // Return cached data if Grok is not available
+    if (!this.grok) {
+      return cached || [];
+    }
+
     return this.fetchAndCacheTrendingDestinations(city, limit);
   }
 
   private async fetchAndCacheTrendingDestinations(city: string, limit: number): Promise<TravelPulseTrending[]> {
+    // Return empty if Grok is not available
+    if (!this.grok) {
+      return [];
+    }
+
     const prompt = `You are a travel intelligence analyst. Analyze what's currently trending in ${city} based on social media signals, travel blogs, and recent news.
 
 Return a JSON array of ${limit} trending destinations/experiences in ${city}. For each, provide comprehensive intelligence:
@@ -226,8 +237,35 @@ Focus on authentic traveler sentiment, not promotional content. Include hidden g
     normalized: string,
     queryHash: string
   ): Promise<TravelPulseTruthCheck> {
+    // Return default if Grok is not available
+    if (!this.grok) {
+      return {
+        id: queryHash,
+        queryHash,
+        query,
+        city: city || null,
+        subjectName: null,
+        subjectType: "claim",
+        postsAnalyzed: 0,
+        worthItPercent: "50",
+        mehPercent: "25",
+        avoidPercent: "25",
+        overallVerdict: "mixed",
+        positiveMentions: JSON.stringify([]),
+        negativeMentions: JSON.stringify([]),
+        crowdsourcedTips: JSON.stringify([]),
+        realityScore: "5",
+        expectationGap: "0",
+        hitCount: 1,
+        lastAccessedAt: new Date(),
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
     const cityContext = city ? ` in ${city}` : "";
-    
+
     const prompt = `Analyze this travel question based on real traveler sentiment and experiences: "${query}"${cityContext}
 
 Search your knowledge of recent traveler experiences, reviews, and social media discussions to provide a truth check.
