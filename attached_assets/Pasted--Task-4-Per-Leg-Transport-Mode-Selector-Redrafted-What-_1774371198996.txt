@@ -1,0 +1,226 @@
+# Task #4 — Per-Leg Transport Mode Selector (Redrafted)
+
+## What & Why
+
+Transportation between activities is a **post-optimization, post-expert-review** concern. The flow is:
+
+```
+User builds cart → Optimizer sequences & clusters → Expert reviews & modifies → 
+THEN transport legs are calculated and displayed in the Shareable Itinerary Card
+```
+
+Calculating transport before the sequence is finalized is premature — the optimizer may reorder activities by neighborhood, the expert may swap or add stops, and any pre-optimization transport data becomes invalid.
+
+The Transportation Tab in experience templates has been removed (per the Shareable Itinerary Card spec, Section 11). Transport is now handled entirely within the Itinerary Card, which renders after the user selects an optimized variant and (optionally) an expert has reviewed it.
+
+The existing `TransportLeg` component in the Itinerary Card has mode-switching chips that persist to the DB, but the UX needs refinement: clearer mode labels, cost/time estimates per option, and a visual indicator when a user has overridden the AI recommendation.
+
+This task improves the per-leg transport selector **within the Itinerary Card only** — not in templates.
+
+---
+
+## The Transport Lifecycle
+
+```
+PHASE 1 — PREFERENCES (template/profile level)
+  User sets transport preferences in their profile:
+  - Priority: time / cost / comfort / scenic
+  - Modes to avoid (e.g., no rental cars)
+  - Max walk time (e.g., 15 min threshold)
+  - Accessibility needs
+  These preferences are READ by the Transport Leg Calculator later.
+  No transport legs are computed or displayed at this stage.
+
+PHASE 2 — OPTIMIZATION
+  AI optimizer sequences activities by day, clusters by geography,
+  respects temporal anchors and energy budgets.
+  Output: 4 variant plans with day-by-day activity sequences.
+  Transport legs are NOT calculated yet — sequence isn't finalized.
+
+PHASE 3 — EXPERT REVIEW (optional)
+  User sends a variant to an expert via "Send to Expert" on the
+  itinerary comparison page.
+  Expert can:
+  - Suggest swapping activities
+  - Suggest adding/removing stops
+  - Recommend different timing
+  - Provide local transport advice ("take the JR line, not a taxi")
+  User accepts/rejects expert suggestions.
+  If ANY activity changes, the sequence is updated.
+
+PHASE 4 — TRANSPORT CALCULATION (automatic)
+  Once the variant's sequence is finalized (either after user selects
+  a variant OR after expert suggestions are accepted):
+  - Transport Leg Calculator runs server-side
+  - Computes recommended mode for each sequential activity pair
+  - Uses destination transport profile (Kyoto = trains/bikes, Mumbai = auto-rickshaws)
+  - Scores modes against user preferences from Phase 1
+  - Stores transport_leg records in DB
+
+PHASE 5 — USER VIEWS & CUSTOMIZES (Itinerary Card)
+  The Shareable Itinerary Card renders with:
+  - Activities with transport legs inline between them
+  - Each leg shows recommended mode + alternatives
+  - User can override any leg's mode via the selector
+  - Overrides persist to DB via PATCH /api/transport-legs/:legId/mode
+  - Downstream timing recalculates if duration changes
+  - "Open in Maps" deep links use the selected mode
+```
+
+---
+
+## Done Looks Like
+
+Within the Itinerary Card (post-optimization, post-expert-review):
+
+- Each transport leg between activities shows a **dropdown selector** (not just chips) with all available modes for that destination: the options come from the destination's transport profile (e.g., Kyoto shows Walk, Train, Bus, Bike, Taxi; Mumbai shows Walk, Auto-rickshaw, Train, Taxi, Rideshare, Ferry)
+- Each mode option in the dropdown shows: **mode icon + local name + estimated duration + estimated cost** (e.g., "🚃 JR Train • 18 min • $2.50")
+- The **recommended mode** (AI-selected based on user preferences) is pre-selected and labeled "Recommended"
+- When a user overrides a mode, the leg shows an **amber "Customized" badge** and a **"Reset to recommended"** button
+- Overrides persist to DB immediately via `PATCH /api/transport-legs/:legId/mode`
+- After an override, **downstream activity start times** shift if the new mode has a different duration, and a toast shows: "Switching to taxi saves 6 min — next activity starts earlier"
+- The **"Open in Maps" deep links** update to reflect the selected mode (taxi → driving directions, train → transit directions)
+- The **Trip Transport Summary** at the bottom of the card updates totals (time, cost, mode breakdown percentages)
+- **Read-only viewers** (public share link) see the selected modes but cannot change them
+- **Experts** with "suggest" permissions can change modes (their changes are flagged as suggestions, not direct overrides)
+
+---
+
+## Out of Scope
+
+- Any transport UI in experience templates — the Transportation Tab stays removed
+- Transport calculations before optimization — premature, sequence not finalized
+- Transport calculations before expert review is complete — if an expert is assigned, transport waits until suggestions are accepted/rejected
+- Creating transport leg DB records from scratch without an itinerary variant
+- Real-time transit API calls (Google Directions, etc.) — we use pre-computed estimates from destination profiles
+- Adding new transport modes beyond what's in the destination profiles
+
+---
+
+## Tasks
+
+### 1. Confirm Transportation Tab removal is complete
+
+Verify that the Transportation Tab has been fully removed from all experience templates. Search for any remaining references:
+
+```bash
+grep -rn "transportation\|TransportTab\|transport-tab" client/src/ --include="*.tsx" --include="*.ts"
+```
+
+Remove any orphaned code. Transport preferences (priority, avoid modes, max walk time) should live in the user's profile settings, not in a template tab.
+
+**Relevant files:**
+- `client/src/pages/experience-template.tsx`
+- Any standalone transport tab component files (delete them)
+
+### 2. Upgrade TransportLeg component to dropdown selector
+
+Replace the current chip-style mode switcher in the TransportLeg component with a proper dropdown that shows all available modes from the destination's transport profile.
+
+Each dropdown option should display:
+- Mode icon (walk, train, bus, bike, taxi, rideshare, auto-rickshaw, ferry, etc.)
+- Local name from the transport profile (e.g., "JR Train" not just "Train")
+- Estimated duration for this specific leg
+- Estimated cost for this specific leg
+- "Recommended" label on the AI-selected option
+
+The dropdown should:
+- Pre-select the current mode (recommended or user-overridden)
+- On change, call `PATCH /api/transport-legs/:legId/mode`
+- Show optimistic UI (update immediately, revert on API failure)
+- Display an amber "Customized" badge when overridden
+- Show a "Reset" button that reverts to the recommended mode
+
+**Relevant files:**
+- `client/src/components/itinerary/TransportLeg.tsx`
+- `server/routes.ts` (PATCH endpoint — verify it returns alternative mode details)
+- `server/data/transport-profiles.ts` (source of available modes per destination)
+
+### 3. Add downstream timing recalculation
+
+When a user changes a transport mode and the new mode has a different duration:
+- Recalculate the start time of the next activity
+- If it cascades (next activity is now earlier/later, affecting the leg after it), propagate the change
+- Show a toast: "Switching to [mode] [saves/adds] X min"
+- Return the downstream impact in the PATCH response
+
+The server already has the `downstreamImpact` field in the PATCH response (per the spec). The frontend needs to:
+- Read `downstreamImpact.nextActivityStartTimeShift` from the response
+- Update the affected activity's displayed start time in the card
+- If the shift cascades to more activities, refetch the full variant data
+
+**Relevant files:**
+- `server/routes.ts` (PATCH endpoint — add downstream calculation logic)
+- `client/src/components/itinerary/ItineraryCard.tsx` (update activity times on override)
+
+### 4. Update maps deep links on mode change
+
+When a user overrides a transport mode:
+- Regenerate the Google Maps URL for that day (new travelmode parameter)
+- Regenerate the Apple Maps URL for that day (new dirflg parameter)
+- Update the single-leg "Open in Maps" link for that specific leg
+- Update the cached maps URLs in the `maps_export_cache` table
+
+**Relevant files:**
+- `server/services/maps-url-builder.ts`
+- `server/routes.ts` (PATCH endpoint — regenerate URLs after mode change)
+- `client/src/components/itinerary/TransportLeg.tsx` (update link after override)
+- `client/src/components/itinerary/DayMapsButton.tsx` (refresh day URL)
+
+### 5. Add Trip Transport Summary to Itinerary Card
+
+At the bottom of the Itinerary Card, add a summary section:
+- Total transport time across all days
+- Total transport cost across all days
+- Mode breakdown: "Train 65% • Walking 25% • Taxi 10%" (with icons)
+- This updates dynamically when any leg is overridden
+
+**Relevant files:**
+- `client/src/components/itinerary/ItineraryCard.tsx`
+
+### 6. Handle expert transport suggestions
+
+When an expert with "suggest" permissions changes a transport mode:
+- The change is flagged as a **suggestion**, not a direct override
+- The traveler sees: "Your expert recommends taxi for this leg (currently set to train)"
+- Traveler can accept or dismiss the suggestion
+- Accepted suggestions become the active mode and persist to DB
+
+For launch MVP: expert mode changes behave the same as user overrides (direct persist). The suggestion/accept flow is a Phase 2 enhancement.
+
+**Relevant files:**
+- `client/src/components/itinerary/TransportLeg.tsx` (expert permission check)
+- `client/src/pages/itinerary-view.tsx` (expert vs owner vs public rendering)
+
+### 7. Trigger transport calculation at the right moment
+
+Ensure the Transport Leg Calculator runs at the correct point in the lifecycle:
+
+**Trigger 1:** When the optimizer produces variants → calculate transport for all 4 variants immediately (this already exists from the spec implementation).
+
+**Trigger 2:** When a user accepts expert suggestions that change the activity sequence → recalculate transport for the affected days only. This requires:
+- Detecting which activities changed (added, removed, reordered)
+- Deleting stale transport_leg records for affected days
+- Running the calculator on just those days
+- Updating maps URLs for affected days
+
+**Trigger 3:** When a user manually reorders activities in their itinerary (if drag-and-drop reordering exists) → same recalculation flow as Trigger 2.
+
+**Relevant files:**
+- `server/itinerary-optimizer.ts` (Trigger 1 — already implemented)
+- `server/routes.ts` (Trigger 2 — add to suggestion-accept endpoint)
+- `server/services/transport-leg-calculator.ts` (add per-day recalculation method)
+
+---
+
+## Implementation Order
+
+1. **Task 1** — Confirm tab removal (5 min)
+2. **Task 7** — Verify trigger points are correct (15 min)
+3. **Task 2** — Upgrade TransportLeg to dropdown (45 min)
+4. **Task 3** — Downstream timing recalculation (30 min)
+5. **Task 4** — Maps link updates on mode change (20 min)
+6. **Task 5** — Trip Transport Summary (20 min)
+7. **Task 6** — Expert suggestions (MVP: same as user override) (10 min)
+
+Total estimated effort: 2.5-3 hours
