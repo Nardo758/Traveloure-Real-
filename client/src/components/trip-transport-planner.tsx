@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -243,6 +243,14 @@ export function TripTransportPlanner({
   const [packagesGenerated, setPackagesGenerated] = useState(false);
   const [dbSyncDone, setDbSyncDone] = useState(false);
 
+  const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
+    queryKey: ["/api/transport-legs/user"],
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const resolvedLegs = existingTransportLegs ?? fetchedLegs ?? [];
+
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
     
@@ -354,9 +362,9 @@ export function TripTransportPlanner({
       });
     }
 
-    if (existingTransportLegs && existingTransportLegs.length > 0) {
+    if (resolvedLegs.length > 0) {
       for (const seg of result) {
-        const matched = existingTransportLegs.find(etl => {
+        const matched = resolvedLegs.find(etl => {
           const fromMatch = etl.fromName?.toLowerCase().includes(seg.from.name.toLowerCase()) ||
             seg.from.name.toLowerCase().includes(etl.fromName?.toLowerCase() || "");
           const toMatch = etl.toName?.toLowerCase().includes(seg.to.name.toLowerCase()) ||
@@ -370,14 +378,14 @@ export function TripTransportPlanner({
     }
 
     return result;
-  }, [cart, destination, startDate, endDate, travelers, arrivalAirport, existingTransportLegs]);
+  }, [cart, destination, startDate, endDate, travelers, arrivalAirport, resolvedLegs]);
 
   useEffect(() => {
-    if (dbSyncDone || !existingTransportLegs || existingTransportLegs.length === 0) return;
+    if (dbSyncDone || resolvedLegs.length === 0) return;
     const overrides: Record<string, string> = {};
     for (const seg of segments) {
       if (!seg.transportLegId) continue;
-      const etl = existingTransportLegs.find(l => l.id === seg.transportLegId);
+      const etl = resolvedLegs.find(l => l.id === seg.transportLegId);
       if (etl?.userSelectedMode) {
         const mapped = mapStoredModeToLocal(etl.userSelectedMode);
         if (mapped) overrides[seg.id] = mapped;
@@ -387,7 +395,7 @@ export function TripTransportPlanner({
       setImmediateOverrides(prev => ({ ...overrides, ...prev }));
     }
     setDbSyncDone(true);
-  }, [segments, existingTransportLegs, dbSyncDone]);
+  }, [segments, resolvedLegs, dbSyncDone]);
 
   const needsTransportSegments = useMemo(
     () => segments.filter(s => s.status === 'needs_transport'),
@@ -592,10 +600,13 @@ export function TripTransportPlanner({
                           onValueChange={(val) => handleImmediateModeChange(seg, val)}
                         >
                           <SelectTrigger
-                            className="w-[150px] h-8 text-xs"
+                            className="w-[160px] h-8 text-xs"
                             data-testid={`select-immediate-mode-${seg.id}`}
                           >
-                            <SelectValue />
+                            <span className="flex items-center gap-1.5">
+                              {getModeIcon(selectedMode)}
+                              <span>{TRANSPORT_MODES.find(m => m.value === selectedMode)?.label ?? selectedMode}</span>
+                            </span>
                           </SelectTrigger>
                           <SelectContent>
                             {TRANSPORT_MODES.map(m => (
