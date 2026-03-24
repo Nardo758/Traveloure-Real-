@@ -28,7 +28,7 @@ import {
   AnchorConstraint,
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
-import { calculateTransportLegs } from "./services/transport-leg-calculator";
+import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
 
 const GROK_MODEL = "grok-2-1212";
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
@@ -169,7 +169,8 @@ export async function generateOptimizedItineraries(
   endDate: string,
   budget?: number,
   travelers?: number,
-  tripId?: string
+  tripId?: string,
+  userTransportPrefs?: Partial<UserTransportPrefs>
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -368,7 +369,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         }));
 
       if (baselineActivitiesWithCoords.length > 0) {
-        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination);
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, userTransportPrefs || {});
       }
     } catch (legErr) {
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
@@ -769,7 +770,7 @@ Respond with valid JSON in this exact format:
           }));
 
         if (activitiesWithCoords.length > 0) {
-          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination);
+          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, userTransportPrefs || {});
         }
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
