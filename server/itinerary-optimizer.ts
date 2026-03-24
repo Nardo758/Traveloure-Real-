@@ -347,18 +347,28 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     }
 
     // Calculate transport legs for the baseline variant
+    // Only compute if we have persisted variant items (which may have real coords from DB)
     try {
-      const baselineActivities = baselineItems.map((item, idx) => ({
-        id: item.id || String(idx),
-        name: item.name || `Stop ${idx + 1}`,
-        lat: 0,
-        lng: 0,
-        scheduledTime: item.timeSlot || "09:00",
-        dayNumber: item.dayNumber || 1,
-        order: idx,
-      }));
-      if (baselineActivities.length > 0) {
-        await calculateTransportLegs(baselineVariant[0].id, baselineActivities, destination);
+      const baselineVariantItems = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, baselineVariant[0].id))
+        .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+
+      const baselineActivitiesWithCoords = baselineVariantItems
+        .filter((item) => item.latitude != null && item.longitude != null)
+        .map((item, idx) => ({
+          id: item.id,
+          name: item.name || `Stop ${idx + 1}`,
+          lat: parseFloat(item.latitude as unknown as string),
+          lng: parseFloat(item.longitude as unknown as string),
+          scheduledTime: item.startTime || "09:00",
+          dayNumber: item.dayNumber,
+          order: item.sortOrder ?? idx,
+        }));
+
+      if (baselineActivitiesWithCoords.length > 0) {
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination);
       }
     } catch (legErr) {
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
@@ -738,6 +748,7 @@ Respond with valid JSON in this exact format:
       }
 
       // Calculate transport legs for the new variant after metrics are finalized
+      // Only use items that have real coordinates to avoid bogus legs
       try {
         const variantItems = await db
           .select()
@@ -745,18 +756,20 @@ Respond with valid JSON in this exact format:
           .where(eq(itineraryVariantItems.variantId, newVariant.id))
           .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
 
-        const activities = variantItems.map((item, idx) => ({
-          id: item.id,
-          name: item.name || `Stop ${idx + 1}`,
-          lat: 0,
-          lng: 0,
-          scheduledTime: item.startTime || "09:00",
-          dayNumber: item.dayNumber,
-          order: item.sortOrder ?? idx,
-        }));
+        const activitiesWithCoords = variantItems
+          .filter((item) => item.latitude != null && item.longitude != null)
+          .map((item, idx) => ({
+            id: item.id,
+            name: item.name || `Stop ${idx + 1}`,
+            lat: parseFloat(item.latitude as unknown as string),
+            lng: parseFloat(item.longitude as unknown as string),
+            scheduledTime: item.startTime || "09:00",
+            dayNumber: item.dayNumber,
+            order: item.sortOrder ?? idx,
+          }));
 
-        if (activities.length > 0) {
-          await calculateTransportLegs(newVariant.id, activities, destination);
+        if (activitiesWithCoords.length > 0) {
+          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination);
         }
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
