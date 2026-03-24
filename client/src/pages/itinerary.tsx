@@ -42,8 +42,6 @@ import {
   Headphones,
   CreditCard,
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
   Bus,
 } from "lucide-react";
 import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
@@ -57,7 +55,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { format, addDays } from "date-fns";
 import { TripLogisticsDashboard } from "@/components/logistics";
@@ -327,7 +324,7 @@ export default function ItineraryPage() {
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
-  const [legsOpen, setLegsOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState("itinerary");
   const { toast } = useToast();
 
   interface TripTransportLeg {
@@ -638,8 +635,24 @@ export default function ItineraryPage() {
           ))}
         </div>
 
-        <div className="flex flex-col lg:flex-row gap-6 pb-12">
-          <div className="lg:w-72 flex-shrink-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 h-auto w-full justify-start gap-1">
+            <TabsTrigger value="itinerary" className="flex items-center gap-2 data-[state=active]:bg-[#FF385C] data-[state=active]:text-white" data-testid="tab-itinerary">
+              <Calendar className="w-4 h-4" />
+              Itinerary
+            </TabsTrigger>
+            <TabsTrigger value="transport" className="flex items-center gap-2 data-[state=active]:bg-[#FF385C] data-[state=active]:text-white" data-testid="tab-transport">
+              <Bus className="w-4 h-4" />
+              Transport
+              {legsData?.legs?.length ? (
+                <Badge variant="secondary" className="ml-1 text-xs">{legsData.legs.length}</Badge>
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="itinerary">
+            <div className="flex flex-col lg:flex-row gap-6 pb-12">
+              <div className="lg:w-72 flex-shrink-0">
             <Card className="bg-white dark:bg-gray-800 lg:sticky lg:top-4 z-10">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-[#6B7280]">Trip Days</CardTitle>
@@ -679,84 +692,6 @@ export default function ItineraryPage() {
                   </div>
                 </ScrollArea>
               </CardContent>
-            </Card>
-            
-            <Card className="mt-4 bg-white dark:bg-gray-800">
-              <CardHeader className="pb-2 cursor-pointer" onClick={() => setLegsOpen(o => !o)}>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-[#6B7280] flex items-center gap-2">
-                    <Bus className="h-4 w-4" />
-                    Transport Legs
-                    {legsData?.legs?.length ? (
-                      <Badge variant="secondary" className="text-xs">{legsData.legs.length}</Badge>
-                    ) : null}
-                  </CardTitle>
-                  {legsOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                </div>
-              </CardHeader>
-              {legsOpen && (
-                <CardContent className="pt-0 space-y-3">
-                  {legsLoading ? (
-                    <div className="py-4 text-center text-sm text-gray-400 animate-pulse">Loading transport legs…</div>
-                  ) : legsData?.legs?.length ? (
-                    <>
-                      {legsData.legs.map((leg) => {
-                        const legData: TransportLegData = {
-                          id: leg.id,
-                          legOrder: leg.legOrder,
-                          fromName: leg.fromName,
-                          fromLat: leg.fromLat,
-                          fromLng: leg.fromLng,
-                          toName: leg.toName,
-                          toLat: leg.toLat,
-                          toLng: leg.toLng,
-                          distanceMeters: leg.distanceMeters,
-                          distanceDisplay: leg.distanceDisplay,
-                          recommendedMode: leg.recommendedMode,
-                          userSelectedMode: leg.userSelectedMode,
-                          estimatedDurationMinutes: leg.estimatedDurationMinutes,
-                          estimatedCostUsd: leg.estimatedCostUsd,
-                          alternativeModes: leg.alternativeModes ?? [],
-                        };
-                        return (
-                          <TransportLeg
-                            key={leg.id}
-                            leg={legData}
-                            onModeChangeSuccess={() => {}}
-                          />
-                        );
-                      })}
-                      <a
-                        href={`https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(itinerary.destination.split(',')[0])}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline pt-1"
-                        data-testid="link-12go-book"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Book ground transport on 12Go
-                      </a>
-                    </>
-                  ) : (
-                    <div className="py-3 space-y-2">
-                      <p className="text-xs text-gray-500">No transport legs added yet.</p>
-                      <p className="text-xs text-gray-400">
-                        Generate an itinerary comparison and select a variant to auto-calculate transport legs between locations.
-                      </p>
-                      <a
-                        href={`https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(itinerary.destination.split(',')[0])}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                        data-testid="link-12go-book-empty"
-                      >
-                        <ExternalLink className="h-3 w-3" />
-                        Browse transport on 12Go
-                      </a>
-                    </div>
-                  )}
-                </CardContent>
-              )}
             </Card>
           </div>
 
@@ -1009,7 +944,167 @@ export default function ItineraryPage() {
               </CardContent>
             </Card>
           </div>
-        </div>
+          </div>
+          </TabsContent>
+
+          {/* ===== TRANSPORT TAB ===== */}
+          <TabsContent value="transport" className="pb-12">
+            {legsLoading ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-24 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : legsData?.legs?.length ? (
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <Card className="bg-white dark:bg-gray-800">
+                    <CardContent className="p-4 flex flex-col items-center">
+                      <span className="text-2xl font-bold text-[#FF385C]">{legsData.legs.length}</span>
+                      <span className="text-xs text-gray-500 mt-1">Legs</span>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-white dark:bg-gray-800">
+                    <CardContent className="p-4 flex flex-col items-center">
+                      <span className="text-2xl font-bold text-[#FF385C]">
+                        {Math.round(legsData.legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0) / 60)}h
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">Total Travel Time</span>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-white dark:bg-gray-800">
+                    <CardContent className="p-4 flex flex-col items-center">
+                      <span className="text-2xl font-bold text-[#FF385C]">
+                        ${legsData.legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0).toFixed(0)}
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">Est. Transport Cost</span>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-white dark:bg-gray-800">
+                    <CardContent className="p-4 flex flex-col items-center">
+                      <span className="text-2xl font-bold text-[#FF385C]">
+                        {Math.round(legsData.legs.reduce((sum, l) => sum + (l.distanceMeters || 0), 0) / 1000)} km
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">Total Distance</span>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Legs grouped by day */}
+                {(() => {
+                  const byDay: Record<number, typeof legsData.legs> = {};
+                  legsData.legs.forEach(leg => {
+                    const day = (leg as any).dayNumber ?? 0;
+                    if (!byDay[day]) byDay[day] = [];
+                    byDay[day].push(leg);
+                  });
+                  const days = Object.keys(byDay).map(Number).sort((a, b) => a - b);
+                  return days.map(dayNum => (
+                    <div key={dayNum} className="mb-8">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-[#FF385C] text-white text-sm font-bold flex-shrink-0">
+                          {dayNum === 0 ? "?" : dayNum}
+                        </div>
+                        <h3 className="text-base font-semibold text-[#111827] dark:text-white">
+                          {dayNum === 0 ? "Unassigned legs" : `Day ${dayNum}`}
+                          {itinerary?.days?.[dayNum - 1]?.title ? ` — ${itinerary.days[dayNum - 1].title}` : ""}
+                        </h3>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <Badge variant="secondary" className="text-xs">{byDay[dayNum].length} leg{byDay[dayNum].length !== 1 ? "s" : ""}</Badge>
+                      </div>
+                      <div className="space-y-3">
+                        {byDay[dayNum].map(leg => {
+                          const legData: TransportLegData = {
+                            id: leg.id,
+                            legOrder: leg.legOrder,
+                            fromName: leg.fromName,
+                            fromLat: leg.fromLat,
+                            fromLng: leg.fromLng,
+                            toName: leg.toName,
+                            toLat: leg.toLat,
+                            toLng: leg.toLng,
+                            distanceMeters: leg.distanceMeters,
+                            distanceDisplay: leg.distanceDisplay,
+                            recommendedMode: leg.recommendedMode,
+                            userSelectedMode: leg.userSelectedMode,
+                            estimatedDurationMinutes: leg.estimatedDurationMinutes,
+                            estimatedCostUsd: leg.estimatedCostUsd,
+                            alternativeModes: leg.alternativeModes ?? [],
+                          };
+                          return (
+                            <TransportLeg
+                              key={leg.id}
+                              leg={legData}
+                              readOnly={false}
+                              onModeChangeSuccess={() => {}}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+                })()}
+
+                {/* Book on 12Go CTA */}
+                <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
+                  <CardContent className="p-4 flex items-center justify-between gap-4">
+                    <div>
+                      <p className="font-medium text-[#111827] dark:text-white">Book ground transport for this trip</p>
+                      <p className="text-sm text-[#6B7280]">Trains, buses, ferries and more via 12Go</p>
+                    </div>
+                    <a
+                      href={`https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(itinerary.destination.split(',')[0])}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="link-12go-book-tab"
+                    >
+                      <Button variant="outline" className="whitespace-nowrap border-blue-300 text-blue-700 hover:bg-blue-50">
+                        <ExternalLink className="w-4 h-4 mr-2" />
+                        Book on 12Go
+                      </Button>
+                    </a>
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              /* Empty state */
+              <div className="flex flex-col items-center justify-center py-24 gap-6 text-center">
+                <div className="p-5 rounded-full bg-gray-100 dark:bg-gray-800">
+                  <Bus className="w-10 h-10 text-gray-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-[#111827] dark:text-white mb-2">No transport legs yet</h3>
+                  <p className="text-[#6B7280] max-w-md">
+                    Run AI Optimization to generate your itinerary variants — choosing a variant will automatically calculate transport legs between all your locations.
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+                    onClick={() => window.location.href = `/itinerary-comparison/${tripId}`}
+                    data-testid="button-run-optimization"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Run AI Optimization
+                  </Button>
+                  <a
+                    href={`https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(itinerary?.destination?.split(',')[0] ?? '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="link-12go-empty"
+                  >
+                    <Button variant="outline">
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Browse 12Go Transport
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+        </Tabs>
       </div>
 
       {/* Expert Booking Dialog */}
