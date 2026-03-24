@@ -12061,6 +12061,25 @@ export async function registerDiscoveryRoutes(app: Express) {
   app.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
+      const userId = (req as any).user?.id;
+
+      // Verify ownership: the variant must belong to a comparison owned by the requesting user
+      const [variant] = await db
+        .select({ comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, variantId));
+
+      if (!variant) return res.status(404).json({ error: "Variant not found" });
+
+      const [comparison] = await db
+        .select({ userId: itineraryComparisons.userId })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+      if (!comparison || comparison.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
       const legs = await db
         .select()
         .from(transportLegs)
