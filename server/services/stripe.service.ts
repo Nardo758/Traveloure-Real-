@@ -10,6 +10,7 @@
 import Stripe from "stripe";
 import { db } from "../db";
 import { transportBookingOptions, serviceBookings } from "@shared/schema";
+import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
 
 if (!process.env.STRIPE_SECRET_KEY) {
@@ -48,6 +49,13 @@ export async function createTransportBookingCheckout(
   if (option.bookingType !== "platform") {
     throw new Error("Not a platform booking option");
   }
+
+  // Fetch user email for Stripe checkout
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+
+  const userEmail = user?.email || undefined;
 
   // Calculate line items for Stripe
   const priceCents = option.priceCentsLow || 0;
@@ -94,7 +102,7 @@ export async function createTransportBookingCheckout(
     mode: "payment",
     success_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/itinerary/${tripId}?booking=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/itinerary/${tripId}?booking=cancelled`,
-    customer_email: undefined, // TODO: Add user email
+    customer_email: userEmail,
     metadata: {
       type: "transport_booking", // For webhook routing
       bookingId,
