@@ -1614,7 +1614,7 @@ export default function ItineraryComparisonPage() {
                               {legAfter && (
                                 <TransportLeg
                                   leg={legAfter}
-                                  readOnly={true}
+                                  readOnly={false}
                                   dayNumber={day.dayNumber}
                                   className="my-2"
                                 />
