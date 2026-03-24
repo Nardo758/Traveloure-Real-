@@ -237,10 +237,10 @@ router.post(
         specialRequests
       );
 
-      // Mark the option as "booked" so the UI shows Confirmed badge immediately
+      // Mark the option as "confirmed" so the UI shows the green Confirmed badge immediately
       await db
         .update(transportBookingOptions)
-        .set({ bookingStatus: "booked", updatedAt: new Date() })
+        .set({ bookingStatus: "confirmed", updatedAt: new Date() })
         .where(eq(transportBookingOptions.id, optionId));
 
       res.json({
