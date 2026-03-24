@@ -4403,12 +4403,69 @@ export const mapsExportCache = pgTable("maps_export_cache", {
   transportLegsHash: text("transport_legs_hash"),
 });
 
+// Transport Booking Options (choices for booking a specific leg or multi-day pass)
+export const transportBookingOptions = pgTable("transport_booking_options", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+
+  // Which transport leg (or trip for multi-day pass)
+  transportLegId: varchar("transport_leg_id").references(() => transportLegs.id, { onDelete: "cascade" }),
+  variantId: varchar("variant_id").references(() => itineraryVariants.id, { onDelete: "cascade" }),
+
+  // Booking channel and source
+  bookingType: text("booking_type").notNull(), // "platform", "affiliate", "deep_link", "info_only"
+  source: text("source").notNull(), // "traveloure", "12go", "viator", "uber", "walking", etc.
+
+  // Display information
+  title: text("title").notNull(),
+  description: text("description"),
+  modeType: text("mode_type").notNull(),
+  iconType: text("icon_type"),
+
+  // Pricing
+  priceDisplay: text("price_display"),
+  priceCentsLow: integer("price_cents_low"),
+  priceCentsHigh: integer("price_cents_high"),
+  pricePerPerson: boolean("price_per_person").default(false),
+  currency: text("currency").default("USD"),
+
+  // Timing
+  estimatedMinutes: integer("estimated_minutes"),
+  estimatedMinutesHigh: integer("estimated_minutes_high"),
+
+  // Provider and external links
+  providerId: integer("provider_id"),
+  externalUrl: text("external_url"),
+  affiliateCode: text("affiliate_code"),
+  deepLinkScheme: text("deep_link_scheme"),
+
+  // Booking and pass metadata
+  bookingStatus: text("booking_status").default("available"), // "available", "booked", "confirmed", "cancelled"
+  bookingId: integer("booking_id"),
+  isMultiDayPass: boolean("is_multi_day_pass").default(false),
+  passValidDays: integer("pass_valid_days"),
+  savingsVsIndividual: integer("savings_vs_individual_cents"),
+
+  // Rating and reviews (for providers)
+  rating: doublePrecision("rating"),
+  reviewCount: integer("review_count"),
+
+  // Sorting and recommendation
+  sortOrder: integer("sort_order").default(0),
+  isRecommended: boolean("is_recommended").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTransportBookingOptionSchema = createInsertSchema(transportBookingOptions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSharedItinerarySchema = createInsertSchema(sharedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMapsExportCacheSchema = createInsertSchema(mapsExportCache).omit({ id: true });
 
 export type TransportLeg = typeof transportLegs.$inferSelect;
 export type InsertTransportLeg = z.infer<typeof insertTransportLegSchema>;
+export type TransportBookingOption = typeof transportBookingOptions.$inferSelect;
+export type InsertTransportBookingOption = z.infer<typeof insertTransportBookingOptionSchema>;
 export type SharedItinerary = typeof sharedItineraries.$inferSelect;
 export type InsertSharedItinerary = z.infer<typeof insertSharedItinerarySchema>;
 export type MapsExportCache = typeof mapsExportCache.$inferSelect;
