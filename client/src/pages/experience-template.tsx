@@ -1158,6 +1158,38 @@ export default function ExperienceTemplatePage() {
 
   const userCredits = walletData?.balance ?? 0;
 
+  const { data: userComparisons = [] } = useQuery<any[]>({
+    queryKey: ["/api/itinerary-comparisons"],
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const recentComparisonId = useMemo(() => {
+    if (!destination || userComparisons.length === 0) return null;
+    const dest = destination.toLowerCase().trim();
+    const matching = userComparisons.filter(
+      (c: any) => c.destination && c.destination.toLowerCase().trim().includes(dest)
+    );
+    if (matching.length === 0) return null;
+    return matching[matching.length - 1].id as string;
+  }, [userComparisons, destination]);
+
+  const { data: recentComparisonData } = useQuery<any>({
+    queryKey: ["/api/itinerary-comparisons", recentComparisonId],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-comparisons/${recentComparisonId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!recentComparisonId,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const recentVariantId: string | undefined = recentComparisonData?.variants?.[0]?.id;
+
   const dateError = useMemo(() => {
     if (startDate && endDate && endDate < startDate) {
       return "End date cannot be before start date";
@@ -1991,6 +2023,7 @@ export default function ExperienceTemplatePage() {
                 startDate={startDate}
                 endDate={endDate}
                 travelers={travelers}
+                variantId={recentVariantId}
                 onBookTransfer={(segment, option) => {
                   addToCart({
                     id: `transport-${segment.id}-${Date.now()}`,
