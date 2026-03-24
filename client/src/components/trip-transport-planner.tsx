@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,7 @@ interface CartItem {
 
 interface TransportSegment {
   id: string;
+  transportLegId?: string | null;
   type: 'airport_to_hotel' | 'hotel_to_activity' | 'activity_to_activity' | 'hotel_to_airport';
   from: {
     name: string;
@@ -121,6 +122,15 @@ interface TransportOption {
   isFree?: boolean;
 }
 
+export interface ExistingTransportLeg {
+  id: string;
+  legOrder?: number | null;
+  fromName: string;
+  toName: string;
+  recommendedMode?: string | null;
+  userSelectedMode?: string | null;
+}
+
 interface TripTransportPlannerProps {
   cart: CartItem[];
   destination: string;
@@ -128,6 +138,8 @@ interface TripTransportPlannerProps {
   endDate?: Date;
   travelers: number;
   arrivalAirport?: string;
+  variantId?: string;
+  existingTransportLegs?: ExistingTransportLeg[];
   onBookTransfer?: (segment: TransportSegment, option: TransportOption) => void;
 }
 
@@ -138,6 +150,34 @@ const TRANSPORT_MODES = [
   { value: "shuttle", label: "Shared Shuttle", icon: Bus },
   { value: "walking", label: "Walking", icon: MapPin },
 ];
+
+const BASE_RIDESHARE_COST = 20;
+const BASE_RIDESHARE_DURATION = 20;
+
+const MODE_DURATION_MULTIPLIER: Record<string, number> = {
+  private_car: 1.0,
+  rideshare: 1.1,
+  shuttle: 1.6,
+  public_transit: 2.2,
+  walking: 5.5,
+};
+
+function getImmediateCostRange(mode: string): { min: number; max: number } {
+  const mult = getModeMultiplier(mode, "rideshare");
+  const mid = BASE_RIDESHARE_COST * mult;
+  return { min: Math.round(mid * 0.8), max: Math.round(mid * 1.25) };
+}
+
+function getImmediateDurationRange(mode: string): { min: number; max: number } {
+  const mult = MODE_DURATION_MULTIPLIER[mode] ?? 1.1;
+  const mid = BASE_RIDESHARE_DURATION * mult;
+  return { min: Math.round(mid * 0.8), max: Math.round(mid * 1.25) };
+}
+
+function getImmediateCostEstimate(mode: string): number {
+  return Math.round(BASE_RIDESHARE_COST * getModeMultiplier(mode, "rideshare"));
+}
+
 
 function getModeIcon(mode: string) {
   switch (mode) {
@@ -173,6 +213,25 @@ function getModeMultiplier(newMode: string, originalMode: string): number {
   return newCost / origCost;
 }
 
+function mapStoredModeToLocal(storedMode: string): string | null {
+  const map: Record<string, string> = {
+    taxi: "rideshare",
+    rideshare: "rideshare",
+    private_car: "private_car",
+    private_driver: "private_car",
+    rental_car: "private_car",
+    bus: "shuttle",
+    shuttle: "shuttle",
+    transit: "public_transit",
+    train: "public_transit",
+    tram: "public_transit",
+    public_transit: "public_transit",
+    walk: "walking",
+    walking: "walking",
+  };
+  return map[storedMode] ?? null;
+}
+
 function getConvenienceColor(score: number) {
   if (score >= 80) return "text-green-600";
   if (score >= 60) return "text-amber-600";
@@ -195,12 +254,33 @@ export function TripTransportPlanner({
   endDate,
   travelers,
   arrivalAirport,
+  variantId,
+  existingTransportLegs,
   onBookTransfer
 }: TripTransportPlannerProps) {
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
   const [customOverrides, setCustomOverrides] = useState<Record<string, string>>({});
+  const [immediateOverrides, setImmediateOverrides] = useState<Record<string, string>>({});
   const [showLegs, setShowLegs] = useState(false);
   const [packagesGenerated, setPackagesGenerated] = useState(false);
+  const [dbSyncDone, setDbSyncDone] = useState(false);
+  const [baselineModes, setBaselineModes] = useState<Record<string, string>>({});
+
+  const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
+    queryKey: ["/api/itinerary-variants", variantId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${variantId}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!variantId && !existingTransportLegs,
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  const resolvedLegs: ExistingTransportLeg[] = existingTransportLegs ?? fetchedLegs ?? [];
 
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
@@ -313,8 +393,54 @@ export function TripTransportPlanner({
       });
     }
 
+    if (resolvedLegs.length > 0) {
+      const needsLegs = result.filter(s => s.status === "needs_transport");
+      needsLegs.forEach((seg, idx) => {
+        const byOrder = resolvedLegs.find(etl =>
+          etl.legOrder != null && etl.legOrder === idx + 1
+        );
+        if (byOrder) {
+          seg.transportLegId = byOrder.id;
+          return;
+        }
+        const segFrom = seg.from.name.toLowerCase().trim();
+        const segTo = seg.to.name.toLowerCase().trim();
+        const byName = resolvedLegs.find(etl => {
+          const legFrom = (etl.fromName ?? "").toLowerCase().trim();
+          const legTo = (etl.toName ?? "").toLowerCase().trim();
+          return legFrom === segFrom && legTo === segTo;
+        });
+        if (byName) seg.transportLegId = byName.id;
+      });
+    }
+
     return result;
-  }, [cart, destination, startDate, endDate, travelers, arrivalAirport]);
+  }, [cart, destination, startDate, endDate, travelers, arrivalAirport, resolvedLegs]);
+
+  useEffect(() => {
+    if (dbSyncDone || resolvedLegs.length === 0) return;
+    const overrides: Record<string, string> = {};
+    const baselines: Record<string, string> = {};
+    for (const seg of segments) {
+      if (!seg.transportLegId) continue;
+      const etl = resolvedLegs.find(l => l.id === seg.transportLegId);
+      if (!etl) continue;
+      const mappedRecommended = etl.recommendedMode
+        ? mapStoredModeToLocal(etl.recommendedMode)
+        : null;
+      if (mappedRecommended) baselines[seg.id] = mappedRecommended;
+      const activeMode = etl.userSelectedMode || etl.recommendedMode;
+      if (activeMode) {
+        const mapped = mapStoredModeToLocal(activeMode);
+        if (mapped) overrides[seg.id] = mapped;
+      }
+    }
+    if (Object.keys(baselines).length > 0) setBaselineModes(baselines);
+    if (Object.keys(overrides).length > 0) {
+      setImmediateOverrides(prev => ({ ...overrides, ...prev }));
+    }
+    setDbSyncDone(true);
+  }, [segments, resolvedLegs, dbSyncDone]);
 
   const needsTransportSegments = useMemo(
     () => segments.filter(s => s.status === 'needs_transport'),
@@ -385,6 +511,34 @@ export function TripTransportPlanner({
     return { min: totalMin, max: totalMax };
   }, [effectiveLegs]);
 
+  const totalImmediateCostRange = useMemo(() => {
+    const needSegs = segments.filter(s => s.status === 'needs_transport');
+    if (needSegs.length === 0) return null;
+    let totalMin = 0;
+    let totalMax = 0;
+    for (const seg of needSegs) {
+      const mode = immediateOverrides[seg.id] || "rideshare";
+      if (mode === "walking") continue;
+      const range = getImmediateCostRange(mode);
+      totalMin += range.min;
+      totalMax += range.max;
+    }
+    return { min: totalMin, max: totalMax };
+  }, [segments, immediateOverrides]);
+
+  const immediateModeMutation = useMutation({
+    mutationFn: async ({ legId, mode }: { legId: string; mode: string }) => {
+      return apiRequest("PATCH", `/api/transport-legs/${legId}/mode`, { selectedMode: mode });
+    },
+  });
+
+  const handleImmediateModeChange = useCallback((seg: TransportSegment, mode: string) => {
+    setImmediateOverrides(prev => ({ ...prev, [seg.id]: mode }));
+    if (seg.transportLegId) {
+      immediateModeMutation.mutate({ legId: seg.transportLegId, mode });
+    }
+  }, [immediateModeMutation]);
+
   const handleOverrideLeg = useCallback((segmentId: string, mode: string) => {
     setCustomOverrides(prev => ({ ...prev, [segmentId]: mode }));
   }, []);
@@ -394,6 +548,12 @@ export function TripTransportPlanner({
   }, []);
 
   const customCount = Object.keys(customOverrides).length;
+  const immediateCustomCount = needsTransportSegments.filter(seg => {
+    const selected = immediateOverrides[seg.id];
+    if (!selected) return false;
+    const baseline = baselineModes[seg.id];
+    return baseline ? selected !== baseline : true;
+  }).length;
 
   if (segments.length === 0) {
     return (
@@ -437,62 +597,143 @@ export function TripTransportPlanner({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!packagesGenerated && !generateMutation.isPending && (
-          <div className="text-center py-6 space-y-4" data-testid="transport-generate-prompt">
-            <div className="mx-auto w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900 flex items-center justify-center">
-              <Sparkles className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+        {needsTransportSegments.length > 0 && (
+          <div className="space-y-3" data-testid="immediate-legs-section">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <h4 className="font-semibold text-sm">Select Transport per Leg</h4>
+                <Badge variant="outline">
+                  <Pencil className="h-3 w-3 mr-1" />
+                  {needsTransportSegments.length} leg{needsTransportSegments.length !== 1 ? "s" : ""}
+                </Badge>
+              </div>
+              {immediateCustomCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setImmediateOverrides({ ...baselineModes });
+                    needsTransportSegments.forEach(seg => {
+                      if (!seg.transportLegId) return;
+                      const baseline = baselineModes[seg.id] || "rideshare";
+                      immediateModeMutation.mutate({ legId: seg.transportLegId, mode: baseline });
+                    });
+                  }}
+                  data-testid="button-reset-immediate"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Reset {immediateCustomCount} change{immediateCustomCount !== 1 ? "s" : ""}
+                </Button>
+              )}
             </div>
-            <div>
-              <h3 className="font-semibold text-lg">Smart Transport Packages</h3>
-              <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-                We'll analyze your {needsTransportSegments.length} transport legs and build 3 complete packages: 
-                private car, public transit, and a smart hybrid mix.
-              </p>
-            </div>
-            <Button
-              onClick={() => generateMutation.mutate()}
-              data-testid="button-generate-packages"
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Generate Transport Packages
-            </Button>
 
-            <div className="pt-2">
-              <button
-                className="text-xs text-muted-foreground underline"
-                onClick={() => setShowLegs(!showLegs)}
-                data-testid="button-toggle-legs-preview"
-              >
-                {showLegs ? "Hide" : "Show"} {needsTransportSegments.length} transport legs
-              </button>
-            </div>
-
-            {showLegs && (
-              <div className="text-left space-y-2 mt-3">
-                {segments.map(seg => (
+            <div className="space-y-2">
+              {needsTransportSegments.map((seg) => {
+                const selectedMode = immediateOverrides[seg.id] || baselineModes[seg.id] || "rideshare";
+                const costRange = getImmediateCostRange(selectedMode);
+                const durationRange = getImmediateDurationRange(selectedMode);
+                const isWalking = selectedMode === "walking";
+                const baseline = baselineModes[seg.id];
+                const isChanged = !!immediateOverrides[seg.id] && (
+                  baseline ? immediateOverrides[seg.id] !== baseline : true
+                );
+                return (
                   <div
                     key={seg.id}
                     className={cn(
-                      "flex items-center gap-2 p-2.5 rounded-md border text-sm",
-                      seg.status === 'covered' 
-                        ? "bg-green-50/50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                        : "bg-muted/30 border-border"
+                      "border rounded-md p-3 space-y-2",
+                      isChanged
+                        ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-700"
+                        : "bg-muted/20"
                     )}
-                    data-testid={`transport-segment-${seg.id}`}
+                    data-testid={`immediate-leg-${seg.id}`}
                   >
-                    {getLocationIcon(seg.from.type)}
-                    <span className="truncate max-w-[140px]">{seg.from.name}</span>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
-                    {getLocationIcon(seg.to.type)}
-                    <span className="truncate max-w-[140px]">{seg.to.name}</span>
-                    {seg.date && <span className="text-xs text-muted-foreground ml-auto shrink-0">{seg.date}</span>}
-                    {seg.status === 'covered' && (
-                      <Badge variant="outline" className="ml-auto shrink-0">
-                        <Check className="h-3 w-3 mr-1" /> Covered
-                      </Badge>
-                    )}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 text-sm min-w-0">
+                        {getLocationIcon(seg.from.type)}
+                        <span className="truncate max-w-[110px] font-medium">{seg.from.name}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        {getLocationIcon(seg.to.type)}
+                        <span className="truncate max-w-[110px] font-medium">{seg.to.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {seg.date && (
+                          <span className="text-xs text-muted-foreground hidden sm:inline">{seg.date}</span>
+                        )}
+                        <Select
+                          value={selectedMode}
+                          onValueChange={(val) => handleImmediateModeChange(seg, val)}
+                        >
+                          <SelectTrigger
+                            className="w-[160px] h-8 text-xs"
+                            data-testid={`select-immediate-mode-${seg.id}`}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              {getModeIcon(selectedMode)}
+                              <span>{TRANSPORT_MODES.find(m => m.value === selectedMode)?.label ?? selectedMode}</span>
+                            </span>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TRANSPORT_MODES.map(m => (
+                              <SelectItem key={m.value} value={m.value}>
+                                <span className="flex items-center gap-1.5">
+                                  <m.icon className="h-3 w-3" />
+                                  {m.label}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <DollarSign className="h-3 w-3" />
+                        {isWalking ? "Free" : `$${costRange.min}–$${costRange.max}`}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {durationRange.min}–{durationRange.max} min
+                      </span>
+                      {isChanged && (
+                        <Badge variant="outline" className="text-xs h-5 border-amber-300 text-amber-700 dark:text-amber-400">
+                          Customized
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+
+            {totalImmediateCostRange !== null && (
+              <div className="p-3 rounded-md bg-muted/30 border border-border flex items-center justify-between gap-2">
+                <span className="text-sm font-medium flex items-center gap-1.5">
+                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                  Estimated Transport Cost
+                </span>
+                <span className="text-sm font-bold">
+                  {totalImmediateCostRange.max === 0
+                    ? "Free"
+                    : `$${totalImmediateCostRange.min}–$${totalImmediateCostRange.max}`}
+                </span>
+              </div>
+            )}
+
+            {!generateMutation.isPending && (
+              <div className="pt-1 flex items-center gap-3 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => generateMutation.mutate()}
+                  data-testid="button-generate-packages"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Get AI Package Recommendations
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Analyzes all {needsTransportSegments.length} legs and suggests optimal packages
+                </span>
               </div>
             )}
           </div>
