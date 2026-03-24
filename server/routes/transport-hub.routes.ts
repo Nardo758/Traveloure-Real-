@@ -17,7 +17,7 @@ import {
   itineraryComparisons,
   affiliateClicks,
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, isNotNull } from "drizzle-orm";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 
 const router = Router();
@@ -34,13 +34,37 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
   try {
     const { tripId } = req.params;
 
-    // Get comparison (trip) data
-    const comparison = await db.query.itineraryComparisons.findFirst({
+    const emptyHub = {
+      summary: {
+        totalLegs: 0,
+        bookedLegs: 0,
+        estimatedCostRange: { low: 0, high: 0 },
+        totalTravelMinutes: 0,
+        preferences: { priority: "time", maxWalkMinutes: 15, avoidModes: [] },
+      },
+      days: [],
+      multiDayPasses: [],
+    };
+
+    // First try: look up as an itineraryComparisons ID directly
+    let comparison = await db.query.itineraryComparisons.findFirst({
       where: eq(itineraryComparisons.id, tripId),
     });
 
+    // Fallback: treat as a trips.id and find the latest comparison for it
     if (!comparison) {
-      return res.status(404).json({ error: "Trip not found" });
+      const [byTrip] = await db
+        .select()
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.tripId, tripId))
+        .orderBy(desc(itineraryComparisons.createdAt))
+        .limit(1);
+      comparison = byTrip ?? null;
+    }
+
+    // No comparison at all — return empty hub (not an error)
+    if (!comparison) {
+      return res.json(emptyHub);
     }
 
     // Get selected variant or first variant
@@ -51,14 +75,15 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       });
     } else {
       const variants = await db.query.itineraryVariants.findMany({
-        where: eq(itineraryVariants.comparisonId, tripId),
+        where: eq(itineraryVariants.comparisonId, comparison.id),
         limit: 1,
       });
       variant = variants[0];
     }
 
+    // No variant yet — return empty hub (not an error)
     if (!variant) {
-      return res.status(404).json({ error: "No itinerary variant found" });
+      return res.json(emptyHub);
     }
 
     // Fetch all transport legs for the variant
@@ -113,17 +138,11 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
     const bookedLegs = allOptions.filter(
       (opt) => opt.bookingStatus === "booked" || opt.bookingStatus === "confirmed"
     ).length;
+    const lowPrices = allOptions.filter((opt) => opt.priceCentsLow).map((opt) => (opt.priceCentsLow || 0) / 100);
+    const highPrices = allOptions.filter((opt) => opt.priceCentsHigh).map((opt) => (opt.priceCentsHigh || 0) / 100);
     const estimatedCostRange = {
-      low: Math.min(
-        ...allOptions
-          .filter((opt) => opt.priceCentsLow)
-          .map((opt) => (opt.priceCentsLow || 0) / 100)
-      ),
-      high: Math.max(
-        ...allOptions
-          .filter((opt) => opt.priceCentsHigh)
-          .map((opt) => (opt.priceCentsHigh || 0) / 100)
-      ),
+      low: lowPrices.length ? Math.min(...lowPrices) : 0,
+      high: highPrices.length ? Math.max(...highPrices) : 0,
     };
     const totalTravelMinutes = legs.reduce(
       (sum, l) => sum + (l.estimatedDurationMinutes || 0),
