@@ -1,16 +1,22 @@
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, MessageSquare, CreditCard, Bot, Calendar, Bookmark, Clock, ChevronRight, Plane, Heart, PartyPopper, Briefcase } from "lucide-react";
+import {
+  Plus, Loader2, MessageSquare, CreditCard, Bot, Calendar, Bookmark, Clock,
+  ChevronRight, Plane, Heart, PartyPopper, Briefcase, MapPin, Users, Share2,
+  Edit, Lightbulb, Zap
+} from "lucide-react";
+import { SiGoogle, SiApple } from "react-icons/si";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, getMonth } from "date-fns";
 import { UserTemplateRecommendations } from "@/components/user/template-recommendations";
 import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { detectMapsPlatform, openInMaps } from "@/lib/maps-platform";
 
 const eventTypeIcons: Record<string, any> = {
   vacation: Plane,
@@ -22,6 +28,45 @@ const eventTypeIcons: Record<string, any> = {
   corporate: Briefcase,
   adventure: Plane,
 };
+
+const eventTypeVibeTags: Record<string, string[]> = {
+  vacation: ["Explore", "Relaxation", "Culture"],
+  travel: ["Adventure", "Explore", "Discovery"],
+  wedding: ["Romantic", "Celebration", "Luxury"],
+  honeymoon: ["Romantic", "Intimate", "Luxury"],
+  proposal: ["Romantic", "Surprise", "Memorable"],
+  anniversary: ["Romantic", "Celebration", "Fine Dining"],
+  birthday: ["Fun", "Party", "Celebration"],
+  corporate: ["Business", "Networking", "Professional"],
+  adventure: ["Outdoors", "Thrill", "Nature"],
+  "boys-trip": ["Fun", "Adventure", "Nightlife"],
+  "girls-trip": ["Fun", "Spa", "Shopping"],
+  "date-night": ["Romantic", "Foodie", "Intimate"],
+  default: ["Travel", "Explore", "Adventure"],
+};
+
+function getVibeTags(eventType: string | null | undefined): string[] {
+  return eventTypeVibeTags[eventType || "default"] || eventTypeVibeTags.default;
+}
+
+function getSeasonalTip(destination: string, startDate: string): string {
+  const month = getMonth(new Date(startDate)); // 0-11
+  const dest = destination.toLowerCase();
+
+  if (month >= 11 || month <= 1) {
+    return `Winter travel to ${destination} peaks in December — book heated stays early and check for holiday closures.`;
+  } else if (month >= 2 && month <= 4) {
+    return `Spring is shoulder season in ${destination} — expect better prices, fewer crowds, and pleasant weather.`;
+  } else if (month >= 5 && month <= 7) {
+    return `Peak summer in ${destination}: book flights 3+ months ahead and look for early-bird hotel deals.`;
+  } else {
+    return `Fall is ideal for ${destination} — golden foliage, cultural events, and lower accommodation rates.`;
+  }
+}
+
+function getDestinationPhotoUrl(destination: string): string {
+  return `https://source.unsplash.com/800x400/?${encodeURIComponent(destination)},travel,landmark`;
+}
 
 function getRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -39,11 +84,222 @@ function getRelativeTime(dateStr: string): string {
   return `${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) > 1 ? "s" : ""} ago`;
 }
 
+interface TripScore {
+  tripId: string;
+  optimizationScore: number | null;
+  shareToken: string | null;
+}
+
+function PlanCard({ trip, score, i }: { trip: any; score: TripScore | undefined; i: number }) {
+  const { toast } = useToast();
+
+  const vibeTags = getVibeTags(trip.eventType);
+  const tip = getSeasonalTip(trip.destination, trip.startDate);
+  const photoUrl = getDestinationPhotoUrl(trip.destination);
+  const optimizationScore = score?.optimizationScore;
+  const shareToken = score?.shareToken;
+
+  const daysUntil = differenceInDays(new Date(trip.startDate), new Date());
+  const statusLabel = daysUntil > 0
+    ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
+    : "Planning";
+
+  const destinationParts = trip.destination.split(",");
+  const city = destinationParts[0]?.trim() || trip.destination;
+  const country = destinationParts.slice(1).join(",").trim() || "";
+
+  function handleGoogleMaps() {
+    const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trip.destination)}`;
+    openInMaps(url);
+  }
+
+  function handleAppleMaps() {
+    const platform = detectMapsPlatform();
+    const query = encodeURIComponent(trip.destination);
+    if (platform === "apple") {
+      openInMaps(`maps://?q=${query}`);
+    } else {
+      openInMaps(`https://maps.apple.com/?q=${query}`);
+    }
+  }
+
+  async function handleShare() {
+    const shareUrl = shareToken
+      ? `${window.location.origin}/itinerary-view/${shareToken}`
+      : `${window.location.origin}/itinerary/${trip.id}`;
+    if (navigator.share) {
+      navigator.share({ title: `${trip.title} • Traveloure`, url: shareUrl }).catch(() => {});
+    } else {
+      await navigator.clipboard?.writeText(shareUrl).catch(() => {});
+      toast({ title: "Link copied!", description: "Share link copied to clipboard." });
+    }
+  }
+
+  return (
+    <motion.div
+      key={trip.id}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: i * 0.08 }}
+    >
+      <Card
+        className="overflow-hidden border border-[#E5E7EB] hover:shadow-xl transition-all duration-300 group"
+        data-testid={`card-plan-${trip.id}`}
+      >
+        {/* Photo Hero */}
+        <div className="relative h-44 overflow-hidden">
+          <img
+            src={photoUrl}
+            alt={trip.destination}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+
+          {/* Top badges */}
+          <div className="absolute top-3 left-3 flex gap-2 items-center">
+            <Badge className="bg-[#FF385C] text-white border-0 text-xs font-semibold gap-1 px-2 py-1">
+              <Zap className="w-3 h-3" />
+              {statusLabel}
+            </Badge>
+            {trip.numberOfTravelers && trip.numberOfTravelers > 1 && (
+              <Badge className="bg-black/50 text-white border-0 text-xs backdrop-blur-sm gap-1 px-2 py-1">
+                <Users className="w-3 h-3" />
+                {trip.numberOfTravelers}
+              </Badge>
+            )}
+          </div>
+
+          {/* Score badge top-right */}
+          {optimizationScore != null && (
+            <div
+              className="absolute top-3 right-3 w-9 h-9 rounded-xl bg-white flex items-center justify-center shadow-md"
+              data-testid={`badge-score-${trip.id}`}
+            >
+              <span className="text-sm font-bold text-[#111827]">{optimizationScore}</span>
+            </div>
+          )}
+
+          {/* Destination overlay text */}
+          <div className="absolute bottom-3 left-4">
+            <h3 className="text-white text-xl font-bold leading-tight drop-shadow-sm" data-testid={`text-plan-city-${trip.id}`}>
+              {city}
+            </h3>
+            {country && (
+              <div className="flex items-center gap-1 text-white/85 text-xs mt-0.5">
+                <MapPin className="w-3 h-3" />
+                <span>{country}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <CardContent className="p-4 space-y-3">
+          {/* Trip title & dates */}
+          <div>
+            <p className="font-semibold text-[#111827] dark:text-white text-sm leading-snug" data-testid={`text-plan-title-${trip.id}`}>
+              {trip.title}
+            </p>
+            <p className="text-xs text-[#9CA3AF] mt-0.5">
+              {format(new Date(trip.startDate), "MMM d")} – {format(new Date(trip.endDate), "MMM d, yyyy")}
+            </p>
+          </div>
+
+          {/* Vibe tags */}
+          <div className="flex flex-wrap gap-1.5">
+            {vibeTags.map((tag) => (
+              <Badge
+                key={tag}
+                variant="secondary"
+                className="text-xs px-2 py-0.5 rounded-full bg-[#F3F4F6] text-[#374151] dark:bg-gray-700 dark:text-gray-200"
+              >
+                {tag}
+              </Badge>
+            ))}
+            {trip.budget && (
+              <span className="text-xs font-semibold text-[#111827] dark:text-white ml-auto">
+                ${Number(trip.budget).toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          {/* Seasonal insight tip */}
+          <div className="flex items-start gap-2 bg-green-50 dark:bg-green-950/20 rounded-lg p-2.5 border border-green-100 dark:border-green-900/40">
+            <Lightbulb className="w-3.5 h-3.5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-green-800 dark:text-green-300 leading-relaxed">{tip}</p>
+          </div>
+
+          {/* Action buttons */}
+          <div className="grid grid-cols-4 gap-1.5 pt-1">
+            <button
+              onClick={handleGoogleMaps}
+              data-testid={`button-google-maps-${trip.id}`}
+              className="flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-[#F9FAFB] dark:bg-gray-800 hover:bg-[#F3F4F6] dark:hover:bg-gray-700 transition-colors text-[#374151] dark:text-gray-200 group/btn"
+              title="Open in Google Maps"
+            >
+              <SiGoogle className="w-4 h-4 text-[#4285F4]" />
+              <span className="text-[10px] font-medium leading-none">Google</span>
+            </button>
+
+            <button
+              onClick={handleAppleMaps}
+              data-testid={`button-apple-maps-${trip.id}`}
+              className="flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-[#F9FAFB] dark:bg-gray-800 hover:bg-[#F3F4F6] dark:hover:bg-gray-700 transition-colors text-[#374151] dark:text-gray-200"
+              title="Open in Apple Maps"
+            >
+              <SiApple className="w-4 h-4 text-[#555]" />
+              <span className="text-[10px] font-medium leading-none">Apple</span>
+            </button>
+
+            <button
+              onClick={handleShare}
+              data-testid={`button-share-${trip.id}`}
+              className="flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-[#F9FAFB] dark:bg-gray-800 hover:bg-[#F3F4F6] dark:hover:bg-gray-700 transition-colors text-[#374151] dark:text-gray-200"
+              title="Share itinerary"
+            >
+              <Share2 className="w-4 h-4 text-[#FF385C]" />
+              <span className="text-[10px] font-medium leading-none">Share</span>
+            </button>
+
+            <Link href={`/trip/${trip.id}`}>
+              <button
+                data-testid={`button-modify-${trip.id}`}
+                className="w-full flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-[#F9FAFB] dark:bg-gray-800 hover:bg-[#F3F4F6] dark:hover:bg-gray-700 transition-colors text-[#374151] dark:text-gray-200"
+                title="Modify plan"
+              >
+                <Edit className="w-4 h-4 text-[#8B5CF6]" />
+                <span className="text-[10px] font-medium leading-none">Modify</span>
+              </button>
+            </Link>
+          </div>
+
+          {/* View Itinerary link */}
+          <Link href={`/itinerary/${trip.id}`}>
+            <Button
+              size="sm"
+              className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white text-xs font-semibold"
+              data-testid={`button-view-itinerary-${trip.id}`}
+            >
+              <Calendar className="w-3.5 h-3.5 mr-1.5" />
+              View Full Itinerary
+            </Button>
+          </Link>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
   const { data: notificationsData } = useQuery<any[]>({ queryKey: ["/api/notifications"] });
   const { data: walletData } = useQuery<{ credits: number }>({ queryKey: ["/api/wallet"] });
+  const { data: tripScores } = useQuery<TripScore[]>({
+    queryKey: ["/api/dashboard/trip-scores"],
+  });
 
   if (isLoading) {
     return (
@@ -89,26 +345,7 @@ export default function Dashboard() {
     { label: "Saved Items", value: 0, icon: Bookmark, color: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" },
   ];
 
-  const getProgressValue = (trip: any) => {
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate);
-    const total = differenceInDays(end, start);
-    if (total <= 0) return 100;
-    const elapsed = differenceInDays(now, start);
-    if (elapsed < 0) return Math.min(Math.random() * 60 + 20, 95);
-    if (elapsed > total) return 100;
-    return Math.round((elapsed / total) * 100);
-  };
-
-  const getStatusBadge = (trip: any) => {
-    const start = new Date(trip.startDate);
-    if (start > now) {
-      const days = differenceInDays(start, now);
-      if (days <= 30) return { label: `${days} days away`, variant: "default" as const };
-      return { label: "Upcoming", variant: "secondary" as const };
-    }
-    return { label: "Planning", variant: "outline" as const };
-  };
+  const scoreMap = new Map(tripScores?.map(s => [s.tripId, s]) ?? []);
 
   return (
     <DashboardLayout>
@@ -167,74 +404,15 @@ export default function Dashboard() {
           </div>
 
           {allPlans.length > 0 ? (
-            <div className="space-y-4">
-              {allPlans.slice(0, 3).map((trip, i) => {
-                const Icon = eventTypeIcons[trip.eventType || "vacation"] || Plane;
-                const progress = getProgressValue(trip);
-                const status = getStatusBadge(trip);
-
-                return (
-                  <motion.div
-                    key={trip.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                  >
-                    <Card className="border border-[#E5E7EB] hover:shadow-md transition-shadow" data-testid={`card-plan-${trip.id}`}>
-                      <CardContent className="p-5">
-                        <div className="flex items-start gap-4">
-                          <div className="w-12 h-12 rounded-lg bg-[#FFE3E8] flex items-center justify-center flex-shrink-0">
-                            <Icon className="w-6 h-6 text-[#FF385C]" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                              <div>
-                                <h3 className="font-semibold text-[#111827] dark:text-white truncate" data-testid={`text-plan-title-${trip.id}`}>
-                                  {trip.title}
-                                </h3>
-                                <p className="text-sm text-[#6B7280]">
-                                  {format(new Date(trip.startDate), "MMM d")} - {format(new Date(trip.endDate), "MMM d, yyyy")} • {trip.destination}
-                                </p>
-                              </div>
-                              <Badge variant={status.variant} className="flex-shrink-0" data-testid={`badge-status-${trip.id}`}>
-                                {status.label}
-                              </Badge>
-                            </div>
-
-                            <div className="mb-3">
-                              <div className="flex items-center justify-between text-sm mb-1">
-                                <span className="text-[#6B7280]">Progress</span>
-                                <span className="font-medium text-[#111827] dark:text-white">{progress}%</span>
-                              </div>
-                              <Progress value={progress} className="h-2" />
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Link href={`/trip/${trip.id}`}>
-                                <Button size="sm" variant="outline" data-testid={`button-view-plan-${trip.id}`}>
-                                  Open Plan
-                                </Button>
-                              </Link>
-                              <Link href={`/itinerary/${trip.id}`}>
-                                <Button size="sm" variant="default" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-view-itinerary-${trip.id}`}>
-                                  <Calendar className="w-4 h-4 mr-1" />
-                                  View Itinerary
-                                </Button>
-                              </Link>
-                              <Link href="/chat">
-                                <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-chat-${trip.id}`}>
-                                  <MessageSquare className="w-4 h-4 mr-1" />
-                                  Chat with Expert
-                                </Button>
-                              </Link>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                );
-              })}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {allPlans.slice(0, 6).map((trip, i) => (
+                <PlanCard
+                  key={trip.id}
+                  trip={trip}
+                  score={scoreMap.get(trip.id)}
+                  i={i}
+                />
+              ))}
             </div>
           ) : (
             <Card className="border-2 border-dashed border-[#E5E7EB]">
