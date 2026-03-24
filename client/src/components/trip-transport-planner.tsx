@@ -612,7 +612,7 @@ export function TripTransportPlanner({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    setImmediateOverrides({});
+                    setImmediateOverrides({ ...baselineModes });
                     needsTransportSegments.forEach(seg => {
                       if (!seg.transportLegId) return;
                       const baseline = baselineModes[seg.id] || "rideshare";
@@ -629,7 +629,7 @@ export function TripTransportPlanner({
 
             <div className="space-y-2">
               {needsTransportSegments.map((seg) => {
-                const selectedMode = immediateOverrides[seg.id] || "rideshare";
+                const selectedMode = immediateOverrides[seg.id] || baselineModes[seg.id] || "rideshare";
                 const costRange = getImmediateCostRange(selectedMode);
                 const durationRange = getImmediateDurationRange(selectedMode);
                 const isWalking = selectedMode === "walking";
