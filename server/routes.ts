@@ -4081,13 +4081,22 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     try {
       const userId = (req.user as any).claims.sub;
 
-      const comps = await db
+      const allComps = await db
         .select({
           tripId: itineraryComparisons.tripId,
           selectedVariantId: itineraryComparisons.selectedVariantId,
+          createdAt: itineraryComparisons.createdAt,
         })
         .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.userId, userId));
+        .where(eq(itineraryComparisons.userId, userId))
+        .orderBy(desc(itineraryComparisons.createdAt));
+
+      const seenTripIds = new Set<string>();
+      const comps = allComps.filter(c => {
+        if (!c.tripId || seenTripIds.has(c.tripId)) return false;
+        seenTripIds.add(c.tripId);
+        return true;
+      });
 
       const variantIds = comps
         .map(c => c.selectedVariantId)
