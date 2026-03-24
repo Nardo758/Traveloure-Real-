@@ -20,7 +20,6 @@ import {
   MapPin,
   DollarSign,
   Zap,
-  Sparkles,
   ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -108,29 +107,19 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
         <div>
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No transport bookings yet</h3>
           <p className="text-gray-500 max-w-md text-sm">
-            Run AI Optimization to generate itinerary variants — selecting a variant will automatically calculate transport legs between all your locations, with booking options.
+            No transport bookings have been added yet. Browse ground transport options via 12Go to get started.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <Button
-            className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-            onClick={() => window.location.href = `/itinerary-comparison/${tripId}`}
-            data-testid="button-run-optimization-hub"
-          >
-            <Sparkles className="w-4 h-4 mr-2" />
-            Run AI Optimization
+        <a
+          href="https://12go.co/en?affiliate_id=13805109"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button variant="outline">
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Browse 12Go Transport
           </Button>
-          <a
-            href="https://12go.co/en?affiliate_id=13805109"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button variant="outline">
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Browse 12Go Transport
-            </Button>
-          </a>
-        </div>
+        </a>
       </div>
     );
   }
