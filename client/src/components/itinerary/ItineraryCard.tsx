@@ -22,6 +22,7 @@ import {
   FootprintsIcon,
   Bike,
   Ship,
+  UserCheck,
 } from "lucide-react";
 import { TransportLeg, type TransportLegData } from "./TransportLeg";
 import { DayMapsButton } from "./DayMapsButton";
@@ -84,6 +85,7 @@ interface ItineraryCardProps {
   variantId?: string;
   showShareButton?: boolean;
   onShareSuccess?: (token: string, url: string) => void;
+  onSendToExpert?: () => void;
   liveMode?: boolean;
 }
 
@@ -205,6 +207,7 @@ export function ItineraryCard({
   variantId,
   showShareButton = false,
   onShareSuccess,
+  onSendToExpert,
   liveMode = false,
 }: ItineraryCardProps) {
   const { toast } = useToast();
@@ -306,6 +309,18 @@ export function ItineraryCard({
           >
             <Share2 className="h-4 w-4" />
             {copiedUrl ? "Link Copied!" : "Share"}
+          </Button>
+        )}
+        {onSendToExpert && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSendToExpert}
+            className="gap-2"
+            data-testid="button-send-to-expert"
+          >
+            <UserCheck className="h-4 w-4" />
+            Send to Expert
           </Button>
         )}
         {shareToken && (

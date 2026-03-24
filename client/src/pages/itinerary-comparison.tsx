@@ -117,11 +117,26 @@ interface ComparisonData {
   variants: Variant[];
 }
 
+interface ExpertOption {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  specialization?: string;
+}
+
 function ShareVariantButton({ variantId }: { variantId: string }) {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [expertDialogOpen, setExpertDialogOpen] = useState(false);
   const [expertShareUrl, setExpertShareUrl] = useState<string | null>(null);
+  const [selectedExpert, setSelectedExpert] = useState<ExpertOption | null>(null);
+  const [expertStep, setExpertStep] = useState<"select" | "share">("select");
+
+  const { data: expertsData } = useQuery<any[]>({
+    queryKey: ["/api/experts"],
+    enabled: expertDialogOpen,
+  });
 
   const shareMutation = useMutation({
     mutationFn: async () => {
@@ -139,12 +154,16 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
   });
 
   const expertShareMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/itinerary-variants/${variantId}/share`, { permissions: "suggest" });
+    mutationFn: async (expertId?: string) => {
+      const res = await apiRequest("POST", `/api/itinerary-variants/${variantId}/share`, {
+        permissions: "suggest",
+        sharedWithUserId: expertId || null,
+      });
       return res as { shareToken: string; shareUrl: string; expiresAt: string };
     },
     onSuccess: (data) => {
       setExpertShareUrl(data.shareUrl);
+      setExpertStep("share");
     },
     onError: () => {
       toast({ title: "Could not create expert link", variant: "destructive" });
@@ -154,8 +173,26 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
   const handleExpertOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
     setExpertDialogOpen(true);
-    if (!expertShareUrl) expertShareMutation.mutate();
+    setExpertStep("select");
+    setExpertShareUrl(null);
+    setSelectedExpert(null);
   };
+
+  const handleSelectExpert = (expert: ExpertOption) => {
+    setSelectedExpert(expert);
+    expertShareMutation.mutate(expert.id);
+  };
+
+  const handleSkipExpertSelection = () => {
+    expertShareMutation.mutate(undefined);
+  };
+
+  const experts: ExpertOption[] = (expertsData || []).slice(0, 6).map((e: any) => ({
+    id: e.userId || e.id,
+    name: [e.user?.firstName, e.user?.lastName].filter(Boolean).join(" ") || e.user?.email || "Expert",
+    avatarUrl: e.user?.profileImageUrl,
+    specialization: e.expertForm?.specialization || e.experienceTypes?.[0]?.experienceType?.name,
+  }));
 
   return (
     <>
@@ -175,11 +212,10 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
           variant="ghost"
           size="sm"
           onClick={handleExpertOpen}
-          disabled={expertShareMutation.isPending}
           className="flex-1 gap-2 text-muted-foreground hover:text-foreground"
           data-testid={`button-send-expert-${variantId}`}
         >
-          {expertShareMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCheck className="h-4 w-4" />}
+          <UserCheck className="h-4 w-4" />
           Send to Expert
         </Button>
       </div>
@@ -189,35 +225,89 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
           <DialogHeader>
             <DialogTitle>Send to a Local Expert</DialogTitle>
             <DialogDescription>
-              Share this itinerary with a local expert. They can review it and suggest modifications, which will be sent back to you as notifications.
+              Select a local expert to send this itinerary to, or skip to get a shareable link.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            {expertShareUrl ? (
-              <>
-                <p className="text-sm text-muted-foreground">Copy this link and send it to any local expert or service provider:</p>
-                <div className="flex gap-2">
-                  <Input value={expertShareUrl} readOnly className="text-xs font-mono" data-testid="input-expert-share-url" />
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(expertShareUrl).catch(() => {});
-                      toast({ title: "Link copied!", description: "Share this with your local expert." });
-                    }}
-                    data-testid="button-copy-expert-url"
-                  >
-                    <Copy className="h-4 w-4" />
+
+          {expertStep === "select" && (
+            <div className="space-y-3 py-2">
+              {experts.length > 0 ? (
+                <div className="space-y-2">
+                  {experts.map(expert => (
+                    <button
+                      key={expert.id}
+                      onClick={() => handleSelectExpert(expert)}
+                      disabled={expertShareMutation.isPending}
+                      className="w-full flex items-center gap-3 p-3 rounded-lg border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                      data-testid={`expert-option-${expert.id}`}
+                    >
+                      <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                        {expert.avatarUrl ? (
+                          <img src={expert.avatarUrl} alt={expert.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <UserCheck className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm">{expert.name}</p>
+                        {expert.specialization && (
+                          <p className="text-xs text-muted-foreground truncate">{expert.specialization}</p>
+                        )}
+                      </div>
+                      {expertShareMutation.isPending && selectedExpert?.id === expert.id && (
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-muted-foreground mb-3">No local experts found. Browse experts on the platform.</p>
+                  <Button size="sm" variant="outline" onClick={() => { setExpertDialogOpen(false); navigate("/discover"); }}>
+                    Find Local Experts
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">The expert will be able to review your itinerary and submit suggestions. You'll receive a notification with their feedback.</p>
-              </>
-            ) : (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              )}
+              <div className="pt-2 border-t">
+                <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={handleSkipExpertSelection} disabled={expertShareMutation.isPending}>
+                  {expertShareMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Skip — just generate a link
+                </Button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {expertStep === "share" && expertShareUrl && (
+            <div className="space-y-3 py-2">
+              {selectedExpert && (
+                <p className="text-sm text-muted-foreground">
+                  A notification has been sent to <strong>{selectedExpert.name}</strong>. Share this link with them directly for their reference:
+                </p>
+              )}
+              {!selectedExpert && (
+                <p className="text-sm text-muted-foreground">Copy this link and send it to any local expert or service provider:</p>
+              )}
+              <div className="flex gap-2">
+                <Input value={expertShareUrl} readOnly className="text-xs font-mono" data-testid="input-expert-share-url" />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard?.writeText(expertShareUrl).catch(() => {});
+                    toast({ title: "Link copied!", description: "Share this with your local expert." });
+                  }}
+                  data-testid="button-copy-expert-url"
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">The expert can review the itinerary, swap transport modes, and submit suggestions. You'll receive a notification with their feedback.</p>
+            </div>
+          )}
+
           <DialogFooter>
+            {expertStep === "share" && (
+              <Button variant="outline" size="sm" onClick={() => setExpertStep("select")}>Back</Button>
+            )}
             <Button variant="outline" onClick={() => setExpertDialogOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
