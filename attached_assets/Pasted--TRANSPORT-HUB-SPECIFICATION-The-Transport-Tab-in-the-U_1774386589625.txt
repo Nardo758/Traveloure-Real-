@@ -1,0 +1,742 @@
+# TRANSPORT HUB — SPECIFICATION
+## The Transport Tab in the User's Itinerary View
+
+**Date:** March 24, 2026
+**Location:** `/itinerary/:id` → Transport tab
+**Status:** Tab exists, needs content built out
+**Depends on:** Post-optimization transport leg calculation
+
+---
+
+## 1. WHAT THIS IS
+
+The Transport tab sits alongside the Itinerary tab in the user's trip view at `/itinerary/:id`. After the optimizer sequences activities and transport legs are calculated, this tab becomes the user's central hub for managing HOW they get between every stop.
+
+It shows every transport leg with two types of booking options:
+
+**Platform options (green "Book on Traveloure" badge):**
+Traveloure Service Providers — airport transfers, private drivers, guided transport. Booked and paid on-site through Stripe Connect. Traveloure earns commission (4-12% based on provider tier).
+
+**Third-party options (blue badge with external link icon):**
+Partner platforms — Viator, GetYourGuide, Klook, 12Go, Uber, Grab, local transit passes. User clicks out to book. Traveloure earns affiliate commission (8-15%).
+
+This mirrors the exact pattern already established in the Itinerary tab, where activities show "Book on Traveloure" or "12Go" badges.
+
+---
+
+## 2. WHEN TRANSPORT DATA APPEARS
+
+```
+User builds trip → Optimizer sequences activities → 
+Expert reviews (optional) → Transport legs calculated →
+TRANSPORT TAB POPULATES
+```
+
+Before optimization: The Transport tab shows an empty state:
+"Your transport options will appear after your itinerary is optimized.
+[Optimize My Itinerary]"
+
+After optimization: The tab populates with all legs and booking options.
+
+After expert review: If the expert modifies activities, transport legs recalculate and the tab updates.
+
+---
+
+## 3. TRANSPORT TAB LAYOUT
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  📊 Transport Summary                                        │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ Total    │ │ Booked   │ │ Est.     │ │ Total    │       │
+│  │ Legs: 12 │ │ 3/12     │ │ Cost     │ │ Travel   │       │
+│  │          │ │          │ │ $85-$210 │ │ Time: 4h │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│                                                              │
+│  Transport Preferences:  ⚙️                                  │
+│  Priority: Time-saver • Max walk: 15 min • Avoid: none     │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  📅 DAY 1 — Saturday, March 14                               │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  ✈️ Airport → Hotel                                    │  │
+│  │  CDG Airport → Le Marais Boutique Hotel                │  │
+│  │  22 km • Recommended: Private Car • ~45 min            │  │
+│  │                                                        │  │
+│  │  PLATFORM OPTIONS                                      │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚗 ParisLux Transfers          ⓘ Book on Traveloure │  │
+│  │  │ Private sedan • Meet at arrivals                 │  │  │
+│  │  │ ⭐ 4.9 (127 reviews) • 45 min                   │  │  │
+│  │  │ $75                              [Book — $75]    │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚐 Pierre's Airport Service     ⓘ Book on Traveloure │  │
+│  │  │ Mercedes van • Flight tracking                   │  │  │
+│  │  │ ⭐ 4.7 (89 reviews) • 50 min                    │  │  │
+│  │  │ $65                              [Book — $65]    │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │                                                        │  │
+│  │  THIRD-PARTY OPTIONS                                   │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚕 Uber/Bolt                    ↗ Open App      │  │  │
+│  │  │ Rideshare • Est. 35-50 min                       │  │  │
+│  │  │ $35-55 (surge pricing may apply)                 │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚃 RER B + Metro               ↗ 12Go           │  │  │
+│  │  │ Train to Châtelet + walk • 65 min                │  │  │
+│  │  │ $12 per person                   [View on 12Go]  │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │                                                        │  │
+│  │  [📍 Open in Maps]                                     │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  🏨 Hotel → Eiffel Tower                               │  │
+│  │  Le Marais → Champ de Mars                             │  │
+│  │  5.2 km • Recommended: Metro • ~25 min                 │  │
+│  │                                                        │  │
+│  │  THIRD-PARTY OPTIONS                                   │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚇 Paris Metro                  ↗ 12Go           │  │
+│  │  │ Line 1 → Line 6 • 2 transfers                   │  │  │
+│  │  │ $2.15 per person (Navigo or t+ ticket)           │  │  │
+│  │  │                                  [View on 12Go]  │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚶 Walk                          Free            │  │
+│  │  │ 55 min • Scenic route along Seine                │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │  ┌──────────────────────────────────────────────────┐  │  │
+│  │  │ 🚕 Uber/Bolt                    ↗ Open App      │  │  │
+│  │  │ 12-18 min • $12-20                               │  │  │
+│  │  └──────────────────────────────────────────────────┘  │  │
+│  │                                                        │  │
+│  │  [📍 Open in Maps]                                     │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ── continue for each leg in the day ──                      │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│  📅 DAY 2 — Sunday, March 15                                │
+│  ...                                                         │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  🎫 MULTI-DAY TRANSPORT PASSES                               │
+│  Recommended based on your itinerary                         │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ 🚇 Paris Navigo Week Pass          ↗ 12Go           │    │
+│  │ Unlimited metro, bus, RER (zones 1-3) for 7 days    │    │
+│  │ ⭐ 4.6 (8,234 reviews)                              │    │
+│  │ $30 per person • Saves ~$18 vs individual tickets   │    │
+│  │                                     [View on 12Go]  │    │
+│  └──────────────────────────────────────────────────────┘    │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ 🚐 4-Day Private Driver            ⓘ Book on Traveloure │
+│  │ Dedicated driver for your entire trip               │    │
+│  │ ⭐ 4.8 (34 reviews) • Includes airport pickup      │    │
+│  │ $320 total (saves $85 vs booking legs separately)   │    │
+│  │                                     [Book — $320]   │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 4. DATA MODEL
+
+### 4.1 Transport Booking Options (new table)
+
+```typescript
+// shared/schema.ts — ADD THIS TABLE
+
+export const transportBookingOptions = pgTable("transport_booking_options", {
+  id: serial("id").primaryKey(),
+
+  // Which transport leg this option is for
+  transportLegId: integer("transport_leg_id")
+    .references(() => transportLegs.id, { onDelete: "cascade" }),
+
+  // OR: a multi-day pass not tied to a specific leg
+  tripId: integer("trip_id")
+    .references(() => trips.id, { onDelete: "cascade" }),
+
+  // Booking channel
+  bookingType: text("booking_type").notNull(),
+  // "platform" = Book on Traveloure (Service Provider)
+  // "affiliate" = Third-party partner (Viator, 12Go, etc.)
+  // "deep_link" = App deep link (Uber, Grab, Bolt)
+  // "info_only" = Free option like walking (no booking needed)
+
+  // Source
+  source: text("source").notNull(),
+  // Platform: "traveloure"
+  // Affiliate: "viator", "getyourguide", "klook", "12go", "booking_com"
+  // Deep link: "uber", "bolt", "grab", "ola", "lyft"
+  // Info: "walking", "self_arranged"
+
+  // Display info
+  title: text("title").notNull(),                    // "ParisLux Transfers"
+  description: text("description"),                   // "Private sedan • Meet at arrivals"
+  modeType: text("mode_type").notNull(),             // "private_car", "transit", "rideshare", etc.
+  iconType: text("icon_type"),                        // "car", "train", "walk", "bus", "bike", "van"
+
+  // Pricing
+  priceDisplay: text("price_display"),               // "$75" or "$35-55" or "Free"
+  priceCentsLow: integer("price_cents_low"),         // 7500 (for sorting/comparison)
+  priceCentsHigh: integer("price_cents_high"),       // 7500 (same for fixed, higher for ranges)
+  pricePerPerson: boolean("price_per_person").default(false),
+  currency: text("currency").default("USD"),
+
+  // Timing
+  estimatedMinutes: integer("estimated_minutes"),
+  estimatedMinutesHigh: integer("estimated_minutes_high"), // for ranges
+
+  // Rating/reviews (for platform providers)
+  rating: doublePrecision("rating"),                 // 4.9
+  reviewCount: integer("review_count"),              // 127
+
+  // Provider (for platform bookings)
+  providerId: integer("provider_id")
+    .references(() => providers.id),
+
+  // External links (for affiliate/deep link)
+  externalUrl: text("external_url"),                 // "https://12go.asia/en/..."
+  affiliateCode: text("affiliate_code"),             // tracking code
+  deepLinkScheme: text("deep_link_scheme"),          // "uber://?action=setPickup&..."
+
+  // Booking status
+  bookingStatus: text("booking_status").default("available"),
+  // "available", "booked", "confirmed", "cancelled"
+  bookingId: integer("booking_id")
+    .references(() => bookings.id),                  // links to platform booking if booked
+
+  // Multi-day pass metadata
+  isMultiDayPass: boolean("is_multi_day_pass").default(false),
+  passValidDays: integer("pass_valid_days"),          // 7 for a week pass
+  savingsVsIndividual: integer("savings_vs_individual_cents"), // savings in cents
+
+  // Sorting
+  sortOrder: integer("sort_order").default(0),       // platform options first
+  isRecommended: boolean("is_recommended").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+```
+
+### 4.2 Relationships
+
+```
+transport_legs (existing)
+  └── 1:N → transport_booking_options
+         ├── Platform options (bookingType: "platform", source: "traveloure")
+         │     └── N:1 → providers (Service Provider on platform)
+         │     └── 1:1 → bookings (if booked)
+         ├── Affiliate options (bookingType: "affiliate", source: "viator"|"12go"|...)
+         │     └── externalUrl → partner site
+         └── Deep link options (bookingType: "deep_link", source: "uber"|"grab"|...)
+               └── deepLinkScheme → native app
+
+trips (existing)
+  └── 1:N → transport_booking_options (WHERE isMultiDayPass = true)
+         Multi-day passes not tied to a single leg
+```
+
+---
+
+## 5. API ENDPOINTS
+
+### 5.1 Get Transport Hub Data
+
+```
+GET /api/itinerary/:tripId/transport-hub
+```
+
+Returns everything the Transport tab needs:
+
+```json
+{
+  "summary": {
+    "totalLegs": 12,
+    "bookedLegs": 3,
+    "estimatedCostRange": { "low": 85, "high": 210 },
+    "totalTravelMinutes": 240,
+    "preferences": {
+      "priority": "time",
+      "maxWalkMinutes": 15,
+      "avoidModes": []
+    }
+  },
+  "days": [
+    {
+      "dayNumber": 1,
+      "date": "2026-03-14",
+      "title": "Arrival & Eiffel Tower",
+      "legs": [
+        {
+          "legId": 101,
+          "fromName": "CDG Airport",
+          "toName": "Le Marais Boutique Hotel",
+          "distanceDisplay": "22 km",
+          "recommendedMode": "private_car",
+          "estimatedMinutes": 45,
+          "googleMapsUrl": "https://...",
+          "appleMapsUrl": "maps://...",
+          "bookingOptions": [
+            {
+              "id": 201,
+              "bookingType": "platform",
+              "source": "traveloure",
+              "title": "ParisLux Transfers",
+              "description": "Private sedan • Meet at arrivals",
+              "modeType": "private_car",
+              "priceDisplay": "$75",
+              "estimatedMinutes": 45,
+              "rating": 4.9,
+              "reviewCount": 127,
+              "providerId": 15,
+              "bookingStatus": "available",
+              "isRecommended": true
+            },
+            {
+              "id": 202,
+              "bookingType": "affiliate",
+              "source": "12go",
+              "title": "RER B + Metro",
+              "description": "Train to Châtelet + walk",
+              "modeType": "transit",
+              "priceDisplay": "$12 per person",
+              "estimatedMinutes": 65,
+              "externalUrl": "https://12go.asia/en/travel/paris-cdg/paris",
+              "bookingStatus": "available"
+            },
+            {
+              "id": 203,
+              "bookingType": "deep_link",
+              "source": "uber",
+              "title": "Uber/Bolt",
+              "description": "Rideshare • Est. 35-50 min",
+              "modeType": "rideshare",
+              "priceDisplay": "$35-55",
+              "estimatedMinutes": 42,
+              "deepLinkScheme": "uber://?action=setPickup&...",
+              "bookingStatus": "available"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "multiDayPasses": [
+    {
+      "id": 301,
+      "bookingType": "affiliate",
+      "source": "12go",
+      "title": "Paris Navigo Week Pass",
+      "description": "Unlimited metro, bus, RER zones 1-3",
+      "priceDisplay": "$30 per person",
+      "passValidDays": 7,
+      "savingsVsIndividual": 1800,
+      "rating": 4.6,
+      "reviewCount": 8234,
+      "externalUrl": "https://12go.asia/en/travel/paris-metro-pass",
+      "isRecommended": true
+    }
+  ]
+}
+```
+
+### 5.2 Book a Platform Transport Option
+
+```
+POST /api/transport-booking-options/:optionId/book
+```
+
+For platform options ("Book on Traveloure"):
+1. Creates a booking record
+2. Initiates Stripe checkout for the provider's service
+3. Updates bookingStatus to "booked"
+4. Updates the transport leg's booking status
+
+```json
+{
+  "travelers": 2,
+  "date": "2026-03-14",
+  "specialRequests": "Flight AF1234, arriving 14:00"
+}
+```
+
+### 5.3 Track Affiliate Click
+
+```
+POST /api/transport-booking-options/:optionId/click
+```
+
+For third-party options: logs the click for affiliate tracking, then returns the external URL for redirect.
+
+```json
+{
+  "clicked": true,
+  "redirectUrl": "https://12go.asia/en/travel/paris-cdg/paris?affiliate=traveloure",
+  "tracked": true
+}
+```
+
+### 5.4 Mark Third-Party as Booked
+
+```
+PATCH /api/transport-booking-options/:optionId/status
+```
+
+User can manually mark a third-party option as "booked" after they complete the external booking:
+
+```json
+{
+  "bookingStatus": "booked",
+  "confirmationRef": "UBR-2026-XYZ"
+}
+```
+
+---
+
+## 6. POPULATING BOOKING OPTIONS
+
+### 6.1 When Transport Legs Are Calculated
+
+After the Transport Leg Calculator runs (post-optimization), a second pass generates booking options for each leg:
+
+```typescript
+async function populateBookingOptions(
+  tripId: number,
+  legs: TransportLeg[],
+  destination: string,
+  travelers: number
+): Promise<void> {
+
+  for (const leg of legs) {
+    const options: TransportBookingOption[] = [];
+
+    // 1. PLATFORM OPTIONS — query Service Providers
+    const platformProviders = await findTransportProviders(
+      destination,
+      leg.recommendedMode,
+      leg.fromLat, leg.fromLng,
+      leg.toLat, leg.toLng
+    );
+
+    for (const provider of platformProviders) {
+      options.push({
+        transportLegId: leg.id,
+        bookingType: "platform",
+        source: "traveloure",
+        title: provider.businessName,
+        description: provider.serviceDescription,
+        modeType: leg.recommendedMode,
+        priceDisplay: formatPrice(provider.priceForLeg(leg.distanceMeters)),
+        priceCentsLow: provider.priceForLeg(leg.distanceMeters) * 100,
+        estimatedMinutes: leg.estimatedDurationMinutes,
+        rating: provider.ratingAvg,
+        reviewCount: provider.reviewCount,
+        providerId: provider.id,
+        isRecommended: true,
+        sortOrder: 0, // platform first
+      });
+    }
+
+    // 2. AFFILIATE OPTIONS — match from partner catalogs
+    const affiliateOptions = await findAffiliateTransportOptions(
+      destination,
+      leg.fromName, leg.toName,
+      leg.distanceMeters,
+      travelers
+    );
+
+    for (const affiliate of affiliateOptions) {
+      options.push({
+        transportLegId: leg.id,
+        bookingType: "affiliate",
+        source: affiliate.partner, // "viator", "12go", etc.
+        title: affiliate.title,
+        description: affiliate.description,
+        modeType: affiliate.modeType,
+        priceDisplay: affiliate.priceDisplay,
+        priceCentsLow: affiliate.priceCentsLow,
+        estimatedMinutes: affiliate.estimatedMinutes,
+        externalUrl: affiliate.urlWithAffiliate,
+        rating: affiliate.rating,
+        reviewCount: affiliate.reviewCount,
+        sortOrder: 1,
+      });
+    }
+
+    // 3. DEEP LINK OPTIONS — rideshare apps available in this destination
+    const rideshareApps = getRideshareApps(destination);
+    for (const app of rideshareApps) {
+      options.push({
+        transportLegId: leg.id,
+        bookingType: "deep_link",
+        source: app.name, // "uber", "grab", "bolt", "ola"
+        title: app.displayName,
+        description: `Rideshare • Est. ${leg.estimatedDurationMinutes - 5}-${leg.estimatedDurationMinutes + 10} min`,
+        modeType: "rideshare",
+        priceDisplay: app.estimatePriceRange(leg.distanceMeters),
+        estimatedMinutes: leg.estimatedDurationMinutes,
+        deepLinkScheme: app.buildDeepLink(leg.fromLat, leg.fromLng, leg.toLat, leg.toLng),
+        sortOrder: 2,
+      });
+    }
+
+    // 4. WALKING (always available, always free)
+    if (leg.distanceMeters < 3000) { // only show walk for < 3km
+      options.push({
+        transportLegId: leg.id,
+        bookingType: "info_only",
+        source: "walking",
+        title: "Walk",
+        description: `${leg.distanceDisplay} • ${Math.ceil(leg.distanceMeters / 75)} min`,
+        modeType: "walk",
+        priceDisplay: "Free",
+        priceCentsLow: 0,
+        estimatedMinutes: Math.ceil(leg.distanceMeters / 75),
+        sortOrder: 3,
+      });
+    }
+
+    // Save all options
+    await db.insert(transportBookingOptions).values(options);
+  }
+
+  // 5. MULTI-DAY PASSES — check if a pass saves money
+  await populateMultiDayPasses(tripId, destination, legs, travelers);
+}
+```
+
+### 6.2 Rideshare App Availability by Destination
+
+```typescript
+// server/data/rideshare-profiles.ts
+
+const RIDESHARE_APPS: Record<string, RideshareApp[]> = {
+  paris: [
+    { name: "uber", displayName: "Uber", baseCostPerKm: 1.50, flagFall: 3.00 },
+    { name: "bolt", displayName: "Bolt", baseCostPerKm: 1.20, flagFall: 2.50 },
+  ],
+  kyoto: [
+    { name: "uber", displayName: "Uber Japan", baseCostPerKm: 3.00, flagFall: 5.00 },
+    // No Grab/Bolt/Ola in Japan
+  ],
+  mumbai: [
+    { name: "uber", displayName: "Uber", baseCostPerKm: 0.30, flagFall: 1.00 },
+    { name: "ola", displayName: "Ola", baseCostPerKm: 0.25, flagFall: 0.80 },
+  ],
+  bogota: [
+    { name: "uber", displayName: "Uber", baseCostPerKm: 0.50, flagFall: 1.50 },
+    { name: "beat", displayName: "Beat", baseCostPerKm: 0.40, flagFall: 1.20 },
+  ],
+  // ... remaining destinations
+};
+```
+
+### 6.3 Multi-Day Pass Logic
+
+```typescript
+async function populateMultiDayPasses(
+  tripId: number,
+  destination: string,
+  legs: TransportLeg[],
+  travelers: number
+) {
+  // Count how many legs use transit
+  const transitLegs = legs.filter(l =>
+    ["transit", "train", "bus", "tram", "metro"].includes(l.recommendedMode)
+  );
+
+  // Calculate total individual transit cost
+  const totalIndividualCost = transitLegs.reduce(
+    (sum, l) => sum + (l.estimatedCostUsd || 0) * travelers, 0
+  );
+
+  // Check if a pass would save money
+  const passes = getAvailablePasses(destination);
+  for (const pass of passes) {
+    const passCost = pass.pricePerPerson * travelers;
+    const savings = totalIndividualCost - passCost;
+
+    if (savings > 0) {
+      await db.insert(transportBookingOptions).values({
+        tripId,
+        bookingType: "affiliate",
+        source: pass.source,
+        title: pass.title,
+        description: pass.description,
+        modeType: "transit_pass",
+        priceDisplay: `$${pass.pricePerPerson} per person`,
+        priceCentsLow: pass.pricePerPerson * 100,
+        pricePerPerson: true,
+        isMultiDayPass: true,
+        passValidDays: pass.validDays,
+        savingsVsIndividual: Math.round(savings * 100),
+        externalUrl: pass.affiliateUrl,
+        rating: pass.rating,
+        reviewCount: pass.reviewCount,
+        isRecommended: savings > 5, // recommend if saves > $5
+        sortOrder: 0,
+      });
+    }
+  }
+}
+```
+
+---
+
+## 7. FRONTEND COMPONENTS
+
+### 7.1 TransportHub (main tab content)
+
+**File:** `client/src/components/itinerary/TransportHub.tsx`
+
+- Fetches data from `GET /api/itinerary/:tripId/transport-hub`
+- Renders summary cards at top (total legs, booked, cost, time)
+- Renders day-by-day sections with transport legs
+- Each leg shows its booking options (platform first, then affiliate, then deep link)
+- Bottom section shows multi-day passes if applicable
+
+### 7.2 TransportBookingCard (single booking option)
+
+**File:** `client/src/components/itinerary/TransportBookingCard.tsx`
+
+Props: `bookingOption: TransportBookingOption`
+
+Renders differently based on `bookingType`:
+
+**Platform ("Book on Traveloure"):**
+```
+┌──────────────────────────────────────────────────────┐
+│ 🚗 ParisLux Transfers           ⓘ Book on Traveloure │
+│ Private sedan • Meet at arrivals                      │
+│ ⭐ 4.9 (127 reviews) • 45 min                        │
+│ $75                                    [Book — $75]   │
+└──────────────────────────────────────────────────────┘
+```
+- Green "Book on Traveloure" badge (matches itinerary tab pattern)
+- [Book] button → creates booking, opens Stripe checkout
+- After booking: badge changes to green "Confirmed"
+
+**Affiliate ("View on 12Go" / "View on Viator"):**
+```
+┌──────────────────────────────────────────────────────┐
+│ 🚃 RER B + Metro                      ↗ 12Go        │
+│ Train to Châtelet + walk • 65 min                    │
+│ $12 per person                       [View on 12Go]  │
+└──────────────────────────────────────────────────────┘
+```
+- Blue badge with external link icon and partner name
+- [View on X] button → logs click, opens external URL in new tab
+- After user returns: option to "Mark as booked" with confirmation ref
+
+**Deep Link ("Open App"):**
+```
+┌──────────────────────────────────────────────────────┐
+│ 🚕 Uber                               ↗ Open App    │
+│ Rideshare • Est. 35-50 min                           │
+│ $35-55 (surge pricing may apply)                     │
+└──────────────────────────────────────────────────────┘
+```
+- Blue badge with "Open App"
+- On mobile: opens native app with pickup/dropoff pre-filled
+- On desktop: opens web version
+- No "mark as booked" (rideshare is ephemeral)
+
+**Info Only (Walking):**
+```
+┌──────────────────────────────────────────────────────┐
+│ 🚶 Walk                                Free          │
+│ 0.8 km • 12 min • Scenic route                      │
+└──────────────────────────────────────────────────────┘
+```
+- No badge, no button
+- Just informational
+
+### 7.3 MultiDayPassCard
+
+**File:** `client/src/components/itinerary/MultiDayPassCard.tsx`
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 🚇 Paris Navigo Week Pass              ↗ 12Go        │
+│ Unlimited metro, bus, RER (zones 1-3) for 7 days     │
+│ ⭐ 4.6 (8,234 reviews)                               │
+│ $30 per person • 💰 Saves ~$18 vs individual tickets │
+│                                      [View on 12Go]  │
+└──────────────────────────────────────────────────────┘
+```
+
+- Appears at the bottom of the Transport tab
+- "Saves $X" calculation based on comparing pass cost vs sum of individual transit legs
+- Recommended badge if savings > $5
+
+---
+
+## 8. BADGE SYSTEM (MATCHING ITINERARY TAB)
+
+To maintain visual consistency with the Itinerary tab:
+
+| Source | Badge Color | Badge Text | Button |
+|--------|-------------|------------|--------|
+| Traveloure provider | Green | "Book on Traveloure" | [Book — $X] |
+| Viator | Blue | "↗ Viator" | [View on Viator] |
+| GetYourGuide | Blue | "↗ GetYourGuide" | [View on GYG] |
+| Klook | Blue | "↗ Klook" | [View on Klook] |
+| 12Go | Blue | "↗ 12Go" | [View on 12Go] |
+| Uber | Blue | "↗ Open App" | (deep link) |
+| Grab | Blue | "↗ Open App" | (deep link) |
+| Bolt | Blue | "↗ Open App" | (deep link) |
+| Ola | Blue | "↗ Open App" | (deep link) |
+| Walking | Gray | — | — |
+| Self-arranged | Gray | "Self-arranged" | — |
+
+After booking:
+| Status | Badge |
+|--------|-------|
+| Booked (platform) | Green "Confirmed" |
+| Booked (third-party, user-marked) | Green "Booked" with ref # |
+| Cancelled | Red "Cancelled" |
+
+---
+
+## 9. IMPLEMENTATION ORDER
+
+### Day 1: Data layer (2 hours)
+1. Add `transport_booking_options` table to schema
+2. Run migration
+3. Create `populateBookingOptions` service
+4. Create rideshare profiles per destination
+5. Create multi-day pass data per destination
+
+### Day 2: API + population logic (2 hours)
+6. Build `GET /api/itinerary/:tripId/transport-hub` endpoint
+7. Build `POST /api/transport-booking-options/:optionId/book` endpoint
+8. Build `POST /api/transport-booking-options/:optionId/click` endpoint
+9. Build `PATCH /api/transport-booking-options/:optionId/status` endpoint
+10. Hook population into transport leg calculator (runs after legs are computed)
+
+### Day 3: Frontend (3 hours)
+11. Build TransportHub component
+12. Build TransportBookingCard component (all 4 variants)
+13. Build MultiDayPassCard component
+14. Wire into the Transport tab at `/itinerary/:id`
+15. Connect booking flow to Stripe checkout (platform options)
+16. Connect affiliate click tracking
+17. Connect rideshare deep links
+
+### Day 4: Test + polish (1 hour)
+18. Seed test data with Paris options (platform + 12Go + Uber)
+19. Test booking flow end-to-end
+20. Test affiliate click tracking
+21. Test "mark as booked" for third-party
+22. Mobile responsive testing
