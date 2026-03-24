@@ -17,6 +17,7 @@ import {
   itineraryComparisons,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { createTransportBookingCheckout } from "../services/stripe.service";
 
 const router = Router();
 
@@ -160,7 +161,12 @@ router.post(
   async (req, res) => {
     try {
       const { optionId } = req.params;
-      const { travelers, date, specialRequests } = req.body;
+      const { travelers = 1, specialRequests } = req.body;
+      const userId = (req as any).user?.id; // From auth middleware
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
       // Fetch the booking option
       const option = await db.query.transportBookingOptions.findFirst({
@@ -175,15 +181,39 @@ router.post(
         return res.status(400).json({ error: "Not a platform booking option" });
       }
 
-      // TODO: Create booking record in database
-      // TODO: Initiate Stripe checkout session
-      // TODO: Return checkout URL or session details
+      // Fetch the variant to get tripId
+      const variant = await db.query.itineraryVariants.findFirst({
+        where: eq(itineraryVariants.id, option.variantId),
+      });
+
+      if (!variant) {
+        return res.status(404).json({ error: "Variant not found" });
+      }
+
+      // Fetch the comparison (trip) to get tripId
+      const comparison = await db.query.itineraryComparisons.findFirst({
+        where: eq(itineraryComparisons.id, variant.comparisonId),
+      });
+
+      if (!comparison) {
+        return res.status(404).json({ error: "Trip not found" });
+      }
+
+      // Create Stripe checkout session
+      const checkoutSession = await createTransportBookingCheckout(
+        optionId,
+        comparison.id, // tripId
+        userId,
+        travelers,
+        specialRequests
+      );
 
       res.json({
         success: true,
         message: "Booking initiated",
-        checkoutUrl: "https://checkout.stripe.com/...", // Placeholder
-        bookingId: "booking-123", // Placeholder
+        checkoutUrl: checkoutSession.checkoutUrl,
+        bookingId: checkoutSession.bookingId,
+        sessionId: checkoutSession.sessionId,
       });
     } catch (error) {
       console.error("Error creating booking:", error);
