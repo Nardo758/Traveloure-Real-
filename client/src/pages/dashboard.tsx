@@ -127,11 +127,10 @@ function PlanCard({ trip, score, i }: { trip: any; score: TripScore | undefined;
     const shareUrl = shareToken
       ? `${window.location.origin}/itinerary-view/${shareToken}`
       : `${window.location.origin}/itinerary/${trip.id}`;
+    await navigator.clipboard?.writeText(shareUrl).catch(() => {});
+    toast({ title: "Link copied!", description: "Share link copied to clipboard." });
     if (navigator.share) {
       navigator.share({ title: `${trip.title} • Traveloure`, url: shareUrl }).catch(() => {});
-    } else {
-      await navigator.clipboard?.writeText(shareUrl).catch(() => {});
-      toast({ title: "Link copied!", description: "Share link copied to clipboard." });
     }
   }
 
@@ -147,7 +146,7 @@ function PlanCard({ trip, score, i }: { trip: any; score: TripScore | undefined;
         data-testid={`card-plan-${trip.id}`}
       >
         {/* Photo Hero */}
-        <div className="relative h-44 overflow-hidden">
+        <div className="relative h-44 overflow-hidden bg-gradient-to-br from-[#FF385C]/30 via-[#f97316]/20 to-[#8B5CF6]/30">
           <img
             src={photoUrl}
             alt={trip.destination}
