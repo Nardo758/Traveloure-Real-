@@ -109,25 +109,35 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       dayMap.get(leg.dayNumber)!.legs.push(leg);
     }
 
-    // Add booking options to legs
+    // Add booking options to legs (filtered by user's selected mode)
     const days = Array.from(dayMap.values()).map((day) => ({
       ...day,
-      legs: day.legs.map((leg: any) => ({
-        id: leg.id,
-        legOrder: leg.legOrder,
-        fromName: leg.fromName,
-        toName: leg.toName,
-        distanceDisplay: leg.distanceDisplay,
-        recommendedMode: leg.recommendedMode,
-        userSelectedMode: leg.userSelectedMode,
-        estimatedDurationMinutes: leg.estimatedDurationMinutes,
-        estimatedCostUsd: leg.estimatedCostUsd,
-        fromLat: leg.fromLat,
-        fromLng: leg.fromLng,
-        toLat: leg.toLat,
-        toLng: leg.toLng,
-        bookingOptions: allOptions.filter((opt) => opt.transportLegId === leg.id),
-      })),
+      legs: day.legs.map((leg: any) => {
+        const activeMode = leg.userSelectedMode || leg.recommendedMode;
+        const legOptions = allOptions.filter((opt) => opt.transportLegId === leg.id && !opt.isMultiDayPass);
+        // Filter booking options to only those matching the user's selected mode
+        const filteredOptions = legOptions.filter((opt) => opt.modeType === activeMode);
+        // Fall back to all options if none match the selected mode
+        const bookingOptions = filteredOptions.length > 0 ? filteredOptions : legOptions;
+
+        return {
+          id: leg.id,
+          legOrder: leg.legOrder,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          distanceDisplay: leg.distanceDisplay,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          alternativeModes: leg.alternativeModes || [],
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+          bookingOptions,
+        };
+      }),
     }));
 
     // Separate multi-day passes
@@ -153,6 +163,20 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       0
     );
 
+    // Calculate mode breakdown
+    const modeCounts: Record<string, number> = {};
+    for (const leg of legs) {
+      const mode = leg.userSelectedMode || leg.recommendedMode;
+      modeCounts[mode] = (modeCounts[mode] || 0) + 1;
+    }
+    const modeBreakdown = Object.entries(modeCounts)
+      .map(([mode, count]) => ({
+        mode,
+        count,
+        percent: Math.round((count / legs.length) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
     res.json({
       status: "ready",
       summary: {
@@ -160,6 +184,7 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
         bookedLegs,
         estimatedCostRange,
         totalTravelMinutes,
+        modeBreakdown,
         preferences: (comparison as any).transportPreferences || {
           priority: "time",
           maxWalkMinutes: 15,
