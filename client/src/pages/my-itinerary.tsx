@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { TransportLeg } from "@/components/itinerary/TransportLeg";
+import { InlineTransportSelector } from "@/components/itinerary/InlineTransportSelector";
 import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Calendar,
@@ -648,11 +648,11 @@ export default function MyItineraryPage() {
 
                               {/* Render transport leg after activity */}
                               {legAfter && (
-                                <TransportLeg
+                                <InlineTransportSelector
                                   leg={legAfter}
-                                  readOnly={true}
-                                  dayNumber={dayNum}
-                                  className="my-2 ml-2"
+                                  readOnly={false}
+                                  tripId={id}
+                                  className="my-1"
                                 />
                               )}
                             </div>
