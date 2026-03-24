@@ -124,8 +124,10 @@ interface TransportOption {
 
 export interface ExistingTransportLeg {
   id: string;
+  legOrder?: number | null;
   fromName: string;
   toName: string;
+  recommendedMode?: string | null;
   userSelectedMode?: string | null;
 }
 
@@ -136,6 +138,7 @@ interface TripTransportPlannerProps {
   endDate?: Date;
   travelers: number;
   arrivalAirport?: string;
+  variantId?: string;
   existingTransportLegs?: ExistingTransportLeg[];
   onBookTransfer?: (segment: TransportSegment, option: TransportOption) => void;
 }
@@ -251,6 +254,7 @@ export function TripTransportPlanner({
   endDate,
   travelers,
   arrivalAirport,
+  variantId,
   existingTransportLegs,
   onBookTransfer
 }: TripTransportPlannerProps) {
@@ -260,14 +264,26 @@ export function TripTransportPlanner({
   const [showLegs, setShowLegs] = useState(false);
   const [packagesGenerated, setPackagesGenerated] = useState(false);
   const [dbSyncDone, setDbSyncDone] = useState(false);
+  const [baselineModes, setBaselineModes] = useState<Record<string, string>>({});
 
   const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
-    queryKey: ["/api/transport-legs/user"],
+    queryKey: variantId
+      ? ["/api/itinerary-variants", variantId, "transport-legs"]
+      : ["/api/transport-legs/user"],
+    queryFn: async () => {
+      const url = variantId
+        ? `/api/itinerary-variants/${variantId}/transport-legs`
+        : "/api/transport-legs/user";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !existingTransportLegs,
     retry: false,
     staleTime: 120_000,
   });
 
-  const resolvedLegs = existingTransportLegs ?? fetchedLegs ?? [];
+  const resolvedLegs: ExistingTransportLeg[] = existingTransportLegs ?? fetchedLegs ?? [];
 
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
@@ -381,22 +397,24 @@ export function TripTransportPlanner({
     }
 
     if (resolvedLegs.length > 0) {
-      for (const seg of result) {
+      const needsLegs = result.filter(s => s.status === "needs_transport");
+      needsLegs.forEach((seg, idx) => {
+        const byOrder = resolvedLegs.find(etl =>
+          etl.legOrder != null && etl.legOrder === idx + 1
+        );
+        if (byOrder) {
+          seg.transportLegId = byOrder.id;
+          return;
+        }
         const segFrom = seg.from.name.toLowerCase().trim();
         const segTo = seg.to.name.toLowerCase().trim();
-        const matched = resolvedLegs.find(etl => {
+        const byName = resolvedLegs.find(etl => {
           const legFrom = (etl.fromName ?? "").toLowerCase().trim();
           const legTo = (etl.toName ?? "").toLowerCase().trim();
-          const fromScore = legFrom && segFrom &&
-            (legFrom === segFrom || legFrom.startsWith(segFrom.slice(0, 6)) || segFrom.startsWith(legFrom.slice(0, 6)));
-          const toScore = legTo && segTo &&
-            (legTo === segTo || legTo.startsWith(segTo.slice(0, 6)) || segTo.startsWith(legTo.slice(0, 6)));
-          return fromScore && toScore;
+          return legFrom === segFrom && legTo === segTo;
         });
-        if (matched) {
-          seg.transportLegId = matched.id;
-        }
-      }
+        if (byName) seg.transportLegId = byName.id;
+      });
     }
 
     return result;
@@ -405,14 +423,21 @@ export function TripTransportPlanner({
   useEffect(() => {
     if (dbSyncDone || resolvedLegs.length === 0) return;
     const overrides: Record<string, string> = {};
+    const baselines: Record<string, string> = {};
     for (const seg of segments) {
       if (!seg.transportLegId) continue;
       const etl = resolvedLegs.find(l => l.id === seg.transportLegId);
-      if (etl?.userSelectedMode) {
+      if (!etl) continue;
+      if (etl.recommendedMode) {
+        const mappedBase = mapStoredModeToLocal(etl.recommendedMode);
+        if (mappedBase) baselines[seg.id] = mappedBase;
+      }
+      if (etl.userSelectedMode) {
         const mapped = mapStoredModeToLocal(etl.userSelectedMode);
         if (mapped) overrides[seg.id] = mapped;
       }
     }
+    if (Object.keys(baselines).length > 0) setBaselineModes(baselines);
     if (Object.keys(overrides).length > 0) {
       setImmediateOverrides(prev => ({ ...overrides, ...prev }));
     }
@@ -583,7 +608,14 @@ export function TripTransportPlanner({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setImmediateOverrides({})}
+                  onClick={() => {
+                    setImmediateOverrides({});
+                    needsTransportSegments.forEach(seg => {
+                      if (!seg.transportLegId) return;
+                      const baseline = baselineModes[seg.id] || "rideshare";
+                      immediateModeMutation.mutate({ legId: seg.transportLegId, mode: baseline });
+                    });
+                  }}
                   data-testid="button-reset-immediate"
                 >
                   <RotateCcw className="h-3 w-3 mr-1" />
