@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -122,6 +122,13 @@ interface TransportOption {
   isFree?: boolean;
 }
 
+export interface ExistingTransportLeg {
+  id: string;
+  fromName: string;
+  toName: string;
+  userSelectedMode?: string | null;
+}
+
 interface TripTransportPlannerProps {
   cart: CartItem[];
   destination: string;
@@ -129,6 +136,7 @@ interface TripTransportPlannerProps {
   endDate?: Date;
   travelers: number;
   arrivalAirport?: string;
+  existingTransportLegs?: ExistingTransportLeg[];
   onBookTransfer?: (segment: TransportSegment, option: TransportOption) => void;
 }
 
@@ -184,6 +192,25 @@ function getModeMultiplier(newMode: string, originalMode: string): number {
   return newCost / origCost;
 }
 
+function mapStoredModeToLocal(storedMode: string): string | null {
+  const map: Record<string, string> = {
+    taxi: "rideshare",
+    rideshare: "rideshare",
+    private_car: "private_car",
+    private_driver: "private_car",
+    rental_car: "private_car",
+    bus: "shuttle",
+    shuttle: "shuttle",
+    transit: "public_transit",
+    train: "public_transit",
+    tram: "public_transit",
+    public_transit: "public_transit",
+    walk: "walking",
+    walking: "walking",
+  };
+  return map[storedMode] ?? null;
+}
+
 function getConvenienceColor(score: number) {
   if (score >= 80) return "text-green-600";
   if (score >= 60) return "text-amber-600";
@@ -206,6 +233,7 @@ export function TripTransportPlanner({
   endDate,
   travelers,
   arrivalAirport,
+  existingTransportLegs,
   onBookTransfer
 }: TripTransportPlannerProps) {
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
@@ -213,6 +241,7 @@ export function TripTransportPlanner({
   const [immediateOverrides, setImmediateOverrides] = useState<Record<string, string>>({});
   const [showLegs, setShowLegs] = useState(false);
   const [packagesGenerated, setPackagesGenerated] = useState(false);
+  const [dbSyncDone, setDbSyncDone] = useState(false);
 
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
@@ -325,8 +354,40 @@ export function TripTransportPlanner({
       });
     }
 
+    if (existingTransportLegs && existingTransportLegs.length > 0) {
+      for (const seg of result) {
+        const matched = existingTransportLegs.find(etl => {
+          const fromMatch = etl.fromName?.toLowerCase().includes(seg.from.name.toLowerCase()) ||
+            seg.from.name.toLowerCase().includes(etl.fromName?.toLowerCase() || "");
+          const toMatch = etl.toName?.toLowerCase().includes(seg.to.name.toLowerCase()) ||
+            seg.to.name.toLowerCase().includes(etl.toName?.toLowerCase() || "");
+          return fromMatch && toMatch;
+        });
+        if (matched) {
+          seg.transportLegId = matched.id;
+        }
+      }
+    }
+
     return result;
-  }, [cart, destination, startDate, endDate, travelers, arrivalAirport]);
+  }, [cart, destination, startDate, endDate, travelers, arrivalAirport, existingTransportLegs]);
+
+  useEffect(() => {
+    if (dbSyncDone || !existingTransportLegs || existingTransportLegs.length === 0) return;
+    const overrides: Record<string, string> = {};
+    for (const seg of segments) {
+      if (!seg.transportLegId) continue;
+      const etl = existingTransportLegs.find(l => l.id === seg.transportLegId);
+      if (etl?.userSelectedMode) {
+        const mapped = mapStoredModeToLocal(etl.userSelectedMode);
+        if (mapped) overrides[seg.id] = mapped;
+      }
+    }
+    if (Object.keys(overrides).length > 0) {
+      setImmediateOverrides(prev => ({ ...overrides, ...prev }));
+    }
+    setDbSyncDone(true);
+  }, [segments, existingTransportLegs, dbSyncDone]);
 
   const needsTransportSegments = useMemo(
     () => segments.filter(s => s.status === 'needs_transport'),
