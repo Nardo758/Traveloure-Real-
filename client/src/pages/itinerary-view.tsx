@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { AlertCircle, Share2, MessageCircle, User } from "lucide-react";
+import { AlertCircle, Share2, MessageCircle, User, ExternalLink } from "lucide-react";
 import { ItineraryCard, type ItineraryCardData } from "@/components/itinerary/ItineraryCard";
 import type { TransportLegData } from "@/components/itinerary/TransportLeg";
 import { useToast } from "@/hooks/use-toast";
@@ -51,7 +51,7 @@ interface SharedItineraryResponse {
     kmlDownloadUrl?: string;
     gpxDownloadUrl?: string;
   };
-  sharedBy?: { name: string; avatarUrl?: string | null };
+  sharedBy?: { name: string; avatarUrl?: string | null; userId?: string };
   permissions?: string;
   shareToken?: string;
   expertStatus?: string;
@@ -60,8 +60,9 @@ interface SharedItineraryResponse {
 
 export default function ItineraryViewPage() {
   const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [showExpertDialog, setShowExpertDialog] = useState(false);
+  const [showSuggestDialog, setShowSuggestDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
 
   const { data, isLoading, error } = useQuery<SharedItineraryResponse>({
@@ -85,16 +86,19 @@ export default function ItineraryViewPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ notes: expertNotes }),
       });
-      if (!res.ok) throw new Error("Failed to send suggestion");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to send suggestion");
+      }
       return res.json();
     },
     onSuccess: () => {
-      setShowExpertDialog(false);
+      setShowSuggestDialog(false);
       setExpertNotes("");
       toast({ title: "Suggestions sent!", description: "The traveler has been notified of your feedback." });
     },
-    onError: () => {
-      toast({ title: "Failed to send suggestions", variant: "destructive" });
+    onError: (err: Error) => {
+      toast({ title: "Failed to send suggestions", description: err.message, variant: "destructive" });
     },
   });
 
@@ -179,6 +183,7 @@ export default function ItineraryViewPage() {
                 navigator.share({ title, url: window.location.href }).catch(() => {});
               } else {
                 navigator.clipboard?.writeText(window.location.href).catch(() => {});
+                toast({ title: "Link copied!" });
               }
             }}
             data-testid="button-share-page"
@@ -196,18 +201,33 @@ export default function ItineraryViewPage() {
               <div className="flex-1">
                 <p className="font-medium text-sm text-amber-800 dark:text-amber-200">Expert Review Mode</p>
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-                  You've been invited to review and suggest modifications to this itinerary.
+                  You can adjust transport modes below, then send your notes to the traveler.
+                  {data.sharedBy?.name && ` Shared by ${data.sharedBy.name}.`}
                 </p>
               </div>
-              <Button
-                size="sm"
-                onClick={() => setShowExpertDialog(true)}
-                className="gap-2 bg-amber-600 hover:bg-amber-700 text-white shrink-0"
-                data-testid="button-suggest-modifications"
-              >
-                <MessageCircle className="h-4 w-4" />
-                Suggest Modifications
-              </Button>
+              <div className="flex flex-col gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  onClick={() => setShowSuggestDialog(true)}
+                  className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
+                  data-testid="button-suggest-modifications"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Send Notes
+                </Button>
+                {data.sharedBy?.userId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/expert-chat/${data.sharedBy!.userId}`)}
+                    className="gap-2 border-amber-300"
+                    data-testid="button-open-expert-chat"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open Chat
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -233,12 +253,12 @@ export default function ItineraryViewPage() {
         )}
       </div>
 
-      <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
+      <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Suggest Modifications</DialogTitle>
+            <DialogTitle>Send Suggestions to Traveler</DialogTitle>
             <DialogDescription>
-              Share your expert recommendations for this itinerary. The traveler will be notified.
+              Share your expert recommendations. The traveler will receive a notification with your notes.
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -249,8 +269,11 @@ export default function ItineraryViewPage() {
             className="mt-2"
             data-testid="textarea-expert-notes"
           />
+          <p className="text-xs text-muted-foreground">
+            You can also swap transport modes directly in the itinerary below — changes are saved automatically.
+          </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowExpertDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowSuggestDialog(false)}>Cancel</Button>
             <Button
               onClick={() => suggestModMutation.mutate()}
               disabled={!expertNotes.trim() || suggestModMutation.isPending}
