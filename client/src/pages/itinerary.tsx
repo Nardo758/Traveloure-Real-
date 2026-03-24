@@ -1041,7 +1041,7 @@ export default function ItineraryPage() {
                   <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Book Transport</h3>
                 </div>
               ) : null}
-              <TransportHub tripId={tripId} />
+              <TransportHub tripId={tripId} destination={itinerary?.destination} />
             </div>
           </TabsContent>
 

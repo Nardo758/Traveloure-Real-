@@ -21,6 +21,13 @@ import {
   DollarSign,
   Zap,
   ExternalLink,
+  Train,
+  Bus,
+  Ship,
+  Car,
+  Bike,
+  Plane,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TransportBookingCard } from "./TransportBookingCard";
@@ -28,6 +35,7 @@ import { MultiDayPassCard } from "./MultiDayPassCard";
 
 interface TransportHubProps {
   tripId: string;
+  destination?: string;
   readOnly?: boolean;
 }
 
@@ -65,7 +73,7 @@ interface TransportHubData {
   multiDayPasses: any[];
 }
 
-export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
+export function TransportHub({ tripId, destination = "", readOnly = false }: TransportHubProps) {
   const [activeDay, setActiveDay] = useState<number | null>(null);
 
   // Fetch transport hub data
@@ -99,27 +107,135 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
   }
 
   if (!data || data.summary.totalLegs === 0) {
+    const dest = destination?.split(",")[0]?.trim() || "";
+    const twelveGoUrl = dest
+      ? `https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(dest)}`
+      : "https://12go.co/en?affiliate_id=13805109";
+
+    const partners = [
+      {
+        name: "12Go",
+        tagline: "Trains, buses & ferries",
+        description: "Book ground transport across Asia, Europe & more. Instant confirmation.",
+        url: twelveGoUrl,
+        color: "from-blue-500 to-indigo-600",
+        icon: Train,
+        badge: "Most Popular",
+      },
+      {
+        name: "Uber",
+        tagline: "Rideshare & taxis",
+        description: "On-demand rides in 70+ countries. Airport transfers, city rides.",
+        url: "https://www.uber.com",
+        color: "from-gray-800 to-black",
+        icon: Car,
+        badge: null,
+      },
+      {
+        name: "Viator",
+        tagline: "Tours with transport",
+        description: "Day trips, excursions & activities with transport included.",
+        url: dest
+          ? `https://www.viator.com/search/${encodeURIComponent(dest)}?pid=P00049487`
+          : "https://www.viator.com?pid=P00049487",
+        color: "from-emerald-500 to-teal-600",
+        icon: MapPin,
+        badge: null,
+      },
+    ];
+
+    const modes = [
+      { label: "Train", icon: Train, url: twelveGoUrl },
+      { label: "Bus", icon: Bus, url: twelveGoUrl },
+      { label: "Ferry", icon: Ship, url: twelveGoUrl },
+      { label: "Taxi", icon: Car, url: "https://www.uber.com" },
+      { label: "Bicycle", icon: Bike, url: "https://www.google.com/maps" },
+      { label: "Flight", icon: Plane, url: "https://www.skyscanner.com" },
+    ];
+
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
-        <div className="p-5 rounded-full bg-gray-100 dark:bg-gray-800">
-          <MapPin className="w-10 h-10 text-gray-400" />
-        </div>
+      <div className="space-y-8">
+        {/* Partner booking cards */}
         <div>
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No transport bookings yet</h3>
-          <p className="text-gray-500 max-w-md text-sm">
-            No transport bookings have been added yet. Browse ground transport options via 12Go to get started.
-          </p>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Book Your Transport</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {partners.map((p) => (
+              <a
+                key={p.name}
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group block"
+                data-testid={`link-transport-partner-${p.name.toLowerCase()}`}
+              >
+                <Card className="h-full border border-gray-200 dark:border-gray-700 hover:border-[#FF385C] hover:shadow-md transition-all duration-200 overflow-hidden">
+                  <div className={`h-2 bg-gradient-to-r ${p.color}`} />
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-md bg-gradient-to-r ${p.color}`}>
+                          <p.icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-sm text-gray-900 dark:text-white">{p.name}</span>
+                            {p.badge && (
+                              <Badge className="bg-[#FF385C] text-white text-[10px] px-1.5 py-0">{p.badge}</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500">{p.tagline}</p>
+                        </div>
+                      </div>
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#FF385C] transition-colors mt-0.5 flex-shrink-0" />
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{p.description}</p>
+                  </CardContent>
+                </Card>
+              </a>
+            ))}
+          </div>
         </div>
-        <a
-          href="https://12go.co/en?affiliate_id=13805109"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Button variant="outline">
-            <ExternalLink className="w-4 h-4 mr-2" />
-            Browse 12Go Transport
-          </Button>
-        </a>
+
+        {/* Transport mode grid */}
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Browse by Mode</h3>
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+            {modes.map((m) => (
+              <a
+                key={m.label}
+                href={m.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group"
+                data-testid={`link-transport-mode-${m.label.toLowerCase()}`}
+              >
+                <Card className="border border-gray-200 dark:border-gray-700 hover:border-[#FF385C] hover:shadow-sm transition-all duration-200">
+                  <CardContent className="p-3 flex flex-col items-center gap-2">
+                    <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-[#FFE3E8] dark:group-hover:bg-[#FF385C]/20 transition-colors">
+                      <m.icon className="w-5 h-5 text-gray-600 dark:text-gray-300 group-hover:text-[#FF385C] transition-colors" />
+                    </div>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{m.label}</span>
+                  </CardContent>
+                </Card>
+              </a>
+            ))}
+          </div>
+        </div>
+
+        {/* Tips section */}
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Travelling in Asia?</p>
+              <p className="text-xs text-gray-500 mt-0.5">12Go has the best coverage for trains, buses & ferries across Southeast and East Asia.</p>
+            </div>
+            <a href={twelveGoUrl} target="_blank" rel="noopener noreferrer">
+              <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350] text-white whitespace-nowrap">
+                Search Routes <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+              </Button>
+            </a>
+          </CardContent>
+        </Card>
       </div>
     );
   }
