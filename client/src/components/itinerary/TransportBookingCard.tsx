@@ -278,13 +278,13 @@ export function TransportBookingCard({
       {!readOnly && (
         <div className="flex items-center gap-2 flex-wrap pt-1">
           {actionButton()}
-          {/* Mark as booked flow for affiliate options after click */}
-          {showMarkBooked && !effectivelyBooked && option.bookingType === "affiliate" && (
+          {/* "Mark as booked" trigger — shown after clicking affiliate link, before the panel is open */}
+          {hasClicked && !effectivelyBooked && !showMarkBooked && option.bookingType === "affiliate" && (
             <Button
               variant="ghost"
               size="sm"
               className="text-xs text-gray-500 hover:text-gray-800"
-              onClick={() => setShowMarkBooked(false)}
+              onClick={() => setShowMarkBooked(true)}
               data-testid={`button-mark-booked-${option.id}`}
             >
               ✓ Mark as booked
