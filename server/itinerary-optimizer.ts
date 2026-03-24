@@ -15,6 +15,7 @@ import {
   ProviderService,
   temporalAnchors,
   dayBoundaries,
+  transportLegs,
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import {
@@ -824,7 +825,61 @@ export async function getComparisonWithVariants(comparisonId: string) {
         .from(itineraryVariantMetrics)
         .where(eq(itineraryVariantMetrics.variantId, variant.id));
 
-      return { ...variant, items, metrics };
+      // Fetch transport legs for this variant
+      const legs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, variant.id))
+        .orderBy(transportLegs.dayNumber, transportLegs.legOrder);
+
+      // Organize items and legs by day for frontend consumption
+      const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
+      const days = dayNumbers.map(dayNum => {
+        const dayItems = items.filter(i => i.dayNumber === dayNum);
+        const dayLegs = legs.filter(l => l.dayNumber === dayNum);
+
+        return {
+          dayNumber: dayNum,
+          activities: dayItems.map(item => ({
+            id: item.id,
+            dayNumber: item.dayNumber,
+            timeSlot: item.timeSlot,
+            startTime: item.startTime,
+            endTime: item.endTime,
+            name: item.name,
+            description: item.description,
+            serviceType: item.serviceType,
+            price: item.price,
+            rating: item.rating,
+            location: item.location,
+            duration: item.duration,
+            travelTimeFromPrevious: item.travelTimeFromPrevious,
+            isReplacement: item.isReplacement,
+            replacementReason: item.replacementReason,
+          })),
+          transportLegs: dayLegs.map(leg => ({
+            id: leg.id,
+            legOrder: leg.legOrder,
+            fromName: leg.fromName,
+            toName: leg.toName,
+            recommendedMode: leg.recommendedMode,
+            userSelectedMode: leg.userSelectedMode,
+            distanceDisplay: leg.distanceDisplay,
+            distanceMeters: leg.distanceMeters,
+            estimatedDurationMinutes: leg.estimatedDurationMinutes,
+            estimatedCostUsd: leg.estimatedCostUsd,
+            energyCost: leg.energyCost,
+            alternativeModes: leg.alternativeModes,
+            linkedProductUrl: leg.linkedProductUrl,
+            fromLat: leg.fromLat,
+            fromLng: leg.fromLng,
+            toLat: leg.toLat,
+            toLng: leg.toLng,
+          })),
+        };
+      });
+
+      return { ...variant, items, metrics, days };
     })
   );
 
