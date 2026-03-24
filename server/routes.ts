@@ -20,7 +20,7 @@ import {
   temporalAnchors, itineraryItems
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, like, sql, desc, count } from "drizzle-orm";
+import { eq, and, or, like, sql, desc, count, ne } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
@@ -6802,7 +6802,35 @@ Respond with this exact JSON structure:
           budget,
           travelers,
           tripId || undefined
-        ).catch(err => {
+        ).then(async (optimResult) => {
+          if (optimResult?.success) {
+            // After optimization, calculate transport legs for all variants
+            try {
+              const variants = await db
+                .select({ id: itineraryVariants.id })
+                .from(itineraryVariants)
+                .where(eq(itineraryVariants.comparisonId, comparison.id));
+              for (const v of variants) {
+                const items = await db
+                  .select()
+                  .from(itineraryVariantItems)
+                  .where(eq(itineraryVariantItems.variantId, v.id))
+                  .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+                if (items.length > 0) {
+                  const legs = await calculateTransportLegs(items, destination, v.id);
+                  if (legs.length > 0) {
+                    // Delete old legs if any, then insert fresh
+                    await db.delete(transportLegs).where(eq(transportLegs.variantId, v.id));
+                    await db.insert(transportLegs).values(legs);
+                  }
+                }
+              }
+              console.log(`Transport legs calculated for comparison ${comparison.id}`);
+            } catch (legErr) {
+              console.error('Transport leg calculation error (non-critical):', legErr);
+            }
+          }
+        }).catch(err => {
           console.error('Optimization error:', err);
           db.update(itineraryComparisons)
             .set({ status: 'failed' })
@@ -11716,7 +11744,7 @@ export async function registerDiscoveryRoutes(app: Express) {
   app.patch("/api/transport-legs/:legId/mode", isAuthenticated, async (req, res) => {
     try {
       const { legId } = req.params;
-      const { selectedMode } = req.body;
+      const { selectedMode, shareToken } = req.body;
       const userId = (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
@@ -11727,6 +11755,40 @@ export async function registerDiscoveryRoutes(app: Express) {
         .where(eq(transportLegs.id, legId));
 
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
+
+      // Ownership check: verify via the variant's comparison owner OR valid share token
+      const [variant] = await db
+        .select({ comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, leg.variantId));
+
+      if (variant) {
+        const [comparison] = await db
+          .select({ userId: itineraryComparisons.userId })
+          .from(itineraryComparisons)
+          .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+        const isOwner = comparison?.userId === userId;
+
+        if (!isOwner) {
+          if (shareToken) {
+            const [shared] = await db
+              .select({ permissions: sharedItineraries.permissions, variantId: sharedItineraries.variantId, expiresAt: sharedItineraries.expiresAt })
+              .from(sharedItineraries)
+              .where(and(eq(sharedItineraries.shareToken, shareToken), eq(sharedItineraries.variantId, leg.variantId)));
+
+            if (!shared) return res.status(403).json({ error: "Not authorized to update this transport leg" });
+            if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+              return res.status(410).json({ error: "Share link has expired" });
+            }
+            if (shared.permissions === "view") {
+              return res.status(403).json({ error: "View-only share link cannot modify transport legs" });
+            }
+          } else {
+            return res.status(403).json({ error: "Not authorized to update this transport leg" });
+          }
+        }
+      }
 
       const alternatives = (leg.alternativeModes as any[]) || [];
       const selected = alternatives.find((a: any) => a.mode === selectedMode);
@@ -11754,6 +11816,12 @@ export async function registerDiscoveryRoutes(app: Express) {
           updatedAt: new Date(),
         })
         .where(eq(transportLegs.id, legId));
+
+      // Clear stale export cache so KML/GPX regenerate with updated modes
+      await db
+        .update(mapsExportCache)
+        .set({ kmlContent: null, gpxContent: null })
+        .where(eq(mapsExportCache.variantId, leg.variantId));
 
       let downstreamMessage = "";
       if (timeDiff < 0) {
@@ -12039,6 +12107,55 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err: any) {
       console.error("Calculate transport error:", err);
       res.status(500).json({ error: "Failed to calculate transport legs" });
+    }
+  });
+
+  // POST /api/itinerary-share/:token/suggest — Expert suggests modifications (MVP: sends notification)
+  app.post("/api/itinerary-share/:token/suggest", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { notes } = req.body;
+
+      if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Share not found" });
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "Share link has expired" });
+      }
+
+      const [variant] = await db
+        .select({ comparisonId: itineraryVariants.comparisonId, name: itineraryVariants.name })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, shared.variantId));
+
+      if (!variant) return res.status(404).json({ error: "Variant not found" });
+
+      const [comparison] = await db
+        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+      // Send notification to the owner
+      if (comparison?.userId) {
+        await db.insert(notifications).values({
+          userId: comparison.userId,
+          type: "expert_suggestion",
+          title: "Expert modification suggestions",
+          message: `An expert has reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and has suggestions: ${notes.substring(0, 200)}${notes.length > 200 ? "..." : ""}`,
+          relatedId: shared.variantId,
+          relatedType: "itinerary_variant",
+        });
+      }
+
+      res.json({ success: true, message: "Suggestions sent to traveler" });
+    } catch (err: any) {
+      console.error("Expert suggest error:", err);
+      res.status(500).json({ error: "Failed to send suggestions" });
     }
   });
 }
