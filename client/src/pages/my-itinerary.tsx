@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { TransportLeg } from "@/components/itinerary/TransportLeg";
+import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Calendar,
   MapPin,
@@ -496,6 +497,10 @@ export default function MyItineraryPage() {
               <Package className="h-4 w-4 mr-1" />
               Logistics
             </TabsTrigger>
+            <TabsTrigger value="transport" data-testid="tab-transport">
+              <Car className="h-4 w-4 mr-1" />
+              Transport
+            </TabsTrigger>
           </TabsList>
 
           {/* Timeline Tab */}
@@ -950,6 +955,10 @@ export default function MyItineraryPage() {
                 <AnchorSuggestionsPanel tripId={id} />
               </>
             )}
+          </TabsContent>
+
+          <TabsContent value="transport" className="space-y-6">
+            <TransportHub tripId={id} readOnly={false} />
           </TabsContent>
         </Tabs>
 
