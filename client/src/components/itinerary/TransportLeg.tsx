@@ -76,8 +76,6 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
   const [displayCost, setDisplayCost] = useState(leg.estimatedCostUsd);
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const isCustomized = leg.userSelectedMode !== null && leg.userSelectedMode !== leg.recommendedMode;
-
   const origDuration = useRef(leg.userSelectedMode ? null : leg.estimatedDurationMinutes);
   const origCost = useRef(leg.userSelectedMode ? null : leg.estimatedCostUsd);
 
