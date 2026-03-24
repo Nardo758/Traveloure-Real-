@@ -6,6 +6,13 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (March 2026)
+- **Transport Hub System**: Complete transport booking layer with `transport_booking_options` DB table, `TransportHub` / `TransportBookingCard` / `MultiDayPassCard` components, AI-powered booking option population, Stripe checkout for platform bookings, and affiliate click tracking (12Go, Uber, Viator, etc.)
+- **Transport Tab on Itinerary Page**: Added "Itinerary" + "Transport" tabs to `/itinerary/:id`. Transport tab shows summary stats, legs grouped by day (fully editable via `TransportLeg`), 12Go CTA, and empty state linking to AI Optimization.
+- **Shareable Itinerary Card System**: `transport_legs`, `shared_itineraries`, `maps_export_cache` tables; 8 API endpoints; `TransportLeg`, `DayMapsButton`, `TripExportButton`, `NavigateNextButton`, `ItineraryCard` components; public `/itinerary-view/:token` route.
+- **Dashboard redesign**: Rich plan cards with cover photos, progress rings, activity chips, and stat chips on the trips dashboard.
+- **Per-leg transport mode selector**: Dropdown selector on each transport leg chip with PATCH `/api/transport-legs/:legId/mode` endpoint and AI cost/duration comparison.
+
 ## System Architecture
 
 ### UI/UX Decisions

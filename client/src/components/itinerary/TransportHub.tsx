@@ -96,7 +96,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
   }
 
   const { summary, days, multiDayPasses } = data;
-  const activeDay Data = days.find(d => d.dayNumber === activeDay);
+  const activeDayData = days.find(d => d.dayNumber === activeDay);
 
   return (
     <div className="space-y-6">
