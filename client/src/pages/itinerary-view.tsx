@@ -218,7 +218,7 @@ export default function ItineraryViewPage() {
           sharedBy={data.sharedBy}
           shareToken={token}
           permissions={data.permissions}
-          readOnly={true}
+          readOnly={data.permissions === "view"}
         />
 
         {!isExpertView && (
