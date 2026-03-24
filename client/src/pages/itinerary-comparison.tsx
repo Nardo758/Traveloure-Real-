@@ -28,6 +28,8 @@ import {
   Zap,
   ShoppingCart,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Calendar,
   Loader2,
   Award,
@@ -48,9 +50,12 @@ import {
   Share2,
   UserCheck,
   Copy,
+  Car,
+  Bus,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { TransportLeg, type TransportLegData } from "@/components/itinerary/TransportLeg";
 
 interface VariantItem {
   id: string;
@@ -122,6 +127,91 @@ interface ExpertOption {
   name: string;
   avatarUrl?: string | null;
   specialization?: string;
+}
+
+function VariantTransportLegs({ variantId }: { variantId: string }) {
+  const [open, setOpen] = useState(false);
+
+  const { data: legs, isLoading } = useQuery<TransportLegData[]>({
+    queryKey: ["/api/itinerary-variants", variantId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${variantId}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      const raw = await res.json();
+      return raw.map((l: any): TransportLegData => ({
+        id: l.id,
+        legOrder: l.legOrder ?? 0,
+        fromName: l.fromName ?? "",
+        toName: l.toName ?? "",
+        recommendedMode: l.recommendedMode ?? "rideshare",
+        userSelectedMode: l.userSelectedMode ?? null,
+        distanceDisplay: l.distanceDisplay ?? "",
+        distanceMeters: l.distanceMeters ?? undefined,
+        estimatedDurationMinutes: l.estimatedDurationMinutes ?? 0,
+        estimatedCostUsd: l.estimatedCostUsd != null ? parseFloat(l.estimatedCostUsd) : null,
+        energyCost: l.energyCost ?? undefined,
+        alternativeModes: l.alternativeModes ?? [],
+        linkedProductUrl: l.linkedProductUrl ?? null,
+        fromLat: l.fromLat ?? null,
+        fromLng: l.fromLng ?? null,
+        toLat: l.toLat ?? null,
+        toLng: l.toLng ?? null,
+      }));
+    },
+    enabled: open,
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  return (
+    <div className="space-y-2">
+      <button
+        className="flex items-center justify-between w-full text-sm font-medium hover:text-primary transition-colors"
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v); }}
+        data-testid={`button-transport-legs-toggle-${variantId}`}
+      >
+        <div className="flex items-center gap-2">
+          <Car className="h-4 w-4 text-muted-foreground" />
+          <span>Transport Legs</span>
+          {open && legs && legs.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {legs.length}
+            </Badge>
+          )}
+        </div>
+        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+      </button>
+
+      {open && (
+        <div className="pt-1">
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : legs && legs.length > 0 ? (
+            <div className="rounded-md border divide-y divide-border">
+              {legs.map(leg => (
+                <TransportLeg
+                  key={leg.id}
+                  leg={leg}
+                  readOnly={false}
+                  className="py-1.5"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 py-3 px-3 text-sm text-muted-foreground rounded-md bg-muted/20 border border-dashed">
+              <Bus className="h-4 w-4 shrink-0 opacity-60" />
+              <span>No transport legs yet. They are calculated when an AI itinerary is generated from the Transportation tab.</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ShareVariantButton({ variantId }: { variantId: string }) {
@@ -923,6 +1013,9 @@ export default function ItineraryComparisonPage() {
                           )}
                         </ScrollArea>
                       </div>
+
+                      <Separator />
+                      <VariantTransportLegs variantId={userVariant.id} />
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2">
@@ -1166,6 +1259,9 @@ export default function ItineraryComparisonPage() {
                           )}
                         </ScrollArea>
                       </div>
+
+                      <Separator />
+                      <VariantTransportLegs variantId={variant.id} />
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-2">
