@@ -174,7 +174,8 @@ export default function ItineraryViewPage() {
             size="sm"
             onClick={() => {
               if (navigator.share) {
-                navigator.share({ title, url: window.location.href }).catch(() => {});
+                const shareTitle = `${data.variant.destination || data.variant.name} Itinerary • Traveloure`;
+                navigator.share({ title: shareTitle, url: window.location.href }).catch(() => {});
               } else {
                 navigator.clipboard?.writeText(window.location.href).catch(() => {});
                 toast({ title: "Link copied!" });
