@@ -53,7 +53,8 @@ export function TransportBookingCard({
   const bookPlatformMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", `/api/transport-booking-options/${option.id}/book`, {
-        // TODO: add travelers, date, special requests
+        travelers: 1, // Default to 1 traveler, could be extended with form input
+        specialRequests: undefined,
       });
     },
     onSuccess: (data) => {
@@ -61,7 +62,6 @@ export function TransportBookingCard({
         title: "Booking initiated",
         description: "Redirecting to checkout...",
       });
-      // TODO: Redirect to Stripe checkout
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       }
