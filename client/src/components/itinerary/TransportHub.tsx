@@ -157,7 +157,6 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
   }
 
   const { summary, days, multiDayPasses } = data;
-  const activeDayData = days.find(d => d.dayNumber === activeDay);
 
   const totalHours = Math.floor(summary.totalTravelMinutes / 60);
   const totalMins = summary.totalTravelMinutes % 60;
