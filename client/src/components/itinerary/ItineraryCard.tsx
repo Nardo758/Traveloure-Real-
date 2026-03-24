@@ -218,6 +218,51 @@ export function ItineraryCard({
     return init;
   });
 
+  // State for tracking activity timing changes (for cascading updates)
+  const [activityTimingOverrides, setActivityTimingOverrides] = useState<Record<string, string>>({});
+
+  const handleLegModeChange = (legId: string, timeDiffMinutes: number) => {
+    // Find which day and activity this leg belongs to
+    let targetDayNum: number | null = null;
+    let legOrder: number | null = null;
+
+    for (const day of data.days) {
+      const leg = day.transportLegs.find(l => l.id === legId);
+      if (leg) {
+        targetDayNum = day.dayNumber;
+        legOrder = leg.legOrder;
+        break;
+      }
+    }
+
+    if (targetDayNum === null || legOrder === null) return;
+
+    // Find the target day and the next activity (after legOrder)
+    const targetDay = data.days.find(d => d.dayNumber === targetDayNum);
+    if (!targetDay) return;
+
+    const nextActivityIdx = legOrder;
+    if (nextActivityIdx >= targetDay.activities.length) return; // No activity to update
+
+    const nextActivity = targetDay.activities[nextActivityIdx];
+    if (!nextActivity.startTime) return; // Can't update if no start time
+
+    // Parse current start time and add the time difference
+    try {
+      const currentTime = new Date(nextActivity.startTime);
+      const newTime = new Date(currentTime.getTime() + timeDiffMinutes * 60 * 1000);
+      const newTimeStr = newTime.toISOString();
+
+      // Store the override
+      setActivityTimingOverrides(prev => ({
+        ...prev,
+        [nextActivity.id]: newTimeStr,
+      }));
+    } catch (e) {
+      console.error("Failed to parse activity time:", e);
+    }
+  };
+
   const shareMutation = useMutation({
     mutationFn: async () => {
       if (!variantId) throw new Error("No variant ID");
@@ -240,6 +285,35 @@ export function ItineraryCard({
   const toggleDay = (dayNum: number) => {
     setExpandedDays(prev => ({ ...prev, [dayNum]: !prev[dayNum] }));
   };
+
+  // Calculate transport summary dynamically based on current mode selections
+  const calculateTransportSummary = () => {
+    let totalLegs = 0;
+    let totalMinutes = 0;
+    let totalCostUsd = 0;
+    const modeTotals: Record<string, number> = {};
+
+    for (const day of data.days) {
+      for (const leg of day.transportLegs) {
+        totalLegs++;
+        const currentDuration = leg.estimatedDurationMinutes || 0;
+        totalMinutes += currentDuration;
+        totalCostUsd += leg.estimatedCostUsd || 0;
+
+        const mode = leg.userSelectedMode || leg.recommendedMode || "other";
+        modeTotals[mode] = (modeTotals[mode] || 0) + (currentDuration || 0);
+      }
+    }
+
+    return {
+      totalLegs,
+      totalMinutes,
+      totalCostUsd,
+      modeTotals,
+    };
+  };
+
+  const transportSummary = calculateTransportSummary();
 
   return (
     <div className="space-y-0" data-testid="itinerary-card">
@@ -328,7 +402,7 @@ export function ItineraryCard({
         )}
       </div>
 
-      {data.transportSummary && data.transportSummary.totalLegs > 0 && (
+      {transportSummary.totalLegs > 0 && (
         <Card className="mb-5" data-testid="transport-summary">
           <CardContent className="p-4">
             <h4 className="font-semibold text-sm mb-3 flex items-center gap-2">
@@ -337,17 +411,17 @@ export function ItineraryCard({
             </h4>
             <div className="grid grid-cols-3 gap-3 text-center mb-3">
               <div>
-                <p className="text-lg font-bold">{data.transportSummary.totalLegs}</p>
+                <p className="text-lg font-bold">{transportSummary.totalLegs}</p>
                 <p className="text-xs text-muted-foreground">Legs</p>
               </div>
               <div>
                 <p className="text-lg font-bold">
-                  {Math.floor(data.transportSummary.totalMinutes / 60)}h {data.transportSummary.totalMinutes % 60}m
+                  {Math.floor(transportSummary.totalMinutes / 60)}h {transportSummary.totalMinutes % 60}m
                 </p>
                 <p className="text-xs text-muted-foreground">Transit time</p>
               </div>
               <div>
-                <p className="text-lg font-bold">${data.transportSummary.totalCostUsd.toFixed(0)}</p>
+                <p className="text-lg font-bold">${transportSummary.totalCostUsd.toFixed(0)}</p>
                 <p className="text-xs text-muted-foreground">Est. cost</p>
               </div>
             </div>
@@ -411,8 +485,17 @@ export function ItineraryCard({
                           <CardContent className="p-4">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
-                                {activity.startTime && (
-                                  <p className="text-xs font-mono text-muted-foreground mb-0.5">{activity.startTime}</p>
+                                {(activityTimingOverrides[activity.id] || activity.startTime) && (
+                                  <p className="text-xs font-mono text-muted-foreground mb-0.5">
+                                    {(() => {
+                                      const time = activityTimingOverrides[activity.id] || activity.startTime;
+                                      try {
+                                        return new Date(time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+                                      } catch {
+                                        return time;
+                                      }
+                                    })()}
+                                  </p>
                                 )}
                                 <h4 className="font-medium text-sm leading-tight">{activity.name}</h4>
                                 <div className="flex flex-wrap gap-2 mt-1">
@@ -466,6 +549,7 @@ export function ItineraryCard({
                             shareToken={shareToken}
                             dayNumber={day.dayNumber}
                             className="my-1"
+                            onModeChangeSuccess={handleLegModeChange}
                           />
                         )}
                       </div>
