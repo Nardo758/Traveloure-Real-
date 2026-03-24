@@ -217,13 +217,12 @@ export function InlineTransportSelector({
           {/* Collapsed pill */}
           {!isExpanded ? (
             <button
-              onClick={() => !readOnly && setIsExpanded(true)}
-              disabled={readOnly && alternatives.length === 0}
+              onClick={() => setIsExpanded(true)}
               className={cn(
                 "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border transition-all",
                 "bg-muted/40 border-muted-foreground/20 text-muted-foreground",
                 !readOnly && "hover:bg-muted/80 hover:border-muted-foreground/40 cursor-pointer",
-                readOnly && "cursor-default",
+                readOnly && "cursor-pointer",
                 isCustomized && "border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300"
               )}
               data-testid={`pill-transport-${leg.legOrder}`}
