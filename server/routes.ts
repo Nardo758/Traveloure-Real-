@@ -12137,6 +12137,9 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "Share link has expired" });
       }
+      if (shared.permissions !== "suggest") {
+        return res.status(403).json({ error: "This share link does not allow suggestions" });
+      }
 
       const [variant] = await db
         .select({ comparisonId: itineraryVariants.comparisonId, name: itineraryVariants.name })
