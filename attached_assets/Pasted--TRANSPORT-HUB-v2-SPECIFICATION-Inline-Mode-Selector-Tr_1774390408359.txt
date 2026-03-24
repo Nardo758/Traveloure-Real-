@@ -1,0 +1,734 @@
+# TRANSPORT HUB v2 — SPECIFICATION
+## Inline Mode Selector + Transport Dashboard
+
+**Date:** March 24, 2026
+**Location:** `/itinerary/:id` — both Itinerary and Transport tabs
+**Depends on:** Post-optimization transport leg calculation
+**Estimated effort:** 5-6 days
+
+---
+
+## 1. TWO VIEWS, SAME DATA
+
+### Itinerary Tab — Transport in context
+The user reads their trip day-by-day. Between every two activities, a transport
+leg connector shows the selected mode, duration, and cost. The user picks their
+mode here because they're thinking about their day flow.
+
+### Transport Tab — Transport operations center
+A flat dashboard of ALL transport legs across the entire trip. The user manages
+bookings here: "I have 12 legs, 3 booked, 9 still need arranging. Should I get
+a metro pass?" Includes booking options (platform + affiliate) and multi-day
+pass recommendations.
+
+Both views read from and write to the same `transport_legs` table. A mode
+change in one view is instantly reflected in the other.
+
+---
+
+## 2. ITINERARY TAB — INLINE MODE SELECTOR
+
+### What the user sees between every two activities:
+
+```
+┌────────────────────────────────────────────────────────┐
+│ ⛩️  09:00  Fushimi Inari Shrine                  $0   │
+│     2 hours • Cultural                                 │
+│     📍 Open in Maps                                    │
+└────────────────────────────────────────────────────────┘
+
+  ┆
+  ┆  4.2 km to Nishiki Market
+  ┆
+  ┆  ┌──────────────────────────────────────────────┐
+  ┆  │  How are you getting there?                   │
+  ┆  │                                               │
+  ┆  │  ● 🚃 Train     18 min    $2.50   ✓ Best     │
+  ┆  │  ○ 🚕 Taxi      12 min    $15.00             │
+  ┆  │  ○ 🚲 Bike      20 min    $3.00              │
+  ┆  │  ○ 🚶 Walk      55 min    Free               │
+  ┆  │                                               │
+  ┆  │  [📍 Open in Maps]                            │
+  ┆  └──────────────────────────────────────────────┘
+  ┆
+
+┌────────────────────────────────────────────────────────┐
+│ 🍜  11:45  Nishiki Market Food Tour              $65  │
+│     1.75 hours • Food                                  │
+│     📍 Open in Maps                                    │
+└────────────────────────────────────────────────────────┘
+```
+
+### Component: InlineTransportSelector
+
+**File:** `client/src/components/itinerary/InlineTransportSelector.tsx`
+
+**Props:**
+```typescript
+interface InlineTransportSelectorProps {
+  leg: {
+    id: number;
+    fromName: string;
+    toName: string;
+    distanceDisplay: string;
+    distanceMeters: number;
+    recommendedMode: string;
+    userSelectedMode: string | null;
+    estimatedDurationMinutes: number;
+    estimatedCostUsd: number | null;
+    alternativeModes: {
+      mode: string;
+      durationMinutes: number;
+      costUsd: number | null;
+      energyCost: number;
+      localName?: string;
+    }[];
+    googleMapsUrl: string;
+    appleMapsUrl: string;
+  };
+  readOnly?: boolean;     // public share view = read only
+  onModeChange?: (legId: number, mode: string) => void;
+}
+```
+
+**Behavior:**
+
+1. **Displays all available modes as radio options** — not chips, not a dropdown. 
+   Radio buttons in a compact vertical list so the user can see all options at 
+   once with duration and cost.
+
+2. **Pre-selects the current mode:**
+   - If `userSelectedMode` is set → that's selected
+   - Otherwise → `recommendedMode` is selected
+   - The recommended mode always shows a "✓ Best" or "Recommended" tag
+
+3. **On mode change:**
+   - Optimistic UI: updates immediately
+   - Calls `PATCH /api/transport-legs/:legId/mode` with `{ selectedMode: "taxi" }`
+   - On success: keeps the new mode, shows brief toast if timing shifted
+     ("Taxi saves 6 min — next activity can start earlier")
+   - On failure: reverts to previous mode, shows error toast
+
+4. **Mode list comes from the leg data:**
+   - The recommended mode is always first with its duration/cost
+   - `alternativeModes` array provides the rest
+   - Each mode shows: icon + local name + duration + cost
+   - Walking only appears if distance < 3 km
+
+5. **"Open in Maps" link** at the bottom uses the SELECTED mode
+   (not the recommended mode). When user switches to taxi, the maps
+   link changes to driving directions.
+
+6. **Read-only mode:** Public share viewers see the selected mode
+   highlighted but cannot change it. Radio buttons become static display.
+
+7. **Collapsed state (optional UX enhancement):**
+   Default: show just the selected mode in a single line:
+   `🚃 Train • 18 min • $2.50`
+   Click to expand and see all options.
+   This keeps the itinerary scannable without transport dominating the view.
+
+### Mode icons and labels
+
+```typescript
+const MODE_DISPLAY: Record<string, { icon: string; label: string }> = {
+  walk:            { icon: "🚶", label: "Walk" },
+  train:           { icon: "🚃", label: "Train" },
+  bus:             { icon: "🚌", label: "Bus" },
+  tram:            { icon: "🚊", label: "Tram" },
+  transit:         { icon: "🚇", label: "Transit" },
+  taxi:            { icon: "🚕", label: "Taxi" },
+  rideshare:       { icon: "🚕", label: "Rideshare" },
+  private_driver:  { icon: "🚗", label: "Private Car" },
+  rental_car:      { icon: "🚗", label: "Rental Car" },
+  bike:            { icon: "🚲", label: "Bike" },
+  ferry:           { icon: "⛴️", label: "Ferry" },
+  auto_rickshaw:   { icon: "🛺", label: "Auto-rickshaw" },
+  tuk_tuk:         { icon: "🛺", label: "Tuk-tuk" },
+  cable_car:       { icon: "🚡", label: "Cable Car" },
+};
+
+// Override with local name from transport profile when available
+// e.g., "JR Train" instead of "Train" in Kyoto
+```
+
+### Where it renders
+
+In the ItineraryCard component (or wherever the day-by-day activity list
+renders in the Itinerary tab), insert an `<InlineTransportSelector>` between
+every two sequential activities within the same day.
+
+```tsx
+{day.activities.map((activity, index) => (
+  <>
+    <ActivityCard key={activity.id} activity={activity} />
+    
+    {index < day.activities.length - 1 && day.transportLegs[index] && (
+      <InlineTransportSelector
+        key={`leg-${day.transportLegs[index].id}`}
+        leg={day.transportLegs[index]}
+        readOnly={!isOwner && !isAssignedExpert}
+        onModeChange={handleModeChange}
+      />
+    )}
+  </>
+))}
+```
+
+---
+
+## 3. TRANSPORT TAB — OPERATIONS DASHBOARD
+
+### What the user sees:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                                                              │
+│  📊 TRANSPORT OVERVIEW                                       │
+│                                                              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ Legs     │ │ Booked   │ │ Est.     │ │ Travel   │       │
+│  │    12    │ │   3/12   │ │ Cost     │ │ Time     │       │
+│  │          │ │          │ │ $85-210  │ │ 4h 12m   │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│                                                              │
+│  Mode breakdown: 🚃 65% Train • 🚶 20% Walk • 🚕 15% Taxi  │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  🎫 RECOMMENDED PASSES                                       │
+│  Based on your mode selections                               │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐    │
+│  │ 🚇 Kyoto Bus & Train Pass (2-day)   ↗ Klook         │    │
+│  │ Unlimited city bus + subway for 2 days               │    │
+│  │ ⭐ 4.7 (3,201 reviews)                               │    │
+│  │ $18 per person • 💰 Saves $12 vs individual tickets  │    │
+│  │                                     [View on Klook]  │    │
+│  └──────────────────────────────────────────────────────┘    │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  📅 DAY 1 — April 1 — Arrival & Eastern Kyoto               │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ LEG 1: Fushimi Inari → Nishiki Market                  │  │
+│  │ 4.2 km • Selected: 🚃 Train • 18 min • $2.50          │  │
+│  │                                                        │  │
+│  │ Book this leg:                                         │  │
+│  │                                                        │  │
+│  │ PLATFORM                                               │  │
+│  │ ┌──────────────────────────────────────────────────┐   │  │
+│  │ │ 🚃 Kyoto Rail Day Pass        ⓘ Book on Traveloure│  │  │
+│  │ │ Covers JR + Hankyu lines all day                 │   │  │
+│  │ │ ⭐ 4.8 (45 reviews) • Instant confirmation       │   │  │
+│  │ │ $15/person                        [Book — $15]   │   │  │
+│  │ └──────────────────────────────────────────────────┘   │  │
+│  │                                                        │  │
+│  │ PARTNER OPTIONS                                        │  │
+│  │ ┌──────────────────────────────────────────────────┐   │  │
+│  │ │ 🚃 JR Kansai Pass              ↗ Klook           │   │  │
+│  │ │ 1-day JR West pass • Covers this route           │   │  │
+│  │ │ $25/person                    [View on Klook]     │   │  │
+│  │ └──────────────────────────────────────────────────┘   │  │
+│  │ ┌──────────────────────────────────────────────────┐   │  │
+│  │ │ 🚃 Single Tickets              ↗ 12Go            │   │  │
+│  │ │ Buy at station • No advance booking needed       │   │  │
+│  │ │ $2.50/person                  [View on 12Go]      │   │  │
+│  │ └──────────────────────────────────────────────────┘   │  │
+│  │                                                        │  │
+│  │ [📍 Open in Maps]                                      │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ LEG 2: Nishiki Market → Nijo Castle                    │  │
+│  │ 1.8 km • Selected: 🚶 Walk • 22 min • Free            │  │
+│  │                                                        │  │
+│  │ No booking needed — just walk!                         │  │
+│  │ [📍 Open walking directions]                           │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│  📅 DAY 2 — April 2 — Western Kyoto                         │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │ LEG 3: Hotel → Arashiyama Bamboo Grove                 │  │
+│  │ 8.5 km • Selected: 🚃 Train • 25 min • $3.00          │  │
+│  │                                                        │  │
+│  │ Book this leg:                                         │  │
+│  │                                                        │  │
+│  │ PLATFORM                                               │  │
+│  │ ┌──────────────────────────────────────────────────┐   │  │
+│  │ │ 🚗 Kyoto Day Driver            ⓘ Book on Traveloure│  │  │
+│  │ │ Private car + driver for full day                │   │  │
+│  │ │ ⭐ 4.9 (22 reviews) • Covers all Day 2 legs     │   │  │
+│  │ │ $180/day                          [Book — $180]  │   │  │
+│  │ └──────────────────────────────────────────────────┘   │  │
+│  │                                                        │  │
+│  │ PARTNER OPTIONS                                        │  │
+│  │ ┌──────────────────────────────────────────────────┐   │  │
+│  │ │ 🚃 JR Sagano Line              ↗ GetYourGuide    │   │  │
+│  │ │ Direct train Kyoto → Saga-Arashiyama             │   │  │
+│  │ │ $3.00/person                [View on GetYourGuide]│   │  │
+│  │ └──────────────────────────────────────────────────┘   │  │
+│  │ ┌──────────────────────────────────────────────────┐   │  │
+│  │ │ 🚕 Uber Japan                  ↗ Open App        │   │  │
+│  │ │ Rideshare • Est. 20 min                          │   │  │
+│  │ │ $22-30                                            │   │  │
+│  │ └──────────────────────────────────────────────────┘   │  │
+│  │                                                        │  │
+│  │ [📍 Open in Maps]                                      │  │
+│  └────────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ... remaining legs ...                                      │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Key differences from Itinerary tab:
+
+| Aspect | Itinerary Tab | Transport Tab |
+|--------|--------------|---------------|
+| Focus | Day flow with activities | Transport logistics only |
+| Shows activities? | Yes — full activity cards | No — just from/to names |
+| Mode selector | Yes — radio buttons | Shows selected mode (change goes back to itinerary) |
+| Booking options | No | Yes — platform + all affiliates |
+| Multi-day passes | No | Yes — at the top |
+| Summary stats | No | Yes — total legs, booked, cost, time |
+| Maps links | Per leg | Per leg |
+
+### Booking option behavior in Transport tab
+
+**Platform options ("Book on Traveloure"):**
+- Green badge, same as itinerary tab activities
+- [Book — $X] button → initiates booking flow
+- Creates booking record → Stripe checkout → confirmation
+- After booking: status changes to green "Confirmed" badge
+- Commission: 4-12% to Traveloure based on provider tier
+
+**Partner options (any affiliate):**
+- Blue badge with partner name (↗ Viator, ↗ Klook, ↗ 12Go, ↗ GetYourGuide)
+- Which partners appear depends on:
+  - What MODE the user selected for this leg
+  - What's available for this DESTINATION and ROUTE
+  - What affiliate integrations are active
+- [View on X] button → logs click for affiliate tracking → opens partner site in new tab
+- After user returns: "Mark as booked" option with confirmation ref input
+- Commission: 8-15% affiliate revenue
+
+**Rideshare deep links (Uber, Grab, Bolt, Ola):**
+- Blue badge with "↗ Open App"
+- Only appears when selected mode is taxi/rideshare
+- Pre-fills pickup and dropoff coordinates
+- Mobile: opens native app. Desktop: opens web version.
+- No "mark as booked" — rideshare is on-demand
+
+**Walking / Free options:**
+- "No booking needed" message
+- Just shows the maps link for walking directions
+
+---
+
+## 4. DATA MODEL
+
+### New table: `transport_booking_options`
+
+```typescript
+export const transportBookingOptions = pgTable("transport_booking_options", {
+  id: serial("id").primaryKey(),
+
+  // Which transport leg this option applies to
+  transportLegId: integer("transport_leg_id")
+    .references(() => transportLegs.id, { onDelete: "cascade" }),
+
+  // OR: multi-day pass linked to trip, not a specific leg
+  tripId: integer("trip_id")
+    .references(() => trips.id, { onDelete: "cascade" }),
+
+  // What kind of booking
+  bookingType: text("booking_type").notNull(),
+  // "platform"   → Book on Traveloure (Service Provider)
+  // "affiliate"  → Partner site (Viator, Klook, 12Go, GetYourGuide, etc.)
+  // "deep_link"  → Rideshare app (Uber, Grab, Bolt, Ola)
+  // "info_only"  → Walking, self-arranged (no booking needed)
+
+  // Which partner/provider
+  source: text("source").notNull(),
+  // "traveloure", "viator", "getyourguide", "klook", "12go",
+  // "uber", "grab", "bolt", "ola", "walking", "self_arranged"
+
+  // Which transport mode this option covers
+  modeType: text("mode_type").notNull(),
+  // Must match one of the modes from transport profiles
+  // Options only show when the user has selected THIS mode for this leg
+
+  // Display
+  title: text("title").notNull(),
+  description: text("description"),
+  iconType: text("icon_type"),
+
+  // Pricing
+  priceDisplay: text("price_display"),         // "$75" or "$35-55" or "Free"
+  priceCentsLow: integer("price_cents_low"),
+  priceCentsHigh: integer("price_cents_high"),
+  pricePerPerson: boolean("price_per_person").default(false),
+  currency: text("currency").default("USD"),
+
+  // Timing
+  estimatedMinutes: integer("estimated_minutes"),
+
+  // Rating (platform providers + affiliates with reviews)
+  rating: doublePrecision("rating"),
+  reviewCount: integer("review_count"),
+
+  // Platform provider link
+  providerId: integer("provider_id")
+    .references(() => providers.id),
+
+  // External links
+  externalUrl: text("external_url"),
+  affiliateCode: text("affiliate_code"),
+  deepLinkScheme: text("deep_link_scheme"),
+
+  // Status
+  bookingStatus: text("booking_status").default("available"),
+  // "available" | "booked" | "confirmed" | "cancelled"
+  bookingId: integer("booking_id")
+    .references(() => bookings.id),
+  externalConfirmationRef: text("external_confirmation_ref"),
+
+  // Multi-day pass fields
+  isMultiDayPass: boolean("is_multi_day_pass").default(false),
+  passValidDays: integer("pass_valid_days"),
+  savingsVsIndividualCents: integer("savings_vs_individual_cents"),
+
+  // Sorting + recommendation
+  sortOrder: integer("sort_order").default(0),
+  isRecommended: boolean("is_recommended").default(false),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+```
+
+### Critical relationship: mode filtering
+
+Booking options are stored for ALL possible modes per leg. But the Transport
+tab only DISPLAYS options matching the mode the user selected in the Itinerary
+tab.
+
+Example for a Kyoto leg:
+```
+transport_leg (id: 101)
+  ├── userSelectedMode: "train"
+  │
+  ├── booking_option (modeType: "train", source: "traveloure", title: "JR Day Pass")
+  ├── booking_option (modeType: "train", source: "klook", title: "JR Kansai Pass")
+  ├── booking_option (modeType: "train", source: "12go", title: "Single Tickets")
+  ├── booking_option (modeType: "taxi", source: "uber", title: "Uber Japan")
+  ├── booking_option (modeType: "taxi", source: "traveloure", title: "Private Transfer")
+  └── booking_option (modeType: "bike", source: "klook", title: "Bike Rental")
+```
+
+When user selects "train" → Transport tab shows: JR Day Pass, JR Kansai Pass, Single Tickets
+When user switches to "taxi" → Transport tab shows: Uber Japan, Private Transfer
+When user switches to "bike" → Transport tab shows: Bike Rental
+
+---
+
+## 5. API ENDPOINTS
+
+### 5.1 Get Transport Hub Data
+
+```
+GET /api/itinerary/:tripId/transport-hub
+```
+
+Returns summary + all legs grouped by day + multi-day passes.
+
+Server-side: for each leg, filters `transport_booking_options` by the leg's
+current selected mode (`userSelectedMode || recommendedMode`).
+
+### 5.2 Book Platform Option
+
+```
+POST /api/transport-booking-options/:optionId/book
+```
+
+Body: `{ travelers: 2, date: "2026-04-01", specialRequests: "..." }`
+
+Creates booking → initiates Stripe checkout → returns checkout URL.
+
+### 5.3 Track Affiliate Click
+
+```
+POST /api/transport-booking-options/:optionId/click
+```
+
+Logs click for affiliate commission tracking.
+Returns `{ redirectUrl: "https://klook.com/...?affiliate=traveloure" }`
+
+### 5.4 Mark Third-Party as Booked
+
+```
+PATCH /api/transport-booking-options/:optionId/status
+```
+
+Body: `{ bookingStatus: "booked", confirmationRef: "KLK-2026-ABC" }`
+
+User confirms they completed the external booking.
+
+### 5.5 Mode Change (existing — already built)
+
+```
+PATCH /api/transport-legs/:legId/mode
+```
+
+Body: `{ selectedMode: "taxi" }`
+
+When the mode changes:
+1. Updates `userSelectedMode` on the leg
+2. The Transport tab auto-refreshes and shows booking options for the new mode
+3. Maps URLs regenerate for the new mode
+
+---
+
+## 6. POPULATING BOOKING OPTIONS
+
+### When it runs
+
+After the Transport Leg Calculator computes legs (post-optimization),
+a second pass populates booking options for ALL modes on each leg:
+
+```typescript
+async function populateBookingOptions(
+  tripId: number,
+  legs: TransportLeg[],
+  destination: string,
+  travelers: number
+): Promise<void> {
+
+  for (const leg of legs) {
+    const allOptions: InsertTransportBookingOption[] = [];
+
+    // For EACH available mode on this leg, find booking options
+    const allModes = [
+      { mode: leg.recommendedMode, ...getRecommendedDetails(leg) },
+      ...leg.alternativeModes
+    ];
+
+    for (const modeOption of allModes) {
+
+      // 1. PLATFORM — find Traveloure Service Providers for this mode
+      const providers = await findTransportProviders(
+        destination, modeOption.mode,
+        leg.fromLat, leg.fromLng, leg.toLat, leg.toLng
+      );
+      for (const provider of providers) {
+        allOptions.push({
+          transportLegId: leg.id,
+          bookingType: "platform",
+          source: "traveloure",
+          modeType: modeOption.mode,
+          title: provider.businessName,
+          description: provider.serviceDescription,
+          priceDisplay: formatPrice(provider.calculatePrice(leg.distanceMeters)),
+          priceCentsLow: provider.calculatePrice(leg.distanceMeters) * 100,
+          estimatedMinutes: modeOption.durationMinutes,
+          rating: provider.ratingAvg,
+          reviewCount: provider.reviewCount,
+          providerId: provider.id,
+          sortOrder: 0,
+          isRecommended: modeOption.mode === leg.recommendedMode,
+        });
+      }
+
+      // 2. AFFILIATES — find partner options for this mode + destination
+      const affiliates = await findAffiliateOptions(
+        destination, modeOption.mode,
+        leg.fromName, leg.toName,
+        leg.distanceMeters
+      );
+      for (const aff of affiliates) {
+        allOptions.push({
+          transportLegId: leg.id,
+          bookingType: "affiliate",
+          source: aff.partner,
+          modeType: modeOption.mode,
+          title: aff.title,
+          description: aff.description,
+          priceDisplay: aff.priceDisplay,
+          priceCentsLow: aff.priceCentsLow,
+          pricePerPerson: aff.perPerson,
+          estimatedMinutes: modeOption.durationMinutes,
+          externalUrl: aff.buildAffiliateUrl(),
+          affiliateCode: aff.trackingCode,
+          rating: aff.rating,
+          reviewCount: aff.reviewCount,
+          sortOrder: 1,
+        });
+      }
+
+      // 3. RIDESHARE DEEP LINKS — only for taxi/rideshare modes
+      if (["taxi", "rideshare"].includes(modeOption.mode)) {
+        const apps = getRideshareApps(destination);
+        for (const app of apps) {
+          allOptions.push({
+            transportLegId: leg.id,
+            bookingType: "deep_link",
+            source: app.name,
+            modeType: modeOption.mode,
+            title: app.displayName,
+            description: `Est. ${modeOption.durationMinutes} min`,
+            priceDisplay: app.estimateRange(leg.distanceMeters),
+            priceCentsLow: app.estimateLow(leg.distanceMeters) * 100,
+            priceCentsHigh: app.estimateHigh(leg.distanceMeters) * 100,
+            estimatedMinutes: modeOption.durationMinutes,
+            deepLinkScheme: app.buildDeepLink(
+              leg.fromLat, leg.fromLng, leg.toLat, leg.toLng
+            ),
+            sortOrder: 2,
+          });
+        }
+      }
+
+      // 4. WALKING — info only, no booking
+      if (modeOption.mode === "walk") {
+        allOptions.push({
+          transportLegId: leg.id,
+          bookingType: "info_only",
+          source: "walking",
+          modeType: "walk",
+          title: "Walk",
+          description: `${leg.distanceDisplay} • Scenic route`,
+          priceDisplay: "Free",
+          priceCentsLow: 0,
+          estimatedMinutes: modeOption.durationMinutes,
+          sortOrder: 3,
+        });
+      }
+    }
+
+    // Bulk insert all options for this leg
+    if (allOptions.length > 0) {
+      await db.insert(transportBookingOptions).values(allOptions);
+    }
+  }
+
+  // 5. MULTI-DAY PASSES
+  await populateMultiDayPasses(tripId, destination, legs, travelers);
+}
+```
+
+---
+
+## 7. BADGE SYSTEM
+
+Matches the pattern already established in the Itinerary tab:
+
+| Source | Badge | Color | Button |
+|--------|-------|-------|--------|
+| Traveloure provider | "Book on Traveloure" | Green | [Book — $X] |
+| Viator | "↗ Viator" | Blue | [View on Viator] |
+| GetYourGuide | "↗ GetYourGuide" | Blue | [View on GetYourGuide] |
+| Klook | "↗ Klook" | Blue | [View on Klook] |
+| 12Go | "↗ 12Go" | Blue | [View on 12Go] |
+| Uber | "↗ Open App" | Blue | (deep link) |
+| Grab | "↗ Open App" | Blue | (deep link) |
+| Bolt | "↗ Open App" | Blue | (deep link) |
+| Ola | "↗ Open App" | Blue | (deep link) |
+| Walking | — | Gray | — |
+
+After booking:
+| Status | Badge |
+|--------|-------|
+| Confirmed (platform) | Green ✓ "Confirmed" |
+| Booked (affiliate, user-marked) | Green "Booked" + ref # |
+| Cancelled | Red "Cancelled" |
+
+---
+
+## 8. FRONTEND COMPONENTS
+
+### New components to create:
+
+```
+client/src/components/itinerary/
+├── InlineTransportSelector.tsx    — mode picker between activities (Itinerary tab)
+├── TransportHub.tsx               — main Transport tab content
+├── TransportLegCard.tsx           — single leg with booking options (Transport tab)
+├── TransportBookingCard.tsx       — single booking option (platform/affiliate/deep link)
+├── TransportSummary.tsx           — overview stats at top of Transport tab
+├── MultiDayPassCard.tsx           — pass recommendation card
+└── TransportBadge.tsx             — reusable badge component (green/blue/gray)
+```
+
+### Component hierarchy:
+
+```
+ITINERARY TAB:
+  ActivityCard
+  InlineTransportSelector        ← NEW (mode radio buttons)
+  ActivityCard
+  InlineTransportSelector
+  ActivityCard
+
+TRANSPORT TAB:
+  TransportSummary               ← NEW (total legs, booked, cost, time)
+  MultiDayPassCard[]             ← NEW (recommended passes)
+  Day 1 section:
+    TransportLegCard             ← NEW (leg + booking options)
+      TransportBookingCard[]     ← NEW (individual options)
+    TransportLegCard
+      TransportBookingCard[]
+  Day 2 section:
+    TransportLegCard
+      TransportBookingCard[]
+```
+
+---
+
+## 9. IMPLEMENTATION ORDER
+
+### Day 1: Schema + data layer (2 hours)
+1. Add `transport_booking_options` table to schema.ts
+2. Run migration
+3. Create `populateBookingOptions` service
+4. Create rideshare app profiles per destination
+5. Create multi-day pass data per destination
+6. Hook into transport leg calculator (runs after legs computed)
+
+### Day 2: API endpoints (1.5 hours)
+7. Build GET `/api/itinerary/:tripId/transport-hub`
+8. Build POST `/api/transport-booking-options/:optionId/book`
+9. Build POST `/api/transport-booking-options/:optionId/click`
+10. Build PATCH `/api/transport-booking-options/:optionId/status`
+
+### Day 3: Itinerary tab inline selector (2 hours)
+11. Build InlineTransportSelector component
+12. Build TransportBadge component
+13. Integrate into Itinerary tab between activity cards
+14. Wire mode change to existing PATCH endpoint
+15. Test mode switching + maps URL updates
+
+### Day 4: Transport tab dashboard (3 hours)
+16. Build TransportSummary component
+17. Build TransportLegCard component
+18. Build TransportBookingCard component (all 4 variants)
+19. Build MultiDayPassCard component
+20. Build TransportHub container component
+21. Wire into Transport tab at `/itinerary/:id`
+
+### Day 5: Booking flows (2 hours)
+22. Wire platform booking to Stripe checkout
+23. Wire affiliate click tracking
+24. Wire rideshare deep links (mobile + desktop)
+25. Build "Mark as booked" flow for third-party
+26. Test booking status updates across both tabs
+
+### Day 6: Test + polish (1 hour)
+27. Seed test data with booking options for test trip
+28. Test complete flow: select mode → see options → book → confirmed
+29. Test affiliate click tracking
+30. Mobile responsive testing
+31. Verify both tabs stay in sync
