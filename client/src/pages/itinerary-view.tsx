@@ -56,6 +56,7 @@ interface SharedItineraryResponse {
   shareToken?: string;
   expertStatus?: string;
   sharedWithExpert?: boolean;
+  isOwner?: boolean;
 }
 
 export default function ItineraryViewPage() {
@@ -238,7 +239,9 @@ export default function ItineraryViewPage() {
           sharedBy={data.sharedBy}
           shareToken={token}
           permissions={data.permissions}
-          readOnly={data.permissions === "view"}
+          readOnly={data.permissions === "view" && !data.isOwner}
+          isOwner={!!data.isOwner}
+          variantId={data.variant.id}
         />
 
         {!isExpertView && (

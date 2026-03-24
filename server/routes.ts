@@ -11741,6 +11741,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         permissions: shared.permissions,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
+        isOwner: !!(shared.sharedByUserId && (req as any).user?.id === shared.sharedByUserId),
       });
     } catch (err: any) {
       console.error("Get shared itinerary error:", err);
