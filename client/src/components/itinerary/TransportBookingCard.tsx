@@ -54,6 +54,8 @@ export function TransportBookingCard({
   const [hasClicked, setHasClicked] = useState(false);
   const [showMarkBooked, setShowMarkBooked] = useState(false);
   const [confirmationRef, setConfirmationRef] = useState("");
+  const [savedConfirmationRef, setSavedConfirmationRef] = useState<string | null>(null);
+  const [localBooked, setLocalBooked] = useState(false);
 
   const bookPlatformMutation = useMutation({
     mutationFn: async () => {
@@ -105,6 +107,8 @@ export function TransportBookingCard({
       return res.json();
     },
     onSuccess: () => {
+      setSavedConfirmationRef(confirmationRef || null);
+      setLocalBooked(true);
       toast({ title: "Marked as booked", description: confirmationRef ? `Ref: ${confirmationRef}` : undefined });
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary"] });
       setShowMarkBooked(false);
@@ -113,6 +117,9 @@ export function TransportBookingCard({
       toast({ title: "Failed to update", variant: "destructive" });
     },
   });
+
+  const effectivelyBooked = localBooked || isBooked;
+  const effectivelyConfirmed = isConfirmed;
 
   const handleDeepLink = () => {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -141,10 +148,10 @@ export function TransportBookingCard({
         </Badge>
       );
     }
-    if (isConfirmed || isBooked) {
+    if (effectivelyConfirmed || effectivelyBooked) {
       return (
         <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 flex items-center gap-1 shrink-0">
-          <CheckCircle2 className="h-3 w-3" /> {isConfirmed ? "Confirmed" : "Booked"}
+          <CheckCircle2 className="h-3 w-3" /> {effectivelyConfirmed ? "Confirmed" : "Booked"}
         </Badge>
       );
     }
@@ -179,7 +186,7 @@ export function TransportBookingCard({
   };
 
   const actionButton = () => {
-    if (isCancelled || isBooked || isConfirmed) return null;
+    if (isCancelled || effectivelyBooked || effectivelyConfirmed) return null;
     if (option.bookingType === "info_only") return null;
 
     if (option.bookingType === "platform") {
@@ -271,7 +278,7 @@ export function TransportBookingCard({
         <div className="flex items-center gap-2 flex-wrap pt-1">
           {actionButton()}
           {/* Mark as booked flow for affiliate options after click */}
-          {showMarkBooked && !isBooked && option.bookingType === "affiliate" && (
+          {showMarkBooked && !effectivelyBooked && option.bookingType === "affiliate" && (
             <Button
               variant="ghost"
               size="sm"
@@ -285,8 +292,16 @@ export function TransportBookingCard({
         </div>
       )}
 
+      {/* Confirmation ref display — shown after marking as booked */}
+      {effectivelyBooked && savedConfirmationRef && (
+        <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 rounded-md px-2.5 py-1.5" data-testid={`text-confirmation-ref-${option.id}`}>
+          <CheckCircle2 className="h-3 w-3 shrink-0" />
+          <span>Ref: <span className="font-medium">{savedConfirmationRef}</span></span>
+        </div>
+      )}
+
       {/* Mark as booked panel */}
-      {showMarkBooked && !isBooked && (
+      {showMarkBooked && !effectivelyBooked && (
         <div className="mt-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 space-y-2">
           <p className="text-xs font-medium text-blue-800 dark:text-blue-200">Did you complete the booking?</p>
           <div className="flex items-center gap-2">

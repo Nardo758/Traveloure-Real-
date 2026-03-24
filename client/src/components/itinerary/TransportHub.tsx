@@ -68,6 +68,7 @@ interface TransportLeg {
 }
 
 interface TransportHubData {
+  status?: "no_activities" | "calculating" | "ready";
   summary: {
     totalLegs: number;
     bookedLegs: number;
@@ -113,7 +114,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
     );
   }
 
-  if (!data || data.summary.totalLegs === 0) {
+  if (!data || data.status === "no_activities" || data.summary.totalLegs === 0 && data.status !== "calculating") {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
         <div className="p-5 rounded-full bg-gray-100 dark:bg-gray-800">
@@ -121,10 +122,28 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
         </div>
         <div>
           <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-            No transport legs yet
+            No transport options yet
           </h3>
           <p className="text-gray-500 max-w-sm text-sm leading-relaxed">
-            Transport options appear automatically once your itinerary has activities. Build your itinerary to get personalised booking options for every leg of your trip.
+            Add activities to your itinerary to see transport options. Each leg will show personalised booking choices.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (data.status === "calculating") {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
+        <div className="p-5 rounded-full bg-blue-50 dark:bg-blue-900/20">
+          <Clock className="w-10 h-10 text-blue-500 animate-pulse" />
+        </div>
+        <div>
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+            Calculating transport options…
+          </h3>
+          <p className="text-gray-500 max-w-sm text-sm leading-relaxed">
+            Your itinerary activities are being analysed. Transport booking options will appear shortly.
           </p>
         </div>
       </div>
