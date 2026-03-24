@@ -72,8 +72,8 @@ export default function TripDetails() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const { data: servicesResult, isLoading: servicesLoading } = useQuery<{ services: ProviderService[], total: number }>({
-    queryKey: ["/api/services", { destination: trip?.destination }],
+  const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
+    queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
     enabled: !!trip?.destination,
   });
 
@@ -335,9 +335,9 @@ export default function TripDetails() {
                             </Card>
                           ))}
                         </div>
-                      ) : servicesResult && servicesResult.services.length > 0 ? (
+                      ) : servicesResult && servicesResult.length > 0 ? (
                         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {servicesResult.services.slice(0, 6).map((service) => (
+                          {servicesResult.slice(0, 6).map((service) => (
                             <Card key={service.id} data-testid={`card-service-${service.id}`}>
                               <CardContent className="p-4">
                                 <h5 className="font-semibold text-slate-900 dark:text-white mb-1 line-clamp-1">
