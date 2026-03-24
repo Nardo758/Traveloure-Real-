@@ -8,7 +8,7 @@
  * Mode changes are optimistic-updated and synced via PATCH /api/transport-legs/:legId/mode
  */
 
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -182,8 +182,7 @@ export function InlineTransportSelector({
     updateModeMutation.mutate(mode);
   };
 
-  const handleOpenLegInMaps = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenLegInMaps = () => {
     if (!leg.fromLat || !leg.fromLng || !leg.toLat || !leg.toLng) return;
     const platform = detectMapsPlatform();
     let url: string;
@@ -216,45 +215,50 @@ export function InlineTransportSelector({
         <div className="flex-1 mb-1">
           {/* Collapsed pill */}
           {!isExpanded ? (
-            <button
-              onClick={() => setIsExpanded(true)}
-              className={cn(
-                "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border transition-all",
-                "bg-muted/40 border-muted-foreground/20 text-muted-foreground",
-                !readOnly && "hover:bg-muted/80 hover:border-muted-foreground/40 cursor-pointer",
-                readOnly && "cursor-pointer",
-                isCustomized && "border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300"
-              )}
-              data-testid={`pill-transport-${leg.legOrder}`}
-            >
-              <span className="text-sm leading-none">{modeIcon}</span>
-              <span className="font-medium">{modeLabel}</span>
-              <span className="text-muted-foreground/60">·</span>
-              <span>{displayDuration} min</span>
-              <span className="text-muted-foreground/60">·</span>
-              <span className={displayCost === 0 || displayCost === null ? "text-green-600 dark:text-green-400" : ""}>
-                {formatCost(displayCost)}
-              </span>
-              {isCustomized && (
-                <Badge
-                  variant="outline"
-                  className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-4 px-1"
-                >
-                  Customized
-                </Badge>
-              )}
-              {!readOnly && <ChevronDown className="h-3 w-3 ml-auto text-muted-foreground/60" />}
+            <div className="flex items-center gap-1">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setIsExpanded(true)}
+                onKeyDown={(e) => e.key === "Enter" && setIsExpanded(true)}
+                className={cn(
+                  "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border transition-all cursor-pointer",
+                  "bg-muted/40 border-muted-foreground/20 text-muted-foreground",
+                  "hover:bg-muted/80 hover:border-muted-foreground/40",
+                  isCustomized && "border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300"
+                )}
+                data-testid={`pill-transport-${leg.legOrder}`}
+              >
+                <span className="text-sm leading-none">{modeIcon}</span>
+                <span className="font-medium">{modeLabel}</span>
+                <span className="text-muted-foreground/60">·</span>
+                <span>{displayDuration} min</span>
+                <span className="text-muted-foreground/60">·</span>
+                <span className={displayCost === 0 || displayCost === null ? "text-green-600 dark:text-green-400" : ""}>
+                  {formatCost(displayCost)}
+                </span>
+                {isCustomized && (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-4 px-1"
+                  >
+                    Customized
+                  </Badge>
+                )}
+                <ChevronDown className="h-3 w-3 ml-1 text-muted-foreground/60" />
+              </div>
               {(leg.fromLat && leg.toLat) && (
-                <button
-                  onClick={handleOpenLegInMaps}
-                  className="ml-1 text-primary hover:underline flex items-center gap-0.5"
+                <a
+                  href="#"
+                  onClick={(e) => { e.preventDefault(); handleOpenLegInMaps(); }}
+                  className="text-primary hover:underline flex items-center gap-0.5 text-xs px-1"
                   title={`Open in ${detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}`}
-                  data-testid={`button-maps-${leg.legOrder}`}
+                  data-testid={`link-maps-${leg.legOrder}`}
                 >
                   <MapPin className="h-3 w-3" />
-                </button>
+                </a>
               )}
-            </button>
+            </div>
           ) : (
             /* Expanded panel */
             <div
