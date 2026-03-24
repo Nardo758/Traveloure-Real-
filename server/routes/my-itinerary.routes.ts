@@ -7,11 +7,12 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { 
-  itineraryComparisons, 
-  itineraryVariants, 
-  itineraryVariantItems, 
-  itineraryVariantMetrics 
+import {
+  itineraryComparisons,
+  itineraryVariants,
+  itineraryVariantItems,
+  itineraryVariantMetrics,
+  transportLegs
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { 
@@ -67,6 +68,13 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
       where: eq(itineraryVariantItems.variantId, variant.id),
       orderBy: (item, { asc }) => [asc(item.dayNumber), asc(item.sortOrder)],
     });
+
+    // Get transport legs for the variant
+    const legs = await db
+      .select()
+      .from(transportLegs)
+      .where(eq(transportLegs.variantId, variant.id))
+      .orderBy(transportLegs.dayNumber, transportLegs.legOrder);
     
     // Generate methodology notes for each activity
     const itemsWithNotes = items.map((item, idx) => {
@@ -100,13 +108,38 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
       };
     });
     
-    // Group items by day for day-level notes
+    // Group items and transport legs by day for day-level notes
     const itemsByDay: Record<number, typeof itemsWithNotes> = {};
+    const legsByDay: Record<number, any[]> = {};
+
     for (const item of itemsWithNotes) {
       if (!itemsByDay[item.dayNumber]) itemsByDay[item.dayNumber] = [];
       itemsByDay[item.dayNumber].push(item);
     }
-    
+
+    for (const leg of legs) {
+      if (!legsByDay[leg.dayNumber]) legsByDay[leg.dayNumber] = [];
+      legsByDay[leg.dayNumber].push({
+        id: leg.id,
+        legOrder: leg.legOrder,
+        fromName: leg.fromName,
+        toName: leg.toName,
+        recommendedMode: leg.recommendedMode,
+        userSelectedMode: leg.userSelectedMode,
+        distanceDisplay: leg.distanceDisplay,
+        distanceMeters: leg.distanceMeters,
+        estimatedDurationMinutes: leg.estimatedDurationMinutes,
+        estimatedCostUsd: leg.estimatedCostUsd,
+        energyCost: leg.energyCost,
+        alternativeModes: leg.alternativeModes,
+        linkedProductUrl: leg.linkedProductUrl,
+        fromLat: leg.fromLat,
+        fromLng: leg.fromLng,
+        toLat: leg.toLat,
+        toLng: leg.toLng,
+      });
+    }
+
     // Generate day-level notes
     const dayNotes: Array<{ dayNumber: number; note: string; methodology: string }> = [];
     for (const [dayNum, dayItems] of Object.entries(itemsByDay)) {
@@ -119,11 +152,12 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
         });
       }
     }
-    
+
     // Generate itinerary-level notes
     const daysData = Object.entries(itemsByDay).map(([dayNum, activities]) => ({
       dayNumber: parseInt(dayNum),
       activities,
+      transportLegs: legsByDay[parseInt(dayNum)] || [],
     }));
     const itineraryNotes = generateItineraryNotes(daysData);
     
@@ -142,6 +176,16 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
     const transportPackage = extractTransportPackage(itemsWithNotes);
     const accommodations = extractAccommodations(itemsWithNotes, comparison);
     
+    // Create days structure for frontend with both activities and transport legs
+    const daysList = Object.keys(itemsByDay)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(dayNum => ({
+        dayNumber: dayNum,
+        activities: itemsByDay[dayNum],
+        transportLegs: legsByDay[dayNum] || [],
+      }));
+
     const response = {
       id: comparison.id,
       title: comparison.title || `${comparison.destination} Trip`,
@@ -151,6 +195,7 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
       travelers: comparison.travelers || 1,
       status: comparison.status,
       items: itemsWithNotes,
+      days: daysList,
       transportPackage,
       accommodations,
       metrics,
