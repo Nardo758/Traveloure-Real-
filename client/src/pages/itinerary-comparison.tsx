@@ -55,7 +55,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { TransportLeg, type TransportLegData } from "@/components/itinerary/TransportLeg";
+import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
 
 interface VariantItem {
   id: string;
@@ -129,6 +129,26 @@ interface ExpertOption {
   specialization?: string;
 }
 
+interface TransportLegApiResponse {
+  id: string;
+  legOrder: number | null;
+  fromName: string | null;
+  toName: string | null;
+  recommendedMode: string | null;
+  userSelectedMode: string | null;
+  distanceDisplay: string | null;
+  distanceMeters: number | null;
+  estimatedDurationMinutes: number | null;
+  estimatedCostUsd: string | number | null;
+  energyCost: number | null;
+  alternativeModes: TransportAlternative[] | null;
+  linkedProductUrl: string | null;
+  fromLat: number | null;
+  fromLng: number | null;
+  toLat: number | null;
+  toLng: number | null;
+}
+
 function VariantTransportLegs({ variantId }: { variantId: string }) {
   const [open, setOpen] = useState(false);
 
@@ -139,8 +159,8 @@ function VariantTransportLegs({ variantId }: { variantId: string }) {
         credentials: "include",
       });
       if (!res.ok) return [];
-      const raw = await res.json();
-      return raw.map((l: any): TransportLegData => ({
+      const raw: TransportLegApiResponse[] = await res.json();
+      return raw.map((l): TransportLegData => ({
         id: l.id,
         legOrder: l.legOrder ?? 0,
         fromName: l.fromName ?? "",
@@ -150,7 +170,7 @@ function VariantTransportLegs({ variantId }: { variantId: string }) {
         distanceDisplay: l.distanceDisplay ?? "",
         distanceMeters: l.distanceMeters ?? undefined,
         estimatedDurationMinutes: l.estimatedDurationMinutes ?? 0,
-        estimatedCostUsd: l.estimatedCostUsd != null ? parseFloat(l.estimatedCostUsd) : null,
+        estimatedCostUsd: l.estimatedCostUsd != null ? parseFloat(String(l.estimatedCostUsd)) : null,
         energyCost: l.energyCost ?? undefined,
         alternativeModes: l.alternativeModes ?? [],
         linkedProductUrl: l.linkedProductUrl ?? null,
