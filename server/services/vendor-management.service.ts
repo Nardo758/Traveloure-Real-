@@ -11,14 +11,17 @@ export interface PaymentMilestone {
   name: string;
   amount: number;
   dueDate: string;
-  status: "pending" | "paid" | "overdue";
+  status: "pending" | "paid" | "completed" | "overdue";
   paidDate?: string;
 }
 
 export interface ContractStats {
   totalContracts: number;
+  activeContracts: number;
   totalValue: number;
-  paidAmount: number;
+  totalPaid: number;
+  totalRemaining: number;
+  completedPayments: number;
   pendingPayments: number;
   upcomingDeadlines: number;
 }
@@ -155,11 +158,16 @@ export class VendorManagementService {
     let totalValue = 0;
     let paidAmount = 0;
     let pendingPayments = 0;
+    let completedPayments = 0;
     let upcomingDeadlines = 0;
+    let activeContracts = 0;
 
     for (const c of contracts) {
       totalValue += parseFloat(String(c.totalAmount || 0));
       paidAmount += parseFloat(String(c.paidAmount || 0));
+      if (c.status === "active" || c.status === "in_progress") {
+        activeContracts++;
+      }
 
       const schedule = (c.paymentSchedule as PaymentMilestone[]) || [];
       for (const m of schedule) {
@@ -169,14 +177,21 @@ export class VendorManagementService {
           if (dueDate <= oneWeekFromNow) {
             upcomingDeadlines++;
           }
+        } else if (m.status === "paid" || m.status === "completed") {
+          completedPayments++;
         }
       }
     }
 
+    const totalRemaining = totalValue - paidAmount;
+
     return {
       totalContracts: contracts.length,
+      activeContracts,
       totalValue,
-      paidAmount,
+      totalPaid: paidAmount,
+      totalRemaining,
+      completedPayments,
       pendingPayments,
       upcomingDeadlines,
     };

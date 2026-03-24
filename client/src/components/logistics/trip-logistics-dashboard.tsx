@@ -221,10 +221,10 @@ export function TripLogisticsDashboard({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-3xl font-bold">
-                    ${paymentStats.totalPaid.toLocaleString()}
+                    ${(paymentStats.totalPaid ?? 0).toLocaleString()}
                   </span>
                   <div className="text-right text-sm text-muted-foreground">
-                    of ${paymentStats.totalOwed.toLocaleString()}
+                    of ${(paymentStats.totalOwed ?? 0).toLocaleString()}
                   </div>
                 </div>
                 <div>
@@ -254,22 +254,22 @@ export function TripLogisticsDashboard({
             ) : contractStats ? (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold">{contractStats.activeContracts}</span>
+                  <span className="text-3xl font-bold">{contractStats.activeContracts ?? 0}</span>
                   <div className="text-right text-sm">
                     <div className="text-muted-foreground">
-                      ${contractStats.totalValue.toLocaleString()} total
+                      ${(contractStats.totalValue ?? 0).toLocaleString()} total
                     </div>
                     <div className="text-green-600">
-                      ${contractStats.totalPaid.toLocaleString()} paid
+                      ${(contractStats.totalPaid ?? 0).toLocaleString()} paid
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Badge variant="outline" className="text-xs">
-                    {contractStats.pendingPayments} pending
+                    {contractStats.pendingPayments ?? 0} pending
                   </Badge>
                   <Badge variant="outline" className="text-xs text-green-600">
-                    {contractStats.completedPayments} complete
+                    {contractStats.completedPayments ?? 0} complete
                   </Badge>
                 </div>
               </div>
@@ -337,18 +337,18 @@ export function TripLogisticsDashboard({
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-3xl font-bold">
-                      ${budgetSummary.totalSpent.toLocaleString()}
+                      ${(budgetSummary.totalSpent ?? 0).toLocaleString()}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      of ${budgetSummary.totalBudget.toLocaleString()} budget
+                      of ${(budgetSummary.totalBudget ?? 0).toLocaleString()} budget
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className={`text-2xl font-bold ${budgetSummary.remaining >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${Math.abs(budgetSummary.remaining).toLocaleString()}
+                    <div className={`text-2xl font-bold ${(budgetSummary.remaining ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${Math.abs(budgetSummary.remaining ?? 0).toLocaleString()}
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {budgetSummary.remaining >= 0 ? 'remaining' : 'over budget'}
+                      {(budgetSummary.remaining ?? 0) >= 0 ? 'remaining' : 'over budget'}
                     </div>
                   </div>
                 </div>
@@ -369,7 +369,7 @@ export function TripLogisticsDashboard({
                       <div key={cat.category} className="flex items-center justify-between text-sm">
                         <span className="capitalize">{cat.category.replace('_', ' ')}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">${cat.amount.toLocaleString()}</span>
+                          <span className="text-muted-foreground">${(cat.amount ?? 0).toLocaleString()}</span>
                           <Badge variant="outline" className="text-xs">
                             {cat.percentage}%
                           </Badge>
