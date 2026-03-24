@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { transportLegs, mapsExportCache } from "../../shared/schema";
 import { getDestinationProfile, type DestinationTransportProfile, type TransportModeConfig } from "../data/transport-profiles";
+import { populateBookingOptionsForVariant } from "./transport-booking-options.service";
 import {
   buildGoogleMapsUrl,
   buildAppleMapsUrl,
@@ -95,6 +96,13 @@ export async function calculateTransportLegs(
 
   await persistTransportLegs(variantId, allLegs, destination);
   await generateAndCacheMapsUrls(variantId, activities, allLegs);
+
+  // Populate booking options for all persisted legs (fire and complete)
+  try {
+    await populateBookingOptionsForVariant(variantId, destination);
+  } catch (err) {
+    console.error("[TransportLegCalculator] Failed to populate booking options:", err);
+  }
 
   return allLegs;
 }

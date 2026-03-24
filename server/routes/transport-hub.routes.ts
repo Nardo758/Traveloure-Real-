@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { createTransportBookingCheckout } from "../services/stripe.service";
+import { populateBookingOptionsForVariant } from "../services/transport-booking-options.service";
 
 const router = Router();
 
@@ -34,13 +35,31 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
   try {
     const { tripId } = req.params;
 
-    // Get comparison (trip) data
-    const comparison = await db.query.itineraryComparisons.findFirst({
+    const emptyHub = (prefs?: any) => ({
+      summary: {
+        totalLegs: 0,
+        bookedLegs: 0,
+        estimatedCostRange: { low: 0, high: 0 },
+        totalTravelMinutes: 0,
+        preferences: prefs || { priority: "time", maxWalkMinutes: 15, avoidModes: [] },
+      },
+      days: [],
+      multiDayPasses: [],
+    });
+
+    // Get comparison — first try as comparison.id, then as trips.id FK
+    let comparison = await db.query.itineraryComparisons.findFirst({
       where: eq(itineraryComparisons.id, tripId),
     });
 
     if (!comparison) {
-      return res.status(404).json({ error: "Trip not found" });
+      comparison = await db.query.itineraryComparisons.findFirst({
+        where: eq(itineraryComparisons.tripId, tripId),
+      });
+    }
+
+    if (!comparison) {
+      return res.json(emptyHub());
     }
 
     // Get selected variant or first variant
@@ -51,14 +70,14 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       });
     } else {
       const variants = await db.query.itineraryVariants.findMany({
-        where: eq(itineraryVariants.comparisonId, tripId),
+        where: eq(itineraryVariants.comparisonId, comparison.id),
         limit: 1,
       });
       variant = variants[0];
     }
 
     if (!variant) {
-      return res.status(404).json({ error: "No itinerary variant found" });
+      return res.json(emptyHub((comparison as any).transportPreferences));
     }
 
     // Fetch all transport legs for the variant
@@ -113,17 +132,15 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
     const bookedLegs = allOptions.filter(
       (opt) => opt.bookingStatus === "booked" || opt.bookingStatus === "confirmed"
     ).length;
+    const optionsWithLowCost = allOptions.filter((opt) => opt.priceCentsLow && opt.priceCentsLow > 0);
+    const optionsWithHighCost = allOptions.filter((opt) => opt.priceCentsHigh && opt.priceCentsHigh > 0);
     const estimatedCostRange = {
-      low: Math.min(
-        ...allOptions
-          .filter((opt) => opt.priceCentsLow)
-          .map((opt) => (opt.priceCentsLow || 0) / 100)
-      ),
-      high: Math.max(
-        ...allOptions
-          .filter((opt) => opt.priceCentsHigh)
-          .map((opt) => (opt.priceCentsHigh || 0) / 100)
-      ),
+      low: optionsWithLowCost.length > 0
+        ? Math.min(...optionsWithLowCost.map((opt) => (opt.priceCentsLow || 0) / 100))
+        : 0,
+      high: optionsWithHighCost.length > 0
+        ? Math.max(...optionsWithHighCost.map((opt) => (opt.priceCentsHigh || 0) / 100))
+        : 0,
     };
     const totalTravelMinutes = legs.reduce(
       (sum, l) => sum + (l.estimatedDurationMinutes || 0),
@@ -320,6 +337,32 @@ router.patch(
     }
   }
 );
+
+/**
+ * POST /api/transport-booking-options/seed/:variantId
+ *
+ * Dev/test endpoint: populates booking options for all legs of a variant
+ */
+router.post("/api/transport-booking-options/seed/:variantId", async (req, res) => {
+  try {
+    const { variantId } = req.params;
+    const variant = await db.query.itineraryVariants.findFirst({
+      where: eq(itineraryVariants.id, variantId),
+    });
+    if (!variant) {
+      return res.status(404).json({ error: "Variant not found" });
+    }
+    const comparison = await db.query.itineraryComparisons.findFirst({
+      where: eq(itineraryComparisons.id, variant.comparisonId),
+    });
+    const destination = comparison?.destination || "Unknown";
+    await populateBookingOptionsForVariant(variantId, destination);
+    res.json({ success: true, message: `Booking options seeded for variant ${variantId}` });
+  } catch (error) {
+    console.error("Error seeding booking options:", error);
+    res.status(500).json({ error: "Failed to seed booking options" });
+  }
+});
 
 /**
  * GET /api/transport-booking-options/:optionId
