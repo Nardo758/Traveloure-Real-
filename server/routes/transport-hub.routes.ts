@@ -15,6 +15,7 @@ import {
   transportLegs,
   itineraryVariants,
   itineraryComparisons,
+  affiliateClicks,
 } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { createTransportBookingCheckout } from "../services/stripe.service";
@@ -233,6 +234,9 @@ router.post(
   async (req, res) => {
     try {
       const { optionId } = req.params;
+      const userId = (req as any).user?.id;
+      const userAgent = req.get("user-agent") || "";
+      const referrer = req.get("referrer") || "";
 
       // Fetch the booking option
       const option = await db.query.transportBookingOptions.findFirst({
@@ -247,8 +251,21 @@ router.post(
         return res.status(400).json({ error: "No external URL for this option" });
       }
 
-      // TODO: Log click event for affiliate tracking
-      // Track: user_id, option_id, timestamp, user_agent, referrer
+      // Log click event for affiliate tracking
+      try {
+        await db.insert(affiliateClicks).values({
+          partnerId: option.source, // Use source as partner identifier
+          userId: userId || undefined,
+          tripId: undefined, // Could be populated if we have access to trip context
+          referrer: referrer || undefined,
+          userAgent: userAgent || undefined,
+          ipAddress: (req.ip || "").split(":").pop(), // Extract IPv4 from IPv6 if needed
+          clickedAt: new Date(),
+        });
+      } catch (clickError) {
+        // Log error but don't fail the request - affiliate tracking is secondary
+        console.error("Error logging affiliate click:", clickError);
+      }
 
       // Add affiliate code if present
       let redirectUrl = option.externalUrl;
