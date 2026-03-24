@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -102,6 +102,68 @@ export default function ItineraryViewPage() {
       toast({ title: "Failed to send suggestions", description: err.message, variant: "destructive" });
     },
   });
+
+  // Set social meta tags (og:title, og:description, og:image, document.title)
+  useEffect(() => {
+    if (!data?.variant) return;
+
+    const destination = data.variant.destination || data.variant.name;
+    const cost = data.variant.totalCost ? `$${data.variant.totalCost}` : "";
+    const days = data.variant.days?.length || 0;
+    const dayText = days > 0 ? `${days} day${days !== 1 ? "s" : ""}` : "";
+
+    // Extract vibe tags (activity categories)
+    const categorySet = new Set<string>();
+    data.variant.days?.forEach((day) => {
+      day.activities?.forEach((act) => {
+        if (act.category) categorySet.add(act.category);
+      });
+    });
+    const vibeTags = Array.from(categorySet).slice(0, 3).join(", ");
+
+    // Build description
+    const descriptionParts = [vibeTags, dayText, cost].filter(Boolean);
+    const description = `${destination} itinerary: ${descriptionParts.join(" • ")}`;
+
+    // Set document title
+    document.title = `${destination} Itinerary • Traveloure`;
+
+    // Helper to set meta tags
+    const setMetaTag = (property: string, content: string) => {
+      let tag = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("property", property);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    const setMetaName = (name: string, content: string) => {
+      let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute("name", name);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    // Set Open Graph tags
+    setMetaTag("og:title", `${destination} Itinerary • Traveloure`);
+    setMetaTag("og:description", description);
+    setMetaName("description", description);
+
+    // Use a generic cover image (or could use destination-specific image if available)
+    const coverImageUrl = "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1200&h=630&q=80";
+    setMetaTag("og:image", coverImageUrl);
+    setMetaTag("og:type", "website");
+
+    // Cleanup: reset title on unmount
+    return () => {
+      document.title = "Traveloure";
+    };
+  }, [data?.variant]);
 
   if (isLoading) {
     return (
