@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { TransportLeg } from "@/components/itinerary/TransportLeg";
 import {
   Sparkles,
   Check,
@@ -70,6 +71,40 @@ interface VariantItem {
   replacementReason: string | null;
 }
 
+interface TransportAlternative {
+  mode: string;
+  durationMinutes: number;
+  costUsd: number | null;
+  energyCost: number;
+  reason: string;
+}
+
+interface TransportLegData {
+  id: string;
+  legOrder: number;
+  fromName: string;
+  toName: string;
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  distanceDisplay: string;
+  distanceMeters?: number;
+  estimatedDurationMinutes: number;
+  estimatedCostUsd: number | null;
+  energyCost?: number;
+  alternativeModes?: TransportAlternative[];
+  linkedProductUrl?: string | null;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+}
+
+interface VariantDay {
+  dayNumber: number;
+  activities: VariantItem[];
+  transportLegs: TransportLegData[];
+}
+
 interface VariantMetric {
   id: string;
   metricKey: string;
@@ -97,6 +132,7 @@ interface Variant {
   sortOrder: number;
   items: VariantItem[];
   metrics: VariantMetric[];
+  days?: VariantDay[];
 }
 
 interface Comparison {
@@ -1345,38 +1381,45 @@ export default function ItineraryComparisonPage() {
                   </div>
                 )}
 
-                {/* Group items by day */}
+                {/* Group items by day and show transport legs */}
                 {modalVariant && (() => {
-                  const dayGroups = modalVariant.items.reduce((acc, item) => {
-                    const day = item.dayNumber;
-                    if (!acc[day]) acc[day] = [];
-                    acc[day].push(item);
-                    return acc;
-                  }, {} as Record<number, VariantItem[]>);
-                  
-                  const sortedDays = Object.keys(dayGroups)
-                    .map(Number)
-                    .sort((a, b) => a - b);
-                  
-                  return sortedDays.map((dayNum) => (
-                    <div key={dayNum} className="space-y-3">
+                  // Use days structure if available (has transport legs), otherwise fallback to items grouping
+                  const days = modalVariant.days || (() => {
+                    const dayGroups = modalVariant.items.reduce((acc, item) => {
+                      const day = item.dayNumber;
+                      if (!acc[day]) acc[day] = { activities: [], transportLegs: [] };
+                      acc[day].activities.push(item);
+                      return acc;
+                    }, {} as Record<number, { activities: VariantItem[]; transportLegs: TransportLegData[] }>);
+
+                    return Object.entries(dayGroups).map(([dayNum, data]) => ({
+                      dayNumber: parseInt(dayNum),
+                      activities: data.activities.sort((a, b) => (a.startTime || a.timeSlot || "").localeCompare(b.startTime || b.timeSlot || "")),
+                      transportLegs: data.transportLegs,
+                    }));
+                  })();
+
+                  const sortedDays = [...days].sort((a, b) => a.dayNumber - b.dayNumber);
+
+                  return sortedDays.map((day) => (
+                    <div key={day.dayNumber} className="space-y-3">
                       <div className="flex items-center gap-2">
                         <Badge variant="outline" className="text-sm font-semibold">
                           <Calendar className="h-3.5 w-3.5 mr-1" />
-                          Day {dayNum}
+                          Day {day.dayNumber}
                         </Badge>
                         <Separator className="flex-1" />
                       </div>
-                      
+
                       <div className="space-y-3 pl-4">
-                        {dayGroups[dayNum]
-                          .sort((a, b) => (a.startTime || a.timeSlot || "").localeCompare(b.startTime || b.timeSlot || ""))
-                          .map((item, idx) => {
-                            const bookingType = getBookingType(item.serviceType);
-                            const partnerUrl = getPartnerUrl(item);
-                            return (
-                              <div 
-                                key={item.id || idx} 
+                        {day.activities.map((item, idx) => {
+                          const bookingType = getBookingType(item.serviceType);
+                          const partnerUrl = getPartnerUrl(item);
+                          const legAfter = day.transportLegs?.find(l => l.legOrder === idx + 1);
+
+                          return (
+                            <div key={item.id || idx}>
+                              <div
                                 className="bg-muted/30 rounded-lg p-4 space-y-2"
                               >
                                 <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -1410,7 +1453,7 @@ export default function ItineraryComparisonPage() {
                                     )}
                                   </div>
                                 </div>
-                                
+
                                 <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
                                   <span className="flex items-center gap-1">
                                     <Clock className="h-3.5 w-3.5" />
@@ -1432,26 +1475,37 @@ export default function ItineraryComparisonPage() {
                                     </span>
                                   )}
                                 </div>
-                                
+
                                 {item.replacementReason && (
                                   <p className="text-sm text-green-600 dark:text-green-400 italic">
                                     {item.replacementReason}
                                   </p>
                                 )}
-                                
+
                                 {partnerUrl && (
-                                  <a 
-                                    href={partnerUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
+                                  <a
+                                    href={partnerUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
                                   >
                                     Book on Partner Site <ExternalLink className="h-3 w-3" />
                                   </a>
                                 )}
                               </div>
-                            );
-                          })}
+
+                              {/* Render transport leg after activity */}
+                              {legAfter && (
+                                <TransportLeg
+                                  leg={legAfter}
+                                  readOnly={true}
+                                  dayNumber={day.dayNumber}
+                                  className="my-2"
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ));
