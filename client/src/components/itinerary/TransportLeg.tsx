@@ -2,9 +2,15 @@ import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { MapPin, ExternalLink, RotateCcw } from "lucide-react";
+import { MapPin, ExternalLink, RotateCcw, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
@@ -68,7 +74,14 @@ function getGoogleMode(mode: string): string {
   return modes[mode] || "transit";
 }
 
-export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, className }: TransportLegProps) {
+export function TransportLeg({
+  leg,
+  readOnly = false,
+  shareToken,
+  dayNumber,
+  className,
+  onModeChangeSuccess
+}: TransportLegProps) {
   const { toast } = useToast();
   const activeMode = leg.userSelectedMode || leg.recommendedMode;
   const [currentMode, setCurrentMode] = useState(activeMode);
@@ -113,6 +126,11 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
         toast({ title: `Switched to ${modeLabel}`, description: impact.message });
       } else {
         toast({ title: "Transport updated", description: `Switched to ${modeLabel}` });
+      }
+
+      // Call parent callback to cascade timing updates
+      if (onModeChangeSuccess && impact?.nextActivityStartTimeShift !== undefined) {
+        onModeChangeSuccess(leg.id, impact.nextActivityStartTimeShift);
       }
     },
     onError: () => {
@@ -184,26 +202,87 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
           )}
         </div>
 
-        {!readOnly && alternatives.length > 0 && (
+        {!readOnly && (alternatives.length > 0 || true) && (
           <div className="flex gap-1.5 mt-1.5 flex-wrap items-center">
-            {alternatives
-              .filter(alt => alt.mode !== currentMode)
-              .slice(0, 3)
-              .map((alt) => (
-                <button
-                  key={alt.mode}
-                  onClick={() => updateModeMutation.mutate(alt.mode)}
+            {/* Mode Dropdown */}
+            <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
                   disabled={updateModeMutation.isPending}
-                  className={cn(
-                    "px-2 py-0.5 rounded-full text-xs border transition-colors",
-                    "bg-background text-muted-foreground border-border hover:border-primary hover:text-primary"
-                  )}
-                  title={`${alt.durationMinutes} min${alt.costUsd ? ` · $${alt.costUsd}` : ""} — ${alt.reason}`}
-                  data-testid={`transport-alt-${alt.mode}`}
+                  className="h-6 px-2 text-xs gap-1"
+                  data-testid={`button-transport-mode-dropdown-${leg.legOrder}`}
                 >
-                  {TRANSPORT_MODE_ICONS[alt.mode] || "🚌"} {TRANSPORT_MODE_LABELS[alt.mode] || alt.mode}
-                </button>
-              ))}
+                  {modeIcon} {modeLabel}
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                {/* Recommended mode first */}
+                <DropdownMenuItem
+                  onClick={() => updateModeMutation.mutate(leg.recommendedMode)}
+                  disabled={updateModeMutation.isPending}
+                  className="cursor-pointer"
+                  data-testid={`transport-mode-${leg.recommendedMode}`}
+                >
+                  <div className="flex items-center justify-between w-full gap-2">
+                    <div className="flex items-center gap-2 flex-1">
+                      <span>{TRANSPORT_MODE_ICONS[leg.recommendedMode] || "🚌"}</span>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium">
+                          {TRANSPORT_MODE_LABELS[leg.recommendedMode] || leg.recommendedMode}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {leg.estimatedDurationMinutes} min {leg.estimatedCostUsd ? `· $${leg.estimatedCostUsd.toFixed(0)}` : "· Free"}
+                        </div>
+                      </div>
+                    </div>
+                    {currentMode === leg.recommendedMode && (
+                      <Badge variant="secondary" className="text-xs h-5 px-1.5 shrink-0">
+                        Recommended
+                      </Badge>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+
+                {/* Alternative modes */}
+                {alternatives.map((alt) => (
+                  <DropdownMenuItem
+                    key={alt.mode}
+                    onClick={() => updateModeMutation.mutate(alt.mode)}
+                    disabled={updateModeMutation.isPending}
+                    className="cursor-pointer"
+                    data-testid={`transport-mode-${alt.mode}`}
+                  >
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <span>{TRANSPORT_MODE_ICONS[alt.mode] || "🚌"}</span>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">
+                            {TRANSPORT_MODE_LABELS[alt.mode] || alt.mode}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {alt.durationMinutes} min {alt.costUsd ? `· $${alt.costUsd.toFixed(0)}` : "· Free"}
+                          </div>
+                          {alt.reason && (
+                            <div className="text-xs text-muted-foreground italic mt-0.5">
+                              {alt.reason}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {currentMode === alt.mode && (
+                        <Badge variant="secondary" className="text-xs h-5 px-1.5 shrink-0">
+                          Selected
+                        </Badge>
+                      )}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {isCustomized && (
               <Button
                 variant="ghost"
