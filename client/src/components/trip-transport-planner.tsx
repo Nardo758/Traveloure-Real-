@@ -267,18 +267,15 @@ export function TripTransportPlanner({
   const [baselineModes, setBaselineModes] = useState<Record<string, string>>({});
 
   const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
-    queryKey: variantId
-      ? ["/api/itinerary-variants", variantId, "transport-legs"]
-      : ["/api/transport-legs/user"],
+    queryKey: ["/api/itinerary-variants", variantId, "transport-legs"],
     queryFn: async () => {
-      const url = variantId
-        ? `/api/itinerary-variants/${variantId}/transport-legs`
-        : "/api/transport-legs/user";
-      const res = await fetch(url, { credentials: "include" });
+      const res = await fetch(`/api/itinerary-variants/${variantId}/transport-legs`, {
+        credentials: "include",
+      });
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !existingTransportLegs,
+    enabled: !!variantId && !existingTransportLegs,
     retry: false,
     staleTime: 120_000,
   });
