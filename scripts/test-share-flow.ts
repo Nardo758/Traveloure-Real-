@@ -228,19 +228,21 @@ async function main() {
     // Insert transport legs into database
     if (transportLegsResult.length > 0) {
       await db.insert(transportLegs).values(
-        transportLegsResult.map((leg, idx) => ({
+        transportLegsResult.map((leg) => ({
           variantId: variant.id,
           dayNumber: leg.dayNumber,
-          legOrder: idx + 1,
-          fromName: leg.fromActivityName,
-          toName: leg.toActivityName,
-          recommendedMode: leg.recommendedMode || "transit",
+          legOrder: leg.legOrder,
+          fromActivityId: leg.fromActivityId,
+          toActivityId: leg.toActivityId,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          recommendedMode: leg.recommendedMode,
           userSelectedMode: null,
           distanceDisplay: leg.distanceDisplay,
           distanceMeters: leg.distanceMeters,
           estimatedDurationMinutes: leg.estimatedDurationMinutes,
           estimatedCostUsd: leg.estimatedCostUsd,
-          energyCost: leg.energyCost || 0,
+          energyCost: leg.energyCost,
           alternativeModes: JSON.stringify(leg.alternativeModes || []),
           fromLat: leg.fromLat,
           fromLng: leg.fromLng,
