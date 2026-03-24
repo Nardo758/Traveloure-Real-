@@ -1,5 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
+import fs from "fs";
+import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -12173,6 +12175,76 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err: any) {
       console.error("Expert suggest error:", err);
       res.status(500).json({ error: "Failed to send suggestions" });
+    }
+  });
+
+  // Social sharing meta-tag injection for /itinerary-view/:token
+  // This route intercepts the SPA route and injects Open Graph tags into the HTML
+  // so social crawlers (Twitter, Facebook, Slack, etc.) see them in <head>.
+  app.get("/itinerary-view/:token", async (req, res, next) => {
+    try {
+      const { token } = req.params;
+
+      // Fetch share metadata from DB
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return next(); // Let SPA handle 404
+
+      const [variant] = await db
+        .select()
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, shared.variantId));
+
+      const [comparison] = variant
+        ? await db
+            .select()
+            .from(itineraryComparisons)
+            .where(eq(itineraryComparisons.id, variant.comparisonId))
+        : [null];
+
+      const destination = comparison?.destination || "an amazing destination";
+      const variantName = variant?.name || "Travel Itinerary";
+      const title = `${variantName} – ${destination} | Traveloure`;
+      const description = `Explore this AI-powered itinerary for ${destination}. View day-by-day activities, transport options, and more — shared via Traveloure.`;
+      const shareUrl = `${req.protocol}://${req.get("host")}/itinerary-view/${token}`;
+
+      // Use a destination-based image for og:image (Unsplash source for travel images)
+      const encodedDest = encodeURIComponent(destination);
+      const ogImage = `https://source.unsplash.com/1200x630/?travel,${encodedDest}`;
+
+      const ogTags = [
+        `<title>${title}</title>`,
+        `<meta name="description" content="${description}" />`,
+        `<meta property="og:type" content="website" />`,
+        `<meta property="og:url" content="${shareUrl}" />`,
+        `<meta property="og:title" content="${title}" />`,
+        `<meta property="og:description" content="${description}" />`,
+        `<meta property="og:image" content="${ogImage}" />`,
+        `<meta property="og:site_name" content="Traveloure" />`,
+        `<meta name="twitter:card" content="summary_large_image" />`,
+        `<meta name="twitter:title" content="${title}" />`,
+        `<meta name="twitter:description" content="${description}" />`,
+        `<meta name="twitter:image" content="${ogImage}" />`,
+      ].join("\n    ");
+
+      // Read index.html and inject tags into <head>
+      let template: string;
+      const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
+      const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
+      const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+
+      if (!fs.existsSync(templatePath)) return next();
+
+      template = fs.readFileSync(templatePath, "utf-8");
+      template = template.replace("<head>", `<head>\n    ${ogTags}`);
+
+      res.status(200).set({ "Content-Type": "text/html" }).end(template);
+    } catch (err) {
+      console.error("OG meta injection error:", err);
+      next(); // Fall through to SPA on error
     }
   });
 }

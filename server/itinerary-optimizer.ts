@@ -28,6 +28,7 @@ import {
   AnchorConstraint,
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
+import { calculateTransportLegs } from "./services/transport-leg-calculator";
 
 const GROK_MODEL = "grok-2-1212";
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
@@ -343,6 +344,24 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
 
     for (const metric of baselineMetrics) {
       await db.insert(itineraryVariantMetrics).values(metric);
+    }
+
+    // Calculate transport legs for the baseline variant
+    try {
+      const baselineActivities = baselineItems.map((item, idx) => ({
+        id: item.id || String(idx),
+        name: item.name || `Stop ${idx + 1}`,
+        lat: 0,
+        lng: 0,
+        scheduledTime: item.timeSlot || "09:00",
+        dayNumber: item.dayNumber || 1,
+        order: idx,
+      }));
+      if (baselineActivities.length > 0) {
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivities, destination);
+      }
+    } catch (legErr) {
+      console.error("Baseline transport leg calculation error (non-critical):", legErr);
     }
 
     const servicesList = availableServices.map((s) => ({
@@ -716,6 +735,31 @@ Respond with valid JSON in this exact format:
 
       for (const metric of metricsToInsert) {
         await db.insert(itineraryVariantMetrics).values(metric);
+      }
+
+      // Calculate transport legs for the new variant after metrics are finalized
+      try {
+        const variantItems = await db
+          .select()
+          .from(itineraryVariantItems)
+          .where(eq(itineraryVariantItems.variantId, newVariant.id))
+          .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+
+        const activities = variantItems.map((item, idx) => ({
+          id: item.id,
+          name: item.name || `Stop ${idx + 1}`,
+          lat: 0,
+          lng: 0,
+          scheduledTime: item.startTime || "09:00",
+          dayNumber: item.dayNumber,
+          order: item.sortOrder ?? idx,
+        }));
+
+        if (activities.length > 0) {
+          await calculateTransportLegs(newVariant.id, activities, destination);
+        }
+      } catch (legErr) {
+        console.error("Transport leg calculation error (non-critical):", legErr);
       }
     }
 
