@@ -22,7 +22,7 @@ import {
   temporalAnchors, itineraryItems
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, like, sql, desc, count, ne } from "drizzle-orm";
+import { eq, and, or, like, sql, desc, count, ne, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
@@ -4074,6 +4074,55 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     } catch (error) {
       console.error("Error creating comparison:", error);
       res.status(500).json({ message: "Failed to create comparison" });
+    }
+  });
+
+  app.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+
+      const comps = await db
+        .select({
+          tripId: itineraryComparisons.tripId,
+          selectedVariantId: itineraryComparisons.selectedVariantId,
+        })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.userId, userId));
+
+      const variantIds = comps
+        .map(c => c.selectedVariantId)
+        .filter((v): v is string => !!v);
+
+      const [variants, shares] = await Promise.all([
+        variantIds.length
+          ? db
+              .select({ id: itineraryVariants.id, optimizationScore: itineraryVariants.optimizationScore })
+              .from(itineraryVariants)
+              .where(inArray(itineraryVariants.id, variantIds))
+          : Promise.resolve([]),
+        variantIds.length
+          ? db
+              .select({ variantId: sharedItineraries.variantId, shareToken: sharedItineraries.shareToken })
+              .from(sharedItineraries)
+              .where(inArray(sharedItineraries.variantId, variantIds))
+          : Promise.resolve([]),
+      ]);
+
+      const scoreMap = new Map(variants.map(v => [v.id, v.optimizationScore]));
+      const tokenMap = new Map(shares.map(s => [s.variantId, s.shareToken]));
+
+      const result = comps
+        .filter(c => !!c.tripId)
+        .map(c => ({
+          tripId: c.tripId!,
+          optimizationScore: c.selectedVariantId ? (scoreMap.get(c.selectedVariantId) ?? null) : null,
+          shareToken: c.selectedVariantId ? (tokenMap.get(c.selectedVariantId) ?? null) : null,
+        }));
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching trip scores:", error);
+      res.status(500).json({ message: "Failed to fetch trip scores" });
     }
   });
 
