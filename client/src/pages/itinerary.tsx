@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -42,10 +41,7 @@ import {
   Headphones,
   CreditCard,
   AlertCircle,
-  Bus,
 } from "lucide-react";
-import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
-import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { format, addDays } from "date-fns";
 import { TripLogisticsDashboard } from "@/components/logistics";
@@ -325,42 +322,7 @@ export default function ItineraryPage() {
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
-  const [activeTab, setActiveTab] = useState("itinerary");
   const { toast } = useToast();
-
-  interface TripTransportLeg {
-    id: string;
-    variantId: string;
-    dayNumber: number;
-    legOrder: number;
-    fromName: string;
-    fromLat: number;
-    fromLng: number;
-    toName: string;
-    toLat: number;
-    toLng: number;
-    distanceMeters: number;
-    distanceDisplay: string;
-    recommendedMode: string;
-    userSelectedMode: string | null;
-    estimatedDurationMinutes: number;
-    estimatedCostUsd: number | null;
-    alternativeModes: TransportAlternative[] | null;
-  }
-
-  interface TripTransportLegsResponse {
-    legs: TripTransportLeg[];
-    variantId: string | null;
-  }
-
-  const { data: legsData, isLoading: legsLoading } = useQuery<TripTransportLegsResponse>({
-    queryKey: ["/api/trips", tripId, "transport-legs"],
-    queryFn: async () => {
-      const res = await fetch(`/api/trips/${tripId}/transport-legs`);
-      if (!res.ok) throw new Error("Failed to load transport legs");
-      return res.json();
-    },
-  });
 
   const isLoading = tripLoading || itineraryLoading;
 
@@ -636,24 +598,8 @@ export default function ItineraryPage() {
           ))}
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 h-auto w-full justify-start gap-1">
-            <TabsTrigger value="itinerary" className="flex items-center gap-2 data-[state=active]:bg-[#FF385C] data-[state=active]:text-white" data-testid="tab-itinerary">
-              <Calendar className="w-4 h-4" />
-              Itinerary
-            </TabsTrigger>
-            <TabsTrigger value="transport" className="flex items-center gap-2 data-[state=active]:bg-[#FF385C] data-[state=active]:text-white" data-testid="tab-transport">
-              <Bus className="w-4 h-4" />
-              Transport
-              {legsData?.legs?.length ? (
-                <Badge variant="secondary" className="ml-1 text-xs">{legsData.legs.length}</Badge>
-              ) : null}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="itinerary">
-            <div className="flex flex-col lg:flex-row gap-6 pb-12">
-              <div className="lg:w-72 flex-shrink-0">
+        <div className="flex flex-col lg:flex-row gap-6 pb-12">
+          <div className="lg:w-72 flex-shrink-0">
             <Card className="bg-white dark:bg-gray-800 lg:sticky lg:top-4 z-10">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-[#6B7280]">Trip Days</CardTitle>
@@ -694,6 +640,14 @@ export default function ItineraryPage() {
                 </ScrollArea>
               </CardContent>
             </Card>
+            
+            <TwelveGoTransport
+              destination={itinerary.destination.split(',')[0]}
+              departureDate={itinerary.startDate.toISOString()}
+              passengers={itinerary.travelers}
+              variant="full"
+              className="mt-4"
+            />
           </div>
 
           <div className="flex-1">
@@ -945,107 +899,7 @@ export default function ItineraryPage() {
               </CardContent>
             </Card>
           </div>
-          </div>
-          </TabsContent>
-
-          {/* ===== TRANSPORT TAB ===== */}
-          <TabsContent value="transport" className="pb-12 space-y-8">
-            {/* Editable legs section — shown only when legs have been generated */}
-            {legsLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
-                ))}
-              </div>
-            ) : legsData?.legs?.length ? (
-              <div>
-                <div className="flex items-center gap-3 mb-5">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Transport Legs</h3>
-                  <Badge variant="secondary">{legsData.legs.length} leg{legsData.legs.length !== 1 ? "s" : ""}</Badge>
-                </div>
-
-                {/* Summary row */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                  {[
-                    { label: "Legs", value: legsData.legs.length },
-                    { label: "Travel Time", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0) / 60)}h` },
-                    { label: "Est. Cost", value: `$${legsData.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0).toFixed(0)}` },
-                    { label: "Distance", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.distanceMeters || 0), 0) / 1000)} km` },
-                  ].map(stat => (
-                    <Card key={stat.label} className="bg-white dark:bg-gray-800">
-                      <CardContent className="p-3 flex flex-col items-center">
-                        <span className="text-xl font-bold text-[#FF385C]">{stat.value}</span>
-                        <span className="text-xs text-gray-500 mt-0.5">{stat.label}</span>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                {/* Legs grouped by day */}
-                {(() => {
-                  const byDay: Record<number, typeof legsData.legs> = {};
-                  legsData.legs.forEach(leg => {
-                    const day = (leg as any).dayNumber ?? 0;
-                    if (!byDay[day]) byDay[day] = [];
-                    byDay[day].push(leg);
-                  });
-                  return Object.keys(byDay).map(Number).sort((a, b) => a - b).map(dayNum => (
-                    <div key={dayNum} className="mb-6">
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-[#FF385C] text-white text-xs font-bold flex-shrink-0">
-                          {dayNum === 0 ? "?" : dayNum}
-                        </div>
-                        <span className="text-sm font-semibold text-[#111827] dark:text-white">
-                          {dayNum === 0 ? "Unassigned" : `Day ${dayNum}`}
-                          {itinerary?.days?.[dayNum - 1]?.title ? ` — ${itinerary.days[dayNum - 1].title}` : ""}
-                        </span>
-                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                        <Badge variant="outline" className="text-xs">{byDay[dayNum].length} leg{byDay[dayNum].length !== 1 ? "s" : ""}</Badge>
-                      </div>
-                      <div className="space-y-3">
-                        {byDay[dayNum].map(leg => (
-                          <TransportLeg
-                            key={leg.id}
-                            leg={{
-                              id: leg.id,
-                              legOrder: leg.legOrder,
-                              fromName: leg.fromName,
-                              fromLat: leg.fromLat,
-                              fromLng: leg.fromLng,
-                              toName: leg.toName,
-                              toLat: leg.toLat,
-                              toLng: leg.toLng,
-                              distanceMeters: leg.distanceMeters,
-                              distanceDisplay: leg.distanceDisplay,
-                              recommendedMode: leg.recommendedMode,
-                              userSelectedMode: leg.userSelectedMode,
-                              estimatedDurationMinutes: leg.estimatedDurationMinutes,
-                              estimatedCostUsd: leg.estimatedCostUsd,
-                              alternativeModes: leg.alternativeModes ?? [],
-                            }}
-                            readOnly={false}
-                            onModeChangeSuccess={() => {}}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            ) : null}
-
-            {/* Transport Hub — booking options (always visible, handles its own empty/loading state) */}
-            <div>
-              {legsData?.legs?.length ? (
-                <div className="flex items-center gap-3 mb-5">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Book Transport</h3>
-                </div>
-              ) : null}
-              <TransportHub tripId={tripId} destination={itinerary?.destination} />
-            </div>
-          </TabsContent>
-
-        </Tabs>
+        </div>
       </div>
 
       {/* Expert Booking Dialog */}
