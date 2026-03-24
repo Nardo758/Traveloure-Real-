@@ -645,7 +645,7 @@ export default function MyItineraryPage() {
                               {legAfter && (
                                 <TransportLeg
                                   leg={legAfter}
-                                  readOnly={true}
+                                  readOnly={false}
                                   dayNumber={dayNum}
                                   className="my-2 ml-2"
                                 />
