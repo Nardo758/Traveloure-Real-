@@ -119,6 +119,7 @@ import ExpertDetailPage from "@/pages/expert-detail";
 import QuickStartItinerary from "@/pages/quick-start-itinerary";
 import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
+import ItineraryViewPage from "@/pages/itinerary-view";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
@@ -208,6 +209,9 @@ function Router() {
       </Route>
       <Route path="/my-itinerary/:id">
         {() => <ProtectedRoute component={MyItineraryPage} />}
+      </Route>
+      <Route path="/itinerary-view/:token">
+        <ItineraryViewPage />
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}

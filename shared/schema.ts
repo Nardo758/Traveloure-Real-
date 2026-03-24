@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -4330,3 +4330,86 @@ export type DestinationSearchPattern = typeof destinationSearchPatterns.$inferSe
 export type InsertDestinationSearchPattern = z.infer<typeof insertDestinationSearchPatternSchema>;
 export type DestinationMetricsHistory = typeof destinationMetricsHistory.$inferSelect;
 export type InsertDestinationMetricsHistory = z.infer<typeof insertDestinationMetricsHistorySchema>;
+
+// === Shareable Itinerary Card System ===
+
+export const transportLegs = pgTable("transport_legs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  dayNumber: integer("day_number").notNull(),
+  legOrder: integer("leg_order").notNull(),
+  fromActivityId: varchar("from_activity_id"),
+  fromName: text("from_name").notNull(),
+  fromLat: doublePrecision("from_lat").notNull(),
+  fromLng: doublePrecision("from_lng").notNull(),
+  toActivityId: varchar("to_activity_id"),
+  toName: text("to_name").notNull(),
+  toLat: doublePrecision("to_lat").notNull(),
+  toLng: doublePrecision("to_lng").notNull(),
+  distanceMeters: integer("distance_meters").notNull(),
+  distanceDisplay: text("distance_display").notNull(),
+  recommendedMode: text("recommended_mode").notNull(),
+  userSelectedMode: text("user_selected_mode"),
+  estimatedDurationMinutes: integer("estimated_duration_minutes").notNull(),
+  estimatedCostUsd: doublePrecision("estimated_cost_usd"),
+  alternativeModes: jsonb("alternative_modes").$type<{
+    mode: string;
+    durationMinutes: number;
+    costUsd: number | null;
+    energyCost: number;
+    reason: string;
+  }[]>(),
+  energyCost: integer("energy_cost").default(0),
+  linkedProductId: varchar("linked_product_id"),
+  linkedProductUrl: text("linked_product_url"),
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+  destinationProfile: text("destination_profile"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const sharedItineraries = pgTable("shared_itineraries", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  shareToken: varchar("share_token").notNull().unique(),
+  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  sharedByUserId: varchar("shared_by_user_id").notNull().references(() => users.id),
+  sharedWithUserId: varchar("shared_with_user_id").references(() => users.id),
+  permissions: varchar("permissions", { length: 20 }).notNull().default("view"),
+  expertStatus: varchar("expert_status", { length: 30 }).default("pending"),
+  transportPreferences: jsonb("transport_preferences").$type<{
+    defaultMode: string;
+    avoidModes: string[];
+    prioritize: "time" | "cost" | "comfort" | "scenic";
+    maxWalkMinutes: number;
+    accessibility: boolean;
+  }>(),
+  viewCount: integer("view_count").default(0),
+  lastViewedAt: timestamp("last_viewed_at"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const mapsExportCache = pgTable("maps_export_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  kmlContent: text("kml_content"),
+  gpxContent: text("gpx_content"),
+  geoJsonContent: jsonb("geo_json_content"),
+  googleMapsUrls: jsonb("google_maps_urls").$type<Record<number, string>>(),
+  appleMapsUrls: jsonb("apple_maps_urls").$type<Record<number, string>>(),
+  appleMapsWebUrls: jsonb("apple_maps_web_urls").$type<Record<number, string>>(),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  transportLegsHash: text("transport_legs_hash"),
+});
+
+export const insertTransportLegSchema = createInsertSchema(transportLegs).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSharedItinerarySchema = createInsertSchema(sharedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMapsExportCacheSchema = createInsertSchema(mapsExportCache).omit({ id: true });
+
+export type TransportLeg = typeof transportLegs.$inferSelect;
+export type InsertTransportLeg = z.infer<typeof insertTransportLegSchema>;
+export type SharedItinerary = typeof sharedItineraries.$inferSelect;
+export type InsertSharedItinerary = z.infer<typeof insertSharedItinerarySchema>;
+export type MapsExportCache = typeof mapsExportCache.$inferSelect;
+export type InsertMapsExportCache = z.infer<typeof insertMapsExportCacheSchema>;
