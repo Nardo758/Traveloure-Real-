@@ -84,7 +84,6 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
-import { TransportationAnalysis } from "@/components/transportation-analysis";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ExperienceType, ProviderService, CustomVenue } from "@shared/schema";
@@ -97,10 +96,8 @@ import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
-import { AffiliateTransportProducts } from "@/components/affiliate-transport-products";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
-import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 
 interface CartItem {
@@ -464,7 +461,6 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "daytime-activities", label: "Daytime Activities", icon: Palmtree, category: "activities" },
       { id: "nightlife", label: "Nightlife", icon: Moon, category: "nightlife" },
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
-      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
       { id: "party-services", label: "Party Services", icon: PartyPopper, category: "party-services" },
     ],
     filters: ["Beach Party", "City Nightlife", "Adventure", "Wellness", "Vegas-Style", "International"],
@@ -480,7 +476,6 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
       { id: "dining", label: "Romantic Dining", icon: Utensils, category: "dining" },
       { id: "spa-wellness", label: "Spa & Wellness", icon: Flower2, category: "spa" },
       { id: "special-touches", label: "Special Touches", icon: Gift, category: "special" },
-      { id: "transportation", label: "Transportation", icon: Car, category: "transportation" },
       { id: "itinerary-builder", label: "Itinerary Builder", icon: Wrench, category: "planning" },
     ],
     filters: ["Ultra Romantic", "Beach Paradise", "European City", "Wine Country", "Island Escape", "Mountain Retreat"],
@@ -2049,7 +2044,6 @@ export default function ExperienceTemplatePage() {
                 <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
               </Button>
             </CollapsibleTrigger>
-            )}
             <CollapsibleContent>
               <Card className="mb-6">
                 <CardContent className="p-4 space-y-4">
@@ -2454,83 +2448,6 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {activeTab === "transportation" && (
-            <div className="mb-6 space-y-6">
-              <ActivitySearch
-                destination={destination}
-                startDate={startDate}
-                endDate={endDate}
-                travelers={travelers}
-                filterType="transport"
-                onResultsLoaded={setActivitySearchMarkers}
-                destinationCenter={destinationCenter}
-                onSelectActivity={(activity) => {
-                  const durationMinutes = activity.duration?.fixedDurationInMinutes || 
-                    activity.duration?.variableDurationFromMinutes || 0;
-                  const durationHours = durationMinutes > 0 ? Math.ceil(durationMinutes / 60) : undefined;
-                  
-                  const cancellation = activity.cancellationPolicy;
-                  const fullRefund = cancellation?.refundEligibility?.find(r => r.percentageRefundable === 100);
-                  const isRefundable = !!fullRefund;
-                  
-                  const logistics = activity.logistics as any;
-                  let meetingPoint: string | undefined;
-                  let meetingPointCoordinates: { lat: number; lng: number } | undefined;
-                  
-                  if (logistics?.start?.[0]) {
-                    const startLoc = logistics.start[0].location;
-                    const addr = startLoc?.address;
-                    meetingPoint = startLoc?.name || 
-                      [addr?.street, addr?.city, addr?.state, addr?.country].filter(Boolean).join(', ') ||
-                      logistics.start[0].description;
-                    if (startLoc?.coordinates) {
-                      meetingPointCoordinates = {
-                        lat: startLoc.coordinates.latitude,
-                        lng: startLoc.coordinates.longitude
-                      };
-                    }
-                  }
-                  
-                  addToCart({
-                    id: `transport-viator-${activity.productCode}`,
-                    type: "transportation",
-                    name: activity.title,
-                    price: (activity.pricing?.summary?.fromPrice || 0) * travelers,
-                    quantity: 1,
-                    provider: "Viator",
-                    details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
-                    isExternal: true,
-                    metadata: {
-                      refundable: isRefundable,
-                      cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
-                      duration: durationHours ? `${durationHours} hours` : undefined,
-                      travelers: travelers,
-                      meetingPoint,
-                      meetingPointCoordinates,
-                      rawData: activity,
-                    },
-                  });
-                }}
-              />
-              
-              {/* Transportation Analysis - Google Transit Routes & AI Tips */}
-              {(activityLocations.length > 0 || hotelLocation) && (
-                <div className="mt-6 border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Car className="h-5 w-5 text-[#FF385C]" />
-                    Getting Around
-                  </h3>
-                  <TransportationAnalysis
-                    activityLocations={activityLocations}
-                    hotelLocation={hotelLocation}
-                    initialTransitRoutes={transitRoutes}
-                    onActivitySelect={setHighlightedActivityId}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
           {activeTab === "activities" && (
             <div className="mb-6 space-y-4">
               <ActivitySearch
@@ -2657,7 +2574,7 @@ export default function ExperienceTemplatePage() {
             )
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -2680,7 +2597,7 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "transportation" && activeTab !== "activities" && activeTab !== "logistics" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "logistics" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

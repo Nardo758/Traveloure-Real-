@@ -47,6 +47,7 @@ interface TransportLegProps {
   shareToken?: string;
   dayNumber?: number;
   className?: string;
+  onModeChangeSuccess?: (legId: string, timeDiffMinutes: number) => void;
 }
 
 function getAppleFlag(mode: string): string {
@@ -73,6 +74,9 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
   const [currentMode, setCurrentMode] = useState(activeMode);
   const [displayDuration, setDisplayDuration] = useState(leg.estimatedDurationMinutes);
   const [displayCost, setDisplayCost] = useState(leg.estimatedCostUsd);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  const isCustomized = leg.userSelectedMode !== null && leg.userSelectedMode !== leg.recommendedMode;
 
   const origDuration = useRef(leg.userSelectedMode ? null : leg.estimatedDurationMinutes);
   const origCost = useRef(leg.userSelectedMode ? null : leg.estimatedCostUsd);
@@ -98,6 +102,8 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
         const alt = leg.alternativeModes?.find(a => a.mode === selectedMode);
         if (alt !== undefined) setDisplayCost(alt?.costUsd ?? null);
       }
+      setDropdownOpen(false);
+
       if (shareToken) {
         queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share", shareToken] });
       } else {
