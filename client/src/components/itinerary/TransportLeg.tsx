@@ -54,7 +54,7 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
 
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
-      return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode });
+      return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
     },
     onSuccess: (data, selectedMode) => {
       setCurrentMode(selectedMode);

@@ -11735,8 +11735,9 @@ export async function registerDiscoveryRoutes(app: Express) {
           ? {
               name: [sharer.firstName, sharer.lastName].filter(Boolean).join(" ") || "A traveler",
               avatarUrl: sharer.profileImageUrl,
+              userId: sharer.id,
             }
-          : { name: "A traveler", avatarUrl: null },
+          : { name: "A traveler", avatarUrl: null, userId: null },
         permissions: shared.permissions,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
@@ -11748,13 +11749,15 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   // PATCH /api/transport-legs/:legId/mode
-  app.patch("/api/transport-legs/:legId/mode", isAuthenticated, async (req, res) => {
+  // Accepts either authenticated session (owner) or a suggest-permissions shareToken (expert without login)
+  app.patch("/api/transport-legs/:legId/mode", async (req, res) => {
     try {
       const { legId } = req.params;
       const { selectedMode, shareToken } = req.body;
       const userId = (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+      if (!userId && !shareToken) return res.status(401).json({ error: "Authentication or share token required" });
 
       const [leg] = await db
         .select()
@@ -11763,7 +11766,7 @@ export async function registerDiscoveryRoutes(app: Express) {
 
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
 
-      // Ownership check: verify via the variant's comparison owner OR valid share token
+      // Ownership check: verify via the variant's comparison owner OR valid suggest share token
       const [variant] = await db
         .select({ comparisonId: itineraryVariants.comparisonId })
         .from(itineraryVariants)
@@ -11775,7 +11778,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           .from(itineraryComparisons)
           .where(eq(itineraryComparisons.id, variant.comparisonId));
 
-        const isOwner = comparison?.userId === userId;
+        const isOwner = userId && comparison?.userId === userId;
 
         if (!isOwner) {
           if (shareToken) {
@@ -11788,8 +11791,8 @@ export async function registerDiscoveryRoutes(app: Express) {
             if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
               return res.status(410).json({ error: "Share link has expired" });
             }
-            if (shared.permissions === "view") {
-              return res.status(403).json({ error: "View-only share link cannot modify transport legs" });
+            if (shared.permissions !== "suggest") {
+              return res.status(403).json({ error: "This share link does not allow modifications" });
             }
           } else {
             return res.status(403).json({ error: "Not authorized to update this transport leg" });
