@@ -52,13 +52,27 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
   const activeMode = leg.userSelectedMode || leg.recommendedMode;
   const [currentMode, setCurrentMode] = useState(activeMode);
 
+  const [displayDuration, setDisplayDuration] = useState(leg.estimatedDurationMinutes);
+  const [displayCost, setDisplayCost] = useState(leg.estimatedCostUsd);
+
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
       return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
     },
-    onSuccess: (data, selectedMode) => {
+    onSuccess: (data: any, selectedMode) => {
       setCurrentMode(selectedMode);
-      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share"] });
+      const updatedLeg = data?.updatedLeg || data?.leg;
+      if (updatedLeg?.estimatedDurationMinutes !== undefined) {
+        setDisplayDuration(updatedLeg.estimatedDurationMinutes);
+      }
+      if (updatedLeg?.estimatedCostUsd !== undefined) {
+        setDisplayCost(updatedLeg.estimatedCostUsd);
+      }
+      if (shareToken) {
+        queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share", shareToken] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share"] });
+      }
       toast({ title: "Transport updated", description: `Switched to ${TRANSPORT_MODE_LABELS[selectedMode] || selectedMode}` });
     },
     onError: () => {
@@ -102,19 +116,19 @@ export function TransportLeg({ leg, readOnly = false, shareToken, dayNumber, cla
           <span className="text-base">{modeIcon}</span>
           <span className="text-sm font-medium text-foreground">{modeLabel}</span>
           <span className="text-sm text-muted-foreground">•</span>
-          <span className="text-sm text-muted-foreground">{leg.estimatedDurationMinutes} min</span>
-          {leg.estimatedCostUsd !== null && leg.estimatedCostUsd !== undefined && leg.estimatedCostUsd > 0 && (
+          <span className="text-sm text-muted-foreground" data-testid={`leg-duration-${leg.legOrder}`}>{displayDuration} min</span>
+          {displayCost !== null && displayCost !== undefined && displayCost > 0 && (
             <>
               <span className="text-sm text-muted-foreground">•</span>
-              <span className="text-sm text-muted-foreground">${leg.estimatedCostUsd.toFixed(2)}</span>
+              <span className="text-sm text-muted-foreground" data-testid={`leg-cost-${leg.legOrder}`}>${displayCost.toFixed(2)}</span>
             </>
           )}
-          {leg.estimatedCostUsd === null || leg.estimatedCostUsd === 0 ? (
+          {(displayCost === null || displayCost === 0) && (
             <>
               <span className="text-sm text-muted-foreground">•</span>
               <span className="text-sm text-green-600 dark:text-green-400">Free</span>
             </>
-          ) : null}
+          )}
           <span className="text-sm text-muted-foreground">•</span>
           <span className="text-sm text-muted-foreground">{leg.distanceDisplay}</span>
         </div>
