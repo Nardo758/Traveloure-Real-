@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { InlineTransportSelector } from "@/components/itinerary/InlineTransportSelector";
 import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
@@ -167,6 +168,7 @@ interface ItineraryDay {
 
 interface ItineraryData {
   id: string;
+  userId: string;
   title: string;
   destination: string;
   startDate: string;
@@ -236,6 +238,7 @@ function getCategoryColor(category: string): string {
 export default function MyItineraryPage() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([1]));
   const [activeTab, setActiveTab] = useState("timeline");
 
@@ -243,6 +246,10 @@ export default function MyItineraryPage() {
   const { data, isLoading, error } = useQuery<ItineraryData>({
     queryKey: ['/api/my-itinerary', id],
   });
+
+  // User is the trip owner if logged in and the itinerary belongs to them
+  const isOwner = !!user && !!data && user.id === data.userId;
+  const transportReadOnly = !isOwner;
 
   const toggleDay = (day: number) => {
     const newExpanded = new Set(expandedDays);
@@ -650,7 +657,7 @@ export default function MyItineraryPage() {
                               {legAfter && (
                                 <InlineTransportSelector
                                   leg={legAfter}
-                                  readOnly={false}
+                                  readOnly={transportReadOnly}
                                   tripId={id}
                                   className="my-1"
                                 />
