@@ -35,7 +35,8 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
   try {
     const { tripId } = req.params;
 
-    const emptyHub = (prefs?: any) => ({
+    const emptyHub = (status: "no_activities" | "calculating", prefs?: any) => ({
+      status,
       summary: {
         totalLegs: 0,
         bookedLegs: 0,
@@ -59,7 +60,7 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
     }
 
     if (!comparison) {
-      return res.json(emptyHub());
+      return res.json(emptyHub("no_activities"));
     }
 
     // Get selected variant or first variant
@@ -77,13 +78,18 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
     }
 
     if (!variant) {
-      return res.json(emptyHub((comparison as any).transportPreferences));
+      return res.json(emptyHub("no_activities", (comparison as any).transportPreferences));
     }
 
     // Fetch all transport legs for the variant
     const legs = await db.query.transportLegs.findMany({
       where: eq(transportLegs.variantId, variant.id),
     });
+
+    // If variant exists but no legs yet → legs are being calculated
+    if (legs.length === 0) {
+      return res.json(emptyHub("calculating", (comparison as any).transportPreferences));
+    }
 
     // Fetch all booking options for the variant
     const allOptions = await db
@@ -148,12 +154,13 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
     );
 
     res.json({
+      status: "ready",
       summary: {
         totalLegs,
         bookedLegs,
         estimatedCostRange,
         totalTravelMinutes,
-        preferences: comparison.transportPreferences || {
+        preferences: (comparison as any).transportPreferences || {
           priority: "time",
           maxWalkMinutes: 15,
           avoidModes: [],
