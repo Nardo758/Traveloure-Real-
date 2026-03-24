@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -242,14 +242,7 @@ export function TripTransportPlanner({
   const [showLegs, setShowLegs] = useState(false);
   const [packagesGenerated, setPackagesGenerated] = useState(false);
   const [dbSyncDone, setDbSyncDone] = useState(false);
-
-  const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
-    queryKey: ["/api/transport-legs/user"],
-    retry: false,
-    staleTime: 60_000,
-  });
-
-  const resolvedLegs = existingTransportLegs ?? fetchedLegs ?? [];
+  const resolvedLegs = existingTransportLegs ?? [];
 
   const segments = useMemo(() => {
     const result: TransportSegment[] = [];
