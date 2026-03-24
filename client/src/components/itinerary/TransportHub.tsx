@@ -92,6 +92,11 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
 
   const { data, isLoading, error } = useQuery<TransportHubData>({
     queryKey: ["/api/itinerary", tripId, "transport-hub"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary/${tripId}/transport-hub`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load transport hub");
+      return res.json();
+    },
   });
 
   useEffect(() => {
@@ -114,7 +119,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
     );
   }
 
-  if (!data || data.status === "no_activities" || data.summary.totalLegs === 0 && data.status !== "calculating") {
+  if (!data || data.status === "no_activities" || (data.status !== "calculating" && data.summary.totalLegs === 0)) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
         <div className="p-5 rounded-full bg-gray-100 dark:bg-gray-800">
