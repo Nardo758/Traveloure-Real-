@@ -33,6 +33,7 @@ interface TransportBookingOption {
   deepLinkScheme?: string;
   isRecommended?: boolean;
   bookingStatus?: string;
+  confirmationRef?: string | null;
 }
 
 interface TransportBookingCardProps {
@@ -292,11 +293,11 @@ export function TransportBookingCard({
         </div>
       )}
 
-      {/* Confirmation ref display — shown after marking as booked */}
-      {effectivelyBooked && savedConfirmationRef && (
+      {/* Confirmation ref display — shown when booked/confirmed with a ref */}
+      {effectivelyBooked && (savedConfirmationRef || option.confirmationRef) && (
         <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 rounded-md px-2.5 py-1.5" data-testid={`text-confirmation-ref-${option.id}`}>
           <CheckCircle2 className="h-3 w-3 shrink-0" />
-          <span>Ref: <span className="font-medium">{savedConfirmationRef}</span></span>
+          <span>Ref: <span className="font-medium">{savedConfirmationRef || option.confirmationRef}</span></span>
         </div>
       )}
 

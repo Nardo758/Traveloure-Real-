@@ -47,6 +47,7 @@ interface BookingOption {
   deepLinkScheme?: string;
   isRecommended?: boolean;
   bookingStatus?: string;
+  confirmationRef?: string | null;
   isMultiDayPass?: boolean;
 }
 

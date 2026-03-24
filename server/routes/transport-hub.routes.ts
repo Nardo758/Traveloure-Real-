@@ -206,6 +206,10 @@ router.post(
         return res.status(400).json({ error: "Not a platform booking option" });
       }
 
+      if (!option.variantId) {
+        return res.status(400).json({ error: "Booking option has no associated variant" });
+      }
+
       // Fetch the variant to get tripId
       const variant = await db.query.itineraryVariants.findFirst({
         where: eq(itineraryVariants.id, option.variantId),
@@ -232,6 +236,12 @@ router.post(
         travelers,
         specialRequests
       );
+
+      // Mark the option as "booked" so the UI shows Confirmed badge immediately
+      await db
+        .update(transportBookingOptions)
+        .set({ bookingStatus: "booked", updatedAt: new Date() })
+        .where(eq(transportBookingOptions.id, optionId));
 
       res.json({
         success: true,
@@ -323,20 +333,25 @@ router.patch(
       const { optionId } = req.params;
       const { bookingStatus, confirmationRef } = req.body;
 
-      // Update booking option status
+      // Update booking option status (and persist confirmationRef if provided)
+      const updateData: Record<string, any> = {
+        bookingStatus,
+        updatedAt: new Date(),
+      };
+      if (confirmationRef !== undefined && confirmationRef !== null) {
+        updateData.confirmationRef = confirmationRef;
+      }
+
       await db
         .update(transportBookingOptions)
-        .set({
-          bookingStatus,
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(transportBookingOptions.id, optionId));
 
       res.json({
         success: true,
         message: "Booking status updated",
         bookingStatus,
-        confirmationRef,
+        confirmationRef: confirmationRef || null,
       });
     } catch (error) {
       console.error("Error updating booking status:", error);
