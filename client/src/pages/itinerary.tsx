@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -41,7 +42,11 @@ import {
   Headphones,
   CreditCard,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
+  Bus,
 } from "lucide-react";
+import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
 import {
   Dialog,
   DialogContent,
@@ -322,7 +327,42 @@ export default function ItineraryPage() {
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
+  const [legsOpen, setLegsOpen] = useState(true);
   const { toast } = useToast();
+
+  interface TripTransportLeg {
+    id: string;
+    variantId: string;
+    dayNumber: number;
+    legOrder: number;
+    fromName: string;
+    fromLat: number;
+    fromLng: number;
+    toName: string;
+    toLat: number;
+    toLng: number;
+    distanceMeters: number;
+    distanceDisplay: string;
+    recommendedMode: string;
+    userSelectedMode: string | null;
+    estimatedDurationMinutes: number;
+    estimatedCostUsd: number | null;
+    alternativeModes: TransportAlternative[] | null;
+  }
+
+  interface TripTransportLegsResponse {
+    legs: TripTransportLeg[];
+    variantId: string | null;
+  }
+
+  const { data: legsData, isLoading: legsLoading } = useQuery<TripTransportLegsResponse>({
+    queryKey: ["/api/trips", tripId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/trips/${tripId}/transport-legs`);
+      if (!res.ok) throw new Error("Failed to load transport legs");
+      return res.json();
+    },
+  });
 
   const isLoading = tripLoading || itineraryLoading;
 
@@ -641,13 +681,83 @@ export default function ItineraryPage() {
               </CardContent>
             </Card>
             
-            <TwelveGoTransport
-              destination={itinerary.destination.split(',')[0]}
-              departureDate={itinerary.startDate.toISOString()}
-              passengers={itinerary.travelers}
-              variant="full"
-              className="mt-4"
-            />
+            <Card className="mt-4 bg-white dark:bg-gray-800">
+              <CardHeader className="pb-2 cursor-pointer" onClick={() => setLegsOpen(o => !o)}>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium text-[#6B7280] flex items-center gap-2">
+                    <Bus className="h-4 w-4" />
+                    Transport Legs
+                    {legsData?.legs?.length ? (
+                      <Badge variant="secondary" className="text-xs">{legsData.legs.length}</Badge>
+                    ) : null}
+                  </CardTitle>
+                  {legsOpen ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                </div>
+              </CardHeader>
+              {legsOpen && (
+                <CardContent className="pt-0 space-y-3">
+                  {legsLoading ? (
+                    <div className="py-4 text-center text-sm text-gray-400 animate-pulse">Loading transport legs…</div>
+                  ) : legsData?.legs?.length ? (
+                    <>
+                      {legsData.legs.map((leg) => {
+                        const legData: TransportLegData = {
+                          id: leg.id,
+                          legOrder: leg.legOrder,
+                          fromName: leg.fromName,
+                          fromLat: leg.fromLat,
+                          fromLng: leg.fromLng,
+                          toName: leg.toName,
+                          toLat: leg.toLat,
+                          toLng: leg.toLng,
+                          distanceMeters: leg.distanceMeters,
+                          distanceDisplay: leg.distanceDisplay,
+                          recommendedMode: leg.recommendedMode,
+                          userSelectedMode: leg.userSelectedMode,
+                          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+                          estimatedCostUsd: leg.estimatedCostUsd,
+                          alternativeModes: leg.alternativeModes ?? [],
+                        };
+                        return (
+                          <TransportLeg
+                            key={leg.id}
+                            leg={legData}
+                            onModeChangeSuccess={() => {}}
+                          />
+                        );
+                      })}
+                      <a
+                        href={`https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(itinerary.destination.split(',')[0])}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline pt-1"
+                        data-testid="link-12go-book"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Book ground transport on 12Go
+                      </a>
+                    </>
+                  ) : (
+                    <div className="py-3 space-y-2">
+                      <p className="text-xs text-gray-500">No transport legs added yet.</p>
+                      <p className="text-xs text-gray-400">
+                        Generate an itinerary comparison and select a variant to auto-calculate transport legs between locations.
+                      </p>
+                      <a
+                        href={`https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(itinerary.destination.split(',')[0])}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                        data-testid="link-12go-book-empty"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Browse transport on 12Go
+                      </a>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
           </div>
 
           <div className="flex-1">
