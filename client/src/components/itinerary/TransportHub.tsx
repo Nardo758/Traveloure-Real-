@@ -28,6 +28,7 @@ import {
 interface TransportHubProps {
   tripId: string;
   readOnly?: boolean;
+  onNavigateToDay?: (dayNumber: number) => void;
 }
 
 interface ModeBreakdownItem {
@@ -101,7 +102,7 @@ interface TransportHubData {
   multiDayPasses: MultiDayPass[];
 }
 
-export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
+export function TransportHub({ tripId, readOnly = false, onNavigateToDay }: TransportHubProps) {
   const { data, isLoading, error } = useQuery<TransportHubData>({
     queryKey: ["/api/itinerary", tripId, "transport-hub"],
     queryFn: async () => {
@@ -293,6 +294,15 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
                       <DollarSign className="h-3 w-3" />
                       {totalCostDay === 0 ? "Free" : `$${totalCostDay.toFixed(0)}`}
                     </span>
+                    {onNavigateToDay && (
+                      <button
+                        onClick={() => onNavigateToDay(day.dayNumber)}
+                        className="text-primary hover:underline font-medium ml-1"
+                        data-testid={`hub-goto-day-${day.dayNumber}`}
+                      >
+                        View →
+                      </button>
+                    )}
                   </div>
                 </div>
               );

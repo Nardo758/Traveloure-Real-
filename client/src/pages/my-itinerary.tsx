@@ -965,7 +965,16 @@ export default function MyItineraryPage() {
           </TabsContent>
 
           <TabsContent value="transport" className="space-y-6">
-            <TransportHub tripId={id} readOnly={false} />
+            <TransportHub
+              tripId={id}
+              readOnly={false}
+              onNavigateToDay={(dayNumber) => {
+                const dayEl = document.getElementById(`itinerary-day-${dayNumber}`);
+                if (dayEl) {
+                  dayEl.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }}
+            />
           </TabsContent>
         </Tabs>
 
