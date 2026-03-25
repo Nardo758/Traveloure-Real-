@@ -52,7 +52,6 @@ import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
-import { TripLogisticsDashboard } from "@/components/logistics";
 import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { cn } from "@/lib/utils";
@@ -1014,14 +1013,6 @@ export default function ItineraryPage() {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Trip Logistics Dashboard */}
-            <TripLogisticsDashboard
-              tripId={tripId}
-              tripName={tripData?.title || tripData?.destination || "Trip"}
-              budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
-              destination={tripData?.destination || "destination"}
-            />
 
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-4">
