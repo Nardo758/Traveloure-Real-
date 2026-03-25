@@ -470,6 +470,7 @@ export interface IStorage {
   createItineraryChange(change: InsertItineraryChange): Promise<ItineraryChange>;
 
   // Activity Comments (PlanCard collaboration)
+  getActivityComment(id: string): Promise<ActivityComment | undefined>;
   getActivityComments(activityId: string): Promise<ActivityComment[]>;
   getActivityCommentCounts(tripId: string): Promise<Record<string, number>>;
   createActivityComment(comment: InsertActivityComment): Promise<ActivityComment>;
@@ -3150,6 +3151,13 @@ export class DatabaseStorage implements IStorage {
   async createItineraryChange(change: InsertItineraryChange): Promise<ItineraryChange> {
     const [created] = await db.insert(itineraryChanges).values(change).returning();
     return created;
+  }
+
+  async getActivityComment(id: string): Promise<ActivityComment | undefined> {
+    const [comment] = await db.select().from(activityComments)
+      .where(eq(activityComments.id, id))
+      .limit(1);
+    return comment;
   }
 
   async getActivityComments(activityId: string): Promise<ActivityComment[]> {
