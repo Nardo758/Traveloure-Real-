@@ -460,9 +460,60 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
     ).join('\n');
 
+    // ── Marquee / signature item detection ────────────────────────────────────
+    const MARQUEE_KEYWORDS = [
+      "helicopter", "private", "exclusive", "yacht", "charter",
+      "hot air balloon", "skydiving", "bespoke", "luxury", "vip",
+      "concierge", "villa", "penthouse", "seaplane", "submarine",
+      "float plane", "paragliding", "paramotor", "jet ski",
+    ];
+    const prices = baselineItems.map(i => i.price || 0).filter(p => p > 0);
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+    const marqueeThreshold = Math.max(200, maxPrice * 0.5);
+
+    const marqueeItems = baselineItems.filter(item => {
+      const nameLower = (item.name || '').toLowerCase();
+      const isHighValue = (item.price || 0) >= marqueeThreshold;
+      const isKeyword = MARQUEE_KEYWORDS.some(kw => nameLower.includes(kw));
+      return isHighValue || isKeyword;
+    });
+
+    let marqueeSection = '';
+    if (marqueeItems.length > 0) {
+      const marqueeList = marqueeItems
+        .map(item => `- Day ${item.dayNumber || 1} ${item.timeSlot || ''} | ${item.name} | $${item.price || 0}`)
+        .join('\n');
+      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
+    }
+
+    // ── Empty day detection ───────────────────────────────────────────────────
+    let emptyDaySection = '';
+    if (startDate && endDate) {
+      const startMs = new Date(startDate).getTime();
+      const endMs = new Date(endDate).getTime();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
+        const tripDurationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+        if (tripDurationDays > 1) {
+          const coveredDays = new Set(baselineItems.map(item => item.dayNumber || 1));
+          const emptyDays: number[] = [];
+          for (let d = 1; d <= tripDurationDays; d++) {
+            if (!coveredDays.has(d)) emptyDays.push(d);
+          }
+          if (emptyDays.length > 0) {
+            const coveredList = [...coveredDays].sort((a, b) => a - b).join(', ');
+            emptyDaySection = `\n\nTRIP DURATION: ${tripDurationDays} days (Days 1–${tripDurationDays})
+DAYS WITH USER ACTIVITIES: Days ${coveredList}
+EMPTY DAYS TO FILL: Days ${emptyDays.join(', ')}
+
+For each empty day, add activities that match the user's experience style (inferred from their existing selections), the destination, and their overall budget pace. Each empty day must include at least: a morning activity, a dining experience, an afternoon activity, and accommodation. These auto-filled days must feel cohesive with the user's existing selections. All variants must cover all ${tripDurationDays} days.`;
+          }
+        }
+      }
+    }
+
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${anchorPromptSection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
@@ -475,6 +526,8 @@ Generate 2 alternative itineraries that improve upon the user's plan. Each alter
 2. Include metrics showing WHY it's better
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
+5. Preserve all PROTECTED ITEMS exactly as they appear — never replace, remove, or move them
+6. Cover all trip days, including auto-filling any empty days with contextually appropriate activities
 
 Respond with valid JSON in this exact format:
 {
