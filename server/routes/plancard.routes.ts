@@ -307,6 +307,20 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   }
 });
 
+router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub;
+    const trip = await storage.getTrip(req.params.tripId);
+    if (!trip || trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    await storage.deleteItineraryChange(req.params.changeId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete change record" });
+  }
+});
+
 function mapItemType(itemType: string | null): string {
   const map: Record<string, string> = {
     activity: "attraction",

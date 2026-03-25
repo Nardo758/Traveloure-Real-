@@ -4502,7 +4502,8 @@ export const activityComments = pgTable("activity_comments", {
   authorId: varchar("author_id").notNull(),
   authorName: varchar("author_name", { length: 255 }).notNull(),
   text: text("text").notNull(),
-  role: varchar("role", { length: 20 }).notNull(), // owner, expert, friend
+  role: varchar("role", { length: 20 }).notNull(),
+  parentId: varchar("parent_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

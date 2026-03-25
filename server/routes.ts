@@ -12072,6 +12072,14 @@ export async function registerDiscoveryRoutes(app: Express) {
         downstreamMessage = `Transport mode updated to ${selectedMode}.`;
       }
 
+      if (variant) {
+        const [comp] = await db.select({ tripId: itineraryComparisons.tripId }).from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
+        if (comp?.tripId) {
+          const who = userId ? ((req.user as any)?.claims?.name || "User") : "Guest";
+          logItineraryChange(comp.tripId, who, `Changed transport mode to ${selectedMode} (${leg.fromName} → ${leg.toName})`, "transport", shareToken ? "friend" : "owner", undefined, { legId, selectedMode, previousMode: leg.userSelectedMode || leg.recommendedMode });
+        }
+      }
+
       res.json({
         updatedLeg: {
           id: legId,
