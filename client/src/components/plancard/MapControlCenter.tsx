@@ -326,16 +326,61 @@ export function MapControlCenter({
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  function getActivityLoc(a: PlanCardActivity): string {
+    if (a.lat != null && a.lng != null) return `${a.lat},${a.lng}`;
+    return a.location || a.name || tripDestination;
+  }
+
+  function getDominantMode(transports: PlanCardTransport[] | undefined): { google: string; apple: string } {
+    if (!transports || transports.length === 0) return { google: "walking", apple: "w" };
+    const counts: Record<string, number> = {};
+    transports.forEach(t => { counts[t.mode] = (counts[t.mode] || 0) + 1; });
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+    const gMap: Record<string, string> = { walk: "walking", taxi: "driving", car: "driving", shuttle: "driving", bus: "transit", train: "transit", ferry: "transit", bicycle: "bicycling" };
+    const aMap: Record<string, string> = { walk: "w", taxi: "d", car: "d", shuttle: "d", bus: "r", train: "r", ferry: "r", bicycle: "w" };
+    return { google: gMap[top] || "walking", apple: aMap[top] || "w" };
+  }
+
   function handleGoogleMaps() {
-    const dest = day?.activities?.[0]?.location || tripDestination;
-    openInMaps(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dest)}`);
+    const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
+    if (acts.length === 0) {
+      openInMaps(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tripDestination)}`);
+      return;
+    }
+    if (acts.length === 1) {
+      openInMaps(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getActivityLoc(acts[0]))}`);
+      return;
+    }
+    const mode = getDominantMode(day?.transports);
+    const origin = encodeURIComponent(getActivityLoc(acts[0]));
+    const destination = encodeURIComponent(getActivityLoc(acts[acts.length - 1]));
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=${mode.google}`;
+    if (acts.length > 2) {
+      const waypoints = acts.slice(1, -1).map(a => encodeURIComponent(getActivityLoc(a))).join("%7C");
+      url += `&waypoints=${waypoints}`;
+    }
+    openInMaps(url);
   }
 
   function handleAppleMaps() {
-    const dest = day?.activities?.[0]?.location || tripDestination;
+    const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
     const platform = detectMapsPlatform();
-    const query = encodeURIComponent(dest);
-    openInMaps(platform === "apple" ? `maps://?q=${query}` : `https://maps.apple.com/?q=${query}`);
+    if (acts.length === 0) {
+      const q = encodeURIComponent(tripDestination);
+      openInMaps(platform === "apple" ? `maps://?q=${q}` : `https://maps.apple.com/?q=${q}`);
+      return;
+    }
+    if (acts.length === 1) {
+      const q = encodeURIComponent(getActivityLoc(acts[0]));
+      openInMaps(platform === "apple" ? `maps://?q=${q}` : `https://maps.apple.com/?q=${q}`);
+      return;
+    }
+    const mode = getDominantMode(day?.transports);
+    const saddr = encodeURIComponent(getActivityLoc(acts[0]));
+    const daddrParts = acts.slice(1).map(a => encodeURIComponent(getActivityLoc(a)));
+    const daddr = daddrParts.join("+to:");
+    const base = platform === "apple" ? "maps://" : "https://maps.apple.com/";
+    openInMaps(`${base}?saddr=${saddr}&daddr=${daddr}&dirflg=${mode.apple}`);
   }
 
   function handleAddToCalendar() {
