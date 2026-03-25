@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from "@vis.gl/react-google-maps";
 import { Polyline } from "@/components/ui/map-polyline";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
@@ -96,11 +96,10 @@ function MapContent({
   tripId: string;
 }) {
   const map = useMap();
-  const geocodingLib = useMapsLibrary("geocoding");
   const [geocodedActivities, setGeocodedActivities] = useState<GeocodedActivity[]>([]);
 
   useEffect(() => {
-    if (!geocodingLib || !activities || activities.length === 0) {
+    if (!activities || activities.length === 0) {
       setGeocodedActivities([]);
       return;
     }
@@ -110,6 +109,10 @@ function MapContent({
       setGeocodedActivities(
         activities.map((a) => ({ ...a, resolvedLat: a.lat!, resolvedLng: a.lng! }))
       );
+      return;
+    }
+
+    if (!map || typeof google === "undefined" || !google.maps) {
       return;
     }
 
@@ -171,7 +174,7 @@ function MapContent({
 
     run();
     return () => { cancelled = true; };
-  }, [geocodingLib, activities, destination]);
+  }, [map, activities, destination]);
 
   useEffect(() => {
     if (!map || geocodedActivities.length === 0) return;
@@ -189,18 +192,36 @@ function MapContent({
         const toActivity = geocodedActivities[i + 1];
         if (!fromActivity || !toActivity) return null;
         const style = getModePolylineStyle(tr.mode);
+        const midLat = (fromActivity.resolvedLat + toActivity.resolvedLat) / 2;
+        const midLng = (fromActivity.resolvedLng + toActivity.resolvedLng) / 2;
         return (
-          <Polyline
-            key={`route-${tr.id}`}
-            path={[
-              { lat: fromActivity.resolvedLat, lng: fromActivity.resolvedLng },
-              { lat: toActivity.resolvedLat, lng: toActivity.resolvedLng },
-            ]}
-            strokeColor={style.strokeColor}
-            strokeOpacity={style.strokeOpacity}
-            strokeWeight={style.strokeWeight}
-            icons={style.icons}
-          />
+          <React.Fragment key={`route-${tr.id}`}>
+            <Polyline
+              path={[
+                { lat: fromActivity.resolvedLat, lng: fromActivity.resolvedLng },
+                { lat: toActivity.resolvedLat, lng: toActivity.resolvedLng },
+              ]}
+              strokeColor={style.strokeColor}
+              strokeOpacity={style.strokeOpacity}
+              strokeWeight={style.strokeWeight}
+              icons={style.icons}
+            />
+            {tr.duration && (
+              <AdvancedMarker position={{ lat: midLat, lng: midLng }}>
+                <div
+                  className="px-1.5 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap shadow-md border"
+                  style={{
+                    backgroundColor: "hsl(var(--card))",
+                    borderColor: style.strokeColor,
+                    color: style.strokeColor,
+                  }}
+                  data-testid={`map-route-duration-${tr.id}`}
+                >
+                  {tr.duration}
+                </div>
+              </AdvancedMarker>
+            )}
+          </React.Fragment>
         );
       })}
 
