@@ -476,15 +476,19 @@ export class CacheService {
 
       if (shouldRefresh) {
         this.coordinateRefreshAttempts.set(destKey, Date.now());
-        const result = await viatorService.searchByFreetext(destination, currency, count);
-        if (result.products && result.products.length > 0) {
-          const enrichedProducts = await this.enrichProductsWithCoordinates(result.products);
-          await this.cacheActivities(enrichedProducts, destination);
-          const normalized = enrichedProducts.map(p => {
-            const coords = p.logistics?.start?.[0]?.location?.coordinates;
-            return { ...p, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null };
-          });
-          return { data: normalized, fromCache: false };
+        try {
+          const result = await viatorService.searchByFreetext(destination, currency, count);
+          if (result.products && result.products.length > 0) {
+            const enrichedProducts = await this.enrichProductsWithCoordinates(result.products);
+            await this.cacheActivities(enrichedProducts, destination);
+            const normalized = enrichedProducts.map(p => {
+              const coords = p.logistics?.start?.[0]?.location?.coordinates;
+              return { ...p, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null };
+            });
+            return { data: normalized, fromCache: false };
+          }
+        } catch (error) {
+          console.error(`Coordinate refresh failed for ${destination}, serving stale cache:`, error);
         }
       }
 
