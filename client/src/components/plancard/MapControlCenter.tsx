@@ -354,7 +354,8 @@ export function MapControlCenter({
     const mode = getDominantMode(day?.transports);
     const origin = encodeURIComponent(getActivityLoc(acts[0]));
     const destination = encodeURIComponent(getActivityLoc(acts[acts.length - 1]));
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=${mode.google}`;
+    const googleMode = acts.length > 2 && mode.google === "transit" ? "walking" : mode.google;
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=${googleMode}`;
     if (acts.length > 2) {
       const waypoints = acts.slice(1, -1).map(a => encodeURIComponent(getActivityLoc(a))).join("%7C");
       url += `&waypoints=${waypoints}`;
