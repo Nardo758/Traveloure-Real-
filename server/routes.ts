@@ -56,6 +56,7 @@ import bookingsRoutes from "./routes/bookings";
 import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
+import plancardRoutes from "./routes/plancard.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -125,6 +126,9 @@ export async function registerRoutes(
 
   // Transport Hub routes - booking interface for transport legs
   app.use(transportHubRoutes);
+
+  // PlanCard routes - change tracking, comments, structured day data
+  app.use(plancardRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
