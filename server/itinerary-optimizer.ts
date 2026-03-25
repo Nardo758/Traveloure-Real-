@@ -467,13 +467,22 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       "concierge", "villa", "penthouse", "seaplane", "submarine",
       "float plane", "paragliding", "paramotor", "jet ski",
     ];
-    const MARQUEE_PRICE_THRESHOLD = 200;
+    // Commodity types are always replaceable — never lock them as "protected"
+    const COMMODITY_TYPES = new Set([
+      'hotel', 'hotels', 'accommodation', 'lodging', 'hostel',
+      'flight', 'flights', 'transport', 'transportation', 'transfer',
+      'car', 'car_rental', 'rental', 'shuttle',
+    ]);
+    // Raised to $300 to avoid accidentally protecting mid-tier restaurants
+    const MARQUEE_PRICE_THRESHOLD = 300;
 
     const marqueeItems = baselineItems.filter(item => {
       const nameLower = (item.name || '').toLowerCase();
-      const isHighValue = (item.price || 0) >= MARQUEE_PRICE_THRESHOLD;
+      const serviceTypeLower = (item.serviceType || '').toLowerCase();
+      const isCommodity = COMMODITY_TYPES.has(serviceTypeLower);
       const isKeyword = MARQUEE_KEYWORDS.some(kw => nameLower.includes(kw));
-      return isHighValue || isKeyword;
+      const isHighValueExperience = !isCommodity && (item.price || 0) >= MARQUEE_PRICE_THRESHOLD;
+      return isKeyword || isHighValueExperience;
     });
 
     let marqueeSection = '';
@@ -519,13 +528,25 @@ ${compactBaseline}
 AVAILABLE SERVICES (id|name|type|price|rating|location):
 ${compactServicesList}
 
-Generate 2 alternative itineraries that improve upon the user's plan. Each alternative should:
-1. Optimize for different goals (e.g., one for cost savings, one for better experiences)
-2. Include metrics showing WHY it's better
+Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
+
+VARIANT 1 — "Budget Optimizer":
+- Goal: Reduce total cost by 15–30% while keeping the spirit of the trip
+- Strategy: Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs
+- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
+
+VARIANT 2 — "Experience Enhancer":
+- Goal: Upgrade the quality and variety of experiences, even at slightly higher cost
+- Strategy: Find higher-rated venues, add a unique local or cultural experience, improve accommodation quality, replace generic activities with standout alternatives
+- Keep: the same trip duration and any PROTECTED ITEMS
+
+Rules for both variants:
+1. The two variants must differ from each other in at least 40% of their line items
+2. Include metrics showing WHY each variant is better than the user's plan
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
-5. Preserve all PROTECTED ITEMS exactly as they appear — never replace, remove, or move them
-6. Cover all trip days, including auto-filling any empty days with contextually appropriate activities
+5. Preserve all PROTECTED ITEMS exactly — never replace, remove, or move them
+6. Cover all trip days, auto-filling any empty days with contextually appropriate activities
 
 Respond with valid JSON in this exact format:
 {
