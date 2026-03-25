@@ -630,10 +630,10 @@ export function ItineraryCard({
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <Input
+                                    type="time"
                                     value={editValues.startTime}
                                     onChange={e => setEditValues(v => ({ ...v, startTime: e.target.value }))}
-                                    className="text-xs h-7 w-24 font-mono"
-                                    placeholder="HH:MM"
+                                    className="text-xs h-7 w-28 font-mono"
                                     data-testid={`input-activity-time-${activity.id}`}
                                   />
                                   <span className="text-xs text-muted-foreground">start time</span>
@@ -682,7 +682,7 @@ export function ItineraryCard({
                                       <TooltipProvider>
                                         <Tooltip>
                                           <TooltipTrigger asChild>
-                                            <Badge className="text-xs h-4 px-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-300 cursor-help">
+                                            <Badge className="text-xs h-4 px-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300 border border-yellow-300 cursor-help">
                                               Changed
                                             </Badge>
                                           </TooltipTrigger>
