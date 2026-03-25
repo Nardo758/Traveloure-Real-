@@ -111,7 +111,8 @@ export const reviewRatings = pgTable("review_ratings", {
 
 export const expertUpdatedItineraries = pgTable("expert_updated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  shareToken: varchar("share_token"),
   itineraryData: jsonb("itinerary_data").default({}),
   message: text("message"),
   status: varchar("status", { length: 20 }).default("pending"),
