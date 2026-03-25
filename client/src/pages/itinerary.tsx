@@ -401,7 +401,7 @@ export default function ItineraryPage() {
   const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
     dayNum: d.day,
     date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
-    label: d.title || `Day ${d.day}`,
+    label: d.title || format(d.date instanceof Date ? d.date : new Date(d.date), "EEE, MMM d"),
     activities: (d.activities || []).map((a: any): PlanCardActivity => ({
       id: a.id,
       name: a.title || a.name || "Activity",
@@ -464,29 +464,8 @@ export default function ItineraryPage() {
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto px-4 md:px-6 pt-4">
+      <div className="max-w-[1100px] mx-auto px-4 md:px-6 pt-4">
         <div className="flex flex-col lg:flex-row gap-5 pb-12">
-          <div className="lg:w-64 flex-shrink-0">
-            <div className="lg:sticky lg:top-16 space-y-4 max-h-[calc(100vh-5rem)] overflow-y-auto pb-4">
-              <Card className="bg-card border-border overflow-hidden" data-testid="trip-days-sidebar">
-                <DaySelector
-                  tripId={String(itinerary.id)}
-                  days={planCardDays}
-                  selectedDay={selectedDay - 1}
-                  onSelectDay={(i) => setSelectedDay(i + 1)}
-                  showActivityCounts
-                />
-              </Card>
-
-              <TwelveGoTransport
-                destination={itinerary.destination.split(',')[0]}
-                departureDate={itinerary.startDate.toISOString()}
-                passengers={itinerary.travelers}
-                variant="full"
-              />
-            </div>
-          </div>
-
           <div className="flex-1 min-w-0 space-y-4">
             {shareData?.expertStatus === "review_sent" && (
               <div className="p-4 rounded-xl bg-accent/50 border border-border" data-testid="expert-review-banner">
@@ -529,7 +508,7 @@ export default function ItineraryPage() {
               </div>
             )}
 
-            <Card className="overflow-hidden border-border bg-card" data-testid="itinerary-hero-card">
+            <Card className="overflow-hidden border-border bg-card" data-testid="itinerary-plancard">
               <HeroSection
                 trip={planCardTrip}
                 traveloureScore={null}
@@ -594,32 +573,15 @@ export default function ItineraryPage() {
                   </div>
                 </div>
               )}
-            </Card>
 
-            <div className="flex items-center justify-end">
-              <Button
-                variant={showMap ? "default" : "outline"}
-                size="sm"
-                className="gap-2 text-xs"
-                onClick={() => setShowMap(!showMap)}
-                data-testid="button-toggle-map"
-              >
-                <MapPin className="w-3.5 h-3.5" />
-                {showMap ? "Hide Map" : "Show Map"}
-              </Button>
-            </div>
-
-            {showMap && (
-              <MapControlCenter
+              <DaySelector
                 tripId={String(itinerary.id)}
-                tripDestination={itinerary.destination}
                 days={planCardDays}
                 selectedDay={selectedDay - 1}
                 onSelectDay={(i) => setSelectedDay(i + 1)}
+                showActivityCounts
               />
-            )}
 
-            <Card className="bg-card border-border overflow-hidden" data-testid="day-content-card">
               <SectionTabs
                 tripId={String(itinerary.id)}
                 section={section}
@@ -645,13 +607,46 @@ export default function ItineraryPage() {
               )}
 
               {section === "transport" && (
-                <TransportSection
-                  tripId={String(itinerary.id)}
-                  tripDestination={itinerary.destination}
-                  day={currentPlanCardDay}
-                />
+                <>
+                  <TransportSection
+                    tripId={String(itinerary.id)}
+                    tripDestination={itinerary.destination}
+                    day={currentPlanCardDay}
+                  />
+                  <div className="px-5 pb-5">
+                    <TwelveGoTransport
+                      destination={itinerary.destination.split(',')[0]}
+                      departureDate={itinerary.startDate.toISOString()}
+                      passengers={itinerary.travelers}
+                      variant="compact"
+                    />
+                  </div>
+                </>
               )}
             </Card>
+
+            <div className="flex items-center justify-end">
+              <Button
+                variant={showMap ? "default" : "outline"}
+                size="sm"
+                className="gap-2 text-xs"
+                onClick={() => setShowMap(!showMap)}
+                data-testid="button-toggle-map"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                {showMap ? "Hide Map" : "Show Map"}
+              </Button>
+            </div>
+
+            {showMap && (
+              <MapControlCenter
+                tripId={String(itinerary.id)}
+                tripDestination={itinerary.destination}
+                days={planCardDays}
+                selectedDay={selectedDay - 1}
+                onSelectDay={(i) => setSelectedDay(i + 1)}
+              />
+            )}
           </div>
 
           <div className="lg:w-72 flex-shrink-0">
