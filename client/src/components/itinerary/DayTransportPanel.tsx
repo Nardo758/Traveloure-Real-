@@ -17,11 +17,9 @@ import {
   DollarSign,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   Navigation,
   ArrowRight,
   CheckCircle2,
-  Info,
 } from "lucide-react";
 import {
   TRANSPORT_MODE_ICONS,
@@ -31,6 +29,7 @@ import {
 } from "@/lib/maps-platform";
 import { cn } from "@/lib/utils";
 import type { InlineTransportLegData } from "./InlineTransportSelector";
+import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 
 const ENHANCED_MODES = [
   { mode: "private_driver", label: "Private Car", icon: Car, description: "Door-to-door private driver" },
@@ -423,8 +422,49 @@ function TransportLegCard({
                   <span className="text-sm font-medium text-blue-800 dark:text-blue-200">Public Transit Details</span>
                 </div>
                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                  Route: {leg.fromName} → {leg.toName}
+                  {leg.fromName} → {leg.toName}
                 </p>
+                {(() => {
+                  const transitAlt = allModes.find(m => isTransitMode(m.mode));
+                  const transitInfo = transitAlt as any;
+                  const transitSteps = transitInfo?.transitSteps || transitInfo?.steps;
+                  if (transitSteps && Array.isArray(transitSteps)) {
+                    const transitLegs = transitSteps.filter((s: any) => s.mode === "TRANSIT" && s.transit);
+                    const walkLegs = transitSteps.filter((s: any) => s.mode === "WALK");
+                    const transfers = transitLegs.length > 1 ? transitLegs.length - 1 : 0;
+                    return (
+                      <div className="space-y-1.5">
+                        {transitLegs.map((step: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 text-xs">
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white font-medium"
+                              style={{ backgroundColor: step.transit.lineColor || "#4285F4" }}
+                            >
+                              {step.transit.lineNameShort || step.transit.lineName}
+                            </span>
+                            <span className="text-blue-700 dark:text-blue-300">
+                              {step.transit.departureStop} → {step.transit.arrivalStop}
+                            </span>
+                            <span className="text-blue-500 dark:text-blue-400">
+                              {step.transit.stopCount} stop{step.transit.stopCount !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                        ))}
+                        {transfers > 0 && (
+                          <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            {transfers} transfer{transfers !== 1 ? "s" : ""}
+                          </p>
+                        )}
+                        {walkLegs.length > 0 && (
+                          <p className="text-xs text-blue-500 dark:text-blue-400 italic">
+                            + {walkLegs.reduce((s: number, w: any) => s + (w.durationMinutes || 0), 0)} min walking
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <div className="flex items-center gap-3 text-xs text-blue-600 dark:text-blue-400">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3" /> ~{displayDuration} min
@@ -433,25 +473,29 @@ function TransportLegCard({
                     <DollarSign className="h-3 w-3" /> {formatCost(displayCost)}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 mt-1">
-                  <Info className="h-3 w-3 text-blue-500" />
-                  <span className="text-xs text-blue-600 dark:text-blue-400 italic">
-                    Real-time schedules available via Google Transit
-                  </span>
+                <div className="flex items-center gap-2 flex-wrap mt-1">
+                  {(leg.fromLat && leg.toLat) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-7 gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                      onClick={handleOpenInMaps}
+                      data-testid={`button-transit-maps-${leg.legOrder}`}
+                    >
+                      <Navigation className="h-3 w-3" />
+                      View Route in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
+                    </Button>
+                  )}
                 </div>
-                {(leg.fromLat && leg.toLat) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-7 gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30"
-                    onClick={handleOpenInMaps}
-                    data-testid={`button-transit-maps-${leg.legOrder}`}
-                  >
-                    <Navigation className="h-3 w-3" />
-                    View Transit Route in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
-                  </Button>
-                )}
               </div>
+            )}
+
+            {(isTransitMode(currentMode) || ["private_driver", "rental_car", "taxi", "rideshare"].includes(currentMode)) && (
+              <TwelveGoTransport
+                origin={leg.fromName}
+                destination={leg.toName}
+                variant="compact"
+              />
             )}
 
             <div className="flex items-center gap-2 pt-1 flex-wrap">
@@ -465,32 +509,6 @@ function TransportLegCard({
                 >
                   <MapPin className="h-3 w-3" />
                   Open in Maps
-                </Button>
-              )}
-
-              {["private_driver", "rental_car", "taxi", "rideshare"].includes(currentMode) && twelveGoUrl && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 gap-1.5 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900/30"
-                  onClick={() => window.open(twelveGoUrl, '_blank', 'noopener,noreferrer')}
-                  data-testid={`button-12go-${leg.legOrder}`}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Book via 12Go
-                </Button>
-              )}
-
-              {["transit", "train", "bus"].includes(currentMode) && twelveGoUrl && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-7 gap-1.5 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30"
-                  onClick={() => window.open(twelveGoUrl, '_blank', 'noopener,noreferrer')}
-                  data-testid={`button-12go-transit-${leg.legOrder}`}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Book Tickets via 12Go
                 </Button>
               )}
             </div>
