@@ -29,7 +29,7 @@ export function ChangeLogPanel({ tripId, showChanges, changeLog }: ChangeLogPane
                 <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${CHANGE_DOT_COLORS[c.role] || "bg-muted-foreground"}`} />
                 <div>
                   <span className="text-foreground text-[13px] font-semibold" data-testid={`text-change-who-${c.id || i}-${tripId}`}>{c.who}</span>
-                  <span className="text-muted-foreground text-[13px]"> - {c.action}</span>
+                  <span className="text-muted-foreground text-[13px]"> - {c.what}</span>
                   <div className="text-muted-foreground/60 text-[11px] mt-0.5">{c.when}</div>
                 </div>
               </div>
