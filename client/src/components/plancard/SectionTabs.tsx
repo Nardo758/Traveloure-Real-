@@ -1,4 +1,4 @@
-import { History, Lock } from "lucide-react";
+import { History, Lock, CheckCircle2 } from "lucide-react";
 import type { TemplateConfig } from "./plancard-types";
 
 interface SectionTabsProps {
@@ -40,8 +40,8 @@ export function SectionTabs({
         }`} data-testid={`badge-activity-count-${tripId}`}>
           {dayActivityCount}
         </span>
-        <span className="text-[11px] text-muted-foreground font-normal" data-testid={`text-confirmation-progress-${tripId}`}>
-          {confirmedActivities}/{totalActivities}
+        <span className="text-[11px] text-muted-foreground font-normal flex items-center gap-0.5" data-testid={`text-confirmation-progress-${tripId}`}>
+          <CheckCircle2 className="w-3 h-3" /> {confirmedActivities}/{totalActivities} confirmed
         </span>
       </button>
 
