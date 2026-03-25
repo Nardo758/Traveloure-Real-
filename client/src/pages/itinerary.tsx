@@ -345,6 +345,7 @@ export default function ItineraryPage() {
   const [selectedDay, setSelectedDay] = useState(1);
   const [isSaved, setIsSaved] = useState(false);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
+  const [showDiffReview, setShowDiffReview] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const { toast } = useToast();
@@ -740,6 +741,15 @@ export default function ItineraryPage() {
                   <div className="flex flex-col gap-2 shrink-0">
                     <Button
                       size="sm"
+                      onClick={() => setShowDiffReview(true)}
+                      className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                      data-testid="button-review-expert-edits"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Review Edits
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => acknowledgeMutation.mutate({ action: "accept" })}
                       disabled={acknowledgeMutation.isPending}
                       className="gap-2 bg-green-600 hover:bg-green-700 text-white"
@@ -776,10 +786,64 @@ export default function ItineraryPage() {
             <ItineraryCard
               data={buildItineraryCardData(itinerary, tripData)}
               isOwner={true}
-              showShareButton={false}
-              expertDiff={shareData?.expertDiff ?? null}
+              showShareButton={!!shareData?.shareToken}
+              shareToken={shareData?.shareToken}
               variantId={undefined}
+              expertDiff={shareData?.expertDiff ?? null}
+              forcedMapDays={[]}
+              focusDay={selectedDay}
             />
+
+            {/* Per-activity booking panel */}
+            {(() => {
+              const currentDay = itinerary.days.find((d: any) => d.day === selectedDay);
+              if (!currentDay) return null;
+              const unbookedWithPrice = currentDay.activities.filter((a: any) => !a.booked && (a.price || 0) > 0);
+              if (unbookedWithPrice.length === 0) return null;
+              return (
+                <Card className="bg-white dark:bg-gray-800 mt-2">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-[#6B7280]">
+                      Book Activities — Day {selectedDay}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-2">
+                    {unbookedWithPrice.map((activity: any) => {
+                      const bType = activity.bookingType || getBookingType(activity.type);
+                      const partnerName = activity.partnerName || getPartnerName(activity.type);
+                      return (
+                        <div key={activity.id} className="flex items-center justify-between gap-3 py-2 border-b last:border-0">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-[#111827] dark:text-white truncate">{activity.title}</p>
+                            <p className="text-xs text-[#6B7280]">{activity.time} • {activity.location}</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-semibold text-sm text-[#111827] dark:text-white">${activity.price}</span>
+                            {bType === 'inApp' ? (
+                              <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid={`button-book-${activity.id}`}>
+                                <CreditCard className="w-3 h-3 mr-1" />
+                                Book
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                data-testid={`button-book-partner-${activity.id}`}
+                                onClick={() => window.open(getPartnerUrl(partnerName, itinerary.destination), '_blank')}
+                              >
+                                <ExternalLink className="w-3 h-3 mr-1" />
+                                {partnerName || 'Partner'}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Expert Booking Option */}
             <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
@@ -979,6 +1043,103 @@ export default function ItineraryPage() {
                   Submit Request
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diff Review Dialog */}
+      <Dialog open={showDiffReview} onOpenChange={setShowDiffReview}>
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5 text-blue-600" />
+              Expert Edit Review
+            </DialogTitle>
+            <DialogDescription>
+              Review the changes your expert has suggested before accepting or rejecting them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {shareData?.expertNotes && (
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Expert Notes</p>
+                <p className="text-sm text-blue-700 dark:text-blue-300 italic">"{shareData.expertNotes}"</p>
+              </div>
+            )}
+            {shareData?.expertDiff?.activityDiffs && Object.entries(shareData.expertDiff.activityDiffs).length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-[#111827] dark:text-white mb-2">Activity Changes</p>
+                <div className="space-y-2">
+                  {Object.entries(shareData.expertDiff.activityDiffs).map(([id, diff]: [string, any]) => (
+                    <div key={id} className="p-3 rounded-lg border bg-white dark:bg-gray-800">
+                      <p className="text-xs font-medium text-[#6B7280] mb-2">Activity #{id}</p>
+                      {Object.entries(diff).filter(([k]) => k !== 'id').map(([field, change]: [string, any]) => (
+                        <div key={field} className="flex items-start gap-3 text-sm py-1">
+                          <span className="w-24 shrink-0 text-[#6B7280] capitalize">{field}:</span>
+                          <div className="flex flex-col gap-0.5">
+                            {change?.before != null && (
+                              <span className="line-through text-red-500 text-xs">{String(change.before)}</span>
+                            )}
+                            {change?.after != null && (
+                              <span className="text-green-600 text-xs font-medium">{String(change.after)}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {shareData?.expertDiff?.transportDiffs && Object.entries(shareData.expertDiff.transportDiffs).length > 0 && (
+              <div>
+                <p className="text-sm font-semibold text-[#111827] dark:text-white mb-2">Transport Changes</p>
+                <div className="space-y-2">
+                  {Object.entries(shareData.expertDiff.transportDiffs).map(([id, diff]: [string, any]) => (
+                    <div key={id} className="p-3 rounded-lg border bg-white dark:bg-gray-800">
+                      <p className="text-xs font-medium text-[#6B7280] mb-2">Transport #{id}</p>
+                      {Object.entries(diff).filter(([k]) => k !== 'id').map(([field, change]: [string, any]) => (
+                        <div key={field} className="flex items-start gap-3 text-sm py-1">
+                          <span className="w-24 shrink-0 text-[#6B7280] capitalize">{field}:</span>
+                          <div className="flex flex-col gap-0.5">
+                            {change?.before != null && (
+                              <span className="line-through text-red-500 text-xs">{String(change.before)}</span>
+                            )}
+                            {change?.after != null && (
+                              <span className="text-green-600 text-xs font-medium">{String(change.after)}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {!shareData?.expertDiff?.activityDiffs && !shareData?.expertDiff?.transportDiffs && (
+              <p className="text-sm text-[#6B7280] text-center py-4">No detailed diff available.</p>
+            )}
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { acknowledgeMutation.mutate({ action: "reject" }); }}
+              disabled={acknowledgeMutation.isPending}
+              className="border-red-300 text-red-700 hover:bg-red-50"
+              data-testid="button-dialog-reject-edits"
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Reject All
+            </Button>
+            <Button
+              onClick={() => { acknowledgeMutation.mutate({ action: "accept" }); }}
+              disabled={acknowledgeMutation.isPending}
+              className="bg-green-600 hover:bg-green-700 text-white"
+              data-testid="button-dialog-accept-edits"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Accept All
             </Button>
           </DialogFooter>
         </DialogContent>
