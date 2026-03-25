@@ -122,6 +122,7 @@ interface ItineraryCardProps {
   onExpertNotesChange?: (notes: string) => void;
   expertNotesValue?: string;
   forcedMapDays?: number[];
+  focusDay?: number;
 }
 
 function formatDate(dateStr?: string | null): string {
@@ -259,6 +260,7 @@ export function ItineraryCard({
   onExpertNotesChange,
   expertNotesValue,
   forcedMapDays,
+  focusDay,
 }: ItineraryCardProps) {
   const { toast } = useToast();
   const [copiedUrl, setCopiedUrl] = useState("");
@@ -297,6 +299,13 @@ export function ItineraryCard({
       setExpandedDays(m => ({ ...m, [n]: true }));
     });
   }, [forcedMapDays]);
+
+  useEffect(() => {
+    if (!focusDay) return;
+    setExpandedDays(m => ({ ...m, [focusDay]: true }));
+    const el = document.getElementById(`itinerary-day-${focusDay}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focusDay]);
 
   const handleActivityReorder = (dayNumber: number, fromIdx: number, toIdx: number) => {
     const day = data.days.find(d => d.dayNumber === dayNumber);
@@ -603,7 +612,7 @@ export function ItineraryCard({
 
         return (
           <Collapsible key={day.dayNumber} open={isOpen} onOpenChange={() => toggleDay(day.dayNumber)}>
-            <div className="mb-2" data-testid={`day-section-${day.dayNumber}`}>
+            <div className="mb-2" id={`itinerary-day-${day.dayNumber}`} data-testid={`day-section-${day.dayNumber}`}>
               <CollapsibleTrigger asChild>
                 <div className="flex items-center justify-between mb-1 cursor-pointer rounded-lg px-2 py-2 hover:bg-muted/50 group">
                   <div>
