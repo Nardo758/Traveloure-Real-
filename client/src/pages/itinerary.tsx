@@ -931,89 +931,91 @@ export default function ItineraryPage() {
               );
             })()}
 
-            {/* Expert Booking Option */}
-            <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+
+          </div>
+
+          {/* Right Side Panel — Booking */}
+          <div className="lg:w-72 flex-shrink-0">
+            <div className="lg:sticky lg:top-4 space-y-4">
+
+              {/* Expert Booking Option */}
+              <Card className="bg-gradient-to-b from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
+                <CardContent className="p-4 space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/40">
-                      <UserCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                    <div className="p-2 rounded-full bg-amber-100 dark:bg-amber-900/40 flex-shrink-0">
+                      <UserCheck className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-[#111827] dark:text-white flex items-center gap-2">
+                      <h4 className="font-semibold text-[#111827] dark:text-white text-sm flex items-center gap-1.5 flex-wrap">
                         Let an Expert Book Everything
                         <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-xs">Recommended</Badge>
                       </h4>
-                      <p className="text-sm text-[#6B7280]">
-                        Our travel experts will handle all bookings for you - both on-site and partner bookings.
+                      <p className="text-xs text-[#6B7280] mt-0.5">
+                        Our travel experts handle all bookings — on-site and partner.
                       </p>
                     </div>
                   </div>
                   <Button 
-                    className="bg-amber-500 hover:bg-amber-600 text-white whitespace-nowrap" 
+                    className="w-full bg-amber-500 hover:bg-amber-600 text-white" 
                     onClick={() => setShowExpertDialog(true)}
                     data-testid="button-expert-booking"
                   >
                     <Headphones className="w-4 h-4 mr-2" />
                     Request Expert Booking
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Booking Summary Card */}
-            <Card className="bg-white dark:bg-gray-800">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-[#FF385C]" />
-                  Booking Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="space-y-3">
+              {/* Booking Summary Card */}
+              <Card className="bg-white dark:bg-gray-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-[#FF385C]" />
+                    Booking Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-2">
                   {(() => {
                     const allActivities = itinerary.days.flatMap((d: any) => d.activities);
                     const inAppBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'inApp' && !a.booked);
                     const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                    
                     return (
                       <>
-                        <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                            <span className="text-sm font-medium">Book on Traveloure</span>
+                        <div className="flex items-center justify-between p-2.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                          <div className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                            <span className="text-xs font-medium">Book on Traveloure</span>
                           </div>
                           <div className="text-right">
-                            <span className="text-sm text-[#6B7280]">{inAppBookings.length} items</span>
-                            <p className="font-semibold text-emerald-600">${inAppTotal}</p>
+                            <p className="text-xs text-[#6B7280]">{inAppBookings.length} items</p>
+                            <p className="text-sm font-semibold text-emerald-600">${inAppTotal}</p>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <ExternalLink className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-medium">Book via Partners</span>
+                        <div className="flex items-center justify-between p-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                          <div className="flex items-center gap-1.5">
+                            <ExternalLink className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                            <span className="text-xs font-medium">Book via Partners</span>
                           </div>
                           <div className="text-right">
-                            <span className="text-sm text-[#6B7280]">{partnerBookings.length} items</span>
-                            <p className="font-semibold text-blue-600">${partnerTotal}</p>
+                            <p className="text-xs text-[#6B7280]">{partnerBookings.length} items</p>
+                            <p className="text-sm font-semibold text-blue-600">${partnerTotal}</p>
                           </div>
                         </div>
-                        <div className="border-t pt-3 mt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-[#111827] dark:text-white">Total Pending</span>
-                            <span className="font-bold text-lg text-[#FF385C]">${inAppTotal + partnerTotal}</span>
-                          </div>
+                        <div className="border-t pt-2 mt-1 flex items-center justify-between">
+                          <span className="text-sm font-semibold text-[#111827] dark:text-white">Total Pending</span>
+                          <span className="text-base font-bold text-[#FF385C]">${inAppTotal + partnerTotal}</span>
                         </div>
                       </>
                     );
                   })()}
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
+            </div>
           </div>
+
         </div>
       </div>
 
