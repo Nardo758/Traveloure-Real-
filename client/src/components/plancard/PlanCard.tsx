@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
@@ -36,12 +36,18 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
   const shareToken = score?.shareToken;
 
   const totalActivities = stats.totalActivities || days.reduce((s: number, d) => s + (d.activities?.length || 0), 0);
-  const confirmedActivities = stats.confirmedActivities || 0;
+  const confirmedActivities = stats.confirmedActivities ?? days.reduce((s: number, d) => s + (d.activities?.filter((a) => a.status === "confirmed").length || 0), 0);
   const totalLegs = stats.totalLegs || days.reduce((s: number, d) => s + (d.transports?.length || 0), 0);
   const totalMinutes = stats.totalTransitMinutes || days.reduce((s: number, d) => s + (d.transports || []).reduce((t: number, tr) => t + (tr.duration || 0), 0), 0);
   const expertChanges = stats.pendingExpertChanges || changeLog.filter((c) => c.role === "expert" && c.type === "suggest").length;
 
   const transportLocked = day?.activities?.some((a) => a.status === "pending") ?? false;
+
+  useEffect(() => {
+    if (transportLocked && section === "transport") {
+      setSection("activities");
+    }
+  }, [transportLocked, section]);
 
   const traveloureScore = metrics.traveloureScore || metrics.optimizationScore || optimizationScore;
   const totalCostNum = metrics.totalCost;
