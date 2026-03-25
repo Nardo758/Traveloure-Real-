@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { motion } from "framer-motion";
-import { Layout } from "@/components/layout";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,7 +74,7 @@ export default function Experiences() {
   };
 
   return (
-    <Layout>
+    <DashboardLayout>
       <SEOHead 
         title="Experiences"
         description="Explore curated experience templates for weddings, travel, proposals, birthdays, corporate events, and more. Plan your perfect experience with expert guidance."
@@ -220,6 +220,6 @@ export default function Experiences() {
           </div>
         </div>
       </div>
-    </Layout>
+    </DashboardLayout>
   );
 }
