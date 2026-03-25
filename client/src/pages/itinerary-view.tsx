@@ -10,6 +10,7 @@ import { AlertCircle, Share2, MessageCircle, User, ExternalLink, CheckCircle, XC
 import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface SharedItineraryResponse {
   variant: {
@@ -67,7 +68,8 @@ interface SharedItineraryResponse {
 
 export default function ItineraryViewPage() {
   const { token } = useParams<{ token: string }>();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  const urlRole = new URLSearchParams(window.location.search).get("role");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -76,6 +78,7 @@ export default function ItineraryViewPage() {
   const [activityDiffs, setActivityDiffs] = useState<Record<string, ActivityDiff>>({});
   const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
   const [showDiffReview, setShowDiffReview] = useState(false);
+  const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
 
   const { data, isLoading, error } = useQuery<SharedItineraryResponse>({
     queryKey: ["/api/itinerary-share", token],
@@ -93,8 +96,8 @@ export default function ItineraryViewPage() {
 
   const suggestModMutation = useMutation({
     mutationFn: async () => {
-      if (!expertNotes.trim()) throw new Error("Notes are required");
-      const res = await fetch(`/api/itinerary-share/${token}/suggest`, {
+      if (!expertNotes.trim()) throw new Error("Please add a note in the Expert Notes panel before sending.");
+      const res = await fetch(`/api/expert-review/${token}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -111,7 +114,6 @@ export default function ItineraryViewPage() {
     },
     onSuccess: () => {
       setShowSuggestDialog(false);
-      setExpertNotes("");
       toast({ title: "Edits sent!", description: "The traveler has been notified of your suggestions." });
     },
     onError: (err: Error) => {
@@ -120,11 +122,11 @@ export default function ItineraryViewPage() {
   });
 
   const acknowledgeMutation = useMutation({
-    mutationFn: async (action: "accept" | "reject") => {
-      const res = await fetch(`/api/itinerary-share/${token}/acknowledge`, {
+    mutationFn: async ({ action, rejectedIds }: { action: "accept" | "reject"; rejectedIds?: string[] }) => {
+      const res = await fetch(`/api/expert-review/${token}/acknowledge`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, rejectedDiffIds: rejectedIds }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
@@ -132,12 +134,13 @@ export default function ItineraryViewPage() {
       }
       return res.json();
     },
-    onSuccess: (_data, action) => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share", token] });
       setShowDiffReview(false);
+      setRejectedDiffIds(new Set());
       toast({
-        title: action === "accept" ? "Edits accepted" : "Edits rejected",
-        description: action === "accept"
+        title: variables.action === "accept" ? "Edits accepted" : "Edits rejected",
+        description: variables.action === "accept"
           ? "The expert's suggestions have been accepted."
           : "The expert's suggestions have been dismissed.",
       });
@@ -254,7 +257,7 @@ export default function ItineraryViewPage() {
     transportSummary: data.variant.transportSummary,
   };
 
-  const isExpertView = data.permissions === "suggest" || data.sharedWithExpert;
+  const isExpertView = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert || urlRole === "expert";
   const isOwnerView = !!data.isOwner;
   const expertStatus = data.expertStatus;
   const hasPendingReview = isOwnerView && expertStatus === "review_sent";
@@ -311,7 +314,7 @@ export default function ItineraryViewPage() {
                   size="sm"
                   onClick={() => setShowSuggestDialog(true)}
                   className="gap-2 bg-amber-600 hover:bg-amber-700 text-white"
-                  data-testid="button-suggest-modifications"
+                  data-testid="button-send-edits"
                 >
                   <MessageCircle className="h-4 w-4" />
                   Send Edits
@@ -364,7 +367,7 @@ export default function ItineraryViewPage() {
                 )}
                 <Button
                   size="sm"
-                  onClick={() => acknowledgeMutation.mutate("accept")}
+                  onClick={() => acknowledgeMutation.mutate({ action: "accept" })}
                   disabled={acknowledgeMutation.isPending}
                   className="gap-2 bg-green-600 hover:bg-green-700 text-white"
                   data-testid="button-accept-all"
@@ -375,7 +378,7 @@ export default function ItineraryViewPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => acknowledgeMutation.mutate("reject")}
+                  onClick={() => acknowledgeMutation.mutate({ action: "reject" })}
                   disabled={acknowledgeMutation.isPending}
                   className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
                   data-testid="button-reject-all"
@@ -409,6 +412,7 @@ export default function ItineraryViewPage() {
           expertDiff={data.expertDiff}
           onActivityDiffsChange={isExpertView ? setActivityDiffs : undefined}
           onTransportDiffsChange={isExpertView ? setTransportDiffs : undefined}
+          onExpertNotesChange={isExpertView ? setExpertNotes : undefined}
         />
 
         {!isExpertView && (
@@ -449,17 +453,28 @@ export default function ItineraryViewPage() {
             </div>
           )}
 
-          <Textarea
-            placeholder="E.g. 'Day 2 is too packed — consider splitting the temple visit to Day 3. Also, the restaurant on Day 1 is fully booked in peak season, try XYZ instead...'"
-            value={expertNotes}
-            onChange={e => setExpertNotes(e.target.value)}
-            rows={5}
-            className="mt-2"
-            data-testid="textarea-expert-notes"
-          />
-          {totalDiffs === 0 && (
+          {expertNotes.trim() ? (
+            <div className="p-3 rounded-lg bg-muted border mt-2">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Your note (from Expert Notes panel):</p>
+              <p className="text-sm italic">"{expertNotes}"</p>
+            </div>
+          ) : (
+            <div className="mt-2">
+              <p className="text-xs text-muted-foreground mb-1">
+                Add a note via the Expert Notes panel at the bottom of the itinerary, or type one here:
+              </p>
+              <Textarea
+                placeholder="E.g. 'Day 2 is too packed — consider splitting the temple visit to Day 3...'"
+                value={expertNotes}
+                onChange={e => setExpertNotes(e.target.value)}
+                rows={4}
+                data-testid="textarea-expert-notes"
+              />
+            </div>
+          )}
+          {totalDiffs === 0 && !expertNotes.trim() && (
             <p className="text-xs text-muted-foreground">
-              You can also edit activities directly in the itinerary — changes are tracked and sent with your notes.
+              You can edit activities directly in the itinerary — changes are tracked and sent with your notes.
             </p>
           )}
           <DialogFooter>
@@ -496,31 +511,59 @@ export default function ItineraryViewPage() {
             <div>
               <h4 className="text-sm font-medium mb-2">Activity Changes</h4>
               <div className="space-y-2">
-                {Object.entries(reviewActivityDiffs).map(([id, diff]) => (
-                  <div key={id} className="p-3 rounded-lg border bg-amber-50 dark:bg-amber-950/20">
-                    {diff.name && diff.name !== diff.originalName && (
-                      <div className="text-xs">
-                        <span className="font-medium">Name:</span>{" "}
-                        <span className="line-through text-muted-foreground">{diff.originalName}</span>
-                        {" → "}
-                        <span className="font-medium text-amber-800 dark:text-amber-200">{diff.name}</span>
+                {Object.entries(reviewActivityDiffs).map(([id, diff]) => {
+                  const isRejected = rejectedDiffIds.has(id);
+                  return (
+                    <div key={id} className={cn(
+                      "p-3 rounded-lg border transition-opacity",
+                      isRejected
+                        ? "opacity-50 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                        : "bg-amber-50 dark:bg-amber-950/20"
+                    )} data-testid={`diff-activity-${id}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 space-y-1">
+                          {diff.name && diff.name !== diff.originalName && (
+                            <div className="text-xs">
+                              <span className="font-medium">Name:</span>{" "}
+                              <span className="line-through text-muted-foreground">{diff.originalName}</span>
+                              {" → "}
+                              <span className="font-medium text-green-700 dark:text-green-400">{diff.name}</span>
+                            </div>
+                          )}
+                          {diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
+                            <div className="text-xs">
+                              <span className="font-medium">Time:</span>{" "}
+                              <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
+                              {" → "}
+                              <span className="font-medium text-green-700 dark:text-green-400">{diff.startTime}</span>
+                            </div>
+                          )}
+                          {diff.note && (
+                            <div className="text-xs italic text-amber-700 dark:text-amber-300">
+                              Note: "{diff.note}"
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setRejectedDiffIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id); else next.add(id);
+                            return next;
+                          })}
+                          className={cn(
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors",
+                            isRejected
+                              ? "bg-red-100 border-red-300 text-red-700 hover:bg-red-200"
+                              : "border-muted text-muted-foreground hover:border-red-300 hover:text-red-600"
+                          )}
+                          data-testid={`button-toggle-reject-activity-${id}`}
+                        >
+                          {isRejected ? "Undo reject" : "Reject"}
+                        </button>
                       </div>
-                    )}
-                    {diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
-                      <div className="text-xs mt-1">
-                        <span className="font-medium">Time:</span>{" "}
-                        <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
-                        {" → "}
-                        <span className="font-medium text-amber-800 dark:text-amber-200">{diff.startTime}</span>
-                      </div>
-                    )}
-                    {diff.note && (
-                      <div className="text-xs mt-1 italic text-amber-700 dark:text-amber-300">
-                        Note: "{diff.note}"
-                      </div>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -529,24 +572,56 @@ export default function ItineraryViewPage() {
             <div className="mt-3">
               <h4 className="text-sm font-medium mb-2">Transport Changes</h4>
               <div className="space-y-2">
-                {Object.entries(reviewTransportDiffs).map(([id, diff]) => (
-                  <div key={id} className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-950/20">
-                    <div className="text-xs">
-                      <span className="font-medium">Leg {diff.legOrder}:</span>{" "}
-                      <span className="line-through text-muted-foreground">{diff.originalMode}</span>
-                      {" → "}
-                      <span className="font-medium text-blue-800 dark:text-blue-200">{diff.newMode}</span>
+                {Object.entries(reviewTransportDiffs).map(([id, diff]) => {
+                  const isRejected = rejectedDiffIds.has(id);
+                  return (
+                    <div key={id} className={cn(
+                      "p-3 rounded-lg border transition-opacity",
+                      isRejected
+                        ? "opacity-50 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                        : "bg-blue-50 dark:bg-blue-950/20"
+                    )} data-testid={`diff-transport-${id}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs">
+                          <span className="font-medium">Leg {diff.legOrder}:</span>{" "}
+                          <span className="line-through text-muted-foreground">{diff.originalMode}</span>
+                          {" → "}
+                          <span className="font-medium text-green-700 dark:text-green-400">{diff.newMode}</span>
+                        </div>
+                        <button
+                          onClick={() => setRejectedDiffIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id); else next.add(id);
+                            return next;
+                          })}
+                          className={cn(
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors",
+                            isRejected
+                              ? "bg-red-100 border-red-300 text-red-700 hover:bg-red-200"
+                              : "border-muted text-muted-foreground hover:border-red-300 hover:text-red-600"
+                          )}
+                          data-testid={`button-toggle-reject-transport-${id}`}
+                        >
+                          {isRejected ? "Undo reject" : "Reject"}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
+          )}
+
+          {rejectedDiffIds.size > 0 && (
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              {rejectedDiffIds.size} change{rejectedDiffIds.size !== 1 ? "s" : ""} will be rejected. The rest will be accepted.
+            </p>
           )}
 
           <DialogFooter className="mt-4">
             <Button
               variant="outline"
-              onClick={() => acknowledgeMutation.mutate("reject")}
+              onClick={() => acknowledgeMutation.mutate({ action: "reject" })}
               disabled={acknowledgeMutation.isPending}
               className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
               data-testid="button-reject-diffs"
@@ -555,13 +630,13 @@ export default function ItineraryViewPage() {
               Reject All
             </Button>
             <Button
-              onClick={() => acknowledgeMutation.mutate("accept")}
+              onClick={() => acknowledgeMutation.mutate({ action: "accept", rejectedIds: Array.from(rejectedDiffIds) })}
               disabled={acknowledgeMutation.isPending}
               className="gap-2 bg-green-600 hover:bg-green-700 text-white"
               data-testid="button-accept-diffs"
             >
               <CheckCircle className="h-4 w-4" />
-              Accept All
+              {rejectedDiffIds.size > 0 ? "Accept Selected" : "Accept All"}
             </Button>
           </DialogFooter>
         </DialogContent>
