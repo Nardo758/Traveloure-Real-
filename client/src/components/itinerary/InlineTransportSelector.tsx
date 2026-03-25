@@ -14,6 +14,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronDown, ChevronUp, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
@@ -56,6 +57,8 @@ interface InlineTransportSelectorProps {
   onModeChangeSuccess?: (legId: string, timeDiffMinutes: number) => void;
   onModeChange?: (legId: string, newMode: string, originalMode: string) => void;
   expertChanged?: boolean;
+  isExpertMode?: boolean;
+  reviewedTransportDiff?: { originalMode: string; newMode: string } | null;
 }
 
 function getAppleFlag(mode: string): string {
@@ -91,15 +94,22 @@ export function InlineTransportSelector({
   onModeChangeSuccess,
   onModeChange,
   expertChanged = false,
+  isExpertMode = false,
+  reviewedTransportDiff = null,
 }: InlineTransportSelectorProps) {
   const { toast } = useToast();
-  const activeMode = leg.userSelectedMode || leg.recommendedMode;
+  const originalMode = leg.userSelectedMode || leg.recommendedMode;
+  const activeMode = originalMode;
   const [currentMode, setCurrentMode] = useState(activeMode);
   const [displayDuration, setDisplayDuration] = useState(leg.estimatedDurationMinutes);
   const [displayCost, setDisplayCost] = useState(leg.estimatedCostUsd);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const isCustomized = currentMode !== leg.recommendedMode;
+  const isModeChanged = isExpertMode && currentMode !== originalMode;
+  const diffFrom = reviewedTransportDiff?.originalMode ?? (isModeChanged ? originalMode : null);
+  const diffTo = reviewedTransportDiff?.newMode ?? (isModeChanged ? currentMode : null);
+  const showModeBadge = isModeChanged || !!reviewedTransportDiff;
 
   const alternatives = leg.alternativeModes || [];
 
@@ -120,10 +130,12 @@ export function InlineTransportSelector({
 
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
+      if (isExpertMode) {
+        return { expertOnly: true, selectedMode };
+      }
       return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
     },
     onMutate: (selectedMode) => {
-      // Optimistic update
       const prev = currentMode;
       setCurrentMode(selectedMode);
       const modeData = allModes.find((m) => m.mode === selectedMode);
@@ -134,6 +146,15 @@ export function InlineTransportSelector({
       return { prev };
     },
     onSuccess: (data: any, selectedMode) => {
+      setIsExpanded(false);
+
+      if (isExpertMode) {
+        if (onModeChange) {
+          onModeChange(leg.id, selectedMode, originalMode);
+        }
+        return;
+      }
+
       const updatedLeg = data?.updatedLeg || data?.leg;
       if (updatedLeg?.estimatedDurationMinutes !== undefined) {
         setDisplayDuration(updatedLeg.estimatedDurationMinutes);
@@ -142,9 +163,6 @@ export function InlineTransportSelector({
         setDisplayCost(updatedLeg.estimatedCostUsd);
       }
 
-      setIsExpanded(false);
-
-      // Invalidate transport hub too so both views stay in sync
       if (tripId) {
         queryClient.invalidateQueries({ queryKey: ["/api/itinerary", tripId, "transport-hub"] });
       }
@@ -165,7 +183,7 @@ export function InlineTransportSelector({
       }
 
       if (onModeChange) {
-        onModeChange(leg.id, selectedMode, activeMode);
+        onModeChange(leg.id, selectedMode, originalMode);
       }
     },
     onError: (_err, _mode, context: any) => {
@@ -245,7 +263,27 @@ export function InlineTransportSelector({
                 <span className={displayCost === 0 || displayCost === null ? "text-green-600 dark:text-green-400" : ""}>
                   {formatCost(displayCost)}
                 </span>
-                {isCustomized && (
+                {showModeBadge && diffFrom && diffTo && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-700 text-xs h-4 px-1 cursor-help"
+                          data-testid={`badge-mode-changed-${leg.legOrder}`}
+                        >
+                          Mode Changed
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        <span className="line-through text-muted-foreground">{TRANSPORT_MODE_LABELS[diffFrom] || diffFrom}</span>
+                        {" → "}
+                        <span className="font-medium">{TRANSPORT_MODE_LABELS[diffTo] || diffTo}</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {!showModeBadge && isCustomized && (
                   <Badge
                     variant="outline"
                     className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-4 px-1"
@@ -253,7 +291,7 @@ export function InlineTransportSelector({
                     Customized
                   </Badge>
                 )}
-                {expertChanged && !isCustomized && (
+                {expertChanged && !showModeBadge && !isCustomized && (
                   <Badge
                     variant="outline"
                     className="border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-700 text-xs h-4 px-1"
