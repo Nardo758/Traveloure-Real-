@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import {
   Share2,
@@ -27,6 +28,7 @@ import {
   Pencil,
   Check,
   X,
+  MessageSquare,
 } from "lucide-react";
 import { InlineTransportSelector, type InlineTransportLegData } from "./InlineTransportSelector";
 import { DayMapsButton } from "./DayMapsButton";
@@ -112,6 +114,7 @@ interface ItineraryCardProps {
   } | null;
   onActivityDiffsChange?: (diffs: Record<string, ActivityDiff>) => void;
   onTransportDiffsChange?: (diffs: Record<string, TransportDiff>) => void;
+  onExpertNotesChange?: (notes: string) => void;
 }
 
 function formatDate(dateStr?: string | null): string {
@@ -246,6 +249,7 @@ export function ItineraryCard({
   expertDiff,
   onActivityDiffsChange,
   onTransportDiffsChange,
+  onExpertNotesChange,
 }: ItineraryCardProps) {
   const { toast } = useToast();
   const [copiedUrl, setCopiedUrl] = useState("");
@@ -261,6 +265,8 @@ export function ItineraryCard({
   const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
   const [editingActivity, setEditingActivity] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ name: string; startTime: string; note: string }>({ name: "", startTime: "", note: "" });
+  const [expertNotesText, setExpertNotesText] = useState("");
+  const [expertNotesExpanded, setExpertNotesExpanded] = useState(isExpertMode);
 
   const [activityTimingOverrides, setActivityTimingOverrides] = useState<Record<string, string>>({});
 
@@ -663,14 +669,74 @@ export function ItineraryCard({
                                       </p>
                                     )}
                                     {hasDiff && (
-                                      <Badge className="text-xs h-4 px-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-300">
-                                        Changed
-                                      </Badge>
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="text-xs h-4 px-1 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 border border-blue-300 cursor-help">
+                                              Changed
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-xs p-3 space-y-1.5" side="top">
+                                            {diff?.name && diff.name !== activity.name && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Name</span>
+                                                <span className="line-through text-muted-foreground">{activity.name}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{diff.name}</span>
+                                              </div>
+                                            )}
+                                            {diff?.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Time</span>
+                                                <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{diff.startTime}</span>
+                                              </div>
+                                            )}
+                                            {diff?.note && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Expert note</span>
+                                                <span className="italic text-muted-foreground">"{diff.note}"</span>
+                                              </div>
+                                            )}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
                                     )}
                                     {reviewedDiff && !isExpertMode && (
-                                      <Badge className="text-xs h-4 px-1 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 border border-amber-300">
-                                        Expert edit
-                                      </Badge>
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="text-xs h-4 px-1 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 border border-amber-300 cursor-help">
+                                              Expert edit
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-xs p-3 space-y-1.5" side="top">
+                                            {reviewedDiff.name && reviewedDiff.name !== activity.name && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Suggested name</span>
+                                                <span className="line-through text-muted-foreground">{activity.name}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{reviewedDiff.name}</span>
+                                              </div>
+                                            )}
+                                            {reviewedDiff.startTime && reviewedDiff.originalStartTime && reviewedDiff.startTime !== reviewedDiff.originalStartTime && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Suggested time</span>
+                                                <span className="line-through text-muted-foreground">{reviewedDiff.originalStartTime}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{reviewedDiff.startTime}</span>
+                                              </div>
+                                            )}
+                                            {reviewedDiff.note && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Expert note</span>
+                                                <span className="italic text-muted-foreground">"{reviewedDiff.note}"</span>
+                                              </div>
+                                            )}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
                                     )}
                                   </div>
                                   <h4 className="font-medium text-sm leading-tight">
@@ -793,6 +859,49 @@ export function ItineraryCard({
           </Collapsible>
         );
       })}
+
+      {isExpertMode && (
+        <div className="mt-6 border rounded-xl overflow-hidden" data-testid="expert-notes-panel">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-colors text-left"
+            onClick={() => setExpertNotesExpanded(v => !v)}
+            data-testid="button-toggle-expert-notes"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-800 dark:text-amber-200">Expert Notes</span>
+              {expertNotesText.trim() && (
+                <Badge className="text-xs h-4 px-1 bg-amber-200 text-amber-800 border-amber-300">
+                  {expertNotesText.trim().length} chars
+                </Badge>
+              )}
+            </div>
+            {expertNotesExpanded ? (
+              <ChevronUp className="h-4 w-4 text-amber-600" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-amber-600" />
+            )}
+          </button>
+          {expertNotesExpanded && (
+            <div className="p-4 bg-white dark:bg-background border-t border-amber-100 dark:border-amber-900">
+              <p className="text-xs text-muted-foreground mb-2">
+                Write a covering note for the traveler to accompany your edits. This will be sent along with all tracked changes.
+              </p>
+              <Textarea
+                placeholder="E.g. 'Day 2 is too packed — I split the temple visit to Day 3. Also, the restaurant on Day 1 is fully booked in peak season, try XYZ instead...'"
+                value={expertNotesText}
+                onChange={e => {
+                  setExpertNotesText(e.target.value);
+                  onExpertNotesChange?.(e.target.value);
+                }}
+                rows={4}
+                className="text-sm resize-none"
+                data-testid="textarea-expert-notes-panel"
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
