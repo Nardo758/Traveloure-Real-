@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon } from "lucide-react";
 import { getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
@@ -13,11 +13,13 @@ import { SectionTabs } from "./SectionTabs";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
+import { MapControlCenter } from "./MapControlCenter";
 
 export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
   const [selectedDay, setSelectedDay] = useState(0);
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [showChanges, setShowChanges] = useState(false);
+  const [viewMode, setViewMode] = useState<"card" | "map">("card");
 
   const templateConfig = getTemplateConfig(trip.eventType);
 
@@ -86,69 +88,106 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
           budget={budgetDisplay}
         />
 
-        <StatsRow
-          trip={trip}
-          days={days}
-          totalActivities={totalActivities}
-          totalLegs={totalLegs}
-          totalMinutes={totalMinutes}
-          templateConfig={templateConfig}
-        />
+        <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
+          <button
+            onClick={() => setViewMode("card")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
+              viewMode === "card"
+                ? "bg-foreground text-background shadow-md"
+                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+            data-testid={`btn-card-view-${trip.id}`}
+          >
+            <LayoutList className="w-4 h-4" /> Card View
+          </button>
+          <button
+            onClick={() => setViewMode("map")}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
+              viewMode === "map"
+                ? "bg-foreground text-background shadow-md"
+                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+            data-testid={`btn-map-view-${trip.id}`}
+          >
+            <MapIcon className="w-4 h-4" /> Map Control Center
+          </button>
+        </div>
 
-        <OptimizerMetrics
-          tripId={trip.id}
-          traveloureScore={traveloureScore}
-          savings={savingsDisplay}
-          savingsPercent={savingsPercentDisplay}
-          wellnessTime={wellnessTime}
-          travelDistance={travelDistance}
-          starDelta={starDelta}
-          totalCost={totalCostDisplay}
-          perPerson={perPersonDisplay}
-        />
+        {viewMode === "card" ? (
+          <>
+            <StatsRow
+              trip={trip}
+              days={days}
+              totalActivities={totalActivities}
+              totalLegs={totalLegs}
+              totalMinutes={totalMinutes}
+              templateConfig={templateConfig}
+            />
 
-        <DaySelector
-          tripId={trip.id}
-          days={days}
-          selectedDay={selectedDay}
-          onSelectDay={setSelectedDay}
-        />
+            <OptimizerMetrics
+              tripId={trip.id}
+              traveloureScore={traveloureScore}
+              savings={savingsDisplay}
+              savingsPercent={savingsPercentDisplay}
+              wellnessTime={wellnessTime}
+              travelDistance={travelDistance}
+              starDelta={starDelta}
+              totalCost={totalCostDisplay}
+              perPerson={perPersonDisplay}
+            />
 
-        <SectionTabs
-          tripId={trip.id}
-          section={section}
-          onSetSection={setSection}
-          showChanges={showChanges}
-          onToggleChanges={() => setShowChanges(!showChanges)}
-          templateConfig={templateConfig}
-          dayActivityCount={day?.activities?.length || 0}
-          dayTransportCount={day?.transports?.length || 0}
-          confirmedActivities={confirmedActivities}
-          totalActivities={totalActivities}
-          transportLocked={transportLocked}
-          changeLogCount={changeLog.length}
-          expertChanges={expertChanges}
-        />
+            <DaySelector
+              tripId={trip.id}
+              days={days}
+              selectedDay={selectedDay}
+              onSelectDay={setSelectedDay}
+            />
 
-        <ChangeLogPanel
-          tripId={trip.id}
-          showChanges={showChanges}
-          changeLog={changeLog}
-        />
+            <SectionTabs
+              tripId={trip.id}
+              section={section}
+              onSetSection={setSection}
+              showChanges={showChanges}
+              onToggleChanges={() => setShowChanges(!showChanges)}
+              templateConfig={templateConfig}
+              dayActivityCount={day?.activities?.length || 0}
+              dayTransportCount={day?.transports?.length || 0}
+              confirmedActivities={confirmedActivities}
+              totalActivities={totalActivities}
+              transportLocked={transportLocked}
+              changeLogCount={changeLog.length}
+              expertChanges={expertChanges}
+            />
 
-        {section === "activities" && (
-          <ActivitiesSection
-            tripId={trip.id}
-            day={day}
-            templateConfig={templateConfig}
-          />
-        )}
+            <ChangeLogPanel
+              tripId={trip.id}
+              showChanges={showChanges}
+              changeLog={changeLog}
+            />
 
-        {section === "transport" && !transportLocked && (
-          <TransportSection
+            {section === "activities" && (
+              <ActivitiesSection
+                tripId={trip.id}
+                day={day}
+                templateConfig={templateConfig}
+              />
+            )}
+
+            {section === "transport" && !transportLocked && (
+              <TransportSection
+                tripId={trip.id}
+                tripDestination={trip.destination}
+                day={day}
+              />
+            )}
+          </>
+        ) : (
+          <MapControlCenter
             tripId={trip.id}
             tripDestination={trip.destination}
-            day={day}
+            days={days}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
           />
         )}
 

@@ -97,6 +97,8 @@ export interface PlanCardActivity {
   status: string;
   time: string;
   location: string;
+  lat?: number;
+  lng?: number;
   cost: number;
   comments: number;
   changes?: Array<{ who: string; what: string }>;
