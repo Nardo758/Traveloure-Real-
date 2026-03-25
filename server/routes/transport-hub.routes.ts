@@ -95,7 +95,14 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
 
     // If variant exists but no legs yet → legs are being calculated
     if (legs.length === 0) {
-      return res.json(emptyHub("calculating", (comparison as any).transportPreferences));
+      return res.json({
+        ...emptyHub,
+        status: "calculating",
+        summary: {
+          ...emptyHub.summary,
+          preferences: (comparison as any).transportPreferences || emptyHub.summary.preferences,
+        },
+      });
     }
 
     // Fetch all booking options for the variant
