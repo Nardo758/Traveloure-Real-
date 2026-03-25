@@ -1,23 +1,18 @@
 import { useState } from "react";
 import { useRoute, Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft,
   Calendar,
   MapPin,
-  Clock,
   DollarSign,
   Star,
   Heart,
   Share2,
   Download,
-  Edit,
-  ChevronRight,
   Utensils,
   Camera,
   Hotel,
@@ -31,7 +26,6 @@ import {
   MessageSquare,
   Users,
   CheckCircle2,
-  CircleDot,
   Gauge,
   Timer,
   Loader2,
@@ -41,6 +35,8 @@ import {
   Headphones,
   CreditCard,
   AlertCircle,
+  Eye,
+  XCircle,
 } from "lucide-react";
 import {
   Dialog,
@@ -54,8 +50,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays } from "date-fns";
 import { TripLogisticsDashboard } from "@/components/logistics";
+import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 
 // Booking types: 'inApp' = API-based (book on our site), 'partner' = affiliate links (external)
 type BookingType = 'inApp' | 'partner';
@@ -302,27 +301,96 @@ const itineraryData = {
   ],
 };
 
-const typeColors: Record<string, string> = {
-  transport: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  accommodation: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  attraction: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  dining: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  activity: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  shopping: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  entertainment: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
-};
+
+function buildItineraryCardData(itinerary: any, tripData: any): ItineraryCardData {
+  return {
+    id: itinerary.id || "local",
+    name: itinerary.title || "My Trip",
+    destination: itinerary.destination,
+    dateRange: {
+      start: itinerary.startDate ? itinerary.startDate.toISOString() : null,
+      end: itinerary.endDate ? itinerary.endDate.toISOString() : null,
+    },
+    totalCost: itinerary.days
+      .flatMap((d: any) => d.activities)
+      .reduce((sum: number, a: any) => sum + (a.price || 0), 0),
+    days: itinerary.days.map((day: any) => ({
+      dayNumber: day.day || day.dayNumber || 1,
+      date: day.date ? (day.date instanceof Date ? day.date.toISOString() : day.date) : undefined,
+      title: day.title || `Day ${day.day || 1}`,
+      activities: (day.activities || []).map((act: any) => ({
+        id: act.id,
+        name: act.title || act.name || "Activity",
+        startTime: act.time ? `1970-01-01T${act.time}:00` : act.startTime || null,
+        endTime: act.endTime || null,
+        lat: act.lat || null,
+        lng: act.lng || null,
+        category: act.type || act.category || null,
+        cost: act.price || act.cost || 0,
+        description: act.notes || act.description || null,
+        location: act.location || null,
+        duration: act.durationMinutes || null,
+      })),
+      transportLegs: (day.transportLegs || []) as InlineTransportLegData[],
+    })),
+  };
+}
 
 export default function ItineraryPage() {
   const [, params] = useRoute("/itinerary/:id");
   const tripId = params?.id || "1";
   const { data: tripData, isLoading: tripLoading } = useTrip(tripId);
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(tripId);
+  const queryClient = useQueryClient();
   const [selectedDay, setSelectedDay] = useState(1);
   const [isSaved, setIsSaved] = useState(false);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const { toast } = useToast();
+
+  const { data: shareData } = useQuery<{
+    shareToken?: string;
+    expertStatus?: string;
+    expertNotes?: string | null;
+    expertDiff?: { activityDiffs?: Record<string, ActivityDiff>; transportDiffs?: Record<string, TransportDiff>; submittedAt?: string } | null;
+  }>({
+    queryKey: ["/api/trips", tripId, "share-info"],
+    queryFn: async () => {
+      const res = await fetch(`/api/trips/${tripId}/share-info`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!tripId && tripId !== "1",
+  });
+
+  const acknowledgeMutation = useMutation({
+    mutationFn: async ({ action }: { action: "accept" | "reject" }) => {
+      const token = shareData?.shareToken;
+      if (!token) throw new Error("No share token");
+      const res = await fetch(`/api/expert-review/${token}/acknowledge`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to acknowledge");
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "share-info"] });
+      setShowDiffReview(false);
+      toast({
+        title: variables.action === "accept" ? "Edits accepted" : "Edits rejected",
+        description: variables.action === "accept"
+          ? "The expert's suggestions have been applied."
+          : "The expert's suggestions have been dismissed.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+    },
+  });
 
   const isLoading = tripLoading || itineraryLoading;
 
@@ -453,7 +521,6 @@ export default function ItineraryPage() {
       </div>
     );
   }
-  const currentDayData = itinerary.days.find(d => d.day === selectedDay);
   const totalBooked = itinerary.days.flatMap(d => d.activities).filter(a => a.booked).length;
   const totalActivities = itinerary.days.flatMap(d => d.activities).length;
   const totalCost = itinerary.days.flatMap(d => d.activities).reduce((sum, a) => sum + a.price, 0);
@@ -651,138 +718,68 @@ export default function ItineraryPage() {
           </div>
 
           <div className="flex-1">
-            <AnimatePresence mode="wait">
-              {currentDayData && (
-                <motion.div
-                  key={selectedDay}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <Card className="bg-white dark:bg-gray-800 mb-4">
-                    <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-                      <div>
-                        <CardTitle className="text-xl text-[#111827] dark:text-white">
-                          Day {currentDayData.day}: {currentDayData.title}
-                        </CardTitle>
-                        <p className="text-sm text-[#6B7280]">
-                          {format(currentDayData.date, "EEEE, MMMM d, yyyy")}
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm" data-testid="button-edit-day">
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit Day
-                      </Button>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="relative">
-                        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700" />
-                        <div className="space-y-4">
-                          {currentDayData.activities.map((activity, idx) => (
-                            <motion.div
-                              key={activity.id}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: idx * 0.1 }}
-                              className="relative pl-10"
-                            >
-                              <div className={`absolute left-2 top-4 w-5 h-5 rounded-full flex items-center justify-center ${
-                                activity.booked ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
-                              }`}>
-                                {activity.booked ? (
-                                  <CheckCircle2 className="w-3 h-3 text-white" />
-                                ) : (
-                                  <CircleDot className="w-3 h-3 text-gray-500" />
-                                )}
-                              </div>
-                              <Card className="border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                                <CardContent className="p-4">
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="flex items-start gap-3 flex-1">
-                                      <div className={`p-2 rounded-lg ${typeColors[activity.type]}`}>
-                                        <activity.icon className="w-5 h-5" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-sm font-medium text-[#6B7280]">
-                                            {activity.time}
-                                          </span>
-                                          <Badge variant="outline" className="text-xs">
-                                            {activity.duration}
-                                          </Badge>
-                                          {(activity.bookingType || getBookingType(activity.type)) === 'inApp' ? (
-                                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs" data-testid={`badge-inapp-${activity.id}`}>
-                                              <ShieldCheck className="w-3 h-3 mr-1" />
-                                              Book on Traveloure
-                                            </Badge>
-                                          ) : (
-                                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs" data-testid={`badge-partner-${activity.id}`}>
-                                              <ExternalLink className="w-3 h-3 mr-1" />
-                                              {activity.partnerName || getPartnerName(activity.type) || 'Partner'}
-                                            </Badge>
-                                          )}
-                                          {activity.booked && (
-                                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                              {activity.bookingStatus === 'confirmed' ? 'Confirmed' : 'Booked'}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        <h4 className="font-semibold text-[#111827] dark:text-white mt-1" data-testid={`text-activity-${activity.id}`}>
-                                          {activity.title}
-                                        </h4>
-                                        <p className="text-sm text-[#6B7280] flex items-center gap-1 mt-1">
-                                          <MapPin className="w-3 h-3" />
-                                          {activity.location}
-                                        </p>
-                                        {activity.notes && (
-                                          <p className="text-sm text-[#6B7280] mt-1 italic">
-                                            {activity.notes}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="text-right flex-shrink-0">
-                                      {activity.price > 0 && (
-                                        <p className="font-semibold text-[#111827] dark:text-white">
-                                          ${activity.price}
-                                        </p>
-                                      )}
-                                      {!activity.booked && activity.price > 0 && (
-                                        (activity.bookingType || getBookingType(activity.type)) === 'inApp' ? (
-                                          <Button size="sm" className="mt-2 bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-book-${activity.id}`}>
-                                            <CreditCard className="w-3 h-3 mr-1" />
-                                            Book Now
-                                          </Button>
-                                        ) : (
-                                          <Button 
-                                            size="sm" 
-                                            variant="outline"
-                                            className="mt-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" 
-                                            data-testid={`button-book-partner-${activity.id}`}
-                                            onClick={() => {
-                                              const partnerName = activity.partnerName || getPartnerName(activity.type);
-                                              window.open(getPartnerUrl(partnerName, itinerary.destination), '_blank');
-                                            }}
-                                          >
-                                            <ExternalLink className="w-3 h-3 mr-1" />
-                                            Book via {activity.partnerName || getPartnerName(activity.type) || 'Partner'}
-                                          </Button>
-                                        )
-                                      )}
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </motion.div>
-                          ))}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {shareData?.expertStatus === "review_sent" && (
+              <div className="mb-4 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800" data-testid="expert-review-banner">
+                <div className="flex items-start gap-3">
+                  <Eye className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-blue-800 dark:text-blue-200">Expert has sent edits for review</p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                      {shareData.expertDiff?.submittedAt && `Sent ${new Date(shareData.expertDiff.submittedAt).toLocaleDateString()}.`}
+                      {(() => {
+                        const total = Object.keys(shareData.expertDiff?.activityDiffs || {}).length + Object.keys(shareData.expertDiff?.transportDiffs || {}).length;
+                        return total > 0 ? ` ${total} suggestion${total !== 1 ? "s" : ""} awaiting your review.` : "";
+                      })()}
+                    </p>
+                    {shareData.expertNotes && (
+                      <p className="text-sm text-blue-800 dark:text-blue-200 mt-2 italic">
+                        "{shareData.expertNotes}"
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={() => acknowledgeMutation.mutate({ action: "accept" })}
+                      disabled={acknowledgeMutation.isPending}
+                      className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                      data-testid="button-accept-expert-edits"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Accept All
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => acknowledgeMutation.mutate({ action: "reject" })}
+                      disabled={acknowledgeMutation.isPending}
+                      className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+                      data-testid="button-reject-expert-edits"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Reject All
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {shareData?.expertStatus === "acknowledged" && (
+              <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="expert-accepted-banner">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <p className="text-sm text-green-800 dark:text-green-200">Expert edits accepted.</p>
+                </div>
+              </div>
+            )}
+
+            <ItineraryCard
+              data={buildItineraryCardData(itinerary, tripData)}
+              isOwner={true}
+              showShareButton={false}
+              expertDiff={shareData?.expertDiff ?? null}
+              variantId={undefined}
+            />
 
             {/* Expert Booking Option */}
             <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
