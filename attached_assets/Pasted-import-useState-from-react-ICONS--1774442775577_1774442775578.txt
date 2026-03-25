@@ -1,0 +1,469 @@
+import { useState } from "react";
+
+// ─── ICONS ───────────────────────────────────────────────────
+const I = {
+  Walk: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="4" r="1.5"/><path d="M7 21l3-9m0 0l2-4m-2 4h3m-1-4l4 4m-4-4l-2-2m6 6l2 4"/></svg>,
+  Train: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="16" rx="2"/><path d="M4 11h16M12 3v8M8 19l-2 3M16 19l2 3"/><circle cx="8" cy="15" r="1"/><circle cx="16" cy="15" r="1"/></svg>,
+  Car: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17h14M5 17a2 2 0 01-2-2V9a2 2 0 012-2h1l2-3h8l2 3h1a2 2 0 012 2v6a2 2 0 01-2 2M5 17v2m14-2v2"/><circle cx="7.5" cy="14" r="1.5"/><circle cx="16.5" cy="14" r="1.5"/></svg>,
+  Bus: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="3" width="16" height="16" rx="2"/><path d="M4 11h16M4 8h16"/><circle cx="7.5" cy="15.5" r="1.5"/><circle cx="16.5" cy="15.5" r="1.5"/></svg>,
+  Shuttle: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="20" height="12" rx="3"/><path d="M2 12h20"/><circle cx="6" cy="18" r="1.5"/><circle cx="18" cy="18" r="1.5"/></svg>,
+  Pin: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 010-5 2.5 2.5 0 010 5z"/></svg>,
+  Calendar: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>,
+  Map: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>,
+  Share: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+  Layers: () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+  Check: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+  Clock: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  Comment: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>,
+  History: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 106 5.3L3 8"/></svg>,
+  AI: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>,
+  Lock: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>,
+  Ext: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
+};
+
+const mIcon = m => { const k = {walk:I.Walk,train:I.Train,taxi:I.Car,car:I.Car,bus:I.Bus,shuttle:I.Shuttle}; const C = k[m]||I.Walk; return <C/>; };
+const mCol = m => ({walk:"#22c55e",train:"#3b82f6",taxi:"#f59e0b",car:"#f59e0b",bus:"#8b5cf6",shuttle:"#ec4899"})[m]||"#94a3b8";
+
+const tColors = {
+  dining:{bg:"#fef3c7",fg:"#92400e",dot:"#f59e0b"},
+  attraction:{bg:"#dbeafe",fg:"#1e40af",dot:"#3b82f6"},
+  shopping:{bg:"#fce7f3",fg:"#9d174d",dot:"#ec4899"},
+  transport:{bg:"#f0fdf4",fg:"#166534",dot:"#22c55e"},
+};
+const sStyles = {
+  confirmed:{bg:"#dcfce7",fg:"#166534",l:"Confirmed"},
+  pending:{bg:"#fef9c3",fg:"#854d0e",l:"Pending"},
+  suggested:{bg:"#e0e7ff",fg:"#3730a3",l:"Suggested"},
+};
+
+// ─── TRIP DATA ───────────────────────────────────────────────
+const trip = {
+  title: "Tokyo Cultural & Culinary Adventure",
+  destination: "Tokyo", country: "Japan", status: "confirmed", travelers: 2,
+  dates: { start: "Jan 31", end: "Feb 3", year: "2026" }, budget: "$1,820",
+  photo: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800&q=80",
+  days: [
+    { dayNum:1, date:"Sat, Jan 31", label:"Arrival & Asakusa",
+      activities: [
+        {id:"a1",time:"14:00",name:"Airport Arrival",location:"Narita International",type:"transport",status:"confirmed",cost:85,comments:0,changes:[]},
+        {id:"a2",time:"16:30",name:"Senso-ji Temple",location:"Asakusa, Taito City",type:"attraction",status:"confirmed",cost:0,comments:2,changes:[{who:"Expert Yuki",what:"Moved from Day 2 → better light",when:"2h ago"}]},
+        {id:"a3",time:"18:00",name:"Nakamise Shopping Street",location:"Asakusa, Taito City",type:"shopping",status:"confirmed",cost:0,comments:0,changes:[]},
+        {id:"a4",time:"19:30",name:"Ichiran Ramen",location:"Asakusa",type:"dining",status:"confirmed",cost:25,comments:1,changes:[]},
+      ],
+      transports: [
+        {id:"t1",from:"a1",to:"a2",mode:"train",duration:65,cost:1200,line:"Narita Express → Asakusa Line",status:"suggested",suggestedBy:"ai"},
+        {id:"t2",from:"a2",to:"a3",mode:"walk",duration:3,cost:0,status:"confirmed"},
+        {id:"t3",from:"a3",to:"a4",mode:"walk",duration:8,cost:0,status:"confirmed"},
+      ],
+    },
+    { dayNum:2, date:"Sun, Feb 1", label:"Art & Culture",
+      activities: [
+        {id:"b1",time:"09:00",name:"Tsukiji Outer Market",location:"Chuo City",type:"dining",status:"confirmed",cost:40,comments:3,changes:[]},
+        {id:"b2",time:"11:00",name:"TeamLab Borderless",location:"Odaiba",type:"attraction",status:"confirmed",cost:32,comments:0,changes:[{who:"Friend Mika",what:"Suggested adding this!",when:"1d ago"}]},
+        {id:"b3",time:"14:00",name:"Shibuya Crossing",location:"Shibuya",type:"attraction",status:"confirmed",cost:0,comments:0,changes:[]},
+        {id:"b4",time:"19:00",name:"Omakase at Sushi Saito",location:"Roppongi",type:"dining",status:"pending",cost:180,comments:1,changes:[]},
+      ],
+      transports: [
+        {id:"u1",from:"b1",to:"b2",mode:"train",duration:25,cost:300,line:"Yurikamome Line",status:"confirmed"},
+        {id:"u2",from:"b2",to:"b3",mode:"train",duration:30,cost:350,line:"Rinkai → Yamanote",status:"suggested",suggestedBy:"expert"},
+        {id:"u3",from:"b3",to:"b4",mode:"taxi",duration:12,cost:1500,status:"suggested",suggestedBy:"ai"},
+      ],
+    },
+    { dayNum:3, date:"Mon, Feb 2", label:"Palace & Gardens",
+      activities: [
+        {id:"c1",time:"08:30",name:"Meiji Jingu Shrine",location:"Shibuya",type:"attraction",status:"confirmed",cost:0,comments:0,changes:[]},
+        {id:"c2",time:"11:00",name:"Imperial Palace Gardens",location:"Chiyoda",type:"attraction",status:"confirmed",cost:0,comments:0,changes:[]},
+        {id:"c3",time:"14:00",name:"Akihabara Electric Town",location:"Akihabara",type:"shopping",status:"confirmed",cost:0,comments:0,changes:[]},
+        {id:"c4",time:"19:00",name:"Yakitori Alley",location:"Yurakucho",type:"dining",status:"confirmed",cost:35,comments:0,changes:[]},
+      ],
+      transports: [
+        {id:"v1",from:"c1",to:"c2",mode:"train",duration:15,cost:200,line:"Chiyoda Line",status:"confirmed"},
+        {id:"v2",from:"c2",to:"c3",mode:"train",duration:10,cost:170,line:"Marunouchi Line",status:"confirmed"},
+        {id:"v3",from:"c3",to:"c4",mode:"walk",duration:18,cost:0,status:"confirmed"},
+      ],
+    },
+    { dayNum:4, date:"Tue, Feb 3", label:"Shopping & Departure",
+      activities: [
+        {id:"d1",time:"09:00",name:"Harajuku & Takeshita St",location:"Harajuku",type:"shopping",status:"confirmed",cost:0,comments:0,changes:[]},
+        {id:"d2",time:"12:00",name:"Shinjuku Gyoen Garden",location:"Shinjuku",type:"attraction",status:"confirmed",cost:5,comments:0,changes:[]},
+        {id:"d3",time:"15:00",name:"Departure to Airport",location:"Narita International",type:"transport",status:"confirmed",cost:85,comments:0,changes:[]},
+      ],
+      transports: [
+        {id:"w1",from:"d1",to:"d2",mode:"walk",duration:15,cost:0,status:"confirmed"},
+        {id:"w2",from:"d2",to:"d3",mode:"train",duration:80,cost:3250,line:"Narita Express",status:"confirmed"},
+      ],
+    },
+  ],
+  changeLog: [
+    {who:"Expert Yuki",action:"Moved Senso-ji to Day 1 for golden hour light",when:"2h ago",type:"edit"},
+    {who:"Friend Mika",action:"Suggested TeamLab Borderless",when:"1d ago",type:"suggest"},
+    {who:"AI",action:"Auto-filled 4 transit routes with optimal modes",when:"1d ago",type:"ai"},
+    {who:"You",action:"Confirmed Day 1 activities",when:"3d ago",type:"confirm"},
+  ],
+};
+
+// ─── MAIN COMPONENT ──────────────────────────────────────────
+export default function PlanCardRedesign() {
+  const [selDay, setSelDay] = useState(0);
+  const [section, setSection] = useState("activities");
+  const [view, setView] = useState("card");
+  const [showChanges, setShowChanges] = useState(false);
+  const [layers, setLayers] = useState({ activities: true, transport: true });
+
+  const day = trip.days[selDay];
+  const totalActs = trip.days.reduce((s,d) => s + d.activities.length, 0);
+  const totalMins = trip.days.reduce((s,d) => s + d.transports.reduce((t,tr) => t + tr.duration, 0), 0);
+  const totalLegs = trip.days.reduce((s,d) => s + d.transports.length, 0);
+
+  const Btn = ({children, active, onClick, style:sx}) => (
+    <button onClick={onClick} style={{
+      padding:"8px 18px", borderRadius:10, border:"none", cursor:"pointer",
+      background: active ? "#3b82f6" : "rgba(255,255,255,0.06)",
+      color: active ? "#fff" : "#94a3b8",
+      fontSize:13, fontWeight:600, fontFamily:"inherit",
+      display:"flex", alignItems:"center", gap:6, transition:"all 0.2s", ...sx,
+    }}>{children}</button>
+  );
+
+  return (
+    <div style={{ fontFamily:"'DM Sans','Segoe UI',system-ui,sans-serif", background:"#0f1117", minHeight:"100vh", color:"#e2e8f0", padding:"24px" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
+
+      {/* View toggle */}
+      <div style={{ maxWidth:960, margin:"0 auto 16px", display:"flex", gap:8, justifyContent:"flex-end" }}>
+        <Btn active={view==="card"} onClick={()=>setView("card")}><I.Calendar/> Card View</Btn>
+        <Btn active={view==="map"} onClick={()=>setView("map")}><I.Map/> Map Control Center</Btn>
+      </div>
+
+      {view === "card" ? (
+        // ═══════════ CARD VIEW ═══════════
+        <div style={{ maxWidth:960, margin:"0 auto", borderRadius:20, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)", background:"rgba(255,255,255,0.02)" }}>
+          {/* Hero */}
+          <div style={{ position:"relative", height:210, overflow:"hidden" }}>
+            <img src={trip.photo} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }}/>
+            <div style={{ position:"absolute", inset:0, background:"linear-gradient(to top, rgba(15,17,23,0.95) 0%, rgba(15,17,23,0.3) 50%, rgba(15,17,23,0.1) 100%)" }}/>
+            <div style={{ position:"absolute", top:16, left:16, display:"flex", gap:8 }}>
+              <span style={{ background:"#22c55e", color:"#fff", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.5 }}>{trip.status}</span>
+              <span style={{ background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", color:"#fff", padding:"4px 12px", borderRadius:20, fontSize:11, fontWeight:600 }}>👤 {trip.travelers}</span>
+            </div>
+            <div style={{ position:"absolute", top:16, right:16, display:"flex", gap:8 }}>
+              {[{icon:<I.Share/>,label:"Share"},{icon:<I.Calendar/>,label:"Export"}].map((b,i) => (
+                <button key={i} style={{ background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", border:"none", color:"#fff", padding:"6px 14px", borderRadius:10, cursor:"pointer", fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:5, fontFamily:"inherit" }}>{b.icon} {b.label}</button>
+              ))}
+            </div>
+            <div style={{ position:"absolute", bottom:20, left:20, right:20 }}>
+              <h1 style={{ fontFamily:"'DM Serif Display',serif", fontSize:26, margin:0, color:"#fff", lineHeight:1.2 }}>{trip.title}</h1>
+              <div style={{ display:"flex", gap:16, marginTop:8, flexWrap:"wrap" }}>
+                <span style={{ fontSize:13, color:"#cbd5e1", display:"flex", alignItems:"center", gap:4 }}><I.Pin/> {trip.destination}, {trip.country}</span>
+                <span style={{ fontSize:13, color:"#cbd5e1" }}>📅 {trip.dates.start} – {trip.dates.end}, {trip.dates.year}</span>
+                <span style={{ fontSize:13, color:"#34d399", fontWeight:600 }}>{trip.budget}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
+            {[{l:"Days",v:trip.days.length,i:"📅"},{l:"Activities",v:totalActs,i:"⭐"},{l:"Transit Legs",v:totalLegs,i:"🚆"},{l:"Transit Time",v:`${Math.floor(totalMins/60)}h ${totalMins%60}m`,i:"⏱"}].map((s,i) => (
+              <div key={i} style={{ padding:"14px 16px", textAlign:"center", borderRight:i<3?"1px solid rgba(255,255,255,0.06)":"none" }}>
+                <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>{s.i} {s.l}</div>
+                <div style={{ fontSize:18, fontWeight:700, color:"#f1f5f9" }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Day selector */}
+          <div style={{ display:"flex", gap:4, padding:"12px 16px 0", overflowX:"auto" }}>
+            {trip.days.map((d,i) => (
+              <button key={i} onClick={()=>setSelDay(i)} style={{
+                padding:"10px 16px", borderRadius:"12px 12px 0 0", border:"none", cursor:"pointer", fontFamily:"inherit",
+                background: selDay===i ? "rgba(59,130,246,0.15)" : "transparent",
+                borderBottom: selDay===i ? "2px solid #3b82f6" : "2px solid transparent",
+                color: selDay===i ? "#60a5fa" : "#64748b", fontSize:13, fontWeight: selDay===i ? 700 : 500,
+                whiteSpace:"nowrap", transition:"all 0.2s",
+              }}>
+                <div>Day {d.dayNum}</div>
+                <div style={{ fontSize:10, marginTop:2, opacity:0.7 }}>{d.label}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Section tabs */}
+          <div style={{ display:"flex", borderBottom:"1px solid rgba(255,255,255,0.06)", padding:"0 16px" }}>
+            {["activities","transport"].map(sec => {
+              const active = section===sec;
+              const cnt = sec==="activities" ? day.activities.length : day.transports.length;
+              const locked = sec==="transport" && day.activities.some(a=>a.status==="pending");
+              return (
+                <button key={sec} onClick={()=>!locked&&setSection(sec)} style={{
+                  padding:"14px 20px", border:"none", cursor:locked?"not-allowed":"pointer",
+                  background:"transparent", fontFamily:"inherit",
+                  borderBottom: active ? "2px solid #3b82f6" : "2px solid transparent",
+                  color: locked ? "#475569" : active ? "#60a5fa" : "#94a3b8",
+                  fontSize:14, fontWeight: active ? 700 : 500,
+                  display:"flex", alignItems:"center", gap:8,
+                  opacity: locked ? 0.5 : 1, transition:"all 0.2s",
+                }}>
+                  {sec==="activities"?"Activities":"Transport"}
+                  <span style={{ background:active?"#3b82f6":"rgba(255,255,255,0.08)", color:active?"#fff":"#94a3b8", padding:"2px 8px", borderRadius:10, fontSize:11, fontWeight:700 }}>{cnt}</span>
+                  {locked && <I.Lock/>}
+                  {locked && <span style={{fontSize:10,color:"#64748b",fontStyle:"italic",marginLeft:4}}>finalize activities first</span>}
+                </button>
+              );
+            })}
+            <button onClick={()=>setShowChanges(!showChanges)} style={{
+              marginLeft:"auto", padding:"14px 16px", border:"none", cursor:"pointer",
+              background:"transparent", fontFamily:"inherit",
+              color: showChanges?"#f59e0b":"#64748b", fontSize:12, fontWeight:600,
+              display:"flex", alignItems:"center", gap:6, transition:"all 0.2s",
+            }}>
+              <I.History/> Changes
+              <span style={{ background:"#f59e0b", color:"#000", width:18, height:18, borderRadius:"50%", fontSize:10, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center" }}>{trip.changeLog.length}</span>
+            </button>
+          </div>
+
+          {/* Change log */}
+          {showChanges && (
+            <div style={{ background:"rgba(245,158,11,0.05)", borderBottom:"1px solid rgba(245,158,11,0.15)", padding:"16px 20px" }}>
+              <div style={{ fontSize:12, fontWeight:700, color:"#f59e0b", marginBottom:12, textTransform:"uppercase", letterSpacing:0.5 }}>Change History</div>
+              {trip.changeLog.map((c,i) => (
+                <div key={i} style={{ display:"flex", alignItems:"flex-start", gap:10, padding:"8px 0", borderBottom:i<trip.changeLog.length-1?"1px solid rgba(255,255,255,0.04)":"none" }}>
+                  <div style={{ width:8, height:8, borderRadius:"50%", marginTop:5, flexShrink:0, background:({edit:"#3b82f6",suggest:"#a855f7",ai:"#22c55e",confirm:"#f59e0b"})[c.type] }}/>
+                  <div>
+                    <span style={{ color:"#f1f5f9", fontSize:13, fontWeight:600 }}>{c.who}</span>
+                    <span style={{ color:"#94a3b8", fontSize:13 }}> — {c.action}</span>
+                    <div style={{ color:"#64748b", fontSize:11, marginTop:2 }}>{c.when}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ─── ACTIVITIES ─── */}
+          {section==="activities" && (
+            <div style={{ padding:20 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:16 }}>
+                <div style={{ fontSize:13, color:"#64748b" }}>{day.date} — <span style={{ color:"#94a3b8", fontWeight:600 }}>{day.label}</span></div>
+                <button style={{ padding:"6px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.08)", background:"transparent", color:"#94a3b8", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}><I.Map/> Open in Maps</button>
+              </div>
+              {day.activities.map((a,i) => {
+                const tc = tColors[a.type]||tColors.attraction;
+                const ss = sStyles[a.status];
+                return (
+                  <div key={a.id} style={{ display:"flex", gap:14, padding:"14px 0", borderBottom:i<day.activities.length-1?"1px solid rgba(255,255,255,0.04)":"none" }}>
+                    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", width:48, flexShrink:0 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#e2e8f0" }}>{a.time}</div>
+                      <div style={{ width:10, height:10, borderRadius:"50%", marginTop:6, background:tc.dot, border:"2px solid rgba(15,17,23,0.8)", boxShadow:`0 0 8px ${tc.dot}40` }}/>
+                      {i<day.activities.length-1 && <div style={{ width:2, flex:1, marginTop:4, background:`linear-gradient(to bottom, ${tc.dot}40, rgba(255,255,255,0.04))` }}/>}
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                        <span style={{ fontSize:15, fontWeight:600, color:"#f1f5f9" }}>{a.name}</span>
+                        <span style={{ padding:"2px 8px", borderRadius:6, fontSize:10, fontWeight:700, background:tc.bg, color:tc.fg, textTransform:"uppercase", letterSpacing:0.3 }}>{a.type}</span>
+                        <span style={{ padding:"2px 8px", borderRadius:6, fontSize:10, fontWeight:700, background:ss.bg, color:ss.fg }}>{ss.l}</span>
+                      </div>
+                      <div style={{ fontSize:12, color:"#64748b", marginTop:4, display:"flex", alignItems:"center", gap:4 }}>
+                        <I.Pin/> {a.location}
+                        {a.cost>0 && <span style={{ marginLeft:8, color:"#34d399", fontWeight:600 }}>${a.cost}</span>}
+                      </div>
+                      <div style={{ display:"flex", gap:10, marginTop:8 }}>
+                        {a.comments>0 && <span style={{ fontSize:11, color:"#60a5fa", display:"flex", alignItems:"center", gap:3, cursor:"pointer" }}><I.Comment/> {a.comments} comment{a.comments>1?"s":""}</span>}
+                        {a.changes.length>0 && <span style={{ fontSize:11, color:"#f59e0b", display:"flex", alignItems:"center", gap:3, cursor:"pointer" }}><I.History/> {a.changes[0].who}: {a.changes[0].what}</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ─── TRANSPORT ─── */}
+          {section==="transport" && (
+            <div style={{ padding:20 }}>
+              {/* Summary bar */}
+              <div style={{ background:"rgba(59,130,246,0.08)", borderRadius:12, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, border:"1px solid rgba(59,130,246,0.15)" }}>
+                <div style={{ display:"flex", gap:24 }}>
+                  {[{l:"Legs",v:day.transports.length},{l:"Total Time",v:`${day.transports.reduce((s,t)=>s+t.duration,0)}m`},{l:"Est. Cost",v:`¥${day.transports.reduce((s,t)=>s+t.cost,0).toLocaleString()}`,c:"#34d399"}].map((s,i)=>(
+                    <div key={i}>
+                      <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:0.5 }}>{s.l}</div>
+                      <div style={{ fontSize:18, fontWeight:700, color:s.c||"#60a5fa" }}>{s.v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  {[...new Set(day.transports.map(t=>t.mode))].map(m=>{
+                    const mins = day.transports.filter(t=>t.mode===m).reduce((s,t)=>s+t.duration,0);
+                    return <div key={m} style={{ display:"flex", alignItems:"center", gap:4, padding:"4px 10px", borderRadius:8, background:`${mCol(m)}15`, color:mCol(m), fontSize:11, fontWeight:600 }}>{mIcon(m)} {mins}m</div>;
+                  })}
+                </div>
+              </div>
+
+              {/* Transport legs */}
+              {day.transports.map((tr,i) => {
+                const from = day.activities.find(a=>a.id===tr.from);
+                const to = day.activities.find(a=>a.id===tr.to);
+                const ss = sStyles[tr.status];
+                if(!from||!to) return null;
+                return (
+                  <div key={tr.id} style={{ display:"flex", gap:14, padding:"16px 0", borderBottom:i<day.transports.length-1?"1px solid rgba(255,255,255,0.04)":"none" }}>
+                    <div style={{ width:40, height:40, borderRadius:10, background:`${mCol(tr.mode)}15`, color:mCol(tr.mode), display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{mIcon(tr.mode)}</div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ fontSize:13, color:"#94a3b8" }}>{from.name}</span>
+                        <span style={{ color:"#475569" }}>→</span>
+                        <span style={{ fontSize:13, color:"#e2e8f0", fontWeight:600 }}>{to.name}</span>
+                      </div>
+                      <div style={{ display:"flex", gap:12, marginTop:6, alignItems:"center", flexWrap:"wrap" }}>
+                        <span style={{ padding:"3px 10px", borderRadius:6, fontSize:11, fontWeight:700, background:`${mCol(tr.mode)}20`, color:mCol(tr.mode), textTransform:"capitalize" }}>{tr.mode}</span>
+                        <span style={{ fontSize:12, color:"#94a3b8", display:"flex", alignItems:"center", gap:3 }}><I.Clock/> {tr.duration} min</span>
+                        {tr.cost>0 && <span style={{ fontSize:12, color:"#34d399", fontWeight:600 }}>¥{tr.cost.toLocaleString()}</span>}
+                        {tr.line && <span style={{ fontSize:11, color:"#64748b", fontStyle:"italic" }}>{tr.line}</span>}
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginTop:8, alignItems:"center" }}>
+                        <span style={{ padding:"2px 8px", borderRadius:6, fontSize:10, fontWeight:700, background:ss.bg, color:ss.fg }}>{ss.l}</span>
+                        {tr.suggestedBy && <span style={{ fontSize:11, color:tr.suggestedBy==="ai"?"#22c55e":"#a855f7", display:"flex", alignItems:"center", gap:3 }}>{tr.suggestedBy==="ai"?<><I.AI/> AI suggested</>:<><I.Comment/> Expert suggested</>}</span>}
+                      </div>
+                    </div>
+                    {tr.status==="suggested" && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
+                        <button style={{ padding:"6px 12px", borderRadius:8, border:"none", cursor:"pointer", background:"#22c55e", color:"#fff", fontSize:11, fontWeight:700, fontFamily:"inherit" }}>Accept</button>
+                        <button style={{ padding:"6px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#94a3b8", fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>Change</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Maps CTA */}
+              <div style={{ marginTop:20, padding:16, borderRadius:12, background:"linear-gradient(135deg,rgba(59,130,246,0.1),rgba(139,92,246,0.1))", border:"1px solid rgba(59,130,246,0.15)", display:"flex", gap:12, alignItems:"center", justifyContent:"space-between" }}>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#e2e8f0" }}>Open Day {day.dayNum} in Maps</div>
+                  <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>Activities + transport routes as separate layers</div>
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button style={{ padding:"8px 16px", borderRadius:10, border:"none", cursor:"pointer", background:"#3b82f6", color:"#fff", fontSize:12, fontWeight:700, fontFamily:"inherit", display:"flex", alignItems:"center", gap:5 }}><I.Map/> Google Maps</button>
+                  <button style={{ padding:"8px 16px", borderRadius:10, border:"1px solid rgba(255,255,255,0.1)", background:"transparent", color:"#94a3b8", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}> Apple Maps</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        // ═══════════ MAP CONTROL CENTER ═══════════
+        <div style={{ maxWidth:960, margin:"0 auto", borderRadius:20, overflow:"hidden", border:"1px solid rgba(255,255,255,0.06)" }}>
+          {/* Simulated map */}
+          <div style={{ height:420, position:"relative", background:"#1a1d27", backgroundImage:"radial-gradient(circle at 30% 40%, rgba(59,130,246,0.08) 0%, transparent 50%), radial-gradient(circle at 70% 60%, rgba(34,197,94,0.06) 0%, transparent 40%)" }}>
+            <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", opacity:0.06 }}>
+              {Array.from({length:20}).map((_,i) => <line key={`h${i}`} x1="0" y1={i*22} x2="100%" y2={i*22} stroke="#fff" strokeWidth="0.5"/>)}
+              {Array.from({length:30}).map((_,i) => <line key={`v${i}`} x1={i*34} y1="0" x2={i*34} y2="100%" stroke="#fff" strokeWidth="0.5"/>)}
+            </svg>
+
+            {/* Pins */}
+            {layers.activities && day.activities.map((a,i) => {
+              const tc = tColors[a.type]||tColors.attraction;
+              const pos = [{x:"18%",y:"22%"},{x:"52%",y:"38%"},{x:"70%",y:"55%"},{x:"38%",y:"72%"}][i%4];
+              return (
+                <div key={a.id} style={{ position:"absolute", left:pos.x, top:pos.y, transform:"translate(-50%,-100%)", display:"flex", flexDirection:"column", alignItems:"center", animation:`fadeInDrop 0.4s ease ${i*0.1}s both`, zIndex:10 }}>
+                  <div style={{ background:"#1e293b", border:`2px solid ${tc.dot}`, borderRadius:10, padding:"6px 12px", whiteSpace:"nowrap", boxShadow:`0 4px 20px ${tc.dot}30` }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#f1f5f9" }}>{a.name}</div>
+                    <div style={{ fontSize:10, color:"#64748b" }}>{a.time}</div>
+                  </div>
+                  <div style={{ width:14, height:14, borderRadius:"50%", marginTop:-2, background:tc.dot, border:"2px solid #1e293b", boxShadow:`0 0 12px ${tc.dot}50` }}/>
+                </div>
+              );
+            })}
+
+            {/* Routes */}
+            {layers.transport && (
+              <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", zIndex:5 }}>
+                {day.transports.map((tr,i) => {
+                  const coords = [{x1:"18%",y1:"22%",x2:"52%",y2:"38%"},{x1:"52%",y1:"38%",x2:"70%",y2:"55%"},{x1:"70%",y1:"55%",x2:"38%",y2:"72%"}];
+                  const c = coords[i%3]; if(!c) return null;
+                  return (
+                    <g key={tr.id}>
+                      <line x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2} stroke={mCol(tr.mode)} strokeWidth="2.5" strokeDasharray={tr.mode==="walk"?"6,4":"none"} opacity="0.7"/>
+                      <circle cx={`${(parseFloat(c.x1)+parseFloat(c.x2))/2}%`} cy={`${(parseFloat(c.y1)+parseFloat(c.y2))/2}%`} r="14" fill="#1e293b" stroke={mCol(tr.mode)} strokeWidth="1.5"/>
+                      <text x={`${(parseFloat(c.x1)+parseFloat(c.x2))/2}%`} y={`${(parseFloat(c.y1)+parseFloat(c.y2))/2}%`} textAnchor="middle" dominantBaseline="central" fill={mCol(tr.mode)} fontSize="9" fontWeight="700">{tr.duration}m</text>
+                    </g>
+                  );
+                })}
+              </svg>
+            )}
+
+            {/* Day buttons */}
+            <div style={{ position:"absolute", top:16, left:16, display:"flex", gap:4, zIndex:20 }}>
+              {trip.days.map((d,i) => (
+                <button key={i} onClick={()=>setSelDay(i)} style={{ padding:"6px 14px", borderRadius:8, border:"none", cursor:"pointer", background:selDay===i?"#3b82f6":"rgba(30,41,59,0.9)", color:selDay===i?"#fff":"#94a3b8", fontSize:12, fontWeight:600, fontFamily:"inherit", backdropFilter:"blur(8px)" }}>Day {d.dayNum}</button>
+              ))}
+            </div>
+
+            <div style={{ position:"absolute", top:16, right:16, background:"rgba(30,41,59,0.9)", backdropFilter:"blur(8px)", borderRadius:12, padding:"10px 16px", zIndex:20 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:"#f1f5f9" }}>{day.date}</div>
+              <div style={{ fontSize:12, color:"#94a3b8" }}>{day.label}</div>
+            </div>
+          </div>
+
+          {/* Layer controls */}
+          <div style={{ background:"rgba(255,255,255,0.03)", padding:"16px 20px", borderTop:"1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:14 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, fontSize:13, fontWeight:700, color:"#e2e8f0", textTransform:"uppercase", letterSpacing:0.5 }}><I.Layers/> Map Layers</div>
+              <div style={{ display:"flex", gap:8 }}>
+                {[{l:"Google Maps",primary:true},{l:"Apple Maps"},{l:"Add to Calendar"}].map((b,i) => (
+                  <button key={i} style={{ padding:"6px 14px", borderRadius:8, border:b.primary?"none":"1px solid rgba(255,255,255,0.1)", cursor:"pointer", background:b.primary?"#3b82f6":"transparent", color:b.primary?"#fff":"#94a3b8", fontSize:11, fontWeight:b.primary?700:600, fontFamily:"inherit", display:"flex", alignItems:"center", gap:4 }}><I.Ext/> {b.l}</button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display:"flex", gap:12 }}>
+              {[{key:"activities",label:"Activities Layer",color:"#3b82f6",desc:`${day.activities.length} stops · pins & details`,icon:<I.Pin/>},
+                {key:"transport",label:"Transport Layer",color:"#22c55e",desc:`${day.transports.length} legs · routes & modes`,icon:<I.Train/>}
+              ].map(layer => (
+                <button key={layer.key} onClick={()=>setLayers(l=>({...l,[layer.key]:!l[layer.key]}))} style={{
+                  flex:1, padding:"12px 16px", borderRadius:12, cursor:"pointer",
+                  border: layers[layer.key] ? `2px solid ${layer.color}` : "2px solid rgba(255,255,255,0.06)",
+                  background: layers[layer.key] ? `${layer.color}15` : "rgba(255,255,255,0.02)",
+                  display:"flex", alignItems:"center", gap:10, fontFamily:"inherit", transition:"all 0.2s",
+                }}>
+                  <div style={{ width:32, height:32, borderRadius:8, background:layers[layer.key]?layer.color:"#334155", display:"flex", alignItems:"center", justifyContent:"center", color:"#fff" }}>
+                    {layers[layer.key] ? <I.Check/> : layer.icon}
+                  </div>
+                  <div style={{ textAlign:"left" }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:layers[layer.key]?layer.color:"#94a3b8" }}>{layer.label}</div>
+                    <div style={{ fontSize:11, color:"#64748b" }}>{layer.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Route summary */}
+            {layers.transport && (
+              <div style={{ marginTop:14, padding:"12px 16px", borderRadius:10, background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.04)" }}>
+                <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+                  {day.transports.map((tr,i) => {
+                    const from = day.activities.find(a=>a.id===tr.from);
+                    const to = day.activities.find(a=>a.id===tr.to);
+                    if(!from||!to) return null;
+                    return (
+                      <div key={tr.id} style={{ display:"flex", alignItems:"center", gap:4 }}>
+                        {i===0 && <span style={{ fontSize:11, color:"#94a3b8" }}>{from.name}</span>}
+                        <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"2px 8px", borderRadius:6, background:`${mCol(tr.mode)}15`, color:mCol(tr.mode), fontSize:10, fontWeight:700 }}>{mIcon(tr.mode)} {tr.duration}m</span>
+                        <span style={{ fontSize:11, color:"#94a3b8" }}>{to.name}</span>
+                        {i<day.transports.length-1 && <span style={{ color:"#334155", margin:"0 2px" }}>·</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeInDrop { from { opacity:0; transform:translate(-50%,-120%); } to { opacity:1; transform:translate(-50%,-100%); } }
+        * { box-sizing:border-box; }
+        button:hover { filter:brightness(1.1); }
+        ::-webkit-scrollbar { height:4px; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:4px; }
+      `}</style>
+    </div>
+  );
+}
