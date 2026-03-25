@@ -4,15 +4,31 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { AlertCircle, Share2, MessageCircle, User, ExternalLink, CheckCircle, XCircle, Eye, Map } from "lucide-react";
-import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
+import {
+  AlertCircle, Share2, MessageCircle, User, ExternalLink,
+  CheckCircle, XCircle, Eye, MapPin, Pencil, Check, X,
+} from "lucide-react";
+import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-
-const GOOGLE_MAPS_AVAILABLE = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+import { format } from "date-fns";
+import {
+  getTemplateConfig,
+  TYPE_COLORS, STATUS_STYLES, MODE_COLORS, ModeIcon,
+  type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip,
+} from "@/components/plancard/plancard-types";
+import { HeroSection } from "@/components/plancard/HeroSection";
+import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
+import { DaySelector } from "@/components/plancard/DaySelector";
+import { SectionTabs } from "@/components/plancard/SectionTabs";
+import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
+import { TransportSection } from "@/components/plancard/TransportSection";
+import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 
 interface SharedItineraryResponse {
   variant: {
@@ -68,6 +84,15 @@ interface SharedItineraryResponse {
   isOwner?: boolean;
 }
 
+function formatTime(timeStr?: string | null): string {
+  if (!timeStr) return "";
+  try {
+    return new Date(timeStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch {
+    return timeStr;
+  }
+}
+
 export default function ItineraryViewPage() {
   const { token } = useParams<{ token: string }>();
   const [location, navigate] = useLocation();
@@ -80,7 +105,12 @@ export default function ItineraryViewPage() {
   const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
   const [showDiffReview, setShowDiffReview] = useState(false);
   const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
-  const [forcedMapDays, setForcedMapDays] = useState<number[]>();
+  const [selectedDay, setSelectedDay] = useState(0);
+  const [section, setSection] = useState<"activities" | "transport">("activities");
+  const [showChanges, setShowChanges] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{ name: string; startTime: string; note: string }>({ name: "", startTime: "", note: "" });
 
   const { data, isLoading, error } = useQuery<SharedItineraryResponse>({
     queryKey: ["/api/itinerary-share", token],
@@ -247,18 +277,6 @@ export default function ItineraryViewPage() {
 
   if (!data) return null;
 
-  const cardData: ItineraryCardData = {
-    id: data.variant.id,
-    name: data.variant.name,
-    description: data.variant.description,
-    destination: data.variant.destination,
-    dateRange: data.variant.dateRange,
-    totalCost: data.variant.totalCost,
-    optimizationScore: data.variant.optimizationScore,
-    days: data.variant.days,
-    transportSummary: data.variant.transportSummary,
-  };
-
   const isExpertView = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert;
   const isOwnerView = !!data.isOwner;
   const expertStatus = data.expertStatus;
@@ -277,13 +295,123 @@ export default function ItineraryViewPage() {
     d.activities.some(a => diffActivityIds.has(a.id) && (a as any).lat != null)
   );
 
+  const destination = data.variant.destination || data.variant.name;
+  const templateConfig = getTemplateConfig(null);
+
+  const planCardTrip: PlanCardTrip = {
+    id: data.variant.id,
+    destination: destination,
+    title: data.variant.name,
+    startDate: data.variant.dateRange?.start || new Date().toISOString().slice(0, 10),
+    endDate: data.variant.dateRange?.end || new Date().toISOString().slice(0, 10),
+    numberOfTravelers: 1,
+  };
+
+  const planCardDays: PlanCardDay[] = data.variant.days.map(d => ({
+    dayNum: d.dayNumber,
+    date: d.date || `Day ${d.dayNumber}`,
+    label: `Day ${d.dayNumber}`,
+    activities: d.activities.map(a => ({
+      id: a.id,
+      name: activityDiffs[a.id]?.name || a.name,
+      type: a.category || "activity",
+      status: "pending" as string,
+      time: activityDiffs[a.id]?.startTime || formatTime(a.startTime) || "",
+      location: a.location || "",
+      lat: a.lat ?? undefined,
+      lng: a.lng ?? undefined,
+      cost: a.cost || 0,
+      comments: 0,
+    })),
+    transports: d.transportLegs.map((l, li) => {
+      const tDiff = transportDiffs[l.id];
+      return {
+        id: l.id,
+        mode: tDiff?.newMode || l.userSelectedMode || l.recommendedMode || "transit",
+        from: d.activities[li]?.id || "",
+        to: d.activities[li + 1]?.id || "",
+        fromName: d.activities[li]?.name || "",
+        toName: d.activities[li + 1]?.name || "",
+        duration: l.estimatedDurationMinutes || 0,
+        cost: l.estimatedCostUsd || 0,
+        status: "confirmed" as string,
+      };
+    }),
+  }));
+
+  const currentDay = planCardDays[selectedDay];
+  const allActivities = planCardDays.flatMap(d => d.activities);
+  const totalActivities = allActivities.length;
+  const totalBooked = 0;
+  const totalLegs = data.variant.transportSummary?.totalLegs || planCardDays.reduce((s, d) => s + (d.transports?.length || 0), 0);
+  const totalMinutes = data.variant.transportSummary?.totalMinutes || planCardDays.reduce((s, d) => s + (d.transports || []).reduce((t, tr) => t + (tr.duration || 0), 0), 0);
+  const totalCostNum = data.variant.totalCost ? parseFloat(String(data.variant.totalCost)) : allActivities.reduce((s, a) => s + a.cost, 0);
+  const transportCost = data.variant.transportSummary?.totalCostUsd || planCardDays.reduce((s, d) => s + (d.transports || []).reduce((t, tr) => t + (tr.cost || 0), 0), 0);
+  const grandTotal = totalCostNum + transportCost;
+
+  const extraStats: ExtraStat[] = [
+    { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
+  ];
+
+  const startEditActivity = (activityId: string, name: string, startTime?: string | null) => {
+    setEditingActivity(activityId);
+    const existing = activityDiffs[activityId];
+    setEditValues({
+      name: existing?.name ?? name,
+      startTime: existing?.startTime ?? (formatTime(startTime) || ""),
+      note: existing?.note ?? "",
+    });
+  };
+
+  const confirmEditActivity = (activityId: string, originalName: string, originalStartTime?: string | null) => {
+    const nameChanged = editValues.name !== originalName;
+    const timeChanged = editValues.startTime !== (formatTime(originalStartTime) || "");
+    const noteAdded = editValues.note.trim() !== "";
+    const hasChange = nameChanged || timeChanged || noteAdded;
+
+    if (hasChange) {
+      const newDiffs = {
+        ...activityDiffs,
+        [activityId]: {
+          ...(nameChanged ? { name: editValues.name } : {}),
+          ...(timeChanged ? { startTime: editValues.startTime } : {}),
+          ...(noteAdded ? { note: editValues.note } : {}),
+          originalName,
+          originalStartTime: formatTime(originalStartTime) || undefined,
+        },
+      };
+      setActivityDiffs(newDiffs);
+    } else {
+      const newDiffs = { ...activityDiffs };
+      delete newDiffs[activityId];
+      setActivityDiffs(newDiffs);
+    }
+    setEditingActivity(null);
+  };
+
+  const handleTransportModeChange = (legId: string, newMode: string, originalMode: string) => {
+    if (!isExpertView) return;
+    const newDiffs = { ...transportDiffs };
+    if (newMode === originalMode) {
+      delete newDiffs[legId];
+    } else {
+      let legOrder = 0;
+      for (const day of data.variant.days) {
+        const leg = day.transportLegs.find(l => l.id === legId);
+        if (leg) { legOrder = leg.legOrder; break; }
+      }
+      newDiffs[legId] = { originalMode, newMode, legOrder };
+    }
+    setTransportDiffs(newDiffs);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto p-4 pb-12">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-primary">Traveloure</span>
-            <Badge variant="secondary" className="text-xs">
+            <span className="text-lg font-bold text-primary" data-testid="text-brand-logo">Traveloure</span>
+            <Badge variant="secondary" className="text-xs" data-testid="badge-view-mode">
               {isExpertView ? "Expert Review" : "Shared Itinerary"}
             </Badge>
           </div>
@@ -292,7 +420,7 @@ export default function ItineraryViewPage() {
             size="sm"
             onClick={() => {
               if (navigator.share) {
-                const shareTitle = `${data.variant.destination || data.variant.name} Itinerary • Traveloure`;
+                const shareTitle = `${destination} Itinerary • Traveloure`;
                 navigator.share({ title: shareTitle, url: window.location.href }).catch(() => {});
               } else {
                 navigator.clipboard?.writeText(window.location.href).catch(() => {});
@@ -308,7 +436,7 @@ export default function ItineraryViewPage() {
         </div>
 
         {isExpertView && (
-          <div className="mb-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+          <div className="mb-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800" data-testid="expert-edit-banner">
             <div className="flex items-start gap-3">
               <User className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1">
@@ -410,22 +538,132 @@ export default function ItineraryViewPage() {
           </div>
         )}
 
-        <ItineraryCard
-          data={cardData}
-          mapsLinks={data.mapsLinks}
-          sharedBy={data.sharedBy}
-          shareToken={token}
-          permissions={data.permissions}
-          readOnly={data.permissions === "view" && !data.isOwner}
-          isOwner={!!data.isOwner}
-          variantId={data.variant.id}
-          expertDiff={data.expertDiff}
-          onActivityDiffsChange={isExpertView ? setActivityDiffs : undefined}
-          onTransportDiffsChange={isExpertView ? setTransportDiffs : undefined}
-          onExpertNotesChange={isExpertView ? setExpertNotes : undefined}
-          expertNotesValue={isExpertView ? expertNotes : undefined}
-          forcedMapDays={forcedMapDays}
-        />
+        <Card className="overflow-hidden border-border bg-card" data-testid="shared-itinerary-card">
+          <HeroSection
+            trip={planCardTrip}
+            traveloureScore={data.variant.optimizationScore}
+            shareToken={token}
+            totalCost={grandTotal > 0 ? `$${grandTotal.toLocaleString()}` : null}
+            perPerson={null}
+            budget={null}
+          />
+
+          <StatsRow
+            trip={planCardTrip}
+            days={planCardDays}
+            totalActivities={totalActivities}
+            totalLegs={totalLegs}
+            totalMinutes={totalMinutes}
+            templateConfig={templateConfig}
+            extraStats={extraStats}
+          />
+
+          <DaySelector
+            tripId={data.variant.id}
+            days={planCardDays}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+            showActivityCounts
+          />
+
+          <SectionTabs
+            tripId={data.variant.id}
+            section={section}
+            onSetSection={setSection}
+            showChanges={showChanges}
+            onToggleChanges={() => setShowChanges(!showChanges)}
+            templateConfig={templateConfig}
+            dayActivityCount={currentDay?.activities?.length || 0}
+            dayTransportCount={currentDay?.transports?.length || 0}
+            confirmedActivities={totalBooked}
+            totalActivities={totalActivities}
+            transportLocked={false}
+            changeLogCount={totalDiffs}
+            expertChanges={totalReviewDiffs}
+          />
+
+          {section === "activities" && !isExpertView && (
+            <ActivitiesSection
+              tripId={data.variant.id}
+              day={currentDay}
+              templateConfig={templateConfig}
+            />
+          )}
+
+          {section === "activities" && isExpertView && currentDay && (
+            <ExpertActivitiesSection
+              tripId={data.variant.id}
+              day={currentDay}
+              rawActivities={data.variant.days[selectedDay]?.activities || []}
+              templateConfig={templateConfig}
+              activityDiffs={activityDiffs}
+              editingActivity={editingActivity}
+              editValues={editValues}
+              onStartEdit={startEditActivity}
+              onConfirmEdit={confirmEditActivity}
+              onCancelEdit={() => setEditingActivity(null)}
+              onEditValuesChange={setEditValues}
+              onClearDiff={(id) => {
+                const newDiffs = { ...activityDiffs };
+                delete newDiffs[id];
+                setActivityDiffs(newDiffs);
+              }}
+            />
+          )}
+
+          {section === "transport" && (
+            <TransportSection
+              tripId={data.variant.id}
+              tripDestination={destination}
+              day={currentDay}
+            />
+          )}
+        </Card>
+
+        <div className="flex items-center justify-end mt-4">
+          <Button
+            variant={showMap ? "default" : "outline"}
+            size="sm"
+            className="gap-2 text-xs"
+            onClick={() => setShowMap(!showMap)}
+            data-testid="button-toggle-map"
+          >
+            <MapPin className="w-3.5 h-3.5" />
+            {showMap ? "Hide Map" : "Show Map"}
+          </Button>
+        </div>
+
+        {showMap && (
+          <MapControlCenter
+            tripId={data.variant.id}
+            tripDestination={destination}
+            days={planCardDays}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+          />
+        )}
+
+        {isExpertView && (
+          <Card className="mt-4 p-4 border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/10" data-testid="expert-notes-panel">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageCircle className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-800 dark:text-amber-200">Expert Notes</span>
+            </div>
+            <Textarea
+              placeholder="Add notes about your suggestions for the traveler..."
+              value={expertNotes}
+              onChange={e => setExpertNotes(e.target.value)}
+              rows={3}
+              className="text-sm"
+              data-testid="textarea-expert-notes-panel"
+            />
+            {totalDiffs > 0 && (
+              <p className="text-xs text-amber-600 mt-2" data-testid="text-pending-changes-count">
+                {totalDiffs} tracked change{totalDiffs !== 1 ? "s" : ""} ready to send
+              </p>
+            )}
+          </Card>
+        )}
 
         {!isExpertView && (
           <div className="mt-8 pt-6 border-t text-center">
@@ -439,7 +677,6 @@ export default function ItineraryViewPage() {
         )}
       </div>
 
-      {/* Expert Send Edits Dialog */}
       <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -502,7 +739,6 @@ export default function ItineraryViewPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Traveler Diff Review Dialog */}
       <Dialog open={showDiffReview} onOpenChange={setShowDiffReview}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
@@ -563,7 +799,7 @@ export default function ItineraryViewPage() {
                             return next;
                           })}
                           className={cn(
-                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors",
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors cursor-pointer",
                             isRejected
                               ? "bg-red-100 border-red-300 text-red-700 hover:bg-red-200"
                               : "border-muted text-muted-foreground hover:border-red-300 hover:text-red-600"
@@ -607,7 +843,7 @@ export default function ItineraryViewPage() {
                             return next;
                           })}
                           className={cn(
-                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors",
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors cursor-pointer",
                             isRejected
                               ? "bg-red-100 border-red-300 text-red-700 hover:bg-red-200"
                               : "border-muted text-muted-foreground hover:border-red-300 hover:text-red-600"
@@ -631,17 +867,17 @@ export default function ItineraryViewPage() {
           )}
 
           <DialogFooter className="mt-4 flex-wrap gap-2">
-            {GOOGLE_MAPS_AVAILABLE && hasDiffMapData && daysWithActivityDiffs.length > 0 && (
+            {hasDiffMapData && daysWithActivityDiffs.length > 0 && (
               <Button
                 variant="outline"
                 onClick={() => {
-                  setForcedMapDays([...daysWithActivityDiffs]);
                   setShowDiffReview(false);
+                  setShowMap(true);
                 }}
                 className="gap-2 mr-auto"
                 data-testid="button-show-on-map"
               >
-                <Map className="h-4 w-4" />
+                <MapPin className="h-4 w-4" />
                 Show on Map
               </Button>
             )}
@@ -667,6 +903,165 @@ export default function ItineraryViewPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+interface ExpertActivitiesSectionProps {
+  tripId: string;
+  day: PlanCardDay;
+  rawActivities: Array<{
+    id: string;
+    name: string;
+    startTime?: string | null;
+    category?: string | null;
+    location?: string | null;
+    cost?: number;
+  }>;
+  templateConfig: ReturnType<typeof getTemplateConfig>;
+  activityDiffs: Record<string, ActivityDiff>;
+  editingActivity: string | null;
+  editValues: { name: string; startTime: string; note: string };
+  onStartEdit: (activityId: string, name: string, startTime?: string | null) => void;
+  onConfirmEdit: (activityId: string, originalName: string, originalStartTime?: string | null) => void;
+  onCancelEdit: () => void;
+  onEditValuesChange: (v: { name: string; startTime: string; note: string }) => void;
+  onClearDiff: (id: string) => void;
+}
+
+function ExpertActivitiesSection({
+  tripId, day, rawActivities, templateConfig, activityDiffs,
+  editingActivity, editValues, onStartEdit, onConfirmEdit, onCancelEdit,
+  onEditValuesChange, onClearDiff,
+}: ExpertActivitiesSectionProps) {
+  return (
+    <div className="p-5" data-testid={`expert-activities-section-${tripId}`}>
+      <div className="flex justify-between mb-4">
+        <div className="text-[13px] text-muted-foreground">
+          {day.date} - <span className="text-foreground font-semibold">{day.label}</span>
+        </div>
+      </div>
+
+      {day.activities.map((a, i) => {
+        const rawAct = rawActivities.find(r => r.id === a.id);
+        const tc = TYPE_COLORS[a.type] || TYPE_COLORS.attraction || { bg: "bg-muted", fg: "text-muted-foreground", dot: "#94a3b8" };
+        const hasDiff = !!activityDiffs[a.id];
+        const isEditing = editingActivity === a.id;
+        const typeLabel = templateConfig.activityTypes[a.type] || a.type;
+
+        return (
+          <div
+            key={a.id}
+            className={cn(
+              "flex gap-3.5 py-3.5",
+              i < day.activities.length - 1 ? "border-b border-border/30" : "",
+              hasDiff ? "bg-amber-50/50 dark:bg-amber-950/10 -mx-2 px-2 rounded-lg" : ""
+            )}
+            data-testid={`expert-activity-row-${a.id}`}
+          >
+            <div className="flex flex-col items-center w-12 flex-shrink-0">
+              <div className="text-[13px] font-bold text-foreground">{a.time}</div>
+              <div
+                className="w-2.5 h-2.5 rounded-full mt-1.5 border-2 border-card"
+                style={{ backgroundColor: tc.dot, boxShadow: `0 0 8px ${tc.dot}40` }}
+              />
+              {i < day.activities.length - 1 && (
+                <div
+                  className="w-0.5 flex-1 mt-1"
+                  style={{ background: `linear-gradient(to bottom, ${tc.dot}40, transparent)` }}
+                />
+              )}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              {isEditing ? (
+                <div className="space-y-2">
+                  <Input
+                    value={editValues.name}
+                    onChange={e => onEditValuesChange({ ...editValues, name: e.target.value })}
+                    className="h-8 text-sm"
+                    data-testid={`input-edit-name-${a.id}`}
+                  />
+                  <Input
+                    value={editValues.startTime}
+                    onChange={e => onEditValuesChange({ ...editValues, startTime: e.target.value })}
+                    placeholder="HH:MM"
+                    className="h-8 text-sm w-24"
+                    data-testid={`input-edit-time-${a.id}`}
+                  />
+                  <Textarea
+                    value={editValues.note}
+                    onChange={e => onEditValuesChange({ ...editValues, note: e.target.value })}
+                    placeholder="Add a note..."
+                    rows={2}
+                    className="text-sm"
+                    data-testid={`textarea-edit-note-${a.id}`}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => onConfirmEdit(a.id, rawAct?.name || a.name, rawAct?.startTime)}
+                      className="h-7 text-xs gap-1"
+                      data-testid={`button-confirm-edit-${a.id}`}
+                    >
+                      <Check className="w-3 h-3" /> Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={onCancelEdit}
+                      className="h-7 text-xs gap-1"
+                      data-testid={`button-cancel-edit-${a.id}`}
+                    >
+                      <X className="w-3 h-3" /> Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[15px] font-semibold text-foreground" data-testid={`text-activity-name-${a.id}`}>{a.name}</span>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${tc.bg} ${tc.fg}`}>
+                      {typeLabel}
+                    </span>
+                    {hasDiff && (
+                      <Badge className="text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-0 gap-0.5" data-testid={`badge-diff-${a.id}`}>
+                        <Pencil className="w-2.5 h-2.5" /> edited
+                      </Badge>
+                    )}
+                    <button
+                      onClick={() => onStartEdit(a.id, rawAct?.name || a.name, rawAct?.startTime)}
+                      className="ml-auto text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                      data-testid={`button-edit-activity-${a.id}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    <span>{a.location}</span>
+                    {a.cost > 0 && <span className="ml-2 text-green-600 dark:text-green-400 font-semibold">${a.cost}</span>}
+                  </div>
+                  {hasDiff && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      {activityDiffs[a.id]?.note && (
+                        <span className="text-[11px] text-amber-600 italic">Note: "{activityDiffs[a.id].note}"</span>
+                      )}
+                      <button
+                        onClick={() => onClearDiff(a.id)}
+                        className="text-[10px] text-red-500 hover:text-red-700 cursor-pointer underline"
+                        data-testid={`button-clear-diff-${a.id}`}
+                      >
+                        undo
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
