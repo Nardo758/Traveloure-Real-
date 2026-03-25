@@ -16,7 +16,7 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The application uses a modern, responsive design with Tailwind CSS and shadcn/ui for consistent components, and Framer Motion for smooth transitions. The primary color scheme is `#FF385C` with a gray-900 palette for admin interfaces and amber accents. Dashboards are role-specific (Provider, Admin, Executive Assistant) with distinct layouts and collapsible sidebars.
+The application uses a modern, responsive design built with React, Tailwind CSS, shadcn/ui for consistent components, and Framer Motion for smooth transitions. The primary color scheme is `#FF385C` with a gray-900 palette for admin interfaces and amber accents. Dashboards are role-specific (Provider, Admin, Executive Assistant) with distinct layouts and collapsible sidebars.
 
 ### Technical Implementations
 - **Frontend**: React 18, TypeScript, Wouter for routing, TanStack Query for server state management, and Vite.
@@ -69,7 +69,7 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Comprehensive travel content including real-time flight and hotel search, POI discovery, Tours and Activities search, Airport Transfer booking, and Destination Safety Ratings.
 - **Viator Partner API**: Real-time tours and activities search.
-- **Fever Partner API**: Event discovery and ticketing in global cities.
+- **Fever Partner API**: Event discovery and ticketing.
 - **12Go Transportation Booking**: Affiliate widget for ground transportation bookings.
 - **External API Caching System**: Provides 24-hour caching for hotel, flight, and activity data.
 - **Unified Experience Catalog Service**: Unifies search across cached provider data.

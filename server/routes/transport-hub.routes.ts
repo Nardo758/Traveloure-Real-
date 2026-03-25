@@ -19,6 +19,7 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, isNotNull } from "drizzle-orm";
 import { createTransportBookingCheckout } from "../services/stripe.service";
+import { populateBookingOptionsForVariant } from "../services/transport-booking-options.service";
 
 const router = Router();
 
@@ -91,6 +92,11 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       where: eq(transportLegs.variantId, variant.id),
     });
 
+    // If variant exists but no legs yet → legs are being calculated
+    if (legs.length === 0) {
+      return res.json(emptyHub("calculating", (comparison as any).transportPreferences));
+    }
+
     // Fetch all booking options for the variant
     const allOptions = await db
       .select()
@@ -109,25 +115,33 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       dayMap.get(leg.dayNumber)!.legs.push(leg);
     }
 
-    // Add booking options to legs
+    // Add booking options to legs (filtered by user's selected mode)
     const days = Array.from(dayMap.values()).map((day) => ({
       ...day,
-      legs: day.legs.map((leg: any) => ({
-        id: leg.id,
-        legOrder: leg.legOrder,
-        fromName: leg.fromName,
-        toName: leg.toName,
-        distanceDisplay: leg.distanceDisplay,
-        recommendedMode: leg.recommendedMode,
-        userSelectedMode: leg.userSelectedMode,
-        estimatedDurationMinutes: leg.estimatedDurationMinutes,
-        estimatedCostUsd: leg.estimatedCostUsd,
-        fromLat: leg.fromLat,
-        fromLng: leg.fromLng,
-        toLat: leg.toLat,
-        toLng: leg.toLng,
-        bookingOptions: allOptions.filter((opt) => opt.transportLegId === leg.id),
-      })),
+      legs: day.legs.map((leg: any) => {
+        const activeMode = leg.userSelectedMode || leg.recommendedMode;
+        const legOptions = allOptions.filter((opt) => opt.transportLegId === leg.id && !opt.isMultiDayPass);
+        // Show only booking options matching the user's selected mode for this leg
+        const bookingOptions = legOptions.filter((opt) => opt.modeType === activeMode);
+
+        return {
+          id: leg.id,
+          legOrder: leg.legOrder,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          distanceDisplay: leg.distanceDisplay,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          alternativeModes: leg.alternativeModes || [],
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+          bookingOptions,
+        };
+      }),
     }));
 
     // Separate multi-day passes
@@ -149,13 +163,29 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
       0
     );
 
+    // Calculate mode breakdown
+    const modeCounts: Record<string, number> = {};
+    for (const leg of legs) {
+      const mode = leg.userSelectedMode || leg.recommendedMode;
+      modeCounts[mode] = (modeCounts[mode] || 0) + 1;
+    }
+    const modeBreakdown = Object.entries(modeCounts)
+      .map(([mode, count]) => ({
+        mode,
+        count,
+        percent: Math.round((count / legs.length) * 100),
+      }))
+      .sort((a, b) => b.count - a.count);
+
     res.json({
+      status: "ready",
       summary: {
         totalLegs,
         bookedLegs,
         estimatedCostRange,
         totalTravelMinutes,
-        preferences: comparison.transportPreferences || {
+        modeBreakdown,
+        preferences: (comparison as any).transportPreferences || {
           priority: "time",
           maxWalkMinutes: 15,
           avoidModes: [],
@@ -201,6 +231,10 @@ router.post(
         return res.status(400).json({ error: "Not a platform booking option" });
       }
 
+      if (!option.variantId) {
+        return res.status(400).json({ error: "Booking option has no associated variant" });
+      }
+
       // Fetch the variant to get tripId
       const variant = await db.query.itineraryVariants.findFirst({
         where: eq(itineraryVariants.id, option.variantId),
@@ -227,6 +261,12 @@ router.post(
         travelers,
         specialRequests
       );
+
+      // Mark the option as "confirmed" so the UI shows the green Confirmed badge immediately
+      await db
+        .update(transportBookingOptions)
+        .set({ bookingStatus: "confirmed", updatedAt: new Date() })
+        .where(eq(transportBookingOptions.id, optionId));
 
       res.json({
         success: true,
@@ -318,20 +358,25 @@ router.patch(
       const { optionId } = req.params;
       const { bookingStatus, confirmationRef } = req.body;
 
-      // Update booking option status
+      // Update booking option status (and persist confirmationRef if provided)
+      const updateData: Record<string, any> = {
+        bookingStatus,
+        updatedAt: new Date(),
+      };
+      if (confirmationRef !== undefined && confirmationRef !== null) {
+        updateData.confirmationRef = confirmationRef;
+      }
+
       await db
         .update(transportBookingOptions)
-        .set({
-          bookingStatus,
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(transportBookingOptions.id, optionId));
 
       res.json({
         success: true,
         message: "Booking status updated",
         bookingStatus,
-        confirmationRef,
+        confirmationRef: confirmationRef || null,
       });
     } catch (error) {
       console.error("Error updating booking status:", error);
@@ -339,6 +384,32 @@ router.patch(
     }
   }
 );
+
+/**
+ * POST /api/transport-booking-options/seed/:variantId
+ *
+ * Dev/test endpoint: populates booking options for all legs of a variant
+ */
+router.post("/api/transport-booking-options/seed/:variantId", async (req, res) => {
+  try {
+    const { variantId } = req.params;
+    const variant = await db.query.itineraryVariants.findFirst({
+      where: eq(itineraryVariants.id, variantId),
+    });
+    if (!variant) {
+      return res.status(404).json({ error: "Variant not found" });
+    }
+    const comparison = await db.query.itineraryComparisons.findFirst({
+      where: eq(itineraryComparisons.id, variant.comparisonId),
+    });
+    const destination = comparison?.destination || "Unknown";
+    await populateBookingOptionsForVariant(variantId, destination);
+    res.json({ success: true, message: `Booking options seeded for variant ${variantId}` });
+  } catch (error) {
+    console.error("Error seeding booking options:", error);
+    res.status(500).json({ error: "Failed to seed booking options" });
+  }
+});
 
 /**
  * GET /api/transport-booking-options/:optionId

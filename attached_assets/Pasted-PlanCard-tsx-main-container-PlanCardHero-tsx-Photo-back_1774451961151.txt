@@ -1,0 +1,53 @@
+PlanCard.tsx (main container)
+├── PlanCardHero.tsx
+│   ├── Photo background with gradient overlay
+│   ├── Status badge (confirmed/planning/draft)
+│   ├── Traveler count badge
+│   ├── Share button → opens share modal
+│   ├── Export button → calendar/maps export options
+│   └── Title, destination, dates, budget overlay
+│
+├── PlanCardStats.tsx
+│   └── 4-column grid: Days | Activities | Transit Legs | Transit Time
+│
+├── DaySelector.tsx
+│   └── Horizontal scrollable tab bar, one tab per day
+│
+├── SectionTabs.tsx
+│   ├── "Activities" tab with count badge
+│   ├── "Transport" tab with count badge + lock icon (when locked)
+│   └── "Changes" button with unread count
+│
+├── ChangeLogPanel.tsx (collapsible)
+│   └── Chronological list of all changes with color-coded type dots
+│
+├── ActivitiesSection.tsx
+│   ├── Day header (date + label)
+│   ├── "Open in Maps" button
+│   └── ActivityRow.tsx (repeated)
+│       ├── Time column with timeline dot + connecting line
+│       ├── Activity name + type badge + status badge
+│       ├── Location with pin icon + cost
+│       └── Comment count + latest change indicator
+│
+├── TransportSection.tsx
+│   ├── TransportSummaryBar.tsx
+│   │   ├── Legs count, total time, estimated cost
+│   │   └── Mode breakdown pills (walk 11m, train 65m, etc.)
+│   ├── TransportLegRow.tsx (repeated)
+│   │   ├── Mode icon with colored background
+│   │   ├── From → To activity names
+│   │   ├── Mode badge, duration, cost, line info
+│   │   ├── Status badge + "AI suggested" / "Expert suggested" label
+│   │   └── Accept/Change buttons (for suggested status)
+│   └── MapsCTA.tsx
+│       └── "Open Day N in Maps" with Google Maps + Apple Maps buttons
+│
+└── MapControlCenter.tsx (alternate view)
+    ├── Map display area (using actual map library — Mapbox or Google Maps)
+    ├── Day selector overlay
+    ├── Activity pins (toggleable layer)
+    ├── Transport routes (toggleable layer)
+    ├── LayerToggle.tsx (Activities layer on/off, Transport layer on/off)
+    ├── Route summary bar
+    └── Export buttons (Google Maps, Apple Maps, Add to Calendar)
