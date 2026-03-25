@@ -120,6 +120,7 @@ export default function ItineraryPage() {
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
   const { toast } = useToast();
 
   interface TripTransportLeg {
