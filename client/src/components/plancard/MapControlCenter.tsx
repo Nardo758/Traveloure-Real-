@@ -377,8 +377,7 @@ export function MapControlCenter({
     }
     const mode = getDominantMode(day?.transports);
     const saddr = encodeURIComponent(getActivityLoc(acts[0]));
-    const daddrParts = acts.slice(1).map(a => encodeURIComponent(getActivityLoc(a)));
-    const daddr = daddrParts.join("+to:");
+    const daddr = encodeURIComponent(getActivityLoc(acts[acts.length - 1]));
     const base = platform === "apple" ? "maps://" : "https://maps.apple.com/";
     openInMaps(`${base}?saddr=${saddr}&daddr=${daddr}&dirflg=${mode.apple}`);
   }
