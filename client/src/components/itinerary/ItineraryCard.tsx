@@ -259,7 +259,7 @@ export function ItineraryCard({
     return init;
   });
 
-  const isExpertMode = permissions === "suggest";
+  const isExpertMode = permissions === "suggest" || permissions === "edit";
 
   const [activityDiffs, setActivityDiffs] = useState<Record<string, ActivityDiff>>({});
   const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
@@ -839,9 +839,14 @@ export function ItineraryCard({
                             readOnly={readOnly && !isExpertMode}
                             shareToken={shareToken}
                             className="my-1"
-                            onModeChangeSuccess={handleLegModeChange}
+                            isExpertMode={isExpertMode}
+                            onModeChangeSuccess={isExpertMode ? undefined : handleLegModeChange}
                             onModeChange={isExpertMode ? handleTransportModeChange : undefined}
                             expertChanged={!!transportDiffs[legAfter.id] || !!expertDiff?.transportDiffs?.[legAfter.id]}
+                            reviewedTransportDiff={!isExpertMode && expertDiff?.transportDiffs?.[legAfter.id]
+                              ? { originalMode: expertDiff.transportDiffs[legAfter.id].originalMode, newMode: expertDiff.transportDiffs[legAfter.id].newMode }
+                              : null
+                            }
                           />
                         )}
                       </div>
