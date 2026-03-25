@@ -436,7 +436,7 @@ export class CacheService {
     }
   }
 
-  private async enrichProductsWithCoordinates(products: ViatorProduct[], destination: string): Promise<ViatorProduct[]> {
+  private async enrichProductsWithCoordinates(products: ViatorProduct[]): Promise<ViatorProduct[]> {
     const BATCH_SIZE = 5;
     const enriched = [...products];
 
@@ -459,43 +459,13 @@ export class CacheService {
       });
     }
 
-    const needsFallback = enriched.some(p => !p.logistics?.start?.[0]?.location?.coordinates);
-    if (needsFallback) {
-      const center = await viatorService.getDestinationCenter(destination);
-      if (center) {
-        for (let i = 0; i < enriched.length; i++) {
-          const p = enriched[i];
-          if (!p.logistics?.start?.[0]?.location?.coordinates) {
-            enriched[i] = {
-              ...p,
-              logistics: {
-                ...p.logistics,
-                start: [{
-                  location: {
-                    ...p.logistics?.start?.[0]?.location,
-                    coordinates: center,
-                  },
-                  description: p.logistics?.start?.[0]?.description,
-                }],
-                end: p.logistics?.end,
-                travelerPickup: p.logistics?.travelerPickup,
-                redemption: p.logistics?.redemption,
-              },
-            };
-          }
-        }
-      }
-    }
-
     return enriched;
   }
 
   async getActivitiesWithCache(destination: string, currency: string = "USD", count: number = 20): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
     const cached = await this.getCachedActivities(destination);
 
-    const hasMissingCoordinates = cached.length > 0 && cached.some(a => !a.latitude || !a.longitude);
-
-    if (cached.length > 0 && !hasMissingCoordinates) {
+    if (cached.length > 0) {
       const activitiesWithLocation = cached.map(a => ({
         productCode: a.productCode,
         title: a.title,
@@ -524,7 +494,7 @@ export class CacheService {
     const result = await viatorService.searchByFreetext(destination, currency, count);
     
     if (result.products && result.products.length > 0) {
-      const enrichedProducts = await this.enrichProductsWithCoordinates(result.products, destination);
+      const enrichedProducts = await this.enrichProductsWithCoordinates(result.products);
       await this.cacheActivities(enrichedProducts, destination);
       const normalized = enrichedProducts.map(p => {
         const coords = p.logistics?.start?.[0]?.location?.coordinates;
