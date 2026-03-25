@@ -310,12 +310,10 @@ export default function ItineraryViewPage() {
   const planCardDays: PlanCardDay[] = data.variant.days.map(d => {
     let dateLabel = `Day ${d.dayNumber}`;
     if (d.date) {
-      try {
-        const parsed = new Date(d.date);
-        if (!isNaN(parsed.getTime())) {
-          dateLabel = parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-        }
-      } catch {}
+      const parsed = new Date(d.date);
+      if (!isNaN(parsed.getTime())) {
+        dateLabel = parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+      }
     }
     return {
     dayNum: d.dayNumber,
