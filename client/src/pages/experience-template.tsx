@@ -96,6 +96,7 @@ import { ActivitySearch } from "@/components/activity-search";
 import { AIItineraryBuilder } from "@/components/ai-itinerary-builder";
 import { TemplateFiltersPanel, useTemplateFilters } from "@/components/template-filters-panel";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
