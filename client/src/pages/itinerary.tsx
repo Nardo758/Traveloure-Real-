@@ -361,6 +361,7 @@ export default function ItineraryPage() {
   const extraStats: ExtraStat[] = [
     { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
     { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
+    { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
   ];
 
   const templateConfig = getTemplateConfig(tripData?.eventType);
