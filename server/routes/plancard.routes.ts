@@ -11,10 +11,12 @@ import {
   itineraryVariantItems,
   itineraryVariantMetrics,
   insertActivityCommentSchema,
+  insertItineraryChangeSchema,
   trips,
 } from "@shared/schema";
 import { eq, and, desc, count, sql } from "drizzle-orm";
 import { z } from "zod";
+import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
@@ -30,13 +32,18 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
   });
 }
 
-router.get("/api/trips/:tripId/plancard", async (req, res) => {
+router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
+    const userId = (req.user as any)?.claims?.sub;
 
     const trip = await storage.getTrip(tripId);
     if (!trip) {
       return res.status(404).json({ error: "Trip not found" });
+    }
+
+    if (trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     const items = await db.select().from(itineraryItems)
@@ -172,7 +179,7 @@ router.get("/api/trips/:tripId/plancard", async (req, res) => {
   }
 });
 
-router.get("/api/activities/:activityId/comments", async (req, res) => {
+router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
   try {
     const comments = await storage.getActivityComments(req.params.activityId);
     res.json(comments);
@@ -181,25 +188,22 @@ router.get("/api/activities/:activityId/comments", async (req, res) => {
   }
 });
 
-router.post("/api/activities/:activityId/comments", async (req, res) => {
+router.post("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
   try {
     const { activityId } = req.params;
-    const { tripId, authorId, authorName, text, role } = req.body;
 
-    if (!tripId || !authorId || !authorName || !text || !role) {
-      return res.status(400).json({ error: "Missing required fields: tripId, authorId, authorName, text, role" });
-    }
-
-    const comment = await storage.createActivityComment({
+    const parsed = insertActivityCommentSchema.safeParse({
+      ...req.body,
       activityId,
-      tripId,
-      authorId,
-      authorName,
-      text,
-      role,
     });
 
-    await logChange(tripId, authorName, `Commented on activity`, "edit", role, activityId);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
+    }
+
+    const comment = await storage.createActivityComment(parsed.data);
+
+    await logChange(parsed.data.tripId, parsed.data.authorName, `Commented on activity`, "edit", parsed.data.role, activityId);
 
     res.status(201).json(comment);
   } catch (error) {
@@ -207,7 +211,7 @@ router.post("/api/activities/:activityId/comments", async (req, res) => {
   }
 });
 
-router.delete("/api/comments/:id", async (req, res) => {
+router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
   try {
     await storage.deleteActivityComment(req.params.id);
     res.json({ success: true });
@@ -216,7 +220,7 @@ router.delete("/api/comments/:id", async (req, res) => {
   }
 });
 
-router.get("/api/trips/:tripId/changes", async (req, res) => {
+router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 50;
     const changes = await storage.getItineraryChanges(req.params.tripId, limit);
@@ -226,16 +230,28 @@ router.get("/api/trips/:tripId/changes", async (req, res) => {
   }
 });
 
-router.post("/api/trips/:tripId/changes", async (req, res) => {
+router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const { who, action, changeType, role, activityId, metadata } = req.body;
 
-    if (!who || !action || !changeType || !role) {
-      return res.status(400).json({ error: "Missing required fields: who, action, changeType, role" });
+    const parsed = insertItineraryChangeSchema.safeParse({
+      ...req.body,
+      tripId,
+    });
+
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
     }
 
-    const change = await logChange(tripId, who, action, changeType, role, activityId, metadata);
+    const change = await logChange(
+      tripId,
+      parsed.data.who,
+      parsed.data.action,
+      parsed.data.changeType,
+      parsed.data.role,
+      parsed.data.activityId || undefined,
+      parsed.data.metadata || undefined,
+    );
     res.status(201).json(change);
   } catch (error) {
     res.status(500).json({ error: "Failed to create change record" });
