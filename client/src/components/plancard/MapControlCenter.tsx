@@ -188,8 +188,8 @@ function MapContent({
   return (
     <>
       {layers.transport && geocodedActivities.length > 1 && transports.map((tr, i) => {
-        const fromActivity = geocodedActivities[i];
-        const toActivity = geocodedActivities[i + 1];
+        const fromActivity = geocodedActivities.find((a) => a.location === tr.from || a.name === tr.fromName) || geocodedActivities[i];
+        const toActivity = geocodedActivities.find((a) => a.location === tr.to || a.name === tr.toName) || geocodedActivities[i + 1];
         if (!fromActivity || !toActivity) return null;
         const style = getModePolylineStyle(tr.mode);
         const midLat = (fromActivity.resolvedLat + toActivity.resolvedLat) / 2;
