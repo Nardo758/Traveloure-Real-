@@ -2,43 +2,16 @@ import { useState } from "react";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ArrowLeft,
-  Calendar,
-  MapPin,
-  Clock,
-  DollarSign,
-  Star,
   Heart,
   Share2,
   Download,
-  Edit,
-  ChevronRight,
-  Utensils,
-  Camera,
-  Hotel,
-  Plane,
-  Car,
-  Coffee,
-  Sunset,
-  Mountain,
-  ShoppingBag,
-  Sparkles,
-  MessageSquare,
-  Users,
   CheckCircle2,
-  CircleDot,
-  Gauge,
-  Timer,
   Loader2,
-  ExternalLink,
-  ShieldCheck,
   UserCheck,
   Headphones,
   CreditCard,
@@ -58,272 +31,90 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
-import { format, addDays } from "date-fns";
-import { TripLogisticsDashboard } from "@/components/logistics";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format, addDays, differenceInDays } from "date-fns";
+import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import { cn } from "@/lib/utils";
+import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { HeroSection } from "@/components/plancard/HeroSection";
+import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
+import { DaySelector } from "@/components/plancard/DaySelector";
+import { SectionTabs } from "@/components/plancard/SectionTabs";
+import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
+import { TransportSection } from "@/components/plancard/TransportSection";
 
-// Booking types: 'inApp' = API-based (book on our site), 'partner' = affiliate links (external)
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
 
-const itineraryData = {
-  id: "1",
-  title: "Romantic Paris Getaway",
-  destination: "Paris, France",
-  startDate: new Date("2026-03-15"),
-  endDate: new Date("2026-03-22"),
-  travelers: 2,
-  budget: 5000,
-  status: "confirmed",
-  coverImage: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=1200",
-  days: [
-    {
-      day: 1,
-      date: new Date("2026-03-15"),
-      title: "Arrival & Eiffel Tower",
-      activities: [
-        {
-          id: "a1",
-          time: "14:00",
-          title: "Airport Arrival",
-          type: "transport",
-          icon: Plane,
-          location: "Charles de Gaulle Airport",
-          duration: "1h",
-          notes: "Private transfer to hotel",
-          booked: true,
-          bookingType: "partner" as BookingType, // 12Go affiliate
-          bookingStatus: "confirmed" as BookingStatus,
-          partnerName: "12Go",
-          price: 85,
-        },
-        {
-          id: "a2",
-          time: "16:00",
-          title: "Hotel Check-in",
-          type: "accommodation",
-          icon: Hotel,
-          location: "Le Marais Boutique Hotel",
-          duration: "30min",
-          notes: "Suite with Eiffel Tower view",
-          booked: true,
-          bookingType: "inApp" as BookingType, // Amadeus API
-          bookingStatus: "confirmed" as BookingStatus,
-          price: 0,
-        },
-        {
-          id: "a3",
-          time: "18:00",
-          title: "Eiffel Tower Visit",
-          type: "attraction",
-          icon: Camera,
-          location: "Champ de Mars",
-          duration: "2h",
-          notes: "Skip-the-line tickets included",
-          booked: true,
-          bookingType: "inApp" as BookingType, // Viator API
-          bookingStatus: "confirmed" as BookingStatus,
-          price: 45,
-        },
-        {
-          id: "a4",
-          time: "20:30",
-          title: "Dinner at Le Jules Verne",
-          type: "dining",
-          icon: Utensils,
-          location: "Eiffel Tower, 2nd Floor",
-          duration: "2h",
-          notes: "Michelin-starred restaurant",
-          booked: true,
-          price: 350,
-        },
-      ],
-    },
-    {
-      day: 2,
-      date: new Date("2026-03-16"),
-      title: "Art & Culture",
-      activities: [
-        {
-          id: "b1",
-          time: "09:00",
-          title: "Breakfast at Cafe de Flore",
-          type: "dining",
-          icon: Coffee,
-          location: "Saint-Germain-des-Pres",
-          duration: "1h",
-          notes: "Famous literary cafe",
-          booked: false,
-          price: 40,
-        },
-        {
-          id: "b2",
-          time: "10:30",
-          title: "Louvre Museum",
-          type: "attraction",
-          icon: Camera,
-          location: "Rue de Rivoli",
-          duration: "4h",
-          notes: "Guided tour with art historian",
-          booked: true,
-          price: 120,
-        },
-        {
-          id: "b3",
-          time: "15:00",
-          title: "Seine River Cruise",
-          type: "activity",
-          icon: Sunset,
-          location: "Pont Neuf",
-          duration: "1.5h",
-          notes: "Champagne cruise",
-          booked: true,
-          price: 85,
-        },
-        {
-          id: "b4",
-          time: "19:00",
-          title: "Dinner in Montmartre",
-          type: "dining",
-          icon: Utensils,
-          location: "Le Consulat",
-          duration: "2h",
-          notes: "Traditional French cuisine",
-          booked: false,
-          price: 120,
-        },
-      ],
-    },
-    {
-      day: 3,
-      date: new Date("2026-03-17"),
-      title: "Palace & Gardens",
-      activities: [
-        {
-          id: "c1",
-          time: "08:30",
-          title: "Day Trip to Versailles",
-          type: "transport",
-          icon: Car,
-          location: "Hotel Pickup",
-          duration: "45min",
-          notes: "Private car service",
-          booked: true,
-          price: 150,
-        },
-        {
-          id: "c2",
-          time: "10:00",
-          title: "Palace of Versailles",
-          type: "attraction",
-          icon: Camera,
-          location: "Versailles",
-          duration: "4h",
-          notes: "Full palace and gardens tour",
-          booked: true,
-          price: 95,
-        },
-        {
-          id: "c3",
-          time: "14:30",
-          title: "Lunch at Ore",
-          type: "dining",
-          icon: Utensils,
-          location: "Palace of Versailles",
-          duration: "1.5h",
-          notes: "Ducasse restaurant in the palace",
-          booked: true,
-          price: 180,
-        },
-        {
-          id: "c4",
-          time: "16:30",
-          title: "Gardens Exploration",
-          type: "activity",
-          icon: Mountain,
-          location: "Versailles Gardens",
-          duration: "2h",
-          notes: "Marie Antoinette's Estate",
-          booked: false,
-          price: 0,
-        },
-      ],
-    },
-    {
-      day: 4,
-      date: new Date("2026-03-18"),
-      title: "Shopping & Nightlife",
-      activities: [
-        {
-          id: "d1",
-          time: "10:00",
-          title: "Champs-Elysees Shopping",
-          type: "shopping",
-          icon: ShoppingBag,
-          location: "Avenue des Champs-Elysees",
-          duration: "3h",
-          notes: "Personal shopping assistant available",
-          booked: false,
-          price: 0,
-        },
-        {
-          id: "d2",
-          time: "14:00",
-          title: "Lunch at L'Avenue",
-          type: "dining",
-          icon: Utensils,
-          location: "Avenue Montaigne",
-          duration: "1.5h",
-          notes: "Celebrity hotspot",
-          booked: true,
-          price: 150,
-        },
-        {
-          id: "d3",
-          time: "16:00",
-          title: "Galeries Lafayette",
-          type: "shopping",
-          icon: ShoppingBag,
-          location: "Boulevard Haussmann",
-          duration: "2h",
-          notes: "Free rooftop access",
-          booked: false,
-          price: 0,
-        },
-        {
-          id: "d4",
-          time: "20:00",
-          title: "Moulin Rouge Show",
-          type: "entertainment",
-          icon: Sparkles,
-          location: "Place Blanche",
-          duration: "3h",
-          notes: "Dinner and show package",
-          booked: true,
-          price: 400,
-        },
-      ],
-    },
-  ],
-};
+function getBookingType(actType: string): BookingType {
+  const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
+  if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
+  return 'inApp';
+}
 
-const typeColors: Record<string, string> = {
-  transport: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  accommodation: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  attraction: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  dining: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  activity: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  shopping: "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
-  entertainment: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
-};
+function getPartnerName(actType: string): string | undefined {
+  if (actType.toLowerCase() === 'transport') return '12Go';
+  if (['event', 'concert', 'show', 'entertainment'].includes(actType.toLowerCase())) return 'Fever';
+  return undefined;
+}
+
+function getPartnerUrl(partnerName: string | undefined, destination?: string): string {
+  if (partnerName === '12Go') {
+    const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
+    return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
+  }
+  if (partnerName === 'Fever') {
+    return 'https://feverup.com/';
+  }
+  return '#';
+}
+
+
+function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
+  if (!activities || activities.length < 2) return [];
+  const legs: InlineTransportLegData[] = [];
+  for (let i = 0; i < activities.length - 1; i++) {
+    const from = activities[i];
+    const to = activities[i + 1];
+    legs.push({
+      id: `synth-leg-${from.id}-${to.id}`,
+      legOrder: i + 1,
+      fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
+      toName: to.location || to.title || to.name || `Stop ${i + 2}`,
+      recommendedMode: "walking",
+      userSelectedMode: null,
+      distanceDisplay: "~1 km",
+      estimatedDurationMinutes: 15,
+      estimatedCostUsd: null,
+      alternativeModes: [
+        { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
+        { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
+        { mode: "rideshare", durationMinutes: 7, costUsd: 6, energyCost: 25, reason: "Convenient pickup" },
+      ],
+      fromLat: from.lat || null,
+      fromLng: from.lng || null,
+      toLat: to.lat || null,
+      toLng: to.lng || null,
+    });
+  }
+  return legs;
+}
+
 
 export default function ItineraryPage() {
   const [, params] = useRoute("/itinerary/:id");
   const tripId = params?.id || "1";
   const { data: tripData, isLoading: tripLoading } = useTrip(tripId);
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(tripId);
+  const queryClient = useQueryClient();
   const [selectedDay, setSelectedDay] = useState(1);
+  const [section, setSection] = useState<"activities" | "transport">("activities");
   const [isSaved, setIsSaved] = useState(false);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
+  const [showDiffReview, setShowDiffReview] = useState(false);
+  const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const [activeTab, setActiveTab] = useState("itinerary");
@@ -365,7 +156,6 @@ export default function ItineraryPage() {
 
   const isLoading = tripLoading || itineraryLoading;
 
-  // Handle expert booking request
   const handleExpertBookingRequest = async () => {
     setIsRequestingExpert(true);
     try {
@@ -375,11 +165,7 @@ export default function ItineraryPage() {
         credentials: 'include',
         body: JSON.stringify({ tripId, notes: expertNotes }),
       });
-      
-      if (!response.ok) {
-        throw new Error('Failed to submit request');
-      }
-      
+      if (!response.ok) throw new Error('Failed to submit request');
       setShowExpertDialog(false);
       setExpertNotes("");
       toast({
@@ -397,246 +183,313 @@ export default function ItineraryPage() {
     }
   };
 
-  // Determine booking type based on activity type
-  const getBookingType = (actType: string): BookingType => {
-    // Partner bookings (affiliate links): ground transport, events, entertainment
-    const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
-    // In-app bookings (API): hotels, flights, tours, attractions, dining, activities
-    if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
-    return 'inApp';
-  };
-
-  const getPartnerName = (actType: string): string | undefined => {
-    if (actType.toLowerCase() === 'transport') return '12Go';
-    if (['event', 'concert', 'show', 'entertainment'].includes(actType.toLowerCase())) return 'Fever';
-    return undefined;
-  };
-
-  const getPartnerUrl = (partnerName: string | undefined, destination?: string): string => {
-    if (partnerName === '12Go') {
-      const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
-      return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
-    }
-    if (partnerName === 'Fever') {
-      return 'https://feverup.com/';
-    }
-    return '#';
-  };
-
-  // Transform generated itinerary data to match the expected format
-  const transformGeneratedDays = (itineraryData: any) => {
-    // Check for both 'days' and 'dailyItinerary' shapes from AI generation
-    const daysData = itineraryData?.days || itineraryData?.dailyItinerary;
+  const transformGeneratedDays = (itineraryDataRaw: any) => {
+    const daysData = itineraryDataRaw?.days || itineraryDataRaw?.dailyItinerary;
     if (!daysData) return null;
-    
-    const iconMap: Record<string, any> = {
-      transport: Plane,
-      accommodation: Hotel,
-      attraction: Camera,
-      dining: Utensils,
-      activity: Mountain,
-      shopping: ShoppingBag,
-      entertainment: Sparkles,
-      breakfast: Coffee,
-      lunch: Utensils,
-      dinner: Utensils,
-    };
-    
     return daysData.map((day: any, index: number) => ({
       day: day.day || day.dayNumber || index + 1,
       date: tripData ? addDays(new Date(tripData.startDate), index) : addDays(new Date(), index),
       title: day.title || day.theme || `Day ${index + 1}`,
-      activities: (day.activities || []).map((activity: any, actIdx: number) => {
-        const actType = activity.type || "activity";
+      transportLegs: day.transportLegs || [],
+      activities: (day.activities || []).map((act: any, actIdx: number) => {
+        const actType = act.type || "activity";
         return {
-          id: `a${index}-${actIdx}`,
-          time: activity.time || activity.startTime || "09:00",
-          title: activity.name || activity.title || "Activity",
+          id: act.id || `a${index}-${actIdx}`,
+          time: act.time || act.startTime || "09:00",
+          title: act.name || act.title || "Activity",
           type: actType,
-          icon: iconMap[actType.toLowerCase()] || Camera,
-          location: activity.location || activity.venue || "",
-          duration: activity.duration || "1h",
-          notes: activity.description || activity.notes || "",
-          booked: activity.bookingRequired === false || activity.booked || false,
-          bookingType: activity.bookingType || getBookingType(actType),
-          bookingStatus: activity.bookingStatus || (activity.booked ? 'confirmed' : 'pending') as BookingStatus,
-          partnerName: activity.partnerName || getPartnerName(actType),
-          price: activity.estimatedCost || activity.cost || activity.price || 0,
+          location: act.location || act.venue || "",
+          lat: act.lat ?? null,
+          lng: act.lng ?? null,
+          duration: act.duration || "1h",
+          notes: act.description || act.notes || "",
+          booked: act.bookingRequired === false || act.booked || false,
+          bookingType: act.bookingType || getBookingType(actType),
+          bookingStatus: act.bookingStatus || (act.booked ? 'confirmed' : 'pending') as BookingStatus,
+          partnerName: act.partnerName || getPartnerName(actType),
+          price: act.estimatedCost || act.cost || act.price || 0,
         };
       }),
     }));
   };
 
-  // Use generated itinerary data if available, otherwise fall back to mock data
-  const generatedDays = generatedItinerary?.itineraryData 
+  const generatedDays = generatedItinerary?.itineraryData
     ? transformGeneratedDays(generatedItinerary.itineraryData)
     : null;
 
+  const defaultDays = tripData ? Array.from({ length: Math.max(1, differenceInDays(new Date(tripData.endDate), new Date(tripData.startDate)) + 1) }, (_, i) => ({
+    day: i + 1,
+    date: addDays(new Date(tripData.startDate), i),
+    title: `Day ${i + 1}`,
+    activities: [] as any[],
+  })) : [];
+
   const itinerary = tripData ? {
-    ...itineraryData,
     id: tripData.id,
-    title: tripData.title || itineraryData.title,
-    destination: tripData.destination,
+    title: tripData.title || "Untitled Trip",
+    destination: tripData.destination || "",
     startDate: new Date(tripData.startDate),
     endDate: new Date(tripData.endDate),
     travelers: tripData.numberOfTravelers || 1,
-    budget: Number(tripData.budget) || itineraryData.budget,
+    budget: Number(tripData.budget) || 0,
     status: tripData.status || "draft",
-    days: generatedDays || itineraryData.days,
-  } : itineraryData;
+    coverImage: "",
+    days: generatedDays || defaultDays,
+  } : null;
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900 flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
+      <div className="min-h-screen bg-background flex items-center justify-center" data-testid="loading-spinner">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
       </div>
     );
   }
-  const currentDayData = itinerary.days.find(d => d.day === selectedDay);
-  const totalBooked = itinerary.days.flatMap(d => d.activities).filter(a => a.booked).length;
-  const totalActivities = itinerary.days.flatMap(d => d.activities).length;
-  const totalCost = itinerary.days.flatMap(d => d.activities).reduce((sum, a) => sum + a.price, 0);
 
-  // Calculate total travel time from activity durations
-  const parseDuration = (duration: string): number => {
-    const match = duration.match(/(\d+(?:\.\d+)?)\s*(h|hour|min|m)/i);
-    if (!match) return 0;
-    const value = parseFloat(match[1]);
-    const unit = match[2].toLowerCase();
-    if (unit === 'h' || unit === 'hour') return value * 60;
-    return value;
-  };
-  
-  const totalTravelMinutes = itinerary.days
-    .flatMap(d => d.activities)
-    .filter(a => a.type === 'transport')
-    .reduce((sum, a) => sum + parseDuration(a.duration), 0);
-  
-  const totalActivityMinutes = itinerary.days
-    .flatMap(d => d.activities)
-    .reduce((sum, a) => sum + parseDuration(a.duration), 0);
-  
-  const formatTravelTime = (minutes: number): string => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours === 0) return `${mins}m`;
-    if (mins === 0) return `${hours}h`;
-    return `${hours}h ${mins}m`;
+  if (!itinerary) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4" data-testid="empty-state">
+        <AlertCircle className="w-12 h-12 text-muted-foreground" />
+        <h2 className="text-lg font-semibold text-foreground">Trip not found</h2>
+        <p className="text-sm text-muted-foreground">The itinerary you're looking for doesn't exist or has been removed.</p>
+        <Link href="/my-trips">
+          <Button data-testid="button-back-to-trips">
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Trips
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const totalBooked = itinerary.days.flatMap((d: any) => d.activities).filter((a: any) => a.booked).length;
+  const totalActivities = itinerary.days.flatMap((d: any) => d.activities).length;
+  const totalCost = itinerary.days.flatMap((d: any) => d.activities).reduce((sum: number, a: any) => sum + a.price, 0);
+
+
+  const allTransportLegs = itinerary.days.reduce((total: number, d: any) => {
+    const dayNum = d.day;
+    const real = realLegsMap[dayNum];
+    if (real?.length) return total + real.length;
+    const existing = d.transportLegs || [];
+    if (existing.length > 0) return total + existing.length;
+    return total + Math.max(0, (d.activities?.length || 0) - 1);
+  }, 0);
+
+  const allTransportMinutes = itinerary.days.reduce((total: number, d: any) => {
+    const dayNum = d.day;
+    const real = realLegsMap[dayNum];
+    const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+    return total + legs.reduce((s: number, l: any) => s + (l.estimatedDurationMinutes || l.duration || 0), 0);
+  }, 0);
+
+  const allTransportCost = itinerary.days.reduce((total: number, d: any) => {
+    const dayNum = d.day;
+    const real = realLegsMap[dayNum];
+    const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+    return total + legs.reduce((s: number, l: any) => s + (l.estimatedCostUsd || l.cost || 0), 0);
+  }, 0);
+
+  const efficiencyScore = totalActivities > 0
+    ? Math.round((totalBooked / totalActivities) * 100)
+    : 0;
+
+  const grandTotal = totalCost + allTransportCost;
+
+  const activityTypes = itinerary.days
+    .flatMap((d: any) => d.activities || [])
+    .reduce((acc: Record<string, number>, a: any) => {
+      const t = a.type || "activity";
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+  const categoryPills = Object.entries(activityTypes).map(([type, count]) => ({
+    type,
+    count: count as number,
+  }));
+
+  const transportModeSummary = itinerary.days.reduce((acc: Record<string, number>, d: any) => {
+    const dayNum = d.day;
+    const real = realLegsMap[dayNum];
+    const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+    legs.forEach((l: any) => {
+      const mode = l.mode || l.type || "transit";
+      acc[mode] = (acc[mode] || 0) + 1;
+    });
+    return acc;
+  }, {} as Record<string, number>);
+
+  const transportModeEntries = Object.entries(transportModeSummary);
+  const transportModeColors: Record<string, string> = {
+    walking: "bg-green-500", walk: "bg-green-500",
+    taxi: "bg-yellow-500", rideshare: "bg-yellow-500", uber: "bg-yellow-500",
+    transit: "bg-blue-500", bus: "bg-blue-500", metro: "bg-blue-500", subway: "bg-blue-500",
+    train: "bg-purple-500", rail: "bg-purple-500",
+    flight: "bg-red-500", plane: "bg-red-500",
+    car: "bg-orange-500", drive: "bg-orange-500", rental: "bg-orange-500",
+    ferry: "bg-cyan-500", boat: "bg-cyan-500",
   };
 
-  // Calculate efficiency score (0-100)
-  // Based on: booking rate, activities per day, cost efficiency, transport optimization
-  const bookingRate = totalActivities > 0 ? totalBooked / totalActivities : 0;
-  const activitiesPerDay = itinerary.days.length > 0 ? totalActivities / itinerary.days.length : 0;
-  const transportRatio = totalActivityMinutes > 0 ? totalTravelMinutes / totalActivityMinutes : 0;
-  const costPerActivity = totalActivities > 0 ? totalCost / totalActivities : 0;
-  
-  // Efficiency factors (weighted average)
-  const efficiencyScore = totalActivities > 0 ? Math.round(
-    (bookingRate * 40) + // 40% weight on booking completion
-    (Math.min(activitiesPerDay / 5, 1) * 30) + // 30% on activities density (optimal ~5/day)
-    ((1 - Math.min(transportRatio, 0.3) / 0.3) * 20) + // 20% on minimizing transport time
-    (Math.min(200 / Math.max(costPerActivity, 1), 1) * 10) // 10% on value for money
-  ) : 0;
+  const extraStats: ExtraStat[] = [
+    { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
+    { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
+    { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
+  ];
+
+  const templateConfig = getTemplateConfig(tripData?.eventType);
+
+  const planCardTrip: PlanCardTrip = {
+    id: String(itinerary.id),
+    destination: itinerary.destination,
+    title: itinerary.title,
+    startDate: format(itinerary.startDate, "yyyy-MM-dd"),
+    endDate: format(itinerary.endDate, "yyyy-MM-dd"),
+    numberOfTravelers: itinerary.travelers,
+    budget: itinerary.budget,
+  };
+
+  const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
+    dayNum: d.day,
+    date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
+    label: (() => {
+      const parsed = d.date instanceof Date ? d.date : new Date(d.date);
+      return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);
+    })(),
+    activities: (d.activities || []).map((a: any): PlanCardActivity => ({
+      id: a.id,
+      name: a.title || a.name || "Activity",
+      time: a.time || "09:00",
+      type: a.type || "activity",
+      location: a.location || "",
+      lat: a.lat ?? undefined,
+      lng: a.lng ?? undefined,
+      status: a.booked ? "confirmed" : "pending",
+      cost: a.price || 0,
+      comments: 0,
+    })),
+    transports: (() => {
+      const dayNum = d.day;
+      const real = realLegsMap[dayNum];
+      const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+      return legs.map((l: any): PlanCardTransport => ({
+        id: l.id,
+        from: l.fromName || l.from || "",
+        to: l.toName || l.to || "",
+        mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
+        duration: l.estimatedDurationMinutes || l.duration || 0,
+        cost: l.estimatedCostUsd || l.cost || 0,
+        status: "active",
+      }));
+    })(),
+  }));
+
+  const currentPlanCardDay = planCardDays[selectedDay - 1];
+
+  const perPerson = itinerary.travelers > 1 ? `$${Math.round(totalCost / itinerary.travelers).toLocaleString()}/person` : null;
 
   return (
-    <DashboardLayout>
-    <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900">
-      <div
-        className="relative h-64 md:h-80 bg-cover bg-center"
-        style={{ backgroundImage: `url(${itinerary.coverImage})` }}
-      >
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/80" />
-        <div className="absolute inset-0 flex flex-col justify-between p-4 md:p-6">
-          <div className="flex items-center justify-between">
-            <Link href="/my-trips">
-              <Button variant="ghost" className="text-white hover:bg-white/20" data-testid="button-back">
-                <ArrowLeft className="w-5 h-5 mr-2" />
-                Back to Trips
-              </Button>
-            </Link>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-white hover:bg-white/20"
-                onClick={() => setIsSaved(!isSaved)}
-                data-testid="button-save"
-              >
-                <Heart className={`w-5 h-5 ${isSaved ? "fill-[#FF385C] text-[#FF385C]" : ""}`} />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" data-testid="button-share">
-                <Share2 className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/20" data-testid="button-download">
-                <Download className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <Badge className="bg-green-500 text-white mb-3" data-testid="badge-status">
-              <CheckCircle2 className="w-3 h-3 mr-1" />
-              {itinerary.status}
-            </Badge>
-            <h1 className="text-2xl md:text-4xl font-bold text-white mb-2" data-testid="text-title">
-              {itinerary.title}
-            </h1>
-            <div className="flex flex-wrap items-center gap-4 text-white/90 text-sm">
-              <span className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                {itinerary.destination}
-              </span>
-              <span className="flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
-                {format(itinerary.startDate, "MMM d")} - {format(itinerary.endDate, "MMM d, yyyy")}
-              </span>
-              <span className="flex items-center gap-1">
-                <Users className="w-4 h-4" />
-                {itinerary.travelers} travelers
-              </span>
-            </div>
+    <div className="min-h-screen bg-muted/30" data-testid="itinerary-page">
+      <div className="max-w-[1100px] mx-auto px-4 md:px-6 pt-4">
+        <div className="flex items-center justify-between mb-4">
+          <Link href="/my-trips">
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" data-testid="button-back">
+              <ArrowLeft className="w-4 h-4" />
+              Back to Trips
+            </Button>
+          </Link>
+          <div className="flex gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => setIsSaved(!isSaved)}
+              data-testid="button-save"
+            >
+              <Heart className={cn("w-4 h-4", isSaved && "fill-primary text-primary")} />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-share">
+              <Share2 className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-download">
+              <Download className="w-4 h-4" />
+            </Button>
           </div>
         </div>
-      </div>
+        <div className="flex flex-col lg:flex-row gap-5 pb-12">
+          <div className="flex-1 min-w-0 space-y-4">
+            {shareData?.expertStatus === "review_sent" && (
+              <div className="p-4 rounded-xl bg-accent/50 border border-border" data-testid="expert-review-banner">
+                <div className="flex items-start gap-3">
+                  <Eye className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium text-sm text-foreground">Expert has sent edits for review</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {shareData.expertDiff?.submittedAt && `Sent ${new Date(shareData.expertDiff.submittedAt).toLocaleDateString()}.`}
+                      {(() => {
+                        const total = Object.keys(shareData.expertDiff?.activityDiffs || {}).length + Object.keys(shareData.expertDiff?.transportDiffs || {}).length;
+                        return total > 0 ? ` ${total} suggestion${total !== 1 ? "s" : ""} awaiting your review.` : "";
+                      })()}
+                    </p>
+                    {shareData.expertNotes && (
+                      <p className="text-sm text-foreground mt-2 italic">"{shareData.expertNotes}"</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <Button size="sm" onClick={() => setShowDiffReview(true)} className="gap-2" data-testid="button-review-expert-edits">
+                      <Eye className="h-4 w-4" /> Review Edits
+                    </Button>
+                    <Button size="sm" onClick={() => acknowledgeMutation.mutate({ action: "accept", rejectedIds: [] })} disabled={acknowledgeMutation.isPending} className="gap-2" variant="default" data-testid="button-accept-expert-edits">
+                      <CheckCircle2 className="h-4 w-4" /> Accept All
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => acknowledgeMutation.mutate({ action: "reject", rejectedIds: [] })} disabled={acknowledgeMutation.isPending} className="gap-2" data-testid="button-reject-expert-edits">
+                      <XCircle className="h-4 w-4" /> Reject All
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6 -mt-8 relative z-10">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          {[
-            { label: "Total Days", value: itinerary.days.length, icon: Calendar },
-            { label: "Activities", value: totalActivities, icon: Star },
-            { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: CheckCircle2 },
-            { label: "Total Cost", value: `$${totalCost.toLocaleString()}`, icon: DollarSign },
-            { label: "Travel Time", value: formatTravelTime(totalTravelMinutes), icon: Timer },
-            { label: "Efficiency", value: `${efficiencyScore}%`, icon: Gauge, highlight: efficiencyScore >= 70 },
-          ].map((stat, index) => (
-            <Card key={index} className="bg-white dark:bg-gray-800">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${
-                  stat.highlight 
-                    ? "bg-green-100 dark:bg-green-900/30" 
-                    : "bg-[#FFE3E8] dark:bg-[#FF385C]/20"
-                }`}>
-                  <stat.icon className={`w-5 h-5 ${
-                    stat.highlight 
-                      ? "text-green-600 dark:text-green-400" 
-                      : "text-[#FF385C]"
-                  }`} />
+            {shareData?.expertStatus === "acknowledged" && (
+              <div className="p-3 rounded-xl bg-accent/50 border border-border" data-testid="expert-accepted-banner">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <p className="text-sm text-foreground">Expert edits accepted.</p>
                 </div>
-                <div>
-                  <p className="text-xs text-[#6B7280]">{stat.label}</p>
-                  <p className={`text-lg font-bold ${
-                    stat.highlight 
-                      ? "text-green-600 dark:text-green-400" 
-                      : "text-[#111827] dark:text-white"
-                  }`} data-testid={`text-stat-${stat.label.toLowerCase().replace(' ', '-')}`}>
-                    {stat.value}
-                  </p>
+              </div>
+            )}
+
+            <Card className="overflow-hidden border-border bg-card" data-testid="itinerary-plancard">
+              <HeroSection
+                trip={planCardTrip}
+                traveloureScore={null}
+                shareToken={shareData?.shareToken}
+                totalCost={`$${totalCost.toLocaleString()}`}
+                perPerson={perPerson}
+                budget={itinerary.budget ? `$${itinerary.budget.toLocaleString()}` : null}
+              />
+              <StatsRow
+                trip={planCardTrip}
+                days={planCardDays}
+                totalActivities={totalActivities}
+                totalLegs={allTransportLegs}
+                totalMinutes={allTransportMinutes}
+                templateConfig={templateConfig}
+                extraStats={extraStats}
+              />
+
+              {categoryPills.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-4 py-2.5 border-b border-border" data-testid="category-filter-pills">
+                  {categoryPills.map(({ type, count }) => (
+                    <Badge
+                      key={type}
+                      variant="secondary"
+                      className="text-[11px] capitalize bg-muted text-muted-foreground"
+                      data-testid={`badge-category-${type}`}
+                    >
+                      {type} ({count})
+                    </Badge>
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 h-auto w-full justify-start gap-1">
@@ -698,254 +551,156 @@ export default function ItineraryPage() {
             </Card>
           </div>
 
-          <div className="flex-1">
-            <AnimatePresence mode="wait">
-              {currentDayData && (
-                <motion.div
-                  key={selectedDay}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <Card className="bg-white dark:bg-gray-800 mb-4">
-                    <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-                      <div>
-                        <CardTitle className="text-xl text-[#111827] dark:text-white">
-                          Day {currentDayData.day}: {currentDayData.title}
-                        </CardTitle>
-                        <p className="text-sm text-[#6B7280]">
-                          {format(currentDayData.date, "EEEE, MMMM d, yyyy")}
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm" data-testid="button-edit-day">
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit Day
-                      </Button>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <div className="relative">
-                        <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200 dark:bg-gray-700" />
-                        <div className="space-y-4">
-                          {currentDayData.activities.map((activity, idx) => (
-                            <motion.div
-                              key={activity.id}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: idx * 0.1 }}
-                              className="relative pl-10"
-                            >
-                              <div className={`absolute left-2 top-4 w-5 h-5 rounded-full flex items-center justify-center ${
-                                activity.booked ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"
-                              }`}>
-                                {activity.booked ? (
-                                  <CheckCircle2 className="w-3 h-3 text-white" />
-                                ) : (
-                                  <CircleDot className="w-3 h-3 text-gray-500" />
-                                )}
-                              </div>
-                              <Card className="border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow">
-                                <CardContent className="p-4">
-                                  <div className="flex items-start justify-between gap-4">
-                                    <div className="flex items-start gap-3 flex-1">
-                                      <div className={`p-2 rounded-lg ${typeColors[activity.type]}`}>
-                                        <activity.icon className="w-5 h-5" />
-                                      </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                          <span className="text-sm font-medium text-[#6B7280]">
-                                            {activity.time}
-                                          </span>
-                                          <Badge variant="outline" className="text-xs">
-                                            {activity.duration}
-                                          </Badge>
-                                          {(activity.bookingType || getBookingType(activity.type)) === 'inApp' ? (
-                                            <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 text-xs" data-testid={`badge-inapp-${activity.id}`}>
-                                              <ShieldCheck className="w-3 h-3 mr-1" />
-                                              Book on Traveloure
-                                            </Badge>
-                                          ) : (
-                                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs" data-testid={`badge-partner-${activity.id}`}>
-                                              <ExternalLink className="w-3 h-3 mr-1" />
-                                              {activity.partnerName || getPartnerName(activity.type) || 'Partner'}
-                                            </Badge>
-                                          )}
-                                          {activity.booked && (
-                                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                              {activity.bookingStatus === 'confirmed' ? 'Confirmed' : 'Booked'}
-                                            </Badge>
-                                          )}
-                                        </div>
-                                        <h4 className="font-semibold text-[#111827] dark:text-white mt-1" data-testid={`text-activity-${activity.id}`}>
-                                          {activity.title}
-                                        </h4>
-                                        <p className="text-sm text-[#6B7280] flex items-center gap-1 mt-1">
-                                          <MapPin className="w-3 h-3" />
-                                          {activity.location}
-                                        </p>
-                                        {activity.notes && (
-                                          <p className="text-sm text-[#6B7280] mt-1 italic">
-                                            {activity.notes}
-                                          </p>
-                                        )}
-                                      </div>
-                                    </div>
-                                    <div className="text-right flex-shrink-0">
-                                      {activity.price > 0 && (
-                                        <p className="font-semibold text-[#111827] dark:text-white">
-                                          ${activity.price}
-                                        </p>
-                                      )}
-                                      {!activity.booked && activity.price > 0 && (
-                                        (activity.bookingType || getBookingType(activity.type)) === 'inApp' ? (
-                                          <Button size="sm" className="mt-2 bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-book-${activity.id}`}>
-                                            <CreditCard className="w-3 h-3 mr-1" />
-                                            Book Now
-                                          </Button>
-                                        ) : (
-                                          <Button 
-                                            size="sm" 
-                                            variant="outline"
-                                            className="mt-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20" 
-                                            data-testid={`button-book-partner-${activity.id}`}
-                                            onClick={() => {
-                                              const partnerName = activity.partnerName || getPartnerName(activity.type);
-                                              window.open(getPartnerUrl(partnerName, itinerary.destination), '_blank');
-                                            }}
-                                          >
-                                            <ExternalLink className="w-3 h-3 mr-1" />
-                                            Book via {activity.partnerName || getPartnerName(activity.type) || 'Partner'}
-                                          </Button>
-                                        )
-                                      )}
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </motion.div>
-                          ))}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              <DaySelector
+                tripId={String(itinerary.id)}
+                days={planCardDays}
+                selectedDay={selectedDay - 1}
+                onSelectDay={(i) => setSelectedDay(i + 1)}
+                showActivityCounts
+              />
 
-            {/* Expert Booking Option */}
-            <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <SectionTabs
+                tripId={String(itinerary.id)}
+                section={section}
+                onSetSection={setSection}
+                showChanges={showChanges}
+                onToggleChanges={() => setShowChanges(!showChanges)}
+                templateConfig={templateConfig}
+                dayActivityCount={currentPlanCardDay?.activities?.length || 0}
+                dayTransportCount={currentPlanCardDay?.transports?.length || 0}
+                confirmedActivities={totalBooked}
+                totalActivities={totalActivities}
+                transportLocked={false}
+                changeLogCount={0}
+                expertChanges={0}
+              />
+
+              {section === "activities" && (
+                <ActivitiesSection
+                  tripId={String(itinerary.id)}
+                  day={currentPlanCardDay}
+                  templateConfig={templateConfig}
+                />
+              )}
+
+              {section === "transport" && (
+                <>
+                  <TransportSection
+                    tripId={String(itinerary.id)}
+                    tripDestination={itinerary.destination}
+                    day={currentPlanCardDay}
+                  />
+                  <div className="px-5 pb-5">
+                    <TwelveGoTransport
+                      destination={itinerary.destination.split(',')[0]}
+                      departureDate={itinerary.startDate.toISOString()}
+                      passengers={itinerary.travelers}
+                      variant="compact"
+                    />
+                  </div>
+                </>
+              )}
+            </Card>
+
+            <div className="flex items-center justify-end">
+              <Button
+                variant={showMap ? "default" : "outline"}
+                size="sm"
+                className="gap-2 text-xs"
+                onClick={() => setShowMap(!showMap)}
+                data-testid="button-toggle-map"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                {showMap ? "Hide Map" : "Show Map"}
+              </Button>
+            </div>
+
+            {showMap && (
+              <MapControlCenter
+                tripId={String(itinerary.id)}
+                tripDestination={itinerary.destination}
+                days={planCardDays}
+                selectedDay={selectedDay - 1}
+                onSelectDay={(i) => setSelectedDay(i + 1)}
+              />
+            )}
+          </div>
+
+          <div className="lg:w-72 flex-shrink-0">
+            <div className="lg:sticky lg:top-16 space-y-4">
+              <Card className="bg-gradient-to-b from-primary/5 to-primary/10 border-primary/20" data-testid="expert-booking-card">
+                <CardContent className="p-4 space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/40">
-                      <UserCheck className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                    <div className="p-2 rounded-full bg-primary/10 flex-shrink-0">
+                      <UserCheck className="w-5 h-5 text-primary" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-[#111827] dark:text-white flex items-center gap-2">
+                      <h4 className="font-semibold text-foreground text-sm flex items-center gap-1.5 flex-wrap">
                         Let an Expert Book Everything
-                        <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 text-xs">Recommended</Badge>
+                        <Badge className="bg-primary/10 text-primary text-xs" data-testid="badge-recommended">Recommended</Badge>
                       </h4>
-                      <p className="text-sm text-[#6B7280]">
-                        Our travel experts will handle all bookings for you - both on-site and partner bookings.
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Our travel experts handle all bookings — on-site and partner.
                       </p>
                     </div>
                   </div>
-                  <Button 
-                    className="bg-amber-500 hover:bg-amber-600 text-white whitespace-nowrap" 
+                  <Button
+                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                     onClick={() => setShowExpertDialog(true)}
                     data-testid="button-expert-booking"
                   >
                     <Headphones className="w-4 h-4 mr-2" />
                     Request Expert Booking
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Booking Summary Card */}
-            <Card className="bg-white dark:bg-gray-800">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-[#FF385C]" />
-                  Booking Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="space-y-3">
+              <Card className="bg-card border-border" data-testid="booking-summary-card">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-primary" />
+                    Booking Summary
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-2">
                   {(() => {
                     const allActivities = itinerary.days.flatMap((d: any) => d.activities);
                     const inAppBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'inApp' && !a.booked);
                     const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
-                    
                     return (
                       <>
-                        <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                            <span className="text-sm font-medium">Book on Traveloure</span>
+                        <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
+                          <div className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                            <span className="text-xs font-medium">Book on Traveloure</span>
                           </div>
                           <div className="text-right">
-                            <span className="text-sm text-[#6B7280]">{inAppBookings.length} items</span>
-                            <p className="font-semibold text-emerald-600">${inAppTotal}</p>
+                            <p className="text-xs text-muted-foreground" data-testid="text-inapp-count">{inAppBookings.length} items</p>
+                            <p className="text-sm font-semibold text-primary" data-testid="text-inapp-total">${inAppTotal}</p>
                           </div>
                         </div>
-                        <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <ExternalLink className="w-4 h-4 text-blue-600" />
-                            <span className="text-sm font-medium">Book via Partners</span>
+                        <div className="flex items-center justify-between p-2.5 bg-muted/50 rounded-lg">
+                          <div className="flex items-center gap-1.5">
+                            <ExternalLink className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <span className="text-xs font-medium">Book via Partners</span>
                           </div>
                           <div className="text-right">
-                            <span className="text-sm text-[#6B7280]">{partnerBookings.length} items</span>
-                            <p className="font-semibold text-blue-600">${partnerTotal}</p>
+                            <p className="text-xs text-muted-foreground" data-testid="text-partner-count">{partnerBookings.length} items</p>
+                            <p className="text-sm font-semibold text-foreground" data-testid="text-partner-total">${partnerTotal}</p>
                           </div>
                         </div>
-                        <div className="border-t pt-3 mt-3">
-                          <div className="flex items-center justify-between">
-                            <span className="font-semibold text-[#111827] dark:text-white">Total Pending</span>
-                            <span className="font-bold text-lg text-[#FF385C]">${inAppTotal + partnerTotal}</span>
-                          </div>
+                        <div className="border-t pt-2 mt-1 flex items-center justify-between">
+                          <span className="text-sm font-semibold text-foreground">Total Pending</span>
+                          <span className="text-base font-bold text-primary" data-testid="text-total-pending">${inAppTotal + partnerTotal}</span>
                         </div>
                       </>
                     );
                   })()}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Trip Logistics Dashboard */}
-            <TripLogisticsDashboard
-              tripId={tripId}
-              tripName={tripData?.title || tripData?.destination || "Trip"}
-              budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
-              destination={tripData?.destination || "destination"}
-            />
-
-            <Card className="bg-white dark:bg-gray-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
-                      <MessageSquare className="w-6 h-6 text-[#FF385C]" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-[#111827] dark:text-white">Need help with your trip?</h4>
-                      <p className="text-sm text-[#6B7280]">Chat with our AI assistant or connect with an expert</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" data-testid="button-ai-help">
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      AI Assistant
-                    </Button>
-                    <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
-                      Talk to Expert
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
           </div>
           </TabsContent>
@@ -1050,46 +805,28 @@ export default function ItineraryPage() {
         </Tabs>
       </div>
 
-      {/* Expert Booking Dialog */}
       <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserCheck className="w-5 h-5 text-amber-500" />
+              <UserCheck className="w-5 h-5 text-primary" />
               Request Expert Booking Assistance
             </DialogTitle>
             <DialogDescription>
               Let our travel experts handle all bookings for your itinerary. They'll coordinate both on-site and partner bookings, ensuring everything is confirmed before your trip.
             </DialogDescription>
           </DialogHeader>
-          
           <div className="space-y-4 py-4">
-            <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg">
-              <h4 className="font-medium text-amber-800 dark:text-amber-300 mb-2">What's included:</h4>
-              <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1">
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  All hotel and accommodation bookings
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Tour and activity reservations
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Ground transportation (trains, buses, ferries)
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Event and show tickets
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  Restaurant reservations
-                </li>
+            <div className="bg-accent/50 p-4 rounded-lg">
+              <h4 className="font-medium text-foreground mb-2">What's included:</h4>
+              <ul className="text-sm text-muted-foreground space-y-1">
+                {["All hotel and accommodation bookings", "Tour and activity reservations", "Ground transportation (trains, buses, ferries)", "Event and show tickets", "Restaurant reservations"].map((item) => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary" /> {item}
+                  </li>
+                ))}
               </ul>
             </div>
-            
             <div>
               <label className="block text-sm font-medium mb-2">Special requests or notes (optional)</label>
               <Textarea
@@ -1100,36 +837,176 @@ export default function ItineraryPage() {
                 data-testid="input-expert-notes"
               />
             </div>
-
-            <div className="flex items-start gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <AlertCircle className="w-5 h-5 text-[#6B7280] flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-[#6B7280]">
+            <div className="flex items-start gap-2 p-3 bg-muted rounded-lg">
+              <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-muted-foreground">
                 An expert will contact you within 24 hours to confirm your itinerary and payment details. You'll only be charged once all bookings are confirmed.
               </p>
             </div>
           </div>
-          
           <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowExpertDialog(false)}>
-              Cancel
-            </Button>
-            <Button 
-              className="bg-amber-500 hover:bg-amber-600 text-white"
+            <Button variant="outline" onClick={() => setShowExpertDialog(false)} data-testid="button-cancel-expert-dialog">Cancel</Button>
+            <Button
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               onClick={handleExpertBookingRequest}
               disabled={isRequestingExpert}
               data-testid="button-confirm-expert-booking"
             >
               {isRequestingExpert ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Submitting...
-                </>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting...</>
               ) : (
-                <>
-                  <Headphones className="w-4 h-4 mr-2" />
-                  Submit Request
-                </>
+                <><Headphones className="w-4 h-4 mr-2" /> Submit Request</>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDiffReview} onOpenChange={(open) => { setShowDiffReview(open); if (!open) setRejectedDiffIds(new Set()); }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Expert Suggestions</DialogTitle>
+            <DialogDescription>
+              Review the changes your expert proposed. Accept all to apply them, or reject to dismiss.
+            </DialogDescription>
+          </DialogHeader>
+
+          {shareData?.expertNotes && (
+            <div className="p-3 rounded-lg bg-muted border mb-2">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Expert notes:</p>
+              <p className="text-sm italic">"{shareData.expertNotes}"</p>
+            </div>
+          )}
+
+          {Object.keys(reviewActivityDiffs).length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Activity Changes</h4>
+              <div className="space-y-2">
+                {Object.entries(reviewActivityDiffs).map(([id, diff]) => {
+                  const isRejected = rejectedDiffIds.has(id);
+                  return (
+                    <div key={id} className={cn(
+                      "p-3 rounded-lg border transition-opacity",
+                      isRejected
+                        ? "opacity-50 bg-destructive/10 border-destructive/30"
+                        : "bg-accent/50"
+                    )} data-testid={`diff-activity-${id}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 space-y-1">
+                          {diff.name && diff.name !== diff.originalName && (
+                            <div className="text-xs">
+                              <span className="font-medium">Name:</span>{" "}
+                              <span className="line-through text-muted-foreground">{diff.originalName}</span>
+                              {" → "}
+                              <span className="font-medium text-primary">{diff.name}</span>
+                            </div>
+                          )}
+                          {diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
+                            <div className="text-xs">
+                              <span className="font-medium">Time:</span>{" "}
+                              <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
+                              {" → "}
+                              <span className="font-medium text-primary">{diff.startTime}</span>
+                            </div>
+                          )}
+                          {diff.note && (
+                            <div className="text-xs italic text-muted-foreground">Note: "{diff.note}"</div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setRejectedDiffIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id); else next.add(id);
+                            return next;
+                          })}
+                          className={cn(
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors cursor-pointer",
+                            isRejected
+                              ? "bg-destructive/10 border-destructive/30 text-destructive hover:bg-destructive/20"
+                              : "border-muted text-muted-foreground hover:border-destructive/30 hover:text-destructive"
+                          )}
+                          data-testid={`button-toggle-reject-activity-${id}`}
+                        >
+                          {isRejected ? "Undo reject" : "Reject"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {Object.keys(reviewTransportDiffs).length > 0 && (
+            <div className="mt-3">
+              <h4 className="text-sm font-medium mb-2">Transport Changes</h4>
+              <div className="space-y-2">
+                {Object.entries(reviewTransportDiffs).map(([id, diff]) => {
+                  const isRejected = rejectedDiffIds.has(id);
+                  return (
+                    <div key={id} className={cn(
+                      "p-3 rounded-lg border transition-opacity",
+                      isRejected
+                        ? "opacity-50 bg-destructive/10 border-destructive/30"
+                        : "bg-accent/50"
+                    )} data-testid={`diff-transport-${id}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs">
+                          <span className="font-medium">Leg {diff.legOrder}:</span>{" "}
+                          <span className="line-through text-muted-foreground">{diff.originalMode}</span>
+                          {" → "}
+                          <span className="font-medium text-primary">{diff.newMode}</span>
+                        </div>
+                        <button
+                          onClick={() => setRejectedDiffIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id); else next.add(id);
+                            return next;
+                          })}
+                          className={cn(
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors cursor-pointer",
+                            isRejected
+                              ? "bg-destructive/10 border-destructive/30 text-destructive hover:bg-destructive/20"
+                              : "border-muted text-muted-foreground hover:border-destructive/30 hover:text-destructive"
+                          )}
+                          data-testid={`button-toggle-reject-transport-${id}`}
+                        >
+                          {isRejected ? "Undo reject" : "Reject"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {Object.keys(reviewActivityDiffs).length === 0 && Object.keys(reviewTransportDiffs).length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">No detailed diff available.</p>
+          )}
+
+          {rejectedDiffIds.size > 0 && (
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              {rejectedDiffIds.size} change{rejectedDiffIds.size !== 1 ? "s" : ""} will be rejected. The rest will be accepted.
+            </p>
+          )}
+
+          <DialogFooter className="mt-4 flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => acknowledgeMutation.mutate({ action: "reject", rejectedIds: [] })}
+              disabled={acknowledgeMutation.isPending}
+              data-testid="button-dialog-reject-edits"
+            >
+              <XCircle className="w-4 h-4 mr-2" /> Reject All
+            </Button>
+            <Button
+              onClick={() => acknowledgeMutation.mutate({ action: "accept", rejectedIds: Array.from(rejectedDiffIds) })}
+              disabled={acknowledgeMutation.isPending}
+              data-testid="button-dialog-accept-edits"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              {rejectedDiffIds.size > 0 ? `Accept ${Object.keys(reviewActivityDiffs).length + Object.keys(reviewTransportDiffs).length - rejectedDiffIds.size} Changes` : "Accept All"}
             </Button>
           </DialogFooter>
         </DialogContent>

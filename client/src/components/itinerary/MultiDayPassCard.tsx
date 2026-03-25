@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ExternalLink, Star, TrendingDown } from "lucide-react";
 
-interface MultiDayPass {
+export interface MultiDayPass {
   id: string;
   title: string;
   description: string;
@@ -41,7 +41,8 @@ export function MultiDayPassCard({ pass, readOnly = false }: MultiDayPassCardPro
   // Affiliate click mutation
   const clickMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/transport-booking-options/${pass.id}/click`, {});
+      const res = await apiRequest("POST", `/api/transport-booking-options/${pass.id}/click`, {});
+      return res.json() as Promise<{ redirectUrl?: string }>;
     },
     onSuccess: (data) => {
       setIsClicked(true);

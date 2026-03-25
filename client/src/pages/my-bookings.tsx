@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
-import { Layout } from "@/components/layout";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,25 +80,25 @@ export default function MyBookingsPage() {
 
   if (authLoading) {
     return (
-      <Layout>
+      <DashboardLayout>
         <div className="container py-8 max-w-4xl mx-auto">
           <Skeleton className="h-10 w-48 mb-6" />
           <Skeleton className="h-64 w-full" />
         </div>
-      </Layout>
+      </DashboardLayout>
     );
   }
 
   if (!user) {
     return (
-      <Layout>
+      <DashboardLayout>
         <div className="container py-8 max-w-4xl mx-auto text-center">
           <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">My Bookings</h1>
           <p className="text-muted-foreground mb-6">Please sign in to view your bookings</p>
           <Button onClick={() => openSignInModal()} data-testid="button-sign-in">Sign In</Button>
         </div>
-      </Layout>
+      </DashboardLayout>
     );
   }
 
@@ -112,7 +112,7 @@ export default function MyBookingsPage() {
   };
 
   return (
-    <Layout>
+    <DashboardLayout>
       <div className="container py-8 max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold mb-6" data-testid="text-page-title">My Bookings</h1>
 
@@ -193,7 +193,7 @@ export default function MyBookingsPage() {
         onOpenChange={setReviewDialogOpen}
         booking={selectedBooking}
       />
-    </Layout>
+    </DashboardLayout>
   );
 }
 
