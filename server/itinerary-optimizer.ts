@@ -467,13 +467,11 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       "concierge", "villa", "penthouse", "seaplane", "submarine",
       "float plane", "paragliding", "paramotor", "jet ski",
     ];
-    const prices = baselineItems.map(i => i.price || 0).filter(p => p > 0);
-    const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
-    const marqueeThreshold = Math.max(200, maxPrice * 0.5);
+    const MARQUEE_PRICE_THRESHOLD = 200;
 
     const marqueeItems = baselineItems.filter(item => {
       const nameLower = (item.name || '').toLowerCase();
-      const isHighValue = (item.price || 0) >= marqueeThreshold;
+      const isHighValue = (item.price || 0) >= MARQUEE_PRICE_THRESHOLD;
       const isKeyword = MARQUEE_KEYWORDS.some(kw => nameLower.includes(kw));
       return isHighValue || isKeyword;
     });
