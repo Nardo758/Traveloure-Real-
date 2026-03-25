@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
@@ -330,7 +331,7 @@ function Router() {
         {() => <ProtectedRoute component={ProviderStatusPage} />}
       </Route>
       <Route path="/itinerary/:id">
-        <ItineraryPage />
+        <Layout><ItineraryPage /></Layout>
       </Route>
 
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
@@ -530,10 +531,10 @@ function Router() {
         {() => <Layout><ProtectedRoute component={TripDetails} /></Layout>}
       </Route>
       <Route path="/chat">
-        {() => <Layout><ProtectedRoute component={Chat} /></Layout>}
+        {() => <DashboardLayout><ProtectedRoute component={Chat} /></DashboardLayout>}
       </Route>
       <Route path="/ai-assistant">
-        {() => <Layout><ProtectedRoute component={AIAssistant} /></Layout>}
+        {() => <DashboardLayout><ProtectedRoute component={AIAssistant} /></DashboardLayout>}
       </Route>
       <Route path="/vendors">
         {() => <Layout><ProtectedRoute component={Vendors} /></Layout>}

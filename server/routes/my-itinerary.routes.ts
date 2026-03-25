@@ -188,6 +188,7 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
 
     const response = {
       id: comparison.id,
+      userId: comparison.userId,
       title: comparison.title || `${comparison.destination} Trip`,
       destination: comparison.destination,
       startDate: comparison.startDate,
