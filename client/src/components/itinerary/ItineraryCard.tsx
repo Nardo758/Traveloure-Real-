@@ -53,6 +53,10 @@ export interface ItineraryActivity {
   description?: string | null;
   location?: string | null;
   duration?: number | null;
+  booked?: boolean;
+  bookingStatus?: "pending" | "booked" | "confirmed";
+  bookingType?: "inApp" | "partner";
+  partnerName?: string | null;
 }
 
 export interface ItineraryDay {
@@ -866,6 +870,21 @@ export function ItineraryCard({
                                     <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 italic">Note: {diff.note}</p>
                                   )}
                                   <div className="flex flex-wrap gap-2 mt-1">
+                                    {activity.bookingStatus === "confirmed" && (
+                                      <Badge className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border border-green-300" data-testid={`badge-confirmed-${activity.id}`}>
+                                        Confirmed
+                                      </Badge>
+                                    )}
+                                    {activity.bookingStatus === "booked" && (
+                                      <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-300" data-testid={`badge-booked-${activity.id}`}>
+                                        Booked
+                                      </Badge>
+                                    )}
+                                    {activity.bookingStatus === "pending" && (
+                                      <Badge className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-300" data-testid={`badge-pending-${activity.id}`}>
+                                        Pending
+                                      </Badge>
+                                    )}
                                     {activity.category && (
                                       <Badge variant="secondary" className="text-xs capitalize">{activity.category}</Badge>
                                     )}

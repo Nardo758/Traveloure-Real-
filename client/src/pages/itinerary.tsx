@@ -55,10 +55,34 @@ import { format, addDays } from "date-fns";
 import { TripLogisticsDashboard } from "@/components/logistics";
 import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import { cn } from "@/lib/utils";
 
 // Booking types: 'inApp' = API-based (book on our site), 'partner' = affiliate links (external)
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
+
+function getBookingType(actType: string): BookingType {
+  const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
+  if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
+  return 'inApp';
+}
+
+function getPartnerName(actType: string): string | undefined {
+  if (actType.toLowerCase() === 'transport') return '12Go';
+  if (['event', 'concert', 'show', 'entertainment'].includes(actType.toLowerCase())) return 'Fever';
+  return undefined;
+}
+
+function getPartnerUrl(partnerName: string | undefined, destination?: string): string {
+  if (partnerName === '12Go') {
+    const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
+    return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
+  }
+  if (partnerName === 'Fever') {
+    return 'https://feverup.com/';
+  }
+  return '#';
+}
 
 const itineraryData = {
   id: "1",
@@ -302,6 +326,36 @@ const itineraryData = {
 };
 
 
+function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
+  if (!activities || activities.length < 2) return [];
+  const legs: InlineTransportLegData[] = [];
+  for (let i = 0; i < activities.length - 1; i++) {
+    const from = activities[i];
+    const to = activities[i + 1];
+    legs.push({
+      id: `synth-leg-${from.id}-${to.id}`,
+      legOrder: i + 1,
+      fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
+      toName: to.location || to.title || to.name || `Stop ${i + 2}`,
+      recommendedMode: "walking",
+      userSelectedMode: null,
+      distanceDisplay: "~1 km",
+      estimatedDurationMinutes: 15,
+      estimatedCostUsd: null,
+      alternativeModes: [
+        { mode: "walking", durationMinutes: 15, costUsd: null, energyCost: 0, reason: "Scenic walk" },
+        { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
+        { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
+      ],
+      fromLat: from.lat || null,
+      fromLng: from.lng || null,
+      toLat: to.lat || null,
+      toLng: to.lng || null,
+    });
+  }
+  return legs;
+}
+
 function buildItineraryCardData(itinerary: any, tripData: any): ItineraryCardData {
   return {
     id: itinerary.id || "local",
@@ -314,11 +368,8 @@ function buildItineraryCardData(itinerary: any, tripData: any): ItineraryCardDat
     totalCost: itinerary.days
       .flatMap((d: any) => d.activities)
       .reduce((sum: number, a: any) => sum + (a.price || 0), 0),
-    days: itinerary.days.map((day: any) => ({
-      dayNumber: day.day || day.dayNumber || 1,
-      date: day.date ? (day.date instanceof Date ? day.date.toISOString() : day.date) : undefined,
-      title: day.title || `Day ${day.day || 1}`,
-      activities: (day.activities || []).map((act: any) => ({
+    days: itinerary.days.map((day: any) => {
+      const activities = (day.activities || []).map((act: any) => ({
         id: act.id,
         name: act.title || act.name || "Activity",
         startTime: act.time ? `1970-01-01T${act.time}:00` : act.startTime || null,
@@ -330,9 +381,21 @@ function buildItineraryCardData(itinerary: any, tripData: any): ItineraryCardDat
         description: act.notes || act.description || null,
         location: act.location || null,
         duration: act.durationMinutes || null,
-      })),
-      transportLegs: (day.transportLegs || []) as InlineTransportLegData[],
-    })),
+        booked: act.booked || false,
+        bookingStatus: act.bookingStatus || (act.booked ? "confirmed" : undefined),
+        bookingType: act.bookingType || getBookingType(act.type),
+        partnerName: act.partnerName || getPartnerName(act.type),
+      }));
+      const existingLegs = (day.transportLegs || []) as InlineTransportLegData[];
+      const transportLegs = existingLegs.length > 0 ? existingLegs : synthesizeTransportLegs(day.activities || []);
+      return {
+        dayNumber: day.day || day.dayNumber || 1,
+        date: day.date ? (day.date instanceof Date ? day.date.toISOString() : day.date) : undefined,
+        title: day.title || `Day ${day.day || 1}`,
+        activities,
+        transportLegs,
+      };
+    }),
   };
 }
 
@@ -346,12 +409,14 @@ export default function ItineraryPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
   const [showDiffReview, setShowDiffReview] = useState(false);
+  const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const { toast } = useToast();
 
   const { data: shareData } = useQuery<{
     shareToken?: string;
+    variantId?: string;
     expertStatus?: string;
     expertNotes?: string | null;
     expertDiff?: { activityDiffs?: Record<string, ActivityDiff>; transportDiffs?: Record<string, TransportDiff>; submittedAt?: string } | null;
@@ -365,14 +430,17 @@ export default function ItineraryPage() {
     enabled: !!tripId && tripId !== "1",
   });
 
+  const reviewActivityDiffs = shareData?.expertDiff?.activityDiffs ?? {};
+  const reviewTransportDiffs = shareData?.expertDiff?.transportDiffs ?? {};
+
   const acknowledgeMutation = useMutation({
-    mutationFn: async ({ action }: { action: "accept" | "reject" }) => {
+    mutationFn: async ({ action, rejectedIds }: { action: "accept" | "reject"; rejectedIds?: string[] }) => {
       const token = shareData?.shareToken;
       if (!token) throw new Error("No share token");
       const res = await fetch(`/api/expert-review/${token}/acknowledge`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, rejectedDiffIds: rejectedIds }),
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to acknowledge");
@@ -381,6 +449,7 @@ export default function ItineraryPage() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "share-info"] });
       setShowDiffReview(false);
+      setRejectedDiffIds(new Set());
       toast({
         title: variables.action === "accept" ? "Edits accepted" : "Edits rejected",
         description: variables.action === "accept"
@@ -425,32 +494,6 @@ export default function ItineraryPage() {
     } finally {
       setIsRequestingExpert(false);
     }
-  };
-
-  // Determine booking type based on activity type
-  const getBookingType = (actType: string): BookingType => {
-    // Partner bookings (affiliate links): ground transport, events, entertainment
-    const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
-    // In-app bookings (API): hotels, flights, tours, attractions, dining, activities
-    if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
-    return 'inApp';
-  };
-
-  const getPartnerName = (actType: string): string | undefined => {
-    if (actType.toLowerCase() === 'transport') return '12Go';
-    if (['event', 'concert', 'show', 'entertainment'].includes(actType.toLowerCase())) return 'Fever';
-    return undefined;
-  };
-
-  const getPartnerUrl = (partnerName: string | undefined, destination?: string): string => {
-    if (partnerName === '12Go') {
-      const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
-      return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
-    }
-    if (partnerName === 'Fever') {
-      return 'https://feverup.com/';
-    }
-    return '#';
   };
 
   // Transform generated itinerary data to match the expected format
@@ -750,7 +793,7 @@ export default function ItineraryPage() {
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() => acknowledgeMutation.mutate({ action: "accept" })}
+                      onClick={() => acknowledgeMutation.mutate({ action: "accept", rejectedIds: [] })}
                       disabled={acknowledgeMutation.isPending}
                       className="gap-2 bg-green-600 hover:bg-green-700 text-white"
                       data-testid="button-accept-expert-edits"
@@ -761,7 +804,7 @@ export default function ItineraryPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => acknowledgeMutation.mutate({ action: "reject" })}
+                      onClick={() => acknowledgeMutation.mutate({ action: "reject", rejectedIds: [] })}
                       disabled={acknowledgeMutation.isPending}
                       className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
                       data-testid="button-reject-expert-edits"
@@ -786,9 +829,9 @@ export default function ItineraryPage() {
             <ItineraryCard
               data={buildItineraryCardData(itinerary, tripData)}
               isOwner={true}
-              showShareButton={!!shareData?.shareToken}
+              showShareButton={!!shareData?.shareToken && !!shareData?.variantId}
               shareToken={shareData?.shareToken}
-              variantId={undefined}
+              variantId={shareData?.variantId}
               expertDiff={shareData?.expertDiff ?? null}
               forcedMapDays={[]}
               focusDay={selectedDay}
@@ -1048,83 +1091,144 @@ export default function ItineraryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Diff Review Dialog */}
-      <Dialog open={showDiffReview} onOpenChange={setShowDiffReview}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+      {/* Expert Diff Review Dialog — mirrors itinerary-view.tsx pattern */}
+      <Dialog open={showDiffReview} onOpenChange={(open) => { setShowDiffReview(open); if (!open) setRejectedDiffIds(new Set()); }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="w-5 h-5 text-blue-600" />
-              Expert Edit Review
-            </DialogTitle>
+            <DialogTitle>Expert Suggestions</DialogTitle>
             <DialogDescription>
-              Review the changes your expert has suggested before accepting or rejecting them.
+              Review the changes your expert proposed. Accept all to apply them, or reject to dismiss.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {shareData?.expertNotes && (
-              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
-                <p className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-1">Expert Notes</p>
-                <p className="text-sm text-blue-700 dark:text-blue-300 italic">"{shareData.expertNotes}"</p>
-              </div>
-            )}
-            {shareData?.expertDiff?.activityDiffs && Object.entries(shareData.expertDiff.activityDiffs).length > 0 && (
-              <div>
-                <p className="text-sm font-semibold text-[#111827] dark:text-white mb-2">Activity Changes</p>
-                <div className="space-y-2">
-                  {Object.entries(shareData.expertDiff.activityDiffs).map(([id, diff]: [string, any]) => (
-                    <div key={id} className="p-3 rounded-lg border bg-white dark:bg-gray-800">
-                      <p className="text-xs font-medium text-[#6B7280] mb-2">Activity #{id}</p>
-                      {Object.entries(diff).filter(([k]) => k !== 'id').map(([field, change]: [string, any]) => (
-                        <div key={field} className="flex items-start gap-3 text-sm py-1">
-                          <span className="w-24 shrink-0 text-[#6B7280] capitalize">{field}:</span>
-                          <div className="flex flex-col gap-0.5">
-                            {change?.before != null && (
-                              <span className="line-through text-red-500 text-xs">{String(change.before)}</span>
-                            )}
-                            {change?.after != null && (
-                              <span className="text-green-600 text-xs font-medium">{String(change.after)}</span>
-                            )}
-                          </div>
+
+          {shareData?.expertNotes && (
+            <div className="p-3 rounded-lg bg-muted border mb-2">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Expert notes:</p>
+              <p className="text-sm italic">"{shareData.expertNotes}"</p>
+            </div>
+          )}
+
+          {Object.keys(reviewActivityDiffs).length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Activity Changes</h4>
+              <div className="space-y-2">
+                {Object.entries(reviewActivityDiffs).map(([id, diff]) => {
+                  const isRejected = rejectedDiffIds.has(id);
+                  const typedDiff = diff as any;
+                  return (
+                    <div key={id} className={cn(
+                      "p-3 rounded-lg border transition-opacity",
+                      isRejected
+                        ? "opacity-50 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                        : "bg-amber-50 dark:bg-amber-950/20"
+                    )} data-testid={`diff-activity-${id}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 space-y-1">
+                          {typedDiff.name && typedDiff.name !== typedDiff.originalName && (
+                            <div className="text-xs">
+                              <span className="font-medium">Name:</span>{" "}
+                              <span className="line-through text-muted-foreground">{typedDiff.originalName}</span>
+                              {" → "}
+                              <span className="font-medium text-green-700 dark:text-green-400">{typedDiff.name}</span>
+                            </div>
+                          )}
+                          {typedDiff.startTime && typedDiff.originalStartTime && typedDiff.startTime !== typedDiff.originalStartTime && (
+                            <div className="text-xs">
+                              <span className="font-medium">Time:</span>{" "}
+                              <span className="line-through text-muted-foreground">{typedDiff.originalStartTime}</span>
+                              {" → "}
+                              <span className="font-medium text-green-700 dark:text-green-400">{typedDiff.startTime}</span>
+                            </div>
+                          )}
+                          {typedDiff.note && (
+                            <div className="text-xs italic text-amber-700 dark:text-amber-300">
+                              Note: "{typedDiff.note}"
+                            </div>
+                          )}
                         </div>
-                      ))}
+                        <button
+                          onClick={() => setRejectedDiffIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id); else next.add(id);
+                            return next;
+                          })}
+                          className={cn(
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors",
+                            isRejected
+                              ? "bg-red-100 border-red-300 text-red-700 hover:bg-red-200"
+                              : "border-muted text-muted-foreground hover:border-red-300 hover:text-red-600"
+                          )}
+                          data-testid={`button-toggle-reject-activity-${id}`}
+                        >
+                          {isRejected ? "Undo reject" : "Reject"}
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
-            {shareData?.expertDiff?.transportDiffs && Object.entries(shareData.expertDiff.transportDiffs).length > 0 && (
-              <div>
-                <p className="text-sm font-semibold text-[#111827] dark:text-white mb-2">Transport Changes</p>
-                <div className="space-y-2">
-                  {Object.entries(shareData.expertDiff.transportDiffs).map(([id, diff]: [string, any]) => (
-                    <div key={id} className="p-3 rounded-lg border bg-white dark:bg-gray-800">
-                      <p className="text-xs font-medium text-[#6B7280] mb-2">Transport #{id}</p>
-                      {Object.entries(diff).filter(([k]) => k !== 'id').map(([field, change]: [string, any]) => (
-                        <div key={field} className="flex items-start gap-3 text-sm py-1">
-                          <span className="w-24 shrink-0 text-[#6B7280] capitalize">{field}:</span>
-                          <div className="flex flex-col gap-0.5">
-                            {change?.before != null && (
-                              <span className="line-through text-red-500 text-xs">{String(change.before)}</span>
-                            )}
-                            {change?.after != null && (
-                              <span className="text-green-600 text-xs font-medium">{String(change.after)}</span>
-                            )}
-                          </div>
+            </div>
+          )}
+
+          {Object.keys(reviewTransportDiffs).length > 0 && (
+            <div className="mt-3">
+              <h4 className="text-sm font-medium mb-2">Transport Changes</h4>
+              <div className="space-y-2">
+                {Object.entries(reviewTransportDiffs).map(([id, diff]) => {
+                  const isRejected = rejectedDiffIds.has(id);
+                  const typedDiff = diff as any;
+                  return (
+                    <div key={id} className={cn(
+                      "p-3 rounded-lg border transition-opacity",
+                      isRejected
+                        ? "opacity-50 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                        : "bg-blue-50 dark:bg-blue-950/20"
+                    )} data-testid={`diff-transport-${id}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs">
+                          <span className="font-medium">Leg {typedDiff.legOrder}:</span>{" "}
+                          <span className="line-through text-muted-foreground">{typedDiff.originalMode}</span>
+                          {" → "}
+                          <span className="font-medium text-green-700 dark:text-green-400">{typedDiff.newMode}</span>
                         </div>
-                      ))}
+                        <button
+                          onClick={() => setRejectedDiffIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(id)) next.delete(id); else next.add(id);
+                            return next;
+                          })}
+                          className={cn(
+                            "shrink-0 text-xs px-2 py-0.5 rounded border transition-colors",
+                            isRejected
+                              ? "bg-red-100 border-red-300 text-red-700 hover:bg-red-200"
+                              : "border-muted text-muted-foreground hover:border-red-300 hover:text-red-600"
+                          )}
+                          data-testid={`button-toggle-reject-transport-${id}`}
+                        >
+                          {isRejected ? "Undo reject" : "Reject"}
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
-            {!shareData?.expertDiff?.activityDiffs && !shareData?.expertDiff?.transportDiffs && (
-              <p className="text-sm text-[#6B7280] text-center py-4">No detailed diff available.</p>
-            )}
-          </div>
-          <DialogFooter className="flex gap-2">
+            </div>
+          )}
+
+          {Object.keys(reviewActivityDiffs).length === 0 && Object.keys(reviewTransportDiffs).length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">No detailed diff available.</p>
+          )}
+
+          {rejectedDiffIds.size > 0 && (
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              {rejectedDiffIds.size} change{rejectedDiffIds.size !== 1 ? "s" : ""} will be rejected. The rest will be accepted.
+            </p>
+          )}
+
+          <DialogFooter className="mt-4 flex-wrap gap-2">
             <Button
               variant="outline"
-              onClick={() => { acknowledgeMutation.mutate({ action: "reject" }); }}
+              onClick={() => acknowledgeMutation.mutate({ action: "reject", rejectedIds: [] })}
               disabled={acknowledgeMutation.isPending}
               className="border-red-300 text-red-700 hover:bg-red-50"
               data-testid="button-dialog-reject-edits"
@@ -1133,13 +1237,13 @@ export default function ItineraryPage() {
               Reject All
             </Button>
             <Button
-              onClick={() => { acknowledgeMutation.mutate({ action: "accept" }); }}
+              onClick={() => acknowledgeMutation.mutate({ action: "accept", rejectedIds: Array.from(rejectedDiffIds) })}
               disabled={acknowledgeMutation.isPending}
               className="bg-green-600 hover:bg-green-700 text-white"
               data-testid="button-dialog-accept-edits"
             >
               <CheckCircle2 className="w-4 h-4 mr-2" />
-              Accept All
+              {rejectedDiffIds.size > 0 ? `Accept ${Object.keys(reviewActivityDiffs).length + Object.keys(reviewTransportDiffs).length - rejectedDiffIds.size} Changes` : "Accept All"}
             </Button>
           </DialogFooter>
         </DialogContent>
