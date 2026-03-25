@@ -12299,7 +12299,10 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!shared) return res.status(404).json({ error: "Share not found" });
 
       // Only the original sharer (owner) can acknowledge
-      if (userId && shared.sharedByUserId !== userId) {
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required to acknowledge edits" });
+      }
+      if (shared.sharedByUserId !== userId) {
         return res.status(403).json({ error: "Only the itinerary owner can acknowledge edits" });
       }
 
@@ -12334,7 +12337,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "Share link has expired" });
       }
-      if (shared.permissions !== "suggest") {
+      if (!["suggest", "edit"].includes(shared.permissions)) {
         return res.status(403).json({ error: "This share link does not allow expert edits" });
       }
 
@@ -12350,9 +12353,58 @@ export async function registerDiscoveryRoutes(app: Express) {
         .from(itineraryComparisons)
         .where(eq(itineraryComparisons.id, variant.comparisonId));
 
+      // Build full itinerary snapshot: original items with expert diffs applied
+      const originalItems = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, shared.variantId));
+
+      const originalLegs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, shared.variantId));
+
+      const resolvedActivityDiffs = activityDiffs || {};
+      const resolvedTransportDiffs = transportDiffs || {};
+
+      const editedActivities = originalItems.map(item => {
+        const diff = resolvedActivityDiffs[item.id];
+        if (!diff) return { id: item.id, name: item.name, startTime: item.startTime, endTime: item.endTime, dayNumber: item.dayNumber, sortOrder: item.sortOrder, location: item.location, description: item.description };
+        return {
+          id: item.id,
+          name: diff.name ?? item.name,
+          startTime: diff.startTime ?? item.startTime,
+          endTime: item.endTime,
+          dayNumber: item.dayNumber,
+          sortOrder: item.sortOrder,
+          location: item.location,
+          description: diff.note ? `${item.description || ""}\nExpert note: ${diff.note}`.trim() : item.description,
+          expertNote: diff.note,
+        };
+      });
+
+      const editedLegs = originalLegs.map(leg => {
+        const diff = resolvedTransportDiffs[leg.id];
+        if (!diff) return { id: leg.id, legOrder: leg.legOrder, dayNumber: leg.dayNumber, recommendedMode: leg.recommendedMode, userSelectedMode: leg.userSelectedMode };
+        return { id: leg.id, legOrder: leg.legOrder, dayNumber: leg.dayNumber, recommendedMode: leg.recommendedMode, userSelectedMode: diff.newMode };
+      });
+
+      const itinerarySnapshot = {
+        variantId: shared.variantId,
+        variantName: variant.name,
+        editedAt: new Date().toISOString(),
+        activities: editedActivities,
+        transportLegs: editedLegs,
+        expertNotes: notes,
+        diffs: {
+          activityDiffs: resolvedActivityDiffs,
+          transportDiffs: resolvedTransportDiffs,
+        },
+      };
+
       const expertDiff = {
-        activityDiffs: activityDiffs || {},
-        transportDiffs: transportDiffs || {},
+        activityDiffs: resolvedActivityDiffs,
+        transportDiffs: resolvedTransportDiffs,
         submittedAt: new Date().toISOString(),
       };
 
@@ -12360,7 +12412,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       await db.insert(expertUpdatedItineraries).values({
         tripId: comparison?.tripId || null,
         shareToken,
-        itineraryData: expertDiff,
+        itineraryData: itinerarySnapshot,
         message: notes,
         status: "pending",
         createdById: userId,
@@ -12412,7 +12464,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
       if (!shared) return res.status(404).json({ error: "Share not found" });
 
-      if (userId && shared.sharedByUserId !== userId) {
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required to acknowledge edits" });
+      }
+      if (shared.sharedByUserId !== userId) {
         return res.status(403).json({ error: "Only the itinerary owner can acknowledge edits" });
       }
 
