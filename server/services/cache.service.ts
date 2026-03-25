@@ -436,10 +436,66 @@ export class CacheService {
     }
   }
 
+  private async enrichProductsWithCoordinates(products: ViatorProduct[], destination: string): Promise<ViatorProduct[]> {
+    const BATCH_SIZE = 5;
+    const enriched = [...products];
+
+    for (let i = 0; i < enriched.length; i += BATCH_SIZE) {
+      const batch = enriched.slice(i, i + BATCH_SIZE);
+      const details = await Promise.allSettled(
+        batch.map(p => viatorService.getProductDetails(p.productCode))
+      );
+
+      details.forEach((result, idx) => {
+        if (result.status === "fulfilled" && result.value) {
+          const detail = result.value;
+          if (detail.logistics) {
+            enriched[i + idx] = { ...enriched[i + idx], logistics: detail.logistics };
+          }
+          if (detail.itinerary) {
+            enriched[i + idx] = { ...enriched[i + idx], itinerary: detail.itinerary };
+          }
+        }
+      });
+    }
+
+    const needsFallback = enriched.some(p => !p.logistics?.start?.[0]?.location?.coordinates);
+    if (needsFallback) {
+      const center = await viatorService.getDestinationCenter(destination);
+      if (center) {
+        for (let i = 0; i < enriched.length; i++) {
+          const p = enriched[i];
+          if (!p.logistics?.start?.[0]?.location?.coordinates) {
+            enriched[i] = {
+              ...p,
+              logistics: {
+                ...p.logistics,
+                start: [{
+                  location: {
+                    ...p.logistics?.start?.[0]?.location,
+                    coordinates: center,
+                  },
+                  description: p.logistics?.start?.[0]?.description,
+                }],
+                end: p.logistics?.end,
+                travelerPickup: p.logistics?.travelerPickup,
+                redemption: p.logistics?.redemption,
+              },
+            };
+          }
+        }
+      }
+    }
+
+    return enriched;
+  }
+
   async getActivitiesWithCache(destination: string, currency: string = "USD", count: number = 20): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
     const cached = await this.getCachedActivities(destination);
-    
-    if (cached.length > 0) {
+
+    const hasMissingCoordinates = cached.length > 0 && cached.some(a => !a.latitude || !a.longitude);
+
+    if (cached.length > 0 && !hasMissingCoordinates) {
       const activitiesWithLocation = cached.map(a => ({
         productCode: a.productCode,
         title: a.title,
@@ -465,11 +521,16 @@ export class CacheService {
       return { data: activitiesWithLocation, fromCache: true, lastUpdated: cached[0]?.lastUpdated || undefined };
     }
 
-    // Fetch from API
     const result = await viatorService.searchByFreetext(destination, currency, count);
     
     if (result.products && result.products.length > 0) {
-      await this.cacheActivities(result.products, destination);
+      const enrichedProducts = await this.enrichProductsWithCoordinates(result.products, destination);
+      await this.cacheActivities(enrichedProducts, destination);
+      const normalized = enrichedProducts.map(p => {
+        const coords = p.logistics?.start?.[0]?.location?.coordinates;
+        return { ...p, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null };
+      });
+      return { data: normalized, fromCache: false };
     }
     
     return { data: result.products || [], fromCache: false };
