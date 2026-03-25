@@ -59,7 +59,8 @@ import { format, addDays, differenceInDays } from "date-fns";
 import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { cn } from "@/lib/utils";
-import { getDestinationPhotoUrl } from "@/components/plancard/plancard-types";
+import { getDestinationPhotoUrl, type PlanCardDay, type PlanCardActivity, type PlanCardTransport } from "@/components/plancard/plancard-types";
+import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
@@ -116,76 +117,21 @@ const MODE_ICON_MAP: Record<string, typeof Footprints> = {
   ferry: Ship,
 };
 
-const MODE_COLORS: Record<string, string> = {
-  walking: "#22c55e",
-  walk: "#22c55e",
-  transit: "#3b82f6",
-  train: "#3b82f6",
-  taxi: "#f59e0b",
-  car: "#f59e0b",
-  rideshare: "#f59e0b",
-  bus: "#8b5cf6",
-  shuttle: "#8b5cf6",
-  ferry: "#06b6d4",
+const MODE_COLOR_CLASSES: Record<string, { bg: string; text: string; barBg: string }> = {
+  walking: { bg: "bg-green-500/10", text: "text-green-500", barBg: "bg-green-500" },
+  walk: { bg: "bg-green-500/10", text: "text-green-500", barBg: "bg-green-500" },
+  transit: { bg: "bg-blue-500/10", text: "text-blue-500", barBg: "bg-blue-500" },
+  train: { bg: "bg-blue-500/10", text: "text-blue-500", barBg: "bg-blue-500" },
+  taxi: { bg: "bg-amber-500/10", text: "text-amber-500", barBg: "bg-amber-500" },
+  car: { bg: "bg-amber-500/10", text: "text-amber-500", barBg: "bg-amber-500" },
+  rideshare: { bg: "bg-amber-500/10", text: "text-amber-500", barBg: "bg-amber-500" },
+  bus: { bg: "bg-violet-500/10", text: "text-violet-500", barBg: "bg-violet-500" },
+  shuttle: { bg: "bg-violet-500/10", text: "text-violet-500", barBg: "bg-violet-500" },
+  ferry: { bg: "bg-cyan-500/10", text: "text-cyan-500", barBg: "bg-cyan-500" },
 };
 
-const itineraryData = {
-  id: "1",
-  title: "Romantic Paris Getaway",
-  destination: "Paris, France",
-  startDate: new Date("2026-03-15"),
-  endDate: new Date("2026-03-22"),
-  travelers: 2,
-  budget: 5000,
-  status: "confirmed",
-  coverImage: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=1200",
-  days: [
-    {
-      day: 1,
-      date: new Date("2026-03-15"),
-      title: "Arrival & Eiffel Tower",
-      activities: [
-        { id: "a1", time: "14:00", title: "Airport Arrival", type: "transport", icon: Plane, location: "Charles de Gaulle Airport", duration: "1h", notes: "Private transfer to hotel", booked: true, bookingType: "partner" as BookingType, bookingStatus: "confirmed" as BookingStatus, partnerName: "12Go", price: 85 },
-        { id: "a2", time: "16:00", title: "Hotel Check-in", type: "accommodation", icon: Hotel, location: "Le Marais Boutique Hotel", duration: "30min", notes: "Suite with Eiffel Tower view", booked: true, bookingType: "inApp" as BookingType, bookingStatus: "confirmed" as BookingStatus, price: 0 },
-        { id: "a3", time: "18:00", title: "Eiffel Tower Visit", type: "attraction", icon: Camera, location: "Champ de Mars", duration: "2h", notes: "Skip-the-line tickets included", booked: true, bookingType: "inApp" as BookingType, bookingStatus: "confirmed" as BookingStatus, price: 45 },
-        { id: "a4", time: "20:30", title: "Dinner at Le Jules Verne", type: "dining", icon: Utensils, location: "Eiffel Tower, 2nd Floor", duration: "2h", notes: "Michelin-starred restaurant", booked: true, price: 350 },
-      ],
-    },
-    {
-      day: 2,
-      date: new Date("2026-03-16"),
-      title: "Art & Culture",
-      activities: [
-        { id: "b1", time: "09:00", title: "Breakfast at Cafe de Flore", type: "dining", icon: Coffee, location: "Saint-Germain-des-Pres", duration: "1h", notes: "Famous literary cafe", booked: false, price: 40 },
-        { id: "b2", time: "10:30", title: "Louvre Museum", type: "attraction", icon: Camera, location: "Rue de Rivoli", duration: "4h", notes: "Guided tour with art historian", booked: true, price: 120 },
-        { id: "b3", time: "15:00", title: "Seine River Cruise", type: "activity", icon: Sunset, location: "Pont Neuf", duration: "1.5h", notes: "Champagne cruise", booked: true, price: 85 },
-        { id: "b4", time: "19:00", title: "Dinner in Montmartre", type: "dining", icon: Utensils, location: "Le Consulat", duration: "2h", notes: "Traditional French cuisine", booked: false, price: 120 },
-      ],
-    },
-    {
-      day: 3,
-      date: new Date("2026-03-17"),
-      title: "Palace & Gardens",
-      activities: [
-        { id: "c1", time: "08:30", title: "Day Trip to Versailles", type: "transport", icon: Car, location: "Hotel Pickup", duration: "45min", notes: "Private car service", booked: true, price: 150 },
-        { id: "c2", time: "10:00", title: "Palace of Versailles", type: "attraction", icon: Camera, location: "Versailles", duration: "4h", notes: "Full palace and gardens tour", booked: true, price: 95 },
-        { id: "c3", time: "14:30", title: "Lunch at Ore", type: "dining", icon: Utensils, location: "Palace of Versailles", duration: "1.5h", notes: "Ducasse restaurant in the palace", booked: true, price: 180 },
-        { id: "c4", time: "16:30", title: "Gardens Exploration", type: "activity", icon: Mountain, location: "Versailles Gardens", duration: "2h", notes: "Marie Antoinette's Estate", booked: false, price: 0 },
-      ],
-    },
-    {
-      day: 4,
-      date: new Date("2026-03-18"),
-      title: "Shopping & Nightlife",
-      activities: [
-        { id: "d1", time: "10:00", title: "Champs-Elysees Shopping", type: "shopping", icon: ShoppingBag, location: "Avenue des Champs-Elysees", duration: "3h", notes: "Personal shopping assistant available", booked: false, price: 0 },
-        { id: "d2", time: "14:00", title: "Lunch at L'Avenue", type: "dining", icon: Utensils, location: "Avenue Montaigne", duration: "1.5h", notes: "Celebrity hotspot", booked: true, price: 150 },
-        { id: "d3", time: "16:00", title: "Galeries Lafayette", type: "shopping", icon: ShoppingBag, location: "Boulevard Haussmann", duration: "2h", notes: "Free rooftop access", booked: false, price: 0 },
-        { id: "d4", time: "20:00", title: "Moulin Rouge Show", type: "entertainment", icon: Sparkles, location: "Place Blanche", duration: "3h", notes: "Dinner and show package", booked: true, price: 400 },
-      ],
-    },
-  ],
-};
+const DEFAULT_MODE_CLASSES = { bg: "bg-slate-400/10", text: "text-slate-400", barBg: "bg-slate-400" };
+
 
 
 function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
@@ -234,6 +180,7 @@ export default function ItineraryPage() {
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const [realLegsMap, setRealLegsMap] = useState<Record<number, InlineTransportLegData[]>>({});
+  const [showMap, setShowMap] = useState(false);
   const { toast } = useToast();
 
   const activateTransportMutation = useMutation({
@@ -259,7 +206,6 @@ export default function ItineraryPage() {
   });
 
   useEffect(() => {
-    if (tripId === "1") return;
     if (!generatedItinerary?.itineraryData) return;
     const data: any = generatedItinerary.itineraryData;
     const daysData: any[] = data?.days || data?.dailyItinerary || [];
@@ -284,7 +230,7 @@ export default function ItineraryPage() {
       if (!res.ok) return {};
       return res.json();
     },
-    enabled: !!tripId && tripId !== "1",
+    enabled: !!tripId,
   });
 
   const reviewActivityDiffs = shareData?.expertDiff?.activityDiffs ?? {};
@@ -388,23 +334,45 @@ export default function ItineraryPage() {
     ? transformGeneratedDays(generatedItinerary.itineraryData)
     : null;
 
+  const defaultDays = tripData ? Array.from({ length: Math.max(1, differenceInDays(new Date(tripData.endDate), new Date(tripData.startDate)) + 1) }, (_, i) => ({
+    day: i + 1,
+    date: addDays(new Date(tripData.startDate), i),
+    title: `Day ${i + 1}`,
+    activities: [] as any[],
+  })) : [];
+
   const itinerary = tripData ? {
-    ...itineraryData,
     id: tripData.id,
-    title: tripData.title || itineraryData.title,
-    destination: tripData.destination,
+    title: tripData.title || "Untitled Trip",
+    destination: tripData.destination || "",
     startDate: new Date(tripData.startDate),
     endDate: new Date(tripData.endDate),
     travelers: tripData.numberOfTravelers || 1,
-    budget: Number(tripData.budget) || itineraryData.budget,
+    budget: Number(tripData.budget) || 0,
     status: tripData.status || "draft",
-    days: generatedDays || itineraryData.days,
-  } : itineraryData;
+    coverImage: "",
+    days: generatedDays || defaultDays,
+  } : null;
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center" data-testid="loading-spinner">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!itinerary) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4" data-testid="empty-state">
+        <AlertCircle className="w-12 h-12 text-muted-foreground" />
+        <h2 className="text-lg font-semibold text-foreground">Trip not found</h2>
+        <p className="text-sm text-muted-foreground">The itinerary you're looking for doesn't exist or has been removed.</p>
+        <Link href="/my-trips">
+          <Button data-testid="button-back-to-trips">
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Trips
+          </Button>
+        </Link>
       </div>
     );
   }
@@ -505,6 +473,38 @@ export default function ItineraryPage() {
   const city = destinationParts[0]?.trim() || itinerary.destination;
   const country = destinationParts.slice(1).join(",").trim() || "";
   const daysUntil = differenceInDays(itinerary.startDate, new Date());
+
+  const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
+    dayNum: d.day,
+    date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
+    label: d.title || `Day ${d.day}`,
+    activities: (d.activities || []).map((a: any): PlanCardActivity => ({
+      id: a.id,
+      name: a.title || a.name || "Activity",
+      time: a.time || "09:00",
+      type: a.type || "activity",
+      location: a.location || "",
+      lat: a.lat ?? undefined,
+      lng: a.lng ?? undefined,
+      status: a.booked ? "confirmed" : "pending",
+      cost: a.price || 0,
+      comments: 0,
+    })),
+    transports: (() => {
+      const dayNum = d.day;
+      const real = realLegsMap[dayNum];
+      const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+      return legs.map((l: any): PlanCardTransport => ({
+        id: l.id,
+        from: l.fromName || l.from || "",
+        to: l.toName || l.to || "",
+        mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
+        duration: l.estimatedDurationMinutes || l.duration || 0,
+        cost: l.estimatedCostUsd || l.cost || 0,
+        status: "active",
+      }));
+    })(),
+  }));
 
   return (
     <div className="min-h-screen bg-muted/30" data-testid="itinerary-page">
@@ -749,26 +749,26 @@ export default function ItineraryPage() {
                 </div>
                 <div className="w-full h-2 rounded-full bg-muted overflow-hidden mb-2" data-testid="transport-mode-bar">
                   <div className="h-full flex">
-                    {Object.entries(transportModeSummary).map(([mode, mins]) => (
-                      <div
-                        key={mode}
-                        className="h-full"
-                        style={{
-                          width: `${allTransportMinutes > 0 ? (mins / allTransportMinutes) * 100 : 0}%`,
-                          backgroundColor: MODE_COLORS[mode] || "#94a3b8",
-                        }}
-                      />
-                    ))}
+                    {Object.entries(transportModeSummary).map(([mode, mins]) => {
+                      const mc = MODE_COLOR_CLASSES[mode] || DEFAULT_MODE_CLASSES;
+                      return (
+                        <div
+                          key={mode}
+                          className={cn("h-full", mc.barBg)}
+                          style={{ width: `${allTransportMinutes > 0 ? (mins / allTransportMinutes) * 100 : 0}%` }}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {Object.entries(transportModeSummary).map(([mode, mins]) => {
                     const MIcon = MODE_ICON_MAP[mode] || Footprints;
-                    const mColor = MODE_COLORS[mode] || "#94a3b8";
+                    const mc = MODE_COLOR_CLASSES[mode] || DEFAULT_MODE_CLASSES;
                     return (
                       <span key={mode} className="flex items-center gap-1.5 text-xs" data-testid={`transport-mode-${mode}`}>
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: mColor }} />
-                        <MIcon className="w-3.5 h-3.5" style={{ color: mColor }} />
+                        <span className={cn("w-2.5 h-2.5 rounded-full", mc.barBg)} />
+                        <MIcon className={cn("w-3.5 h-3.5", mc.text)} />
                         <span className="text-muted-foreground capitalize">{mode} ({mins}m)</span>
                       </span>
                     );
@@ -776,6 +776,29 @@ export default function ItineraryPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <div className="flex items-center justify-end">
+              <Button
+                variant={showMap ? "default" : "outline"}
+                size="sm"
+                className="gap-2 text-xs"
+                onClick={() => setShowMap(!showMap)}
+                data-testid="button-toggle-map"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                {showMap ? "Hide Map" : "Show Map"}
+              </Button>
+            </div>
+
+            {showMap && (
+              <MapControlCenter
+                tripId={String(itinerary.id)}
+                tripDestination={itinerary.destination}
+                days={planCardDays}
+                selectedDay={selectedDay - 1}
+                onSelectDay={(i) => setSelectedDay(i + 1)}
+              />
+            )}
 
             <Card className="bg-card border-border overflow-hidden" data-testid="day-content-card">
               <div className="px-5 pt-4 pb-2 border-b border-border">
@@ -901,9 +924,9 @@ export default function ItineraryPage() {
                               {(() => {
                                 const mode = transportLeg.userSelectedMode || transportLeg.recommendedMode || "walking";
                                 const MIcon = MODE_ICON_MAP[mode] || Footprints;
-                                const mColor = MODE_COLORS[mode] || "#94a3b8";
+                                const mc = MODE_COLOR_CLASSES[mode] || DEFAULT_MODE_CLASSES;
                                 return (
-                                  <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${mColor}15`, color: mColor }}>
+                                  <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center", mc.bg, mc.text)}>
                                     <MIcon className="w-3.5 h-3.5" />
                                   </div>
                                 );
@@ -913,10 +936,10 @@ export default function ItineraryPage() {
                             <div className="flex items-center gap-3 flex-1 min-w-0 text-xs text-muted-foreground">
                               {(() => {
                                 const mode = transportLeg.userSelectedMode || transportLeg.recommendedMode || "walking";
-                                const mColor = MODE_COLORS[mode] || "#94a3b8";
+                                const mc = MODE_COLOR_CLASSES[mode] || DEFAULT_MODE_CLASSES;
                                 return (
                                   <>
-                                    <span className="capitalize font-medium" style={{ color: mColor }} data-testid={`text-inline-mode-${transportLeg.id}`}>
+                                    <span className={cn("capitalize font-medium", mc.text)} data-testid={`text-inline-mode-${transportLeg.id}`}>
                                       {mode}
                                     </span>
                                     <span className="flex items-center gap-1" data-testid={`text-inline-duration-${transportLeg.id}`}>
@@ -973,10 +996,10 @@ export default function ItineraryPage() {
                   {currentDayTransportLegs.map((leg: any, i: number) => {
                     const mode = leg.userSelectedMode || leg.recommendedMode || leg.mode || "walking";
                     const MIcon = MODE_ICON_MAP[mode] || Footprints;
-                    const mColor = MODE_COLORS[mode] || "#94a3b8";
+                    const mc = MODE_COLOR_CLASSES[mode] || DEFAULT_MODE_CLASSES;
                     return (
                       <div key={leg.id} className={cn("flex gap-3.5 py-4", i < currentDayTransportLegs.length - 1 ? "border-b border-border/30" : "")} data-testid={`transport-leg-${leg.id}`}>
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${mColor}15`, color: mColor }}>
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0", mc.bg, mc.text)}>
                           <MIcon className="w-5 h-5" />
                         </div>
                         <div className="flex-1 min-w-0">
@@ -986,7 +1009,7 @@ export default function ItineraryPage() {
                             <span className="text-foreground font-semibold truncate" data-testid={`text-leg-to-${leg.id}`}>{leg.toName || leg.to}</span>
                           </div>
                           <div className="flex flex-wrap gap-2.5 mt-1.5 items-center">
-                            <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold capitalize" style={{ backgroundColor: `${mColor}20`, color: mColor }} data-testid={`badge-leg-mode-${leg.id}`}>
+                            <span className={cn("px-2.5 py-0.5 rounded-md text-[11px] font-bold capitalize", mc.bg, mc.text)} data-testid={`badge-leg-mode-${leg.id}`}>
                               {mode}
                             </span>
                             <span className="text-[12px] text-muted-foreground flex items-center gap-1" data-testid={`text-leg-duration-${leg.id}`}>
