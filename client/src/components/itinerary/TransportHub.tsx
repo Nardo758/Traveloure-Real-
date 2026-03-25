@@ -1,31 +1,24 @@
 /**
- * TransportHub Component v2
+ * TransportHub Component v3 — Aggregate Overview
  *
- * Rebuilt Transport tab dashboard:
+ * Summary-only transport dashboard:
  * - Overview stat bar (Total Legs / Booked / Est. Cost / Travel Time)
  * - Mode breakdown row (e.g. "🚃 65% Train • 🚶 20% Walk")
- * - Multi-day pass recommendations at TOP (before day sections)
- * - Flat day sections (Day 1, Day 2…) each listing their legs
- * - Booking options filtered by user's selected mode (from API)
+ * - Multi-day pass recommendations
+ * - Per-day summary rows (no per-leg editing — that lives in each day's Transport tab)
  */
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Clock,
-  MapPin,
   DollarSign,
   Zap,
   CheckCircle2,
   Navigation,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { TransportBookingCard } from "./TransportBookingCard";
 import { MultiDayPassCard, type MultiDayPass } from "./MultiDayPassCard";
 import {
   TRANSPORT_MODE_ICONS,
@@ -256,207 +249,59 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
         </div>
       )}
 
-      {/* ── Flat day sections ── */}
+      {/* ── Per-day summary (aggregate view — detailed controls are in each day's Transport tab) ── */}
       {days.length > 0 && (
-        <div className="space-y-4">
-          {days.map((day) => (
-            <DaySection key={day.dayNumber} day={day} readOnly={readOnly} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Flat accordion-style day section
- */
-function DaySection({
-  day,
-  readOnly,
-}: {
-  day: { dayNumber: number; legs: TransportLeg[] };
-  readOnly?: boolean;
-}) {
-  const [isOpen, setIsOpen] = useState(true);
-
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-      {/* Section header */}
-      <button
-        onClick={() => setIsOpen((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-        data-testid={`transport-day-header-${day.dayNumber}`}
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-gray-900 dark:text-white text-sm">
-            Day {day.dayNumber}
-          </span>
-          <Badge variant="outline" className="text-xs">
-            {day.legs.length} {day.legs.length === 1 ? "leg" : "legs"}
-          </Badge>
-        </div>
-        {isOpen ? (
-          <ChevronDown className="h-4 w-4 text-gray-400" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-gray-400" />
-        )}
-      </button>
-
-      {/* Section content */}
-      {isOpen && (
-        <div className="divide-y divide-gray-100 dark:divide-gray-800">
-          {day.legs.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-              No transport legs for this day
-            </div>
-          ) : (
-            day.legs.map((leg) => (
-              <LegRow key={leg.id} leg={leg} readOnly={readOnly} />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Single transport leg row with mode badge + booking options
- */
-function LegRow({ leg, readOnly }: { leg: TransportLeg; readOnly?: boolean }) {
-  const [showOptions, setShowOptions] = useState(false);
-  const activeMode = leg.userSelectedMode || leg.recommendedMode;
-  const modeIcon = TRANSPORT_MODE_ICONS[activeMode] || "🚌";
-  const modeLabel = TRANSPORT_MODE_LABELS[activeMode] || activeMode;
-  const isCustomized = leg.userSelectedMode && leg.userSelectedMode !== leg.recommendedMode;
-
-  const platformOptions = leg.bookingOptions.filter((o) => o.bookingType === "platform");
-  const thirdPartyOptions = leg.bookingOptions.filter(
-    (o) => o.bookingType === "affiliate" || o.bookingType === "deep_link" || o.bookingType === "info_only"
-  );
-
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${leg.fromLat},${leg.fromLng}&destination=${leg.toLat},${leg.toLng}&travelmode=${getGoogleModeForHub(activeMode)}`;
-
-  return (
-    <div className="px-4 py-3 space-y-3" data-testid={`transport-leg-row-${leg.id}`}>
-      {/* Leg header */}
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-base leading-none">{modeIcon}</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-              {leg.fromName} → {leg.toName}
-            </span>
-            {isCustomized && (
-              <Badge
-                variant="outline"
-                className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-5 px-1.5 shrink-0"
-              >
-                Customized
-              </Badge>
-            )}
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              Per-Day Overview
+            </h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Use the Transport tab on each day card for detailed mode selection and booking
+            </p>
           </div>
-          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
-            <span>{modeLabel}</span>
-            {leg.distanceDisplay && (
-              <>
-                <span>·</span>
-                <span>{leg.distanceDisplay}</span>
-              </>
-            )}
-            {leg.estimatedDurationMinutes > 0 && (
-              <>
-                <span>·</span>
-                <span>~{leg.estimatedDurationMinutes} min</span>
-              </>
-            )}
-            {leg.estimatedCostUsd !== null && leg.estimatedCostUsd !== undefined && (
-              <>
-                <span>·</span>
-                <span className={leg.estimatedCostUsd === 0 ? "text-green-600 dark:text-green-400" : ""}>
-                  {leg.estimatedCostUsd === 0 ? "Free" : `$${leg.estimatedCostUsd.toFixed(0)}`}
-                </span>
-              </>
-            )}
+          <div className="grid gap-2">
+            {days.map((day) => {
+              const totalMins = day.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
+              const totalCostDay = day.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0);
+              const modes = new Set(day.legs.map(l => l.userSelectedMode || l.recommendedMode));
+              return (
+                <div
+                  key={day.dayNumber}
+                  className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50"
+                  data-testid={`transport-day-summary-${day.dayNumber}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-sm text-gray-900 dark:text-white">Day {day.dayNumber}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {day.legs.length} {day.legs.length === 1 ? "leg" : "legs"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      {Array.from(modes).map(m => (
+                        <span key={m} title={TRANSPORT_MODE_LABELS[m] || m}>{TRANSPORT_MODE_ICONS[m] || "🚌"}</span>
+                      ))}
+                    </span>
+                    {totalMins > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {totalMins} min
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" />
+                      {totalCostDay === 0 ? "Free" : `$${totalCostDay.toFixed(0)}`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Badge variant="outline" className="text-xs">
-            Leg {leg.legOrder}
-          </Badge>
-          <a
-            href={googleMapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            data-testid={`link-maps-leg-${leg.id}`}
-          >
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-gray-500 hover:text-gray-800">
-              <MapPin className="w-3.5 h-3.5" />
-            </Button>
-          </a>
-        </div>
-      </div>
-
-      {/* Booking options toggle */}
-      {leg.bookingOptions.length > 0 && (
-        <>
-          <button
-            onClick={() => setShowOptions((v) => !v)}
-            className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-            data-testid={`toggle-options-${leg.id}`}
-          >
-            {showOptions ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            {showOptions ? "Hide" : "Show"} booking options ({leg.bookingOptions.length})
-          </button>
-
-          {showOptions && (
-            <div className="space-y-3 pt-1">
-              {/* Platform options */}
-              {platformOptions.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Platform Options
-                  </p>
-                  {platformOptions.map((option) => (
-                    <TransportBookingCard key={option.id} option={option} readOnly={readOnly} />
-                  ))}
-                </div>
-              )}
-
-              {/* Third-party options */}
-              {thirdPartyOptions.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Third-Party Options
-                  </p>
-                  {thirdPartyOptions.map((option) => (
-                    <TransportBookingCard key={option.id} option={option} readOnly={readOnly} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {leg.bookingOptions.length === 0 && (
-        <p className="text-xs text-muted-foreground italic">
-          No booking options available for this leg
-        </p>
       )}
     </div>
   );
-}
-
-function getGoogleModeForHub(mode: string): string {
-  const modes: Record<string, string> = {
-    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
-    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
-    bike: "bicycling", ferry: "transit", auto_rickshaw: "driving", tuk_tuk: "driving", cable_car: "walking",
-  };
-  return modes[mode] || "transit";
 }
 
 /**

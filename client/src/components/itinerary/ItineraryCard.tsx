@@ -33,6 +33,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { InlineTransportSelector, type InlineTransportLegData } from "./InlineTransportSelector";
+import { DayTransportPanel } from "./DayTransportPanel";
 import { DayMapsButton } from "./DayMapsButton";
 import { TripExportButton } from "./TripExportButton";
 import { NavigateNextButton } from "./NavigateNextButton";
@@ -291,6 +292,7 @@ export function ItineraryCard({
 
   const [activityTimingOverrides, setActivityTimingOverrides] = useState<Record<string, string>>({});
   const [dayViewMode, setDayViewMode] = useState<Record<number, "list" | "map">>({});
+  const [dayContentTab, setDayContentTab] = useState<Record<number, "activities" | "transport">>({});
 
   useEffect(() => {
     if (!forcedMapDays || forcedMapDays.length === 0) return;
@@ -682,7 +684,52 @@ export function ItineraryCard({
               </CollapsibleTrigger>
 
               <CollapsibleContent>
-                {currentDayView === "map" && GOOGLE_MAPS_AVAILABLE ? (
+                {day.transportLegs.length > 0 && (
+                  <div className="flex items-center gap-1 mb-3 px-1" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center rounded-md border overflow-hidden">
+                      <button
+                        onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "activities" }))}
+                        className={cn(
+                          "flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors",
+                          (dayContentTab[day.dayNumber] ?? "activities") === "activities"
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-muted text-muted-foreground"
+                        )}
+                        data-testid={`tab-activities-day-${day.dayNumber}`}
+                      >
+                        <List className="h-3 w-3" />
+                        Activities ({day.activities.length})
+                      </button>
+                      <button
+                        onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "transport" }))}
+                        className={cn(
+                          "flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-l transition-colors",
+                          (dayContentTab[day.dayNumber] ?? "activities") === "transport"
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-muted text-muted-foreground"
+                        )}
+                        data-testid={`tab-transport-day-${day.dayNumber}`}
+                      >
+                        <Car className="h-3 w-3" />
+                        Transport ({day.transportLegs.length})
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(dayContentTab[day.dayNumber] ?? "activities") === "transport" && day.transportLegs.length > 0 ? (
+                  <DayTransportPanel
+                    dayNumber={day.dayNumber}
+                    legs={day.transportLegs}
+                    readOnly={readOnly && !isExpertMode}
+                    tripId={data.id}
+                    shareToken={shareToken}
+                    destination={data.destination || undefined}
+                    isExpertMode={isExpertMode}
+                    onModeChange={isExpertMode ? handleTransportModeChange : undefined}
+                    onModeChangeSuccess={isExpertMode ? undefined : handleLegModeChange}
+                  />
+                ) : currentDayView === "map" && GOOGLE_MAPS_AVAILABLE ? (
                   <ItineraryMapView
                     day={day}
                     isExpertMode={isExpertMode}
