@@ -72,6 +72,18 @@ async function verifyTripOwnership(tripId: string, userId: string): Promise<bool
   return trip?.userId === userId;
 }
 
+function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
+  return storage.createItineraryChange({
+    tripId,
+    activityId: activityId || null,
+    who,
+    action,
+    changeType,
+    role,
+    metadata: metadata || {},
+  }).catch(err => console.error("Failed to log itinerary change:", err));
+}
+
 // Helper function to map Fever categories to TravelPulse event types
 function mapFeverCategoryToEventType(category: string): string {
   const categoryMap: Record<string, string> = {
@@ -8841,10 +8853,13 @@ Respond with this exact JSON structure:
 
   app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const userName = (req.user as any).claims.name || "User";
       const item = await itineraryIntelligenceService.createItem({
         ...req.body,
         tripId: req.params.tripId,
       });
+      logItineraryChange(req.params.tripId, userName, `Added "${item.title}"`, "add", "owner", item.id);
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
@@ -8854,6 +8869,7 @@ Respond with this exact JSON structure:
   app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -8862,6 +8878,8 @@ Respond with this exact JSON structure:
         return res.status(403).json({ message: "Access denied" });
       }
       const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
+      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
+      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", "owner", req.params.id);
       res.json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to update itinerary item" });
@@ -8888,8 +8906,10 @@ Respond with this exact JSON structure:
 
   app.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
+      const userName = (req.user as any).claims.name || "User";
       const { dayNumber, itemIds } = req.body;
       const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
+      logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", "owner");
       res.json(items);
     } catch (error) {
       res.status(500).json({ message: "Failed to reorder items" });
@@ -9034,6 +9054,7 @@ Respond with this exact JSON structure:
   app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -9042,6 +9063,7 @@ Respond with this exact JSON structure:
         return res.status(403).json({ message: "Access denied" });
       }
       await itineraryIntelligenceService.deleteItem(req.params.id);
+      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", "owner", req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete itinerary item" });
