@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   AlertCircle, Share2, MessageCircle, User, ExternalLink,
-  CheckCircle, XCircle, Eye, MapPin, Pencil, Check, X,
+  CheckCircle, XCircle, Eye, MapPin, Pencil, Check, X, Clock,
 } from "lucide-react";
 import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
@@ -611,11 +611,22 @@ export default function ItineraryViewPage() {
             />
           )}
 
-          {section === "transport" && (
+          {section === "transport" && !isExpertView && (
             <TransportSection
               tripId={data.variant.id}
               tripDestination={destination}
               day={currentDay}
+            />
+          )}
+
+          {section === "transport" && isExpertView && currentDay && (
+            <ExpertTransportSection
+              tripId={data.variant.id}
+              tripDestination={destination}
+              day={currentDay}
+              rawTransportLegs={data.variant.days[selectedDay]?.transportLegs || []}
+              transportDiffs={transportDiffs}
+              onModeChange={handleTransportModeChange}
             />
           )}
         </Card>
@@ -1062,6 +1073,134 @@ function ExpertActivitiesSection({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+const AVAILABLE_MODES = ["walk", "train", "taxi", "car", "bus", "shuttle", "ferry", "bicycle"];
+
+interface ExpertTransportSectionProps {
+  tripId: string;
+  tripDestination: string;
+  day: PlanCardDay;
+  rawTransportLegs: InlineTransportLegData[];
+  transportDiffs: Record<string, TransportDiff>;
+  onModeChange: (legId: string, newMode: string, originalMode: string) => void;
+}
+
+function ExpertTransportSection({
+  tripId, tripDestination, day, rawTransportLegs, transportDiffs, onModeChange,
+}: ExpertTransportSectionProps) {
+  return (
+    <div className="p-5" data-testid={`expert-transport-section-${tripId}`}>
+      {day.transports?.length > 0 && (
+        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-800/30 rounded-xl p-3.5 flex flex-wrap justify-between items-center mb-5 gap-3">
+          <div className="flex gap-6">
+            {[
+              { l: "Legs", v: day.transports.length },
+              { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
+              { l: "Est. Cost", v: `$${day.transports.reduce((s: number, t) => s + (t.cost || 0), 0).toLocaleString()}` },
+            ].map((s, si) => (
+              <div key={si}>
+                <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.l}</div>
+                <div className={`text-lg font-bold ${si === 2 ? "text-green-600 dark:text-green-400" : "text-blue-600 dark:text-blue-400"}`}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(day.transports || []).map((tr, i) => {
+        const rawLeg = rawTransportLegs.find(l => l.id === tr.id);
+        const originalMode = rawLeg?.userSelectedMode || rawLeg?.recommendedMode || "transit";
+        const hasDiff = !!transportDiffs[tr.id];
+        const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
+
+        return (
+          <div
+            key={tr.id}
+            className={cn(
+              "flex gap-3.5 py-4",
+              i < day.transports.length - 1 ? "border-b border-border/30" : "",
+              hasDiff ? "bg-blue-50/50 dark:bg-blue-950/10 -mx-2 px-2 rounded-lg" : ""
+            )}
+            data-testid={`expert-transport-leg-${tr.id}`}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: `${modeColor}15`, color: modeColor }}
+            >
+              <ModeIcon mode={tr.mode} className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 text-[13px]">
+                <span className="text-muted-foreground truncate">{tr.fromName || tr.from}</span>
+                <span className="text-muted-foreground/50">-&gt;</span>
+                <span className="text-foreground font-semibold truncate">{tr.toName || tr.to}</span>
+                {hasDiff && (
+                  <Badge className="text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-0 gap-0.5" data-testid={`badge-transport-diff-${tr.id}`}>
+                    <Pencil className="w-2.5 h-2.5" /> changed
+                  </Badge>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2.5 mt-1.5 items-center">
+                <span className="text-[12px] text-muted-foreground flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> {tr.duration} min
+                </span>
+                {tr.cost > 0 && (
+                  <span className="text-[12px] text-green-600 dark:text-green-400 font-semibold">${tr.cost}</span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2" data-testid={`mode-selector-${tr.id}`}>
+                {AVAILABLE_MODES.map(mode => {
+                  const mc = MODE_COLORS[mode] || "#94a3b8";
+                  const isSelected = tr.mode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => onModeChange(tr.id, mode, originalMode)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-all border",
+                        isSelected
+                          ? "border-current shadow-sm"
+                          : "border-transparent opacity-60 hover:opacity-100"
+                      )}
+                      style={{
+                        backgroundColor: `${mc}${isSelected ? "25" : "10"}`,
+                        color: mc,
+                      }}
+                      data-testid={`button-mode-${mode}-${tr.id}`}
+                    >
+                      <ModeIcon mode={mode} className="w-3.5 h-3.5" />
+                      {mode}
+                    </button>
+                  );
+                })}
+              </div>
+              {hasDiff && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-[11px] text-blue-600 dark:text-blue-400">
+                    Changed from <span className="line-through">{originalMode}</span> to <span className="font-semibold">{tr.mode}</span>
+                  </span>
+                  <button
+                    onClick={() => onModeChange(tr.id, originalMode, originalMode)}
+                    className="text-[10px] text-red-500 hover:text-red-700 cursor-pointer underline"
+                    data-testid={`button-undo-transport-${tr.id}`}
+                  >
+                    undo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {(!day.transports || day.transports.length === 0) && (
+        <div className="text-center py-8 text-muted-foreground">
+          <p className="text-sm">No transport legs for this day</p>
+        </div>
+      )}
     </div>
   );
 }
