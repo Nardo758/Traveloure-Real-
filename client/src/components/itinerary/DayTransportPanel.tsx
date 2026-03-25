@@ -71,6 +71,36 @@ function isTransitMode(mode: string): boolean {
   return ["transit", "train", "tram", "bus", "ferry"].includes(mode);
 }
 
+interface TransitStepInfo {
+  lineName: string;
+  lineNameShort?: string;
+  lineColor?: string;
+  lineTextColor?: string;
+  vehicleType: string;
+  agencyName: string;
+  departureStop: string;
+  arrivalStop: string;
+  stopCount: number;
+}
+
+interface ParsedTransitStep {
+  mode: "WALK" | "TRANSIT";
+  distance?: number;
+  duration?: number;
+  durationMinutes?: number;
+  transit?: TransitStepInfo;
+}
+
+interface TransportModeWithSteps {
+  mode: string;
+  durationMinutes: number;
+  costUsd: number | null;
+  reason?: string;
+  isRecommended?: boolean;
+  transitSteps?: ParsedTransitStep[];
+  steps?: ParsedTransitStep[];
+}
+
 function getModeColor(mode: string): string {
   const m = mode?.toLowerCase() || "";
   if (m.includes("walk") || m.includes("foot")) return "border-green-300 bg-green-50 dark:bg-green-950/20";
@@ -80,6 +110,23 @@ function getModeColor(mode: string): string {
   if (m.includes("boat") || m.includes("ferry")) return "border-cyan-300 bg-cyan-50 dark:bg-cyan-950/20";
   if (m.includes("private") || m.includes("rental")) return "border-amber-300 bg-amber-50 dark:bg-amber-950/20";
   return "border-orange-300 bg-orange-50 dark:bg-orange-950/20";
+}
+
+interface ModeUpdateResult {
+  localOnly?: boolean;
+  selectedMode?: string;
+  updatedLeg?: {
+    estimatedDurationMinutes?: number;
+    estimatedCostUsd?: number | null;
+  };
+  leg?: {
+    estimatedDurationMinutes?: number;
+    estimatedCostUsd?: number | null;
+  };
+  downstreamImpact?: {
+    message?: string;
+    nextActivityStartTimeShift?: number;
+  };
 }
 
 interface DayTransportPanelProps {
@@ -217,11 +264,12 @@ function TransportLegCard({
   }).filter(em => em.available || ["private_driver", "rental_car", "rideshare", "transit", "walk", "bike"].includes(em.mode));
 
   const updateModeMutation = useMutation({
-    mutationFn: async (selectedMode: string) => {
+    mutationFn: async (selectedMode: string): Promise<ModeUpdateResult> => {
       if (isExpertMode || isSynthesizedLeg) {
         return { localOnly: true, selectedMode };
       }
-      return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
+      const res = await apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
+      return res.json();
     },
     onMutate: (selectedMode) => {
       const prev = currentMode;
@@ -233,7 +281,7 @@ function TransportLegCard({
       }
       return { prev };
     },
-    onSuccess: (data: any, selectedMode) => {
+    onSuccess: (data: ModeUpdateResult, selectedMode) => {
       if (isExpertMode) {
         onModeChange?.(leg.id, selectedMode, originalMode);
         return;
@@ -274,7 +322,7 @@ function TransportLegCard({
 
       onModeChange?.(leg.id, selectedMode, originalMode);
     },
-    onError: (_err, _mode, context: any) => {
+    onError: (_err, _mode, context) => {
       if (context?.prev) {
         setCurrentMode(context.prev);
         const modeData = allModes.find((m) => m.mode === context.prev);
@@ -425,16 +473,15 @@ function TransportLegCard({
                   {leg.fromName} → {leg.toName}
                 </p>
                 {(() => {
-                  const transitAlt = allModes.find(m => isTransitMode(m.mode));
-                  const transitInfo = transitAlt as any;
-                  const transitSteps = transitInfo?.transitSteps || transitInfo?.steps;
-                  if (transitSteps && Array.isArray(transitSteps)) {
-                    const transitLegs = transitSteps.filter((s: any) => s.mode === "TRANSIT" && s.transit);
-                    const walkLegs = transitSteps.filter((s: any) => s.mode === "WALK");
+                  const transitAlt = allModes.find(m => isTransitMode(m.mode)) as TransportModeWithSteps | undefined;
+                  const transitSteps = transitAlt?.transitSteps || transitAlt?.steps;
+                  if (transitSteps && transitSteps.length > 0) {
+                    const transitLegs = transitSteps.filter((s): s is ParsedTransitStep & { transit: TransitStepInfo } => s.mode === "TRANSIT" && !!s.transit);
+                    const walkLegs = transitSteps.filter(s => s.mode === "WALK");
                     const transfers = transitLegs.length > 1 ? transitLegs.length - 1 : 0;
                     return (
                       <div className="space-y-1.5">
-                        {transitLegs.map((step: any, i: number) => (
+                        {transitLegs.map((step, i) => (
                           <div key={i} className="flex items-center gap-2 text-xs">
                             <span
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white font-medium"
@@ -457,7 +504,7 @@ function TransportLegCard({
                         )}
                         {walkLegs.length > 0 && (
                           <p className="text-xs text-blue-500 dark:text-blue-400 italic">
-                            + {walkLegs.reduce((s: number, w: any) => s + (w.durationMinutes || 0), 0)} min walking
+                            + {walkLegs.reduce((s, w) => s + (w.durationMinutes || 0), 0)} min walking
                           </p>
                         )}
                       </div>
