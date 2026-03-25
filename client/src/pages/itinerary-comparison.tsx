@@ -466,7 +466,9 @@ export default function ItineraryComparisonPage() {
 
   const retryMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, { baselineItems: [] });
+      const stored = sessionStorage.getItem(`comparison_baseline_${id}`);
+      const baselineItems = stored ? JSON.parse(stored) : [];
+      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, { baselineItems });
     },
     onSuccess: () => {
       toast({ title: "Regenerating alternatives", description: "AI is creating optimized versions..." });
