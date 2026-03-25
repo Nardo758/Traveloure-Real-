@@ -13,6 +13,8 @@ import {
   Share2,
   User,
   MapPin,
+  Map,
+  List,
   Clock,
   DollarSign,
   ChevronDown,
@@ -34,7 +36,10 @@ import { InlineTransportSelector, type InlineTransportLegData } from "./InlineTr
 import { DayMapsButton } from "./DayMapsButton";
 import { TripExportButton } from "./TripExportButton";
 import { NavigateNextButton } from "./NavigateNextButton";
+import { ItineraryMapView } from "./ItineraryMapView";
 import { cn } from "@/lib/utils";
+
+const GOOGLE_MAPS_AVAILABLE = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 export interface ItineraryActivity {
   id: string;
@@ -116,6 +121,7 @@ interface ItineraryCardProps {
   onTransportDiffsChange?: (diffs: Record<string, TransportDiff>) => void;
   onExpertNotesChange?: (notes: string) => void;
   expertNotesValue?: string;
+  forcedMapDays?: number[];
 }
 
 function formatDate(dateStr?: string | null): string {
@@ -252,6 +258,7 @@ export function ItineraryCard({
   onTransportDiffsChange,
   onExpertNotesChange,
   expertNotesValue,
+  forcedMapDays,
 }: ItineraryCardProps) {
   const { toast } = useToast();
   const [copiedUrl, setCopiedUrl] = useState("");
@@ -277,6 +284,36 @@ export function ItineraryCard({
   }, [expertNotesValue]);
 
   const [activityTimingOverrides, setActivityTimingOverrides] = useState<Record<string, string>>({});
+  const [dayViewMode, setDayViewMode] = useState<Record<number, "list" | "map">>({});
+
+  useEffect(() => {
+    if (!forcedMapDays || forcedMapDays.length === 0) return;
+    setDayViewMode(m => {
+      const next = { ...m };
+      forcedMapDays.forEach(n => { next[n] = "map"; });
+      return next;
+    });
+    forcedMapDays.forEach(n => {
+      setExpandedDays(m => ({ ...m, [n]: true }));
+    });
+  }, [forcedMapDays]);
+
+  const handleActivityReorder = (dayNumber: number, fromIdx: number, toIdx: number) => {
+    const day = data.days.find(d => d.dayNumber === dayNumber);
+    if (!day || !isExpertMode) return;
+    const validActs = day.activities.filter(a => a.lat != null && a.lng != null);
+    const movedActivity = validActs[fromIdx];
+    if (!movedActivity) return;
+    const newDiffs = { ...activityDiffs };
+    newDiffs[movedActivity.id] = {
+      ...newDiffs[movedActivity.id],
+      name: movedActivity.name,
+      originalName: movedActivity.name,
+      reorderIndex: toIdx,
+    } as ActivityDiff & { reorderIndex: number };
+    setActivityDiffs(newDiffs);
+    onActivityDiffsChange?.(newDiffs);
+  };
 
   const handleLegModeChange = (legId: string, timeDiffMinutes: number) => {
     let targetDayNum: number | null = null;
@@ -561,6 +598,9 @@ export function ItineraryCard({
 
         const totalDayTransportMin = day.transportLegs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
 
+        const currentDayView = dayViewMode[day.dayNumber] ?? "list";
+        const hasMapData = day.activities.some(a => a.lat != null && a.lng != null);
+
         return (
           <Collapsible key={day.dayNumber} open={isOpen} onOpenChange={() => toggleDay(day.dayNumber)}>
             <div className="mb-2" data-testid={`day-section-${day.dayNumber}`}>
@@ -580,6 +620,39 @@ export function ItineraryCard({
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    {GOOGLE_MAPS_AVAILABLE && hasMapData && isOpen && (
+                      <div
+                        className="flex items-center rounded-md border overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={e => { e.stopPropagation(); setDayViewMode(m => ({ ...m, [day.dayNumber]: "list" })); }}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1 text-xs",
+                            currentDayView === "list"
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                          )}
+                          data-testid={`button-list-view-day-${day.dayNumber}`}
+                        >
+                          <List className="h-3 w-3" />
+                          List
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); setDayViewMode(m => ({ ...m, [day.dayNumber]: "map" })); }}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1 text-xs border-l",
+                            currentDayView === "map"
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                          )}
+                          data-testid={`button-map-view-day-${day.dayNumber}`}
+                        >
+                          <Map className="h-3 w-3" />
+                          Map
+                        </button>
+                      </div>
+                    )}
                     {(googleUrl || appleUrl || appleWebUrl) && isOpen && (
                       <DayMapsButton
                         dayNumber={day.dayNumber}
@@ -596,6 +669,18 @@ export function ItineraryCard({
               </CollapsibleTrigger>
 
               <CollapsibleContent>
+                {currentDayView === "map" && GOOGLE_MAPS_AVAILABLE ? (
+                  <ItineraryMapView
+                    day={day}
+                    isExpertMode={isExpertMode}
+                    transportDiffs={transportDiffs}
+                    activityDiffs={activityDiffs}
+                    showGhostPins={!!expertDiff && !isExpertMode}
+                    onActivityReorder={handleActivityReorder}
+                    className="mb-4"
+                    height="360px"
+                  />
+                ) : (
                 <div className="space-y-0 pl-1">
                   {day.activities.map((activity, actIdx) => {
                     const legAfter = day.transportLegs.find(l => l.legOrder === actIdx + 1);
@@ -863,8 +948,9 @@ export function ItineraryCard({
                     );
                   })}
                 </div>
+                )}
 
-                {day.transportLegs.length > 0 && (
+                {currentDayView === "list" && day.transportLegs.length > 0 && (
                   <div className="mt-3 px-2">
                     <TransportModeBar legs={day.transportLegs} />
                   </div>
