@@ -23,7 +23,6 @@ import {
   Mountain,
   ShoppingBag,
   Sparkles,
-  MessageSquare,
   Users,
   CheckCircle2,
   Gauge,
@@ -1014,30 +1013,6 @@ export default function ItineraryPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-white dark:bg-gray-800">
-              <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
-                      <MessageSquare className="w-6 h-6 text-[#FF385C]" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-[#111827] dark:text-white">Need help with your trip?</h4>
-                      <p className="text-sm text-[#6B7280]">Chat with our AI assistant or connect with an expert</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" data-testid="button-ai-help">
-                      <Sparkles className="w-4 h-4 mr-2" />
-                      AI Assistant
-                    </Button>
-                    <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
-                      Talk to Expert
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>
