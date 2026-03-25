@@ -44,10 +44,15 @@ function getModePolylineStyle(mode: string) {
         icons: [{ icon: dash, offset: "0", repeat: "16px" }],
       };
     case "train":
+      return {
+        strokeColor: "#3B82F6",
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+      };
     case "bus":
     case "shuttle":
       return {
-        strokeColor: "#3B82F6",
+        strokeColor: "#8B5CF6",
         strokeOpacity: 0.8,
         strokeWeight: 3,
       };
@@ -312,6 +317,50 @@ export function MapControlCenter({
     openInMaps(platform === "apple" ? `maps://?q=${query}` : `https://maps.apple.com/?q=${query}`);
   }
 
+  function handleAddToCalendar() {
+    if (!day) return;
+    const activities = day.activities || [];
+    if (activities.length === 0) return;
+
+    const dateStr = day.date?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Traveloure//PlanCard//EN",
+    ];
+
+    activities.forEach((act) => {
+      const timeMatch = act.time?.match(/(\d{1,2}):(\d{2})/);
+      const startHour = timeMatch ? timeMatch[1].padStart(2, "0") : "09";
+      const startMin = timeMatch ? timeMatch[2] : "00";
+      const startTime = `${dateStr}T${startHour}${startMin}00`;
+      const endHourNum = Math.min(23, parseInt(startHour) + 1);
+      const endTime = `${dateStr}T${endHourNum.toString().padStart(2, "0")}${startMin}00`;
+
+      lines.push(
+        "BEGIN:VEVENT",
+        `DTSTART:${startTime}`,
+        `DTEND:${endTime}`,
+        `SUMMARY:${act.name}`,
+        `LOCATION:${act.location}`,
+        `DESCRIPTION:${act.type} - ${tripDestination}`,
+        "END:VEVENT"
+      );
+    });
+
+    lines.push("END:VCALENDAR");
+
+    const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `traveloure-day${day.dayNum}-${tripDestination.toLowerCase().replace(/\s+/g, "-")}.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   const routeSummary = useMemo(() => {
     if (!day?.transports || !day?.activities) return [];
     return day.transports.map((tr, i) => {
@@ -436,6 +485,7 @@ export function MapControlCenter({
             <Button
               size="sm"
               variant="outline"
+              onClick={handleAddToCalendar}
               className="text-[11px] gap-1.5 h-7"
               data-testid={`map-btn-calendar-${tripId}`}
             >
