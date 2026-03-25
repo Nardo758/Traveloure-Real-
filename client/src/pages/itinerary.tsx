@@ -439,8 +439,8 @@ export default function ItineraryPage() {
 
   return (
     <div className="min-h-screen bg-muted/30" data-testid="itinerary-page">
-      <div className="bg-background border-b border-border sticky top-0 z-30">
-        <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-2 flex items-center justify-between">
+      <div className="max-w-[1100px] mx-auto px-4 md:px-6 pt-4">
+        <div className="flex items-center justify-between mb-4">
           <Link href="/my-trips">
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" data-testid="button-back">
               <ArrowLeft className="w-4 h-4" />
@@ -465,9 +465,6 @@ export default function ItineraryPage() {
             </Button>
           </div>
         </div>
-      </div>
-
-      <div className="max-w-[1100px] mx-auto px-4 md:px-6 pt-4">
         <div className="flex flex-col lg:flex-row gap-5 pb-12">
           <div className="flex-1 min-w-0 space-y-4">
             {shareData?.expertStatus === "review_sent" && (
