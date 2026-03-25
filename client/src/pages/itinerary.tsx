@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -539,6 +540,7 @@ export default function ItineraryPage() {
   ) : 0;
 
   return (
+    <DashboardLayout>
     <div className="min-h-screen bg-[#F9FAFB] dark:bg-gray-900">
       <div
         className="relative h-64 md:h-80 bg-cover bg-center"
@@ -1133,5 +1135,6 @@ export default function ItineraryPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </DashboardLayout>
   );
 }

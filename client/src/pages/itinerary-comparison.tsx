@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
 import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
 import { useLocation, useParams } from "wouter";
-import { Layout } from "@/components/layout";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -698,7 +698,7 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <Layout>
+    <DashboardLayout>
       <div className="max-w-7xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
@@ -1692,6 +1692,6 @@ export default function ItineraryComparisonPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </Layout>
+    </DashboardLayout>
   );
 }

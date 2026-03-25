@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { Layout } from "@/components/layout";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -350,7 +350,7 @@ export default function MyItineraryPage() {
   const numDays = Math.max(...Object.keys(itemsByDay).map(Number), 1);
 
   return (
-    <Layout>
+    <DashboardLayout>
       <div className="container mx-auto px-4 py-8 max-w-6xl print:max-w-full">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8">
@@ -991,6 +991,6 @@ export default function MyItineraryPage() {
           })}
         </div>
       </div>
-    </Layout>
+    </DashboardLayout>
   );
 }
