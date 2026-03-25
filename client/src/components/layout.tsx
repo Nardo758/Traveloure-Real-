@@ -306,10 +306,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* User Actions - Sign in buttons hidden on mobile, shown on md+ */}
-            <div className="hidden md:flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {!user && (
-                <>
+                <div className="hidden md:flex items-center gap-2">
                   <Link href="/become-expert">
                     <Button variant="outline" size="sm" data-testid="button-become-expert">
                       Become an Expert
@@ -322,31 +321,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   >
                     Sign In
                   </Button>
+                </div>
+              )}
+
+              {user && (
+                <>
+                  <NotificationBell />
+                  <UserMenu />
                 </>
               )}
-            </div>
 
-            {/* User menu - always visible when logged in */}
-            {user && (
-              <div className="flex items-center gap-2">
-                <NotificationBell />
-                <UserMenu />
+              <div className="flex items-center md:hidden">
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+                  data-testid="button-mobile-menu"
+                >
+                  {isMobileMenuOpen ? (
+                    <X className="block h-6 w-6" />
+                  ) : (
+                    <Menu className="block h-6 w-6" />
+                  )}
+                </button>
               </div>
-            )}
-
-            {/* Mobile menu button */}
-            <div className="flex items-center md:hidden">
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
-                data-testid="button-mobile-menu"
-              >
-                {isMobileMenuOpen ? (
-                  <X className="block h-6 w-6" />
-                ) : (
-                  <Menu className="block h-6 w-6" />
-                )}
-              </button>
             </div>
           </div>
         </div>
