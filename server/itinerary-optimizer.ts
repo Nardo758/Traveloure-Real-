@@ -60,7 +60,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 16384,
+        max_tokens: 5120,
       });
       const content = response.choices[0]?.message?.content;
       if (content) return content;
@@ -73,7 +73,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   if (anthropic) {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 16384,
+      max_tokens: 5120,
       system: systemPrompt,
       messages: [
         { role: "user", content: userPrompt },
@@ -235,21 +235,22 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     }));
     const baselineEnhancedMetrics = calculateItineraryMetrics(baselineForMetrics, travelers || 1);
 
-    for (let i = 0; i < baselineItems.length; i++) {
-      const item = baselineItems[i];
-      await db.insert(itineraryVariantItems).values({
-        variantId: baselineVariant[0].id,
-        dayNumber: item.dayNumber || 1,
-        timeSlot: item.timeSlot || "morning",
-        name: item.name,
-        description: item.description,
-        serviceType: item.serviceType,
-        price: item.price?.toString(),
-        rating: item.rating?.toString(),
-        location: item.location,
-        duration: item.duration,
-        sortOrder: i,
-      });
+    if (baselineItems.length > 0) {
+      await db.insert(itineraryVariantItems).values(
+        baselineItems.map((item, i) => ({
+          variantId: baselineVariant[0].id,
+          dayNumber: item.dayNumber || 1,
+          timeSlot: item.timeSlot || "morning",
+          name: item.name,
+          description: item.description,
+          serviceType: item.serviceType,
+          price: item.price?.toString(),
+          rating: item.rating?.toString(),
+          location: item.location,
+          duration: item.duration,
+          sortOrder: i,
+        }))
+      );
     }
 
     await db
@@ -344,9 +345,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       },
     ];
 
-    for (const metric of baselineMetrics) {
-      await db.insert(itineraryVariantMetrics).values(metric);
-    }
+    await db.insert(itineraryVariantMetrics).values(baselineMetrics);
 
     // Calculate transport legs for the baseline variant
     // Only compute if we have persisted variant items (which may have real coords from DB)
@@ -386,18 +385,23 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       description: s.shortDescription,
     }));
 
-    const prompt = `You are a travel optimization AI. Analyze the user's current itinerary and generate 2 optimized alternative versions.
+    const compactServicesList = servicesList.slice(0, 20).map(s =>
+      `${s.id}|${s.name}|${s.type}|$${s.price}|${s.rating}★|${s.location}`
+    ).join('\n');
 
-DESTINATION: ${destination}
-DATES: ${startDate} to ${endDate}
-TRAVELERS: ${travelers || 1}
-BUDGET: ${budget ? `$${budget}` : "Not specified"}${anchorPromptSection}
+    const compactBaseline = baselineItems.map(item =>
+      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
+    ).join('\n');
+
+    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
+
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${anchorPromptSection}
 
 USER'S CURRENT ITINERARY:
-${JSON.stringify(baselineItems, null, 2)}
+${compactBaseline}
 
-AVAILABLE SERVICES TO CHOOSE FROM:
-${JSON.stringify(servicesList.slice(0, 50), null, 2)}
+AVAILABLE SERVICES (id|name|type|price|rating|location):
+${compactServicesList}
 
 Generate 2 alternative itineraries that improve upon the user's plan. Each alternative should:
 1. Optimize for different goals (e.g., one for cost savings, one for better experiences)
@@ -459,9 +463,7 @@ Respond with valid JSON in this exact format:
       throw new Error("Failed to parse AI response");
     }
 
-    for (let v = 0; v < aiResponse.variants.length; v++) {
-      const variant = aiResponse.variants[v];
-
+    await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
       const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
         name: item.name,
@@ -556,33 +558,34 @@ Respond with valid JSON in this exact format:
         })
         .returning();
 
-      // Store reordered items with methodology notes in metadata
-      for (let i = 0; i < reorderedItems.length; i++) {
-        const item = reorderedItems[i];
-        // Find methodology notes for this activity
-        const activityNotes = methodologyNotes.filter(
-          n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
+      // Batch-insert all variant items in one round-trip
+      if (reorderedItems.length > 0) {
+        await db.insert(itineraryVariantItems).values(
+          reorderedItems.map((item, i) => {
+            const activityNotes = methodologyNotes.filter(
+              n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
+            );
+            return {
+              variantId: newVariant.id,
+              dayNumber: item.dayNumber,
+              timeSlot: item.timeSlot,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              name: item.name,
+              description: item.description,
+              serviceType: item.serviceType,
+              price: typeof item.price === 'number' ? item.price.toString() : item.price?.toString(),
+              rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
+              location: item.location,
+              duration: item.duration,
+              travelTimeFromPrevious: item.travelTimeFromPrevious,
+              isReplacement: item.isReplacement,
+              replacementReason: item.replacementReason,
+              metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
+              sortOrder: i,
+            };
+          })
         );
-        
-        await db.insert(itineraryVariantItems).values({
-          variantId: newVariant.id,
-          dayNumber: item.dayNumber,
-          timeSlot: item.timeSlot,
-          startTime: item.startTime,
-          endTime: item.endTime,
-          name: item.name,
-          description: item.description,
-          serviceType: item.serviceType,
-          price: typeof item.price === 'number' ? item.price.toString() : item.price?.toString(),
-          rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
-          location: item.location,
-          duration: item.duration,
-          travelTimeFromPrevious: item.travelTimeFromPrevious,
-          isReplacement: item.isReplacement,
-          replacementReason: item.replacementReason,
-          metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
-          sortOrder: i,
-        });
       }
 
       const costSavings = baselineTotal - variant.metrics.totalCost;
@@ -650,7 +653,6 @@ Respond with valid JSON in this exact format:
           betterIsLower: false,
           description: `Overall score: ${combinedOptimizationScore}/100`,
         },
-        // Smart Sequencing Metrics
         {
           variantId: newVariant.id,
           metricKey: "balance_score",
@@ -727,10 +729,9 @@ Respond with valid JSON in this exact format:
         },
       ];
 
-      // Store day-level and itinerary-level methodology notes as a summary metric
+      // Add methodology summary metric if applicable
       const dayNotes = methodologyNotes.filter(n => n.type === 'day');
       const itineraryNotes = methodologyNotes.filter(n => n.type === 'itinerary');
-      
       if (dayNotes.length > 0 || itineraryNotes.length > 0) {
         metricsToInsert.push({
           variantId: newVariant.id,
@@ -745,12 +746,10 @@ Respond with valid JSON in this exact format:
         });
       }
 
-      for (const metric of metricsToInsert) {
-        await db.insert(itineraryVariantMetrics).values(metric);
-      }
+      // Batch-insert all metrics in one round-trip
+      await db.insert(itineraryVariantMetrics).values(metricsToInsert);
 
-      // Calculate transport legs for the new variant after metrics are finalized
-      // Only use items that have real coordinates to avoid bogus legs
+      // Transport legs — only for items with real coordinates
       try {
         const variantItems = await db
           .select()
@@ -776,7 +775,7 @@ Respond with valid JSON in this exact format:
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
       }
-    }
+    }));
 
     await db
       .update(itineraryComparisons)
