@@ -1,0 +1,95 @@
+I want you to test my entire platform by simulating a real user journey, 
+end-to-end. Walk through every step a traveler would take to plan a trip 
+to Kyoto, and document what works vs what breaks.
+
+DO NOT FIX ANYTHING. Just test, document, and report.
+
+## THE USER JOURNEY TO TEST
+
+Play the role of "Maya, 32, planning a 5-day couples trip to Kyoto in April 2026."
+
+### Step 1: Landing & Sign Up
+- Load the homepage. Does it render? What do you see?
+- Click "Get Started" or "Sign Up" — does the auth flow work?
+- Create a test account (or use existing test user)
+- After sign-in, where do you land? Is there a dashboard?
+
+### Step 2: Create a Trip
+- Find where to create a new trip/experience
+- Select "Travel" template
+- Set destination: Kyoto, Japan
+- Set dates: April 1-5, 2026
+- Set travelers: 2
+- Set budget: $3,000
+- Does the creation flow complete? What page do you land on?
+
+### Step 3: Browse & Add Activities
+- Search for activities in Kyoto
+- Can you find real activities? Or is it empty/mock data?
+- Try adding 3-4 activities to the trip (temples, food tours, etc.)
+- Do they appear in a cart or itinerary builder?
+- Do activities have coordinates (lat/lng)?
+
+### Step 4: Browse & Message an Expert
+- Find the expert browse/search page
+- Are there any experts listed for Kyoto?
+- Try clicking on an expert profile — does it load?
+- Try sending a message — does the chat work?
+
+### Step 5: AI Optimization
+- Find the "Optimize" or "AI Planner" feature
+- Trigger the optimizer on Maya's trip
+- Does it produce variant plans (cost saver, time saver, etc.)?
+- Do the variants show day-by-day sequenced activities?
+
+### Step 6: Itinerary Comparison
+- View the comparison page with the optimizer's variants
+- Are there "Share" and "Send to Expert" buttons?
+- Do the variant cards show transport time/cost totals?
+
+### Step 7: Transport & Shareable Card
+- Select a variant
+- Does the transport leg calculator run?
+- Open the shareable itinerary card view
+- Are transport legs visible between activities?
+- Do "Open in Maps" links work?
+- Does KML/GPX export work?
+- Generate a share link — does the public URL load?
+
+### Step 8: Booking & Checkout
+- Try to book/checkout with the selected itinerary
+- Does the cart show correct items and pricing?
+- Does the Stripe checkout flow initiate?
+- (Don't complete a real payment — just verify the flow starts)
+
+### Step 9: Expert Dashboard (switch roles)
+- Log in as an expert (find or create an expert user)
+- Does the expert dashboard load?
+- Can the expert see bookings, messages, earnings?
+- If Maya sent a share link, does it appear in the expert's inbox?
+
+### Step 10: Return to Traveler Dashboard
+- Switch back to Maya's account
+- Does her dashboard show the trip she created?
+- Can she see her bookings, messages, credits?
+
+## HOW TO REPORT
+
+For EACH step, give me:
+
+**Step X: [Name]**
+- Route: /the-url-you-hit
+- Status: ✅ WORKS | ⚠️ PARTIAL | ❌ BROKEN | 🔌 NOT WIRED
+- What happened: [1-2 sentences]
+- Error (if any): [exact error message or console output]
+- Missing: [what's needed to make it work]
+
+At the end, give me a summary:
+- Total steps tested: X
+- Working: X
+- Partial: X  
+- Broken: X
+- Not wired: X
+- Top 5 highest-priority fixes (in order)
+
+Take your time. Test every step thoroughly. This is the full product audit.
