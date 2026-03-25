@@ -2023,13 +2023,13 @@ export default function ExperienceTemplatePage() {
 
           <Collapsible open={activeTab === "transportation" ? false : filtersOpen} onOpenChange={setFiltersOpen}>
             {activeTab !== "transportation" && (
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
-                <SlidersHorizontal className="w-4 h-4" />
-                Filters & Sort
-                <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
-              </Button>
-            </CollapsibleTrigger>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="gap-2 mb-4" data-testid="button-toggle-filters">
+                  <SlidersHorizontal className="w-4 h-4" />
+                  Filters & Sort
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", filtersOpen && "rotate-180")} />
+                </Button>
+              </CollapsibleTrigger>
             )}
             <CollapsibleContent>
               <Card className="mb-6">
