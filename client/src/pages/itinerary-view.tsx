@@ -412,6 +412,7 @@ export default function ItineraryViewPage() {
           onActivityDiffsChange={isExpertView ? setActivityDiffs : undefined}
           onTransportDiffsChange={isExpertView ? setTransportDiffs : undefined}
           onExpertNotesChange={isExpertView ? setExpertNotes : undefined}
+          expertNotesValue={isExpertView ? expertNotes : undefined}
         />
 
         {!isExpertView && (
