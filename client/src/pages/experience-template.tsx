@@ -1127,10 +1127,12 @@ export default function ExperienceTemplatePage() {
         startDate: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
         endDate: endDate?.toISOString().split('T')[0] || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: cartTotal.toString(),
-        travelers: 2
+        travelers: 2,
+        baselineItems: cartItems,
       });
       
       const comparison = await response.json();
+      // Also save to sessionStorage so the comparison page can retry if needed
       sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
       setCartOpen(false);
       setLocation(`/itinerary-comparison/${comparison.id}`);
