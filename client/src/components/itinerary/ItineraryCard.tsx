@@ -305,15 +305,17 @@ export function ItineraryCard({
 
   const handleTransportModeChange = (legId: string, newMode: string, originalMode: string) => {
     if (!isExpertMode) return;
-    let legOrder = 0;
-    for (const day of data.days) {
-      const leg = day.transportLegs.find(l => l.id === legId);
-      if (leg) { legOrder = leg.legOrder; break; }
+    const newDiffs = { ...transportDiffs };
+    if (newMode === originalMode) {
+      delete newDiffs[legId];
+    } else {
+      let legOrder = 0;
+      for (const day of data.days) {
+        const leg = day.transportLegs.find(l => l.id === legId);
+        if (leg) { legOrder = leg.legOrder; break; }
+      }
+      newDiffs[legId] = { originalMode, newMode, legOrder };
     }
-    const newDiffs = {
-      ...transportDiffs,
-      [legId]: { originalMode, newMode, legOrder },
-    };
     setTransportDiffs(newDiffs);
     onTransportDiffsChange?.(newDiffs);
   };
