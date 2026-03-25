@@ -69,7 +69,6 @@ interface SharedItineraryResponse {
 export default function ItineraryViewPage() {
   const { token } = useParams<{ token: string }>();
   const [location, navigate] = useLocation();
-  const urlRole = new URLSearchParams(window.location.search).get("role");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
