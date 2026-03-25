@@ -301,7 +301,7 @@ export default function ItineraryViewPage() {
             <div className="flex items-start gap-3">
               <User className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
               <div className="flex-1">
-                <p className="font-medium text-sm text-amber-800 dark:text-amber-200">Expert Review Mode</p>
+                <p className="font-medium text-sm text-amber-800 dark:text-amber-200">Expert Edit Mode</p>
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
                   Edit activity names, times, and notes directly on the cards below. You can also swap transport modes.
                   {totalDiffs > 0 && ` (${totalDiffs} pending change${totalDiffs !== 1 ? "s" : ""})`}

@@ -12212,7 +12212,8 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // POST /api/itinerary-share/:token/suggest — Expert suggests modifications with diff tracking
+  // POST /api/itinerary-share/:token/suggest — DEPRECATED: Expert suggests modifications (legacy)
+  // Use POST /api/expert-review/:shareToken/submit instead (stores full snapshot)
   app.post("/api/itinerary-share/:token/suggest", async (req, res) => {
     try {
       const { token } = req.params;
