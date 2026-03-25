@@ -1,7 +1,13 @@
 import { differenceInDays } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { Star, TrendingDown, Heart, Route } from "lucide-react";
+import { Star, TrendingDown, Heart, Route, CheckCircle2, DollarSign, Gauge } from "lucide-react";
 import { STATS_ICONS, type TemplateConfig, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
+
+export interface ExtraStat {
+  label: string;
+  value: string | number;
+  icon?: typeof Star;
+}
 
 interface StatsRowProps {
   trip: PlanCardTrip;
@@ -10,22 +16,32 @@ interface StatsRowProps {
   totalLegs: number;
   totalMinutes: number;
   templateConfig: TemplateConfig;
+  extraStats?: ExtraStat[];
 }
 
-export function StatsRow({ trip, days, totalActivities, totalLegs, totalMinutes, templateConfig }: StatsRowProps) {
-  const statItems = [
-    { label: templateConfig.statsLabels[0], value: days.length || differenceInDays(new Date(trip.endDate), new Date(trip.startDate)) + 1 },
-    { label: templateConfig.statsLabels[1], value: totalActivities },
-    { label: templateConfig.statsLabels[2], value: totalLegs },
-    { label: templateConfig.statsLabels[3], value: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-" },
+export function StatsRow({ trip, days, totalActivities, totalLegs, totalMinutes, templateConfig, extraStats }: StatsRowProps) {
+  const coreItems = [
+    { label: templateConfig.statsLabels[0], value: days.length || differenceInDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, icon: STATS_ICONS[0] },
+    { label: templateConfig.statsLabels[1], value: totalActivities, icon: STATS_ICONS[1] },
+    { label: templateConfig.statsLabels[2], value: totalLegs, icon: STATS_ICONS[2] },
+    { label: templateConfig.statsLabels[3], value: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-", icon: STATS_ICONS[3] },
   ];
 
+  const extraItems = (extraStats || []).map(s => ({
+    label: s.label,
+    value: s.value,
+    icon: s.icon || Star,
+  }));
+
+  const allItems = [...coreItems, ...extraItems];
+  const cols = allItems.length <= 4 ? 4 : allItems.length <= 6 ? allItems.length : 6;
+
   return (
-    <div className="grid grid-cols-4 border-b border-border" data-testid={`stats-row-${trip.id}`}>
-      {statItems.map((s, i) => {
-        const Icon = STATS_ICONS[i];
+    <div className={`grid border-b border-border`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }} data-testid={`stats-row-${trip.id}`}>
+      {allItems.map((s, i) => {
+        const Icon = s.icon;
         return (
-          <div key={i} className={`py-3 px-3 text-center ${i < 3 ? "border-r border-border" : ""}`}>
+          <div key={i} className={`py-3 px-3 text-center ${i < allItems.length - 1 ? "border-r border-border" : ""}`}>
             <div className="text-[11px] text-muted-foreground mb-1 flex items-center justify-center gap-1">
               <Icon className="w-3 h-3" /> {s.label}
             </div>
@@ -36,6 +52,8 @@ export function StatsRow({ trip, days, totalActivities, totalLegs, totalMinutes,
     </div>
   );
 }
+
+export { CheckCircle2 as BookedIcon, DollarSign as CostIcon, Gauge as EfficiencyIcon };
 
 interface OptimizerMetricsProps {
   tripId: string;

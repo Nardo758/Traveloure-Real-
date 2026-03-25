@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { HeroSection } from "@/components/plancard/HeroSection";
-import { StatsRow } from "@/components/plancard/StatsRow";
+import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
@@ -339,6 +339,30 @@ export default function ItineraryPage() {
     return total + legs.reduce((s: number, l: any) => s + (l.estimatedCostUsd || l.cost || 0), 0);
   }, 0);
 
+  const efficiencyScore = totalActivities > 0
+    ? Math.round((totalBooked / totalActivities) * 100)
+    : 0;
+
+  const grandTotal = totalCost + allTransportCost;
+
+  const activityTypes = itinerary.days
+    .flatMap((d: any) => d.activities || [])
+    .reduce((acc: Record<string, number>, a: any) => {
+      const t = a.type || "activity";
+      acc[t] = (acc[t] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+  const categoryPills = Object.entries(activityTypes).map(([type, count]) => ({
+    type,
+    count: count as number,
+  }));
+
+  const extraStats: ExtraStat[] = [
+    { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
+    { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
+  ];
+
   const templateConfig = getTemplateConfig(tripData?.eventType);
 
   const planCardTrip: PlanCardTrip = {
@@ -497,7 +521,32 @@ export default function ItineraryPage() {
                 totalLegs={allTransportLegs}
                 totalMinutes={allTransportMinutes}
                 templateConfig={templateConfig}
+                extraStats={extraStats}
               />
+
+              {categoryPills.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-4 py-2.5 border-b border-border" data-testid="category-filter-pills">
+                  {categoryPills.map(({ type, count }) => (
+                    <Badge
+                      key={type}
+                      variant="secondary"
+                      className="text-[11px] capitalize bg-muted text-muted-foreground"
+                      data-testid={`badge-category-${type}`}
+                    >
+                      {type} ({count})
+                    </Badge>
+                  ))}
+                  {efficiencyScore > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className="text-[11px] gap-1 bg-primary/10 text-primary border-0"
+                      data-testid="badge-efficiency"
+                    >
+                      <EfficiencyIcon className="w-3 h-3" /> {efficiencyScore}% confirmed
+                    </Badge>
+                  )}
+                </div>
+              )}
             </Card>
 
             <div className="flex items-center justify-end">
