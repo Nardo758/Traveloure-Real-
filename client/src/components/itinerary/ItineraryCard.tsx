@@ -1017,6 +1017,8 @@ export function ItineraryCard({
                               ? { originalMode: expertDiff.transportDiffs[legAfter.id].originalMode, newMode: expertDiff.transportDiffs[legAfter.id].newMode }
                               : null
                             }
+                            compactSummary={true}
+                            onSwitchToTransport={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "transport" }))}
                           />
                         )}
                       </div>
