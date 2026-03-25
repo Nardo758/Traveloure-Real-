@@ -519,15 +519,18 @@ export default function ItineraryPage() {
       day: day.day || day.dayNumber || index + 1,
       date: tripData ? addDays(new Date(tripData.startDate), index) : addDays(new Date(), index),
       title: day.title || day.theme || `Day ${index + 1}`,
+      transportLegs: day.transportLegs || [],
       activities: (day.activities || []).map((activity: any, actIdx: number) => {
         const actType = activity.type || "activity";
         return {
-          id: `a${index}-${actIdx}`,
+          id: activity.id || `a${index}-${actIdx}`,
           time: activity.time || activity.startTime || "09:00",
           title: activity.name || activity.title || "Activity",
           type: actType,
           icon: iconMap[actType.toLowerCase()] || Camera,
           location: activity.location || activity.venue || "",
+          lat: activity.lat ?? null,
+          lng: activity.lng ?? null,
           duration: activity.duration || "1h",
           notes: activity.description || activity.notes || "",
           booked: activity.bookingRequired === false || activity.booked || false,
