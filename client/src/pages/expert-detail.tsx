@@ -1,4 +1,4 @@
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,10 +26,17 @@ import {
   Briefcase
 } from "lucide-react";
 import { Layout } from "@/components/layout";
+import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ExpertDetailPage() {
   const [, params] = useRoute("/experts/:id");
   const expertId = params?.id;
+  const [, navigate] = useLocation();
+  const { isAuthenticated } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const { toast } = useToast();
 
   // Fetch expert details
   const { data: expert, isLoading } = useQuery<any>({
@@ -52,6 +59,29 @@ export default function ExpertDetailPage() {
     },
     enabled: !!expertId,
   });
+
+  const handleContactExpert = () => {
+    if (!isAuthenticated) {
+      openSignInModal();
+      return;
+    }
+    navigate(`/chat?expertId=${expertId}`);
+  };
+
+  const handleScheduleConsultation = () => {
+    if (!isAuthenticated) {
+      openSignInModal();
+      return;
+    }
+    if (services.length > 0) {
+      navigate(`/cart?expertId=${expertId}&serviceId=${services[0]?.id || ""}`);
+    } else {
+      toast({
+        title: "No services available",
+        description: `${expert?.firstName || "This expert"} hasn't listed any services yet. Contact them directly instead.`,
+      });
+    }
+  };
 
   // Fetch expert's reviews
   const { data: reviews = [] } = useQuery<any[]>({
@@ -397,12 +427,12 @@ export default function ExpertDetailPage() {
                       )}
                     </div>
 
-                    <Button className="w-full" size="lg">
+                    <Button className="w-full" size="lg" onClick={handleContactExpert} data-testid="button-contact-expert">
                       <MessageCircle className="w-4 h-4 mr-2" />
                       Contact Expert
                     </Button>
 
-                    <Button variant="outline" className="w-full" size="lg">
+                    <Button variant="outline" className="w-full" size="lg" onClick={handleScheduleConsultation} data-testid="button-schedule-consultation">
                       <Calendar className="w-4 h-4 mr-2" />
                       Schedule Consultation
                     </Button>
