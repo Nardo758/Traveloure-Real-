@@ -44,16 +44,20 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
   const transportLocked = day?.activities?.some((a) => a.status === "pending") ?? false;
 
   const traveloureScore = metrics.traveloureScore || metrics.optimizationScore || optimizationScore;
-  const totalCost = metrics.totalCost;
-  const savings = metrics.savings;
-  const savingsPercent = metrics.savingsPercent;
+  const totalCostNum = metrics.totalCost;
+  const savingsNum = metrics.savings;
+  const savingsPercentNum = metrics.savingsPercent;
   const wellnessTime = metrics.wellnessMinutes;
   const travelDistance = metrics.travelDistanceMinutes;
   const starDelta = metrics.starRatingDelta;
 
+  const totalCostDisplay = totalCostNum != null ? `$${Number(totalCostNum).toLocaleString()}` : null;
+  const savingsDisplay = savingsNum != null ? `$${Number(savingsNum).toLocaleString()}` : null;
+  const savingsPercentDisplay = savingsPercentNum != null ? `${savingsPercentNum}%` : null;
+
   const perPersonFromMetrics = metrics.perPersonCost;
   const budgetDisplay = trip.budget ? `$${Number(trip.budget).toLocaleString()}` : null;
-  const perPersonDisplay = perPersonFromMetrics
+  const perPersonDisplay = perPersonFromMetrics != null
     ? `$${Number(perPersonFromMetrics).toLocaleString()}/person`
     : (trip.budget && trip.numberOfTravelers > 1
       ? `$${Math.round(Number(trip.budget) / trip.numberOfTravelers).toLocaleString()}/person`
@@ -71,7 +75,7 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
           trip={trip}
           traveloureScore={traveloureScore}
           shareToken={shareToken}
-          totalCost={totalCost}
+          totalCost={totalCostDisplay}
           perPerson={perPersonDisplay}
           budget={budgetDisplay}
         />
@@ -88,12 +92,12 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
         <OptimizerMetrics
           tripId={trip.id}
           traveloureScore={traveloureScore}
-          savings={savings}
-          savingsPercent={savingsPercent}
+          savings={savingsDisplay}
+          savingsPercent={savingsPercentDisplay}
           wellnessTime={wellnessTime}
           travelDistance={travelDistance}
           starDelta={starDelta}
-          totalCost={totalCost}
+          totalCost={totalCostDisplay}
           perPerson={perPersonDisplay}
         />
 

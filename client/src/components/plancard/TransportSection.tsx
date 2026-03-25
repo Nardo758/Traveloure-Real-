@@ -32,8 +32,8 @@ export function TransportSection({ tripId, tripDestination, day }: TransportSect
           <div className="flex gap-6">
             {[
               { l: "Legs", v: day.transports.length },
-              { l: "Total Time", v: `${day.transports.reduce((s: number, t: any) => s + (t.duration || 0), 0)}m` },
-              { l: "Est. Cost", v: `$${day.transports.reduce((s: number, t: any) => s + (t.cost || 0), 0).toLocaleString()}` },
+              { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
+              { l: "Est. Cost", v: `$${day.transports.reduce((s: number, t) => s + (t.cost || 0), 0).toLocaleString()}` },
             ].map((s, si) => (
               <div key={si}>
                 <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{s.l}</div>
@@ -42,8 +42,8 @@ export function TransportSection({ tripId, tripDestination, day }: TransportSect
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">
-            {[...new Set(day.transports.map((t: any) => t.mode))].map((mode: string) => {
-              const mins = day.transports.filter((t: any) => t.mode === mode).reduce((s: number, t: any) => s + (t.duration || 0), 0);
+            {[...new Set(day.transports.map((t) => t.mode))].map((mode) => {
+              const mins = day.transports.filter((t) => t.mode === mode).reduce((s: number, t) => s + (t.duration || 0), 0);
               return (
                 <span
                   key={mode}
@@ -59,7 +59,7 @@ export function TransportSection({ tripId, tripDestination, day }: TransportSect
         </div>
       )}
 
-      {(day.transports || []).map((tr: any, i: number) => {
+      {(day.transports || []).map((tr, i) => {
         const ss = STATUS_STYLES[tr.status] || STATUS_STYLES.pending;
         const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
 
