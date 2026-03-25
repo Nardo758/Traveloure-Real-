@@ -93,7 +93,7 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
             onClick={() => setViewMode("card")}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
               viewMode === "card"
-                ? "bg-foreground text-background shadow-md"
+                ? "bg-primary text-primary-foreground shadow-md"
                 : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
             data-testid={`btn-card-view-${trip.id}`}
@@ -104,7 +104,7 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
             onClick={() => setViewMode("map")}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
               viewMode === "map"
-                ? "bg-foreground text-background shadow-md"
+                ? "bg-primary text-primary-foreground shadow-md"
                 : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
             }`}
             data-testid={`btn-map-view-${trip.id}`}

@@ -217,7 +217,7 @@ function MapContent({
                   }}
                   data-testid={`map-route-duration-${tr.id}`}
                 >
-                  {tr.duration}
+                  {tr.duration}m
                 </div>
               </AdvancedMarker>
             )}
