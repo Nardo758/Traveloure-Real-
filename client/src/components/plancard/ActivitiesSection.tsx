@@ -18,7 +18,7 @@ export function ActivitiesSection({ tripId, day, templateConfig }: ActivitiesSec
         </div>
       </div>
 
-      {(day.activities || []).map((a: any, i: number) => {
+      {(day.activities || []).map((a, i) => {
         const tc = TYPE_COLORS[a.type] || TYPE_COLORS.attraction;
         const ss = STATUS_STYLES[a.status] || STATUS_STYLES.pending;
         const typeLabel = templateConfig.activityTypes[a.type] || a.type;
