@@ -3988,7 +3988,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
 
       const [comparison] = await db
         .insert(itineraryComparisons)
@@ -4002,6 +4002,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           endDate,
           budget: budget?.toString(),
           travelers: travelers || 1,
+          experienceTypeSlug: experienceTypeSlug || null,
           status: "generating",
         })
         .returning();
