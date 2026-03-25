@@ -34,7 +34,7 @@ export function StatsRow({ trip, days, totalActivities, totalLegs, totalMinutes,
   }));
 
   const allItems = [...coreItems, ...extraItems];
-  const cols = allItems.length <= 4 ? 4 : allItems.length <= 6 ? allItems.length : 6;
+  const cols = allItems.length <= 4 ? 4 : allItems.length;
 
   return (
     <div className={`grid border-b border-border`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }} data-testid={`stats-row-${trip.id}`}>
