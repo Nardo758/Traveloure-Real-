@@ -563,11 +563,62 @@ export function TripTransportPlanner({
             <Car className="h-5 w-5 text-[#FF385C]" />
             Trip Transportation
           </CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Automatically plan every transfer and ground leg for your trip.
+          </p>
         </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Bus className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p>Add flights, hotels, or activities to your cart to see your transportation needs.</p>
+        <CardContent className="space-y-5">
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <Bus className="h-12 w-12 text-muted-foreground/40 mb-1" />
+            <p className="font-medium text-sm">No transport legs detected yet</p>
+            <p className="text-sm text-muted-foreground max-w-sm">
+              Add at least one hotel plus a flight or an activity to your cart and your transfer legs will appear here automatically.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex items-start gap-3 rounded-md border bg-muted/20 p-3">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">1</div>
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Hotel className="h-3.5 w-3.5 text-muted-foreground" />
+                  Add a Hotel
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Browse & add accommodation on the Accommodation tab.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-md border bg-muted/20 p-3">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">2</div>
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Plane className="h-3.5 w-3.5 text-muted-foreground" />
+                  Add Flights or Activities
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Add at least one flight or activity to generate transfer legs.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 rounded-md border bg-muted/20 p-3">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">3</div>
+              <div>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Car className="h-3.5 w-3.5 text-muted-foreground" />
+                  Pick Your Transport
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Choose rideshare, taxi, bus, or other options per leg.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t pt-4">
+            <p className="text-xs text-muted-foreground">Already know your ground transport?</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.open(`https://12go.asia/en?z=13805109&curr=USD`, '_blank')}
+              data-testid="button-browse-12go-empty"
+            >
+              Browse 12Go <ExternalLink className="h-3 w-3 ml-1" />
+            </Button>
           </div>
         </CardContent>
       </Card>

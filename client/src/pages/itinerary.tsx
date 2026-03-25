@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +20,7 @@ import {
   ExternalLink,
   MapPin,
 } from "lucide-react";
+import { type TransportAlternative } from "@/components/itinerary/TransportLeg";
 import {
   Dialog,
   DialogContent,
@@ -30,9 +31,8 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays, differenceInDays } from "date-fns";
 import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
@@ -45,6 +45,7 @@ import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
 import { TransportSection } from "@/components/plancard/TransportSection";
+import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
@@ -118,51 +119,58 @@ export default function ItineraryPage() {
   const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
-  const [realLegsMap, setRealLegsMap] = useState<Record<number, InlineTransportLegData[]>>({});
   const [showMap, setShowMap] = useState(false);
-  const [showChanges, setShowChanges] = useState(false);
   const { toast } = useToast();
 
-  const activateTransportMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/trips/${tripId}/activate-transport`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      if (!res.ok) return null;
-      return res.json() as Promise<{ variantId: string; legs: Array<InlineTransportLegData & { dayNumber: number }> }>;
-    },
-    onSuccess: (data) => {
-      if (!data?.legs?.length) return;
-      const byDay: Record<number, InlineTransportLegData[]> = {};
-      for (const leg of data.legs) {
-        const d = leg.dayNumber;
-        if (!byDay[d]) byDay[d] = [];
-        byDay[d].push(leg);
-      }
-      setRealLegsMap(byDay);
+  interface TripTransportLeg {
+    id: string;
+    variantId: string;
+    dayNumber: number;
+    legOrder: number;
+    fromName: string;
+    fromLat: number;
+    fromLng: number;
+    toName: string;
+    toLat: number;
+    toLng: number;
+    distanceMeters: number;
+    distanceDisplay: string;
+    recommendedMode: string;
+    userSelectedMode: string | null;
+    estimatedDurationMinutes: number;
+    estimatedCostUsd: number | null;
+    alternativeModes: TransportAlternative[] | null;
+  }
+
+  interface TripTransportLegsResponse {
+    legs: TripTransportLeg[];
+    variantId: string | null;
+  }
+
+  const { data: legsData, isLoading: legsLoading } = useQuery<TripTransportLegsResponse>({
+    queryKey: ["/api/trips", tripId, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/trips/${tripId}/transport-legs`);
+      if (!res.ok) throw new Error("Failed to load transport legs");
+      return res.json();
     },
   });
 
-  useEffect(() => {
-    if (!generatedItinerary?.itineraryData) return;
-    const data: any = generatedItinerary.itineraryData;
-    const daysData: any[] = data?.days || data?.dailyItinerary || [];
-    const hasCoords = daysData.some((d: any) =>
-      (d.activities || []).some((a: any) => a.lat && a.lng)
-    );
-    if (hasCoords) {
-      activateTransportMutation.mutate();
-    }
-  }, [tripId, generatedItinerary?.itineraryData]);
+  const realLegsMap: Record<number, TripTransportLeg[]> = {};
+  if (legsData?.legs) {
+    legsData.legs.forEach((leg) => {
+      const dayNum = (leg as any).dayNumber ?? 0;
+      if (!realLegsMap[dayNum]) realLegsMap[dayNum] = [];
+      realLegsMap[dayNum].push(leg);
+    });
+  }
 
   const { data: shareData } = useQuery<{
     shareToken?: string;
     variantId?: string;
     expertStatus?: string;
-    expertNotes?: string | null;
-    expertDiff?: { activityDiffs?: Record<string, ActivityDiff>; transportDiffs?: Record<string, TransportDiff>; submittedAt?: string } | null;
+    expertNotes?: string;
+    expertDiff?: { activityDiffs?: Record<string, ActivityDiff>; transportDiffs?: Record<string, TransportDiff>; submittedAt?: string };
   }>({
     queryKey: ["/api/trips", tripId, "share-info"],
     queryFn: async () => {
@@ -170,40 +178,28 @@ export default function ItineraryPage() {
       if (!res.ok) return {};
       return res.json();
     },
-    enabled: !!tripId,
   });
 
-  const reviewActivityDiffs = shareData?.expertDiff?.activityDiffs ?? {};
-  const reviewTransportDiffs = shareData?.expertDiff?.transportDiffs ?? {};
+  const acknowledgeMutation = {
+    isPending: false,
+    mutate: async ({ action, rejectedIds }: { action: "accept" | "reject"; rejectedIds: string[] }) => {
+      if (!shareData?.shareToken) return;
+      try {
+        const res = await fetch(`/api/itinerary-share/${shareData.shareToken}/acknowledge`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action, rejectedIds }),
+        });
+        if (res.ok) {
+          queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "share-info"] });
+        }
+      } catch {}
+    },
+  };
 
-  const acknowledgeMutation = useMutation({
-    mutationFn: async ({ action, rejectedIds }: { action: "accept" | "reject"; rejectedIds?: string[] }) => {
-      const token = shareData?.shareToken;
-      if (!token) throw new Error("No share token");
-      const res = await fetch(`/api/expert-review/${token}/acknowledge`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, rejectedDiffIds: rejectedIds }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to acknowledge");
-      return res.json();
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "share-info"] });
-      setShowDiffReview(false);
-      setRejectedDiffIds(new Set());
-      toast({
-        title: variables.action === "accept" ? "Edits accepted" : "Edits rejected",
-        description: variables.action === "accept"
-          ? "The expert's suggestions have been applied."
-          : "The expert's suggestions have been dismissed.",
-      });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
-    },
-  });
+  const reviewActivityDiffs: Record<string, ActivityDiff> = shareData?.expertDiff?.activityDiffs || {};
+  const reviewTransportDiffs: Record<string, TransportDiff> = shareData?.expertDiff?.transportDiffs || {};
 
   const isLoading = tripLoading || itineraryLoading;
 
@@ -539,38 +535,6 @@ export default function ItineraryPage() {
                       {type} ({count})
                     </Badge>
                   ))}
-                </div>
-              )}
-
-              {transportModeEntries.length > 0 && (
-                <div className="px-4 py-2.5 border-b border-border" data-testid="transport-summary-bar">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] text-muted-foreground font-medium">Transport Summary</span>
-                    <span className="text-[11px] text-muted-foreground">{allTransportLegs} legs total</span>
-                  </div>
-                  <div className="flex h-2 rounded-full overflow-hidden bg-muted" data-testid="transport-progress-bar">
-                    {transportModeEntries.map(([mode, count]) => {
-                      const pct = allTransportLegs > 0 ? (count / allTransportLegs) * 100 : 0;
-                      const colorClass = transportModeColors[mode.toLowerCase()] || "bg-muted-foreground";
-                      return (
-                        <div
-                          key={mode}
-                          className={`${colorClass} transition-all`}
-                          style={{ width: `${pct}%` }}
-                          title={`${mode}: ${count} (${Math.round(pct)}%)`}
-                          data-testid={`transport-bar-segment-${mode}`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
-                    {transportModeEntries.map(([mode, count]) => (
-                      <span key={mode} className="flex items-center gap-1 text-[10px] text-muted-foreground capitalize" data-testid={`transport-legend-${mode}`}>
-                        <span className={`w-2 h-2 rounded-full ${transportModeColors[mode.toLowerCase()] || "bg-muted-foreground"}`} />
-                        {mode} ({count})
-                      </span>
-                    ))}
-                  </div>
                 </div>
               )}
 
