@@ -67,9 +67,14 @@ export function DashboardSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => {
-                const isActive = location === item.href || 
+                const isActive = location === item.href ||
                   (item.href === "/dashboard" && location === "/dashboard") ||
-                  (item.href !== "/dashboard" && location.startsWith(item.href));
+                  (item.href === "/my-trips" && (
+                    location.startsWith("/my-trips") ||
+                    location.startsWith("/itinerary") ||
+                    location.startsWith("/my-itinerary")
+                  )) ||
+                  (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
                 
                 return (
                   <SidebarMenuItem key={item.title}>

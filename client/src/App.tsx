@@ -330,7 +330,7 @@ function Router() {
         {() => <ProtectedRoute component={ProviderStatusPage} />}
       </Route>
       <Route path="/itinerary/:id">
-        <ItineraryPage />
+        {() => <ProtectedRoute component={ItineraryPage} />}
       </Route>
 
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
