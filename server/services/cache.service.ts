@@ -462,10 +462,32 @@ export class CacheService {
     return enriched;
   }
 
+  private coordinateRefreshAttempts = new Map<string, number>();
+
   async getActivitiesWithCache(destination: string, currency: string = "USD", count: number = 20): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
     const cached = await this.getCachedActivities(destination);
 
     if (cached.length > 0) {
+      const hasMissingCoordinates = cached.some(a => !a.latitude || !a.longitude);
+      const destKey = destination.toLowerCase();
+      const lastAttempt = this.coordinateRefreshAttempts.get(destKey) || 0;
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const shouldRefresh = hasMissingCoordinates && lastAttempt < oneHourAgo;
+
+      if (shouldRefresh) {
+        this.coordinateRefreshAttempts.set(destKey, Date.now());
+        const result = await viatorService.searchByFreetext(destination, currency, count);
+        if (result.products && result.products.length > 0) {
+          const enrichedProducts = await this.enrichProductsWithCoordinates(result.products);
+          await this.cacheActivities(enrichedProducts, destination);
+          const normalized = enrichedProducts.map(p => {
+            const coords = p.logistics?.start?.[0]?.location?.coordinates;
+            return { ...p, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null };
+          });
+          return { data: normalized, fromCache: false };
+        }
+      }
+
       const activitiesWithLocation = cached.map(a => ({
         productCode: a.productCode,
         title: a.title,
