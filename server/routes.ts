@@ -22,7 +22,7 @@ import {
   temporalAnchors, itineraryItems, generatedItineraries
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, or, like, sql, desc, count, ne, inArray } from "drizzle-orm";
+import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import { amadeusService } from "./services/amadeus.service";
@@ -11973,6 +11973,47 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err: any) {
       console.error("Get shared itinerary error:", err);
       res.status(500).json({ error: "Failed to load shared itinerary" });
+    }
+  });
+
+  // GET /api/trips/:tripId/transport-legs
+  // Returns transport legs for the most recent selected variant associated with a trip
+  app.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const userId = (req.user as any).claims.sub;
+
+      const tripOwned = await verifyTripOwnership(tripId, userId);
+      if (!tripOwned) {
+        return res.status(404).json({ error: "Trip not found" });
+      }
+
+      const [comparison] = await db
+        .select({ selectedVariantId: itineraryComparisons.selectedVariantId })
+        .from(itineraryComparisons)
+        .where(
+          and(
+            eq(itineraryComparisons.tripId, tripId),
+            isNotNull(itineraryComparisons.selectedVariantId)
+          )
+        )
+        .orderBy(desc(itineraryComparisons.createdAt))
+        .limit(1);
+
+      if (!comparison?.selectedVariantId) {
+        return res.json({ legs: [], variantId: null });
+      }
+
+      const legs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, comparison.selectedVariantId))
+        .orderBy(asc(transportLegs.legOrder));
+
+      res.json({ legs, variantId: comparison.selectedVariantId });
+    } catch (err: any) {
+      console.error("Get trip transport legs error:", err);
+      res.status(500).json({ error: "Failed to load transport legs" });
     }
   });
 

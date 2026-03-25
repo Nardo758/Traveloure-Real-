@@ -657,9 +657,9 @@ export default function MyItineraryPage() {
                               {legAfter && (
                                 <InlineTransportSelector
                                   leg={legAfter}
-                                  readOnly={transportReadOnly}
-                                  tripId={id}
-                                  className="my-1"
+                                  readOnly={false}
+                                  dayNumber={dayNum}
+                                  className="my-2 ml-2"
                                 />
                               )}
                             </div>

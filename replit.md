@@ -1,10 +1,17 @@
 # Traveloure - AI-Powered Travel Planning Platform
 
 ## Overview
-Traveloure is an AI-powered, full-stack travel planning platform designed to offer personalized trip itineraries and connect users with expert travel advisors. It integrates advanced AI for personalization with human expertise, providing flexible travel planning options from AI-generated suggestions to guidance from local experts. The platform aims to capture a significant market share by catering to diverse travel needs and preferences, offering a blend of AI-driven efficiency and human-centric service for a comprehensive travel planning experience.
+Traveloure is an AI-powered, full-stack travel planning platform designed to offer personalized trip itineraries and connect users with expert travel advisors. It integrates advanced AI for personalization with human expertise, providing flexible travel planning options from AI-generated suggestions to guidance from local experts. The platform aims to capture a significant market share by catering to diverse travel needs and preferences, offering solutions from AI Quick Start Itineraries to multi-city trip planning. It also provides a comprehensive content creation studio for travel experts and a polished final itinerary view for users.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
+
+## Recent Changes (March 2026)
+- **Transport Hub System**: Complete transport booking layer with `transport_booking_options` DB table, `TransportHub` / `TransportBookingCard` / `MultiDayPassCard` components, AI-powered booking option population, Stripe checkout for platform bookings, and affiliate click tracking (12Go, Uber, Viator, etc.)
+- **Transport Tab on Itinerary Page**: Added "Itinerary" + "Transport" tabs to `/itinerary/:id`. Transport tab shows summary stats, legs grouped by day (fully editable via `TransportLeg`), 12Go CTA, and empty state linking to AI Optimization.
+- **Shareable Itinerary Card System**: `transport_legs`, `shared_itineraries`, `maps_export_cache` tables; 8 API endpoints; `TransportLeg`, `DayMapsButton`, `TripExportButton`, `NavigateNextButton`, `ItineraryCard` components; public `/itinerary-view/:token` route.
+- **Dashboard redesign**: Rich plan cards with cover photos, progress rings, activity chips, and stat chips on the trips dashboard.
+- **Per-leg transport mode selector**: Dropdown selector on each transport leg chip with PATCH `/api/transport-legs/:legId/mode` endpoint and AI cost/duration comparison.
 
 ## System Architecture
 
@@ -20,16 +27,25 @@ The application uses a modern, responsive design built with React, Tailwind CSS,
 - **Storage Abstraction**: A server-side abstraction layer provides flexible database operations.
 
 ### Feature Specifications
-- **AI-Powered Trip Planning**: Includes AI Itinerary Builder, Real-Time Intelligence Widget, AI-powered Expert-Traveler Matching, and an AI Content Assistant. Features smart sequencing rules, rich metrics, and options for multi-city trip planning.
-- **Expert Interaction**: Direct communication with local travel experts and an expert-editable itinerary card system with diff tracking and review workflows.
-- **Shareable Itineraries**: Publicly accessible itinerary views with transport leg swapping, KML/GPX exports, and platform-aware map deep links.
-- **Experience Planning System**: Template-based planning for various experience types with category-specific provider browsing, interactive map view, and AI Optimization.
-- **Content Creation Studio**: A platform for travel experts to create various content types, integrated with Instagram Business API for publishing.
-- **Role-Based Dashboards**: Tailored dashboards for Service Providers, Administrators, and Executive Assistants with tools for revenue optimization, analytics, and content management.
-- **Logistics Intelligence Layer**: Shared functionality including multi-person RSVP tracking, vendor management, budget management, AI-powered scheduling optimization, and emergency services.
-- **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities and AI-powered discovery of hidden gems.
-- **Revenue & Content Tracking**: Comprehensive platform-wide systems for tracking revenue, content creation, and moderation with audit trails.
-- **Service Recommendation Engine**: AI-powered service opportunity recommendations based on trend data.
+- **AI-Powered Trip Planning**: Includes an AI Itinerary Builder, Real-Time Intelligence Widget, AI-powered Expert-Traveler Matching, AI Content Assistant, Smart Sequencing integration for activities, and AI Quick Start Itinerary generation.
+- **Expert Advisor Chat**: Direct communication with local travel experts.
+- **Tourist Place Discovery**: Search and exploration of destinations.
+- **Experience Planning System**: Template-based planning for various experience types with category-specific provider browsing, interactive map view, and an AI Optimization tab.
+- **Reviews & Notifications**: User review and update system.
+- **Role-Based Dashboards**: Dashboards for Service Providers, Administrators, and Executive Assistants.
+- **Expert Tools Suite**: Comprehensive tools for travel experts including Revenue Optimization Dashboard, Expert Leaderboard, Business Analytics, and Templates & Quick Responses.
+- **AI Assistant**: Task delegation, auto-draft responses, vendor research, and automated follow-ups.
+- **Wallet & Billing**: Credit package purchasing, transaction history, and payment management.
+- **Coordination Hub**: Tracks planning lifecycle, vendor availability, state management, and bookings.
+- **Trip Transport Planner**: Intelligent transportation planning, analysis, and map integration, including shareable itinerary cards with transport leg swapping.
+- **Logistics Intelligence Layer**: Provides shared functionality including multi-person RSVP tracking, vendor management, budget management, AI-powered scheduling optimization, and emergency services.
+- **Spontaneous Activities & Live Intel Engine**: Real-time discovery of spontaneous opportunities.
+- **AI Discovery System (Hidden Gems)**: Grok-powered discovery of authentic local experiences.
+- **Affiliate Web Scraping System**: AI-powered web scraping for partners without APIs, with partner management and automatic affiliate link generation.
+- **Content Tracking System**: Platform-wide content management and moderation with various content types and moderation workflows.
+- **Revenue Tracking System**: Complete platform revenue tracking linked to content tracking, including platform revenue, provider earnings, and payouts.
+- **Service Recommendation Engine**: AI-powered service opportunity recommendations based on TravelPulse trends.
+- **Shareable Itinerary System**: Publicly shareable itinerary views with KML/GPX export and platform-aware Maps deep links.
 
 ### System Design Choices
 - **Modularity**: Codebase organized for clear separation of concerns.
@@ -46,16 +62,17 @@ The application uses a modern, responsive design built with React, Tailwind CSS,
   - **Grok (xAI)**: For expert matching, real-time intelligence, content generation, autonomous itinerary building, and city intelligence.
   - **Anthropic Claude**: For empathetic chat, itinerary optimization, transportation analysis, and nuanced travel advice.
   - **AI Orchestrator**: Routes requests to the appropriate AI provider.
+- **AI Cost Tracking System**: Platform-wide AI usage monitoring and cost analytics.
+- **External API Cost Tracking System**: Platform-wide external API (Amadeus) usage monitoring.
+- **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence daily.
+- **Content Enrichment System**: Merges AI-generated recommendations with booking/affiliate data.
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
-- **Amadeus Self-Service API**: Comprehensive travel content including real-time flight/hotel search, POI discovery, tours, activities, airport transfers, and destination safety ratings.
+- **Amadeus Self-Service API**: Comprehensive travel content including real-time flight and hotel search, POI discovery, Tours and Activities search, Airport Transfer booking, and Destination Safety Ratings.
 - **Viator Partner API**: Real-time tours and activities search.
 - **Fever Partner API**: Event discovery and ticketing.
 - **12Go Transportation Booking**: Affiliate widget for ground transportation bookings.
-- **SERP API Hybrid Search System**: Integrates external providers via SerpAPI with native provider prioritization.
-- **SerpAPI**: For venue searches (restaurants, attractions, nightlife).
-- **AI Cost Tracking System**: Monitors AI usage and costs.
-- **External API Cost Tracking System**: Monitors external API usage (e.g., Amadeus).
-- **TravelPulse AI Intelligence System**: Generates and updates comprehensive city intelligence.
-- **Content Enrichment System**: Merges AI-generated recommendations with booking/affiliate data.
 - **External API Caching System**: Provides 24-hour caching for hotel, flight, and activity data.
 - **Unified Experience Catalog Service**: Unifies search across cached provider data.
+- **SERP API Hybrid Search System**: Integrates external providers via SerpAPI with native provider prioritization.
+- **SerpAPI**: For venue searches (restaurants, attractions, nightlife).
+- **Instagram Business API**: OAuth flow for Instagram Business/Creator accounts, single and carousel image publishing, AI-generated hashtags.

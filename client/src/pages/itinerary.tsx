@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,12 +15,10 @@ import {
   Headphones,
   CreditCard,
   AlertCircle,
-  Eye,
-  XCircle,
-  ShieldCheck,
-  ExternalLink,
-  MapPin,
+  Bus,
 } from "lucide-react";
+import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Dialog,
   DialogContent,
@@ -30,7 +29,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { useTrip, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, addDays, differenceInDays } from "date-fns";
@@ -118,90 +116,40 @@ export default function ItineraryPage() {
   const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
-  const [realLegsMap, setRealLegsMap] = useState<Record<number, InlineTransportLegData[]>>({});
-  const [showMap, setShowMap] = useState(false);
-  const [showChanges, setShowChanges] = useState(false);
+  const [activeTab, setActiveTab] = useState("itinerary");
   const { toast } = useToast();
 
-  const activateTransportMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/trips/${tripId}/activate-transport`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-      });
-      if (!res.ok) return null;
-      return res.json() as Promise<{ variantId: string; legs: Array<InlineTransportLegData & { dayNumber: number }> }>;
-    },
-    onSuccess: (data) => {
-      if (!data?.legs?.length) return;
-      const byDay: Record<number, InlineTransportLegData[]> = {};
-      for (const leg of data.legs) {
-        const d = leg.dayNumber;
-        if (!byDay[d]) byDay[d] = [];
-        byDay[d].push(leg);
-      }
-      setRealLegsMap(byDay);
-    },
-  });
+  interface TripTransportLeg {
+    id: string;
+    variantId: string;
+    dayNumber: number;
+    legOrder: number;
+    fromName: string;
+    fromLat: number;
+    fromLng: number;
+    toName: string;
+    toLat: number;
+    toLng: number;
+    distanceMeters: number;
+    distanceDisplay: string;
+    recommendedMode: string;
+    userSelectedMode: string | null;
+    estimatedDurationMinutes: number;
+    estimatedCostUsd: number | null;
+    alternativeModes: TransportAlternative[] | null;
+  }
 
-  useEffect(() => {
-    if (!generatedItinerary?.itineraryData) return;
-    const data: any = generatedItinerary.itineraryData;
-    const daysData: any[] = data?.days || data?.dailyItinerary || [];
-    const hasCoords = daysData.some((d: any) =>
-      (d.activities || []).some((a: any) => a.lat && a.lng)
-    );
-    if (hasCoords) {
-      activateTransportMutation.mutate();
-    }
-  }, [tripId, generatedItinerary?.itineraryData]);
+  interface TripTransportLegsResponse {
+    legs: TripTransportLeg[];
+    variantId: string | null;
+  }
 
-  const { data: shareData } = useQuery<{
-    shareToken?: string;
-    variantId?: string;
-    expertStatus?: string;
-    expertNotes?: string | null;
-    expertDiff?: { activityDiffs?: Record<string, ActivityDiff>; transportDiffs?: Record<string, TransportDiff>; submittedAt?: string } | null;
-  }>({
-    queryKey: ["/api/trips", tripId, "share-info"],
+  const { data: legsData, isLoading: legsLoading } = useQuery<TripTransportLegsResponse>({
+    queryKey: ["/api/trips", tripId, "transport-legs"],
     queryFn: async () => {
-      const res = await fetch(`/api/trips/${tripId}/share-info`, { credentials: "include" });
-      if (!res.ok) return {};
+      const res = await fetch(`/api/trips/${tripId}/transport-legs`);
+      if (!res.ok) throw new Error("Failed to load transport legs");
       return res.json();
-    },
-    enabled: !!tripId,
-  });
-
-  const reviewActivityDiffs = shareData?.expertDiff?.activityDiffs ?? {};
-  const reviewTransportDiffs = shareData?.expertDiff?.transportDiffs ?? {};
-
-  const acknowledgeMutation = useMutation({
-    mutationFn: async ({ action, rejectedIds }: { action: "accept" | "reject"; rejectedIds?: string[] }) => {
-      const token = shareData?.shareToken;
-      if (!token) throw new Error("No share token");
-      const res = await fetch(`/api/expert-review/${token}/acknowledge`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, rejectedDiffIds: rejectedIds }),
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to acknowledge");
-      return res.json();
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "share-info"] });
-      setShowDiffReview(false);
-      setRejectedDiffIds(new Set());
-      toast({
-        title: variables.action === "accept" ? "Edits accepted" : "Edits rejected",
-        description: variables.action === "accept"
-          ? "The expert's suggestions have been applied."
-          : "The expert's suggestions have been dismissed.",
-      });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
     },
   });
 
@@ -542,37 +490,65 @@ export default function ItineraryPage() {
                 </div>
               )}
 
-              {transportModeEntries.length > 0 && (
-                <div className="px-4 py-2.5 border-b border-border" data-testid="transport-summary-bar">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] text-muted-foreground font-medium">Transport Summary</span>
-                    <span className="text-[11px] text-muted-foreground">{allTransportLegs} legs total</span>
-                  </div>
-                  <div className="flex h-2 rounded-full overflow-hidden bg-muted" data-testid="transport-progress-bar">
-                    {transportModeEntries.map(([mode, count]) => {
-                      const pct = allTransportLegs > 0 ? (count / allTransportLegs) * 100 : 0;
-                      const colorClass = transportModeColors[mode.toLowerCase()] || "bg-muted-foreground";
-                      return (
-                        <div
-                          key={mode}
-                          className={`${colorClass} transition-all`}
-                          style={{ width: `${pct}%` }}
-                          title={`${mode}: ${count} (${Math.round(pct)}%)`}
-                          data-testid={`transport-bar-segment-${mode}`}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-1.5">
-                    {transportModeEntries.map(([mode, count]) => (
-                      <span key={mode} className="flex items-center gap-1 text-[10px] text-muted-foreground capitalize" data-testid={`transport-legend-${mode}`}>
-                        <span className={`w-2 h-2 rounded-full ${transportModeColors[mode.toLowerCase()] || "bg-muted-foreground"}`} />
-                        {mode} ({count})
-                      </span>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 h-auto w-full justify-start gap-1">
+            <TabsTrigger value="itinerary" className="flex items-center gap-2 data-[state=active]:bg-[#FF385C] data-[state=active]:text-white" data-testid="tab-itinerary">
+              <Calendar className="w-4 h-4" />
+              Itinerary
+            </TabsTrigger>
+            <TabsTrigger value="transport" className="flex items-center gap-2 data-[state=active]:bg-[#FF385C] data-[state=active]:text-white" data-testid="tab-transport">
+              <Bus className="w-4 h-4" />
+              Transport
+              {legsData?.legs?.length ? (
+                <Badge variant="secondary" className="ml-1 text-xs">{legsData.legs.length}</Badge>
+              ) : null}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="itinerary">
+            <div className="flex flex-col lg:flex-row gap-6 pb-12">
+              <div className="lg:w-72 flex-shrink-0">
+            <Card className="bg-white dark:bg-gray-800 lg:sticky lg:top-4 z-10">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-[#6B7280]">Trip Days</CardTitle>
+              </CardHeader>
+              <CardContent className="p-2">
+                <ScrollArea className="h-auto lg:h-[400px]">
+                  <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0">
+                    {itinerary.days.map((day) => (
+                      <button
+                        key={day.day}
+                        onClick={() => setSelectedDay(day.day)}
+                        className={`flex-shrink-0 w-full text-left p-3 rounded-lg transition-all ${
+                          selectedDay === day.day
+                            ? "bg-[#FF385C] text-white"
+                            : "bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
+                        }`}
+                        data-testid={`button-day-${day.day}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className={`text-xs ${selectedDay === day.day ? "text-white/80" : "text-[#6B7280]"}`}>
+                              Day {day.day}
+                            </p>
+                            <p className={`font-medium text-sm ${selectedDay === day.day ? "text-white" : "text-[#111827] dark:text-white"}`}>
+                              {format(day.date, "EEE, MMM d")}
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className={`text-xs ${selectedDay === day.day ? "bg-white/20 text-white" : ""}`}>
+                            {day.activities.length}
+                          </Badge>
+                        </div>
+                        <p className={`text-xs mt-1 truncate ${selectedDay === day.day ? "text-white/90" : "text-[#6B7280]"}`}>
+                          {day.title}
+                        </p>
+                      </button>
                     ))}
                   </div>
-                </div>
-              )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+          </div>
 
               <DaySelector
                 tripId={String(itinerary.id)}
@@ -725,7 +701,107 @@ export default function ItineraryPage() {
               </Card>
             </div>
           </div>
-        </div>
+          </div>
+          </TabsContent>
+
+          {/* ===== TRANSPORT TAB ===== */}
+          <TabsContent value="transport" className="pb-12 space-y-8">
+            {/* Editable legs section — shown only when legs have been generated */}
+            {legsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : legsData?.legs?.length ? (
+              <div>
+                <div className="flex items-center gap-3 mb-5">
+                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Transport Legs</h3>
+                  <Badge variant="secondary">{legsData.legs.length} leg{legsData.legs.length !== 1 ? "s" : ""}</Badge>
+                </div>
+
+                {/* Summary row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                  {[
+                    { label: "Legs", value: legsData.legs.length },
+                    { label: "Travel Time", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0) / 60)}h` },
+                    { label: "Est. Cost", value: `$${legsData.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0).toFixed(0)}` },
+                    { label: "Distance", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.distanceMeters || 0), 0) / 1000)} km` },
+                  ].map(stat => (
+                    <Card key={stat.label} className="bg-white dark:bg-gray-800">
+                      <CardContent className="p-3 flex flex-col items-center">
+                        <span className="text-xl font-bold text-[#FF385C]">{stat.value}</span>
+                        <span className="text-xs text-gray-500 mt-0.5">{stat.label}</span>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Legs grouped by day */}
+                {(() => {
+                  const byDay: Record<number, typeof legsData.legs> = {};
+                  legsData.legs.forEach(leg => {
+                    const day = (leg as any).dayNumber ?? 0;
+                    if (!byDay[day]) byDay[day] = [];
+                    byDay[day].push(leg);
+                  });
+                  return Object.keys(byDay).map(Number).sort((a, b) => a - b).map(dayNum => (
+                    <div key={dayNum} className="mb-6">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-[#FF385C] text-white text-xs font-bold flex-shrink-0">
+                          {dayNum === 0 ? "?" : dayNum}
+                        </div>
+                        <span className="text-sm font-semibold text-[#111827] dark:text-white">
+                          {dayNum === 0 ? "Unassigned" : `Day ${dayNum}`}
+                          {itinerary?.days?.[dayNum - 1]?.title ? ` — ${itinerary.days[dayNum - 1].title}` : ""}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <Badge variant="outline" className="text-xs">{byDay[dayNum].length} leg{byDay[dayNum].length !== 1 ? "s" : ""}</Badge>
+                      </div>
+                      <div className="space-y-3">
+                        {byDay[dayNum].map(leg => (
+                          <TransportLeg
+                            key={leg.id}
+                            leg={{
+                              id: leg.id,
+                              legOrder: leg.legOrder,
+                              fromName: leg.fromName,
+                              fromLat: leg.fromLat,
+                              fromLng: leg.fromLng,
+                              toName: leg.toName,
+                              toLat: leg.toLat,
+                              toLng: leg.toLng,
+                              distanceMeters: leg.distanceMeters,
+                              distanceDisplay: leg.distanceDisplay,
+                              recommendedMode: leg.recommendedMode,
+                              userSelectedMode: leg.userSelectedMode,
+                              estimatedDurationMinutes: leg.estimatedDurationMinutes,
+                              estimatedCostUsd: leg.estimatedCostUsd,
+                              alternativeModes: leg.alternativeModes ?? [],
+                            }}
+                            readOnly={false}
+                            onModeChangeSuccess={() => {}}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : null}
+
+            {/* Transport Hub — booking options (always visible, handles its own empty/loading state) */}
+            <div>
+              {legsData?.legs?.length ? (
+                <div className="flex items-center gap-3 mb-5">
+                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Book Transport</h3>
+                </div>
+              ) : null}
+              <TransportHub tripId={tripId} />
+            </div>
+          </TabsContent>
+
+        </Tabs>
       </div>
 
       <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>

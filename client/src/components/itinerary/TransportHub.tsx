@@ -16,14 +16,11 @@ import {
   Clock,
   DollarSign,
   Zap,
-  CheckCircle2,
-  Navigation,
+  ExternalLink,
 } from "lucide-react";
-import { MultiDayPassCard, type MultiDayPass } from "./MultiDayPassCard";
-import {
-  TRANSPORT_MODE_ICONS,
-  TRANSPORT_MODE_LABELS,
-} from "@/lib/maps-platform";
+import { Button } from "@/components/ui/button";
+import { TransportBookingCard } from "./TransportBookingCard";
+import { MultiDayPassCard } from "./MultiDayPassCard";
 
 interface TransportHubProps {
   tripId: string;
@@ -106,8 +103,7 @@ export function TransportHub({ tripId, readOnly = false, onNavigateToDay }: Tran
   const { data, isLoading, error } = useQuery<TransportHubData>({
     queryKey: ["/api/itinerary", tripId, "transport-hub"],
     queryFn: async () => {
-      const res = await fetch(`/api/itinerary/${tripId}/transport-hub`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load transport hub");
+      const res = await apiRequest("GET", `/api/itinerary/${tripId}/transport-hub`);
       return res.json();
     },
   });
@@ -126,53 +122,34 @@ export function TransportHub({ tripId, readOnly = false, onNavigateToDay }: Tran
     );
   }
 
-  if (!data || data.status === "no_activities" || (data.status !== "calculating" && data.summary.totalLegs === 0)) {
+  if (!data || data.summary.totalLegs === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
         <div className="p-5 rounded-full bg-gray-100 dark:bg-gray-800">
-          <Navigation className="w-10 h-10 text-gray-400" />
+          <MapPin className="w-10 h-10 text-gray-400" />
         </div>
         <div>
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-            No transport options yet
-          </h3>
-          <p className="text-gray-500 max-w-sm text-sm leading-relaxed">
-            Add activities to your itinerary to see transport options. Each leg will show personalised booking choices.
+          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No transport bookings yet</h3>
+          <p className="text-gray-500 max-w-md text-sm">
+            No transport bookings have been added yet. Browse ground transport options via 12Go to get started.
           </p>
         </div>
-      </div>
-    );
-  }
-
-  if (data.status === "calculating") {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-6 text-center">
-        <div className="p-5 rounded-full bg-blue-50 dark:bg-blue-900/20">
-          <Clock className="w-10 h-10 text-blue-500 animate-pulse" />
-        </div>
-        <div>
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-            Calculating transport options…
-          </h3>
-          <p className="text-gray-500 max-w-sm text-sm leading-relaxed">
-            Your itinerary activities are being analysed. Transport booking options will appear shortly.
-          </p>
-        </div>
+        <a
+          href="https://12go.co/en?affiliate_id=13805109"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Button variant="outline">
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Browse 12Go Transport
+          </Button>
+        </a>
       </div>
     );
   }
 
   const { summary, days, multiDayPasses } = data;
-
-  const totalHours = Math.floor(summary.totalTravelMinutes / 60);
-  const totalMins = summary.totalTravelMinutes % 60;
-  const travelTimeDisplay = totalHours > 0
-    ? `${totalHours}h ${totalMins > 0 ? `${totalMins}m` : ""}`
-    : `${totalMins}m`;
-
-  const costLow = isFinite(summary.estimatedCostRange.low) ? summary.estimatedCostRange.low : 0;
-  const costHigh = isFinite(summary.estimatedCostRange.high) ? summary.estimatedCostRange.high : 0;
-  const costDisplay = costLow === 0 && costHigh === 0 ? "Free" : `$${costLow.toFixed(0)}–$${costHigh.toFixed(0)}`;
+  const activeDayData = days.find(d => d.dayNumber === activeDay);
 
   return (
     <div className="space-y-6">
