@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { AlertCircle, Share2, MessageCircle, User, ExternalLink, CheckCircle, XCircle, Eye } from "lucide-react";
+import { AlertCircle, Share2, MessageCircle, User, ExternalLink, CheckCircle, XCircle, Eye, Map } from "lucide-react";
 import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+
+const GOOGLE_MAPS_AVAILABLE = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 interface SharedItineraryResponse {
   variant: {
@@ -78,6 +80,7 @@ export default function ItineraryViewPage() {
   const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
   const [showDiffReview, setShowDiffReview] = useState(false);
   const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
+  const [forcedMapDays, setForcedMapDays] = useState<number[]>();
 
   const { data, isLoading, error } = useQuery<SharedItineraryResponse>({
     queryKey: ["/api/itinerary-share", token],
@@ -266,6 +269,14 @@ export default function ItineraryViewPage() {
   const reviewTransportDiffs = data.expertDiff?.transportDiffs || {};
   const totalReviewDiffs = Object.keys(reviewActivityDiffs).length + Object.keys(reviewTransportDiffs).length;
 
+  const diffActivityIds = new Set(Object.keys(reviewActivityDiffs));
+  const daysWithActivityDiffs = data.variant.days
+    .filter(d => d.activities.some(a => diffActivityIds.has(a.id)))
+    .map(d => d.dayNumber);
+  const hasDiffMapData = data.variant.days.some(d =>
+    d.activities.some(a => diffActivityIds.has(a.id) && (a as any).lat != null)
+  );
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto p-4 pb-12">
@@ -413,6 +424,7 @@ export default function ItineraryViewPage() {
           onTransportDiffsChange={isExpertView ? setTransportDiffs : undefined}
           onExpertNotesChange={isExpertView ? setExpertNotes : undefined}
           expertNotesValue={isExpertView ? expertNotes : undefined}
+          forcedMapDays={forcedMapDays}
         />
 
         {!isExpertView && (
@@ -618,7 +630,21 @@ export default function ItineraryViewPage() {
             </p>
           )}
 
-          <DialogFooter className="mt-4">
+          <DialogFooter className="mt-4 flex-wrap gap-2">
+            {GOOGLE_MAPS_AVAILABLE && hasDiffMapData && daysWithActivityDiffs.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setForcedMapDays([...daysWithActivityDiffs]);
+                  setShowDiffReview(false);
+                }}
+                className="gap-2 mr-auto"
+                data-testid="button-show-on-map"
+              >
+                <Map className="h-4 w-4" />
+                Show on Map
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => acknowledgeMutation.mutate({ action: "reject" })}
