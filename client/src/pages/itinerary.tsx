@@ -401,7 +401,10 @@ export default function ItineraryPage() {
   const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
     dayNum: d.day,
     date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
-    label: format(d.date instanceof Date ? d.date : new Date(d.date), "EEE, MMM d") || d.title || `Day ${d.day}`,
+    label: (() => {
+      const parsed = d.date instanceof Date ? d.date : new Date(d.date);
+      return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);
+    })(),
     activities: (d.activities || []).map((a: any): PlanCardActivity => ({
       id: a.id,
       name: a.title || a.name || "Activity",
