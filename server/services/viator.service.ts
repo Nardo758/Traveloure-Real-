@@ -271,36 +271,13 @@ class ViatorService {
     }
   }
 
-  private destinationsCache: ViatorDestination[] | null = null;
-
   async getDestinations(): Promise<ViatorDestination[]> {
     try {
-      if (this.destinationsCache) return this.destinationsCache;
       const response = await this.makeRequest<any>('/destinations', 'GET');
-      this.destinationsCache = response.destinations || [];
-      return this.destinationsCache!;
+      return response.destinations || [];
     } catch (error: any) {
       console.error('Viator destinations error:', error);
       throw error;
-    }
-  }
-
-  async getDestinationCenter(searchName: string): Promise<{ latitude: number; longitude: number } | null> {
-    try {
-      const destinations = await this.getDestinations();
-      const lower = searchName.toLowerCase();
-      const match = destinations.find(d => d.name.toLowerCase() === lower && d.type === 'CITY')
-        || destinations.find(d => d.name.toLowerCase() === lower)
-        || destinations.find(d => d.name.toLowerCase().includes(lower) || lower.includes(d.name.toLowerCase()));
-      if (match) {
-        const center = (match as any).center;
-        if (center?.latitude && center?.longitude) {
-          return { latitude: center.latitude, longitude: center.longitude };
-        }
-      }
-      return null;
-    } catch {
-      return null;
     }
   }
 
