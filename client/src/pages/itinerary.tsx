@@ -358,6 +358,28 @@ export default function ItineraryPage() {
     count: count as number,
   }));
 
+  const transportModeSummary = itinerary.days.reduce((acc: Record<string, number>, d: any) => {
+    const dayNum = d.day;
+    const real = realLegsMap[dayNum];
+    const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+    legs.forEach((l: any) => {
+      const mode = l.mode || l.type || "transit";
+      acc[mode] = (acc[mode] || 0) + 1;
+    });
+    return acc;
+  }, {} as Record<string, number>);
+
+  const transportModeEntries = Object.entries(transportModeSummary);
+  const transportModeColors: Record<string, string> = {
+    walking: "bg-green-500", walk: "bg-green-500",
+    taxi: "bg-yellow-500", rideshare: "bg-yellow-500", uber: "bg-yellow-500",
+    transit: "bg-blue-500", bus: "bg-blue-500", metro: "bg-blue-500", subway: "bg-blue-500",
+    train: "bg-purple-500", rail: "bg-purple-500",
+    flight: "bg-red-500", plane: "bg-red-500",
+    car: "bg-orange-500", drive: "bg-orange-500", rental: "bg-orange-500",
+    ferry: "bg-cyan-500", boat: "bg-cyan-500",
+  };
+
   const extraStats: ExtraStat[] = [
     { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
     { label: "Total Cost", value: `$${grandTotal.toLocaleString()}`, icon: CostIcon },
@@ -452,6 +474,7 @@ export default function ItineraryPage() {
                   days={planCardDays}
                   selectedDay={selectedDay - 1}
                   onSelectDay={(i) => setSelectedDay(i + 1)}
+                  showActivityCounts
                 />
               </Card>
 
@@ -537,15 +560,38 @@ export default function ItineraryPage() {
                       {type} ({count})
                     </Badge>
                   ))}
-                  {efficiencyScore > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="text-[11px] gap-1 bg-primary/10 text-primary border-0"
-                      data-testid="badge-efficiency"
-                    >
-                      <EfficiencyIcon className="w-3 h-3" /> {efficiencyScore}% confirmed
-                    </Badge>
-                  )}
+                </div>
+              )}
+
+              {transportModeEntries.length > 0 && (
+                <div className="px-4 py-2.5 border-b border-border" data-testid="transport-summary-bar">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[11px] text-muted-foreground font-medium">Transport Summary</span>
+                    <span className="text-[11px] text-muted-foreground">{allTransportLegs} legs total</span>
+                  </div>
+                  <div className="flex h-2 rounded-full overflow-hidden bg-muted" data-testid="transport-progress-bar">
+                    {transportModeEntries.map(([mode, count]) => {
+                      const pct = allTransportLegs > 0 ? (count / allTransportLegs) * 100 : 0;
+                      const colorClass = transportModeColors[mode.toLowerCase()] || "bg-muted-foreground";
+                      return (
+                        <div
+                          key={mode}
+                          className={`${colorClass} transition-all`}
+                          style={{ width: `${pct}%` }}
+                          title={`${mode}: ${count} (${Math.round(pct)}%)`}
+                          data-testid={`transport-bar-segment-${mode}`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-1.5">
+                    {transportModeEntries.map(([mode, count]) => (
+                      <span key={mode} className="flex items-center gap-1 text-[10px] text-muted-foreground capitalize" data-testid={`transport-legend-${mode}`}>
+                        <span className={`w-2 h-2 rounded-full ${transportModeColors[mode.toLowerCase()] || "bg-muted-foreground"}`} />
+                        {mode} ({count})
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </Card>
