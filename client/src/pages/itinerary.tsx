@@ -299,9 +299,9 @@ export default function ItineraryPage() {
         <AlertCircle className="w-12 h-12 text-muted-foreground" />
         <h2 className="text-lg font-semibold text-foreground">Trip not found</h2>
         <p className="text-sm text-muted-foreground">The itinerary you're looking for doesn't exist or has been removed.</p>
-        <Link href="/my-trips">
-          <Button data-testid="button-back-to-trips">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Trips
+        <Link href="/dashboard">
+          <Button data-testid="button-back-to-dashboard">
+            <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
           </Button>
         </Link>
       </div>
@@ -438,10 +438,10 @@ export default function ItineraryPage() {
     <div className="min-h-screen bg-muted/30" data-testid="itinerary-page">
       <div className="max-w-[1100px] mx-auto px-4 md:px-6 pt-4">
         <div className="flex items-center justify-between mb-4">
-          <Link href="/my-trips">
+          <Link href="/dashboard">
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" data-testid="button-back">
               <ArrowLeft className="w-4 h-4" />
-              Back to Trips
+              Back to Dashboard
             </Button>
           </Link>
           <div className="flex gap-1.5">
