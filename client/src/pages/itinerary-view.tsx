@@ -307,10 +307,20 @@ export default function ItineraryViewPage() {
     numberOfTravelers: 1,
   };
 
-  const planCardDays: PlanCardDay[] = data.variant.days.map(d => ({
+  const planCardDays: PlanCardDay[] = data.variant.days.map(d => {
+    let dateLabel = `Day ${d.dayNumber}`;
+    if (d.date) {
+      try {
+        const parsed = new Date(d.date);
+        if (!isNaN(parsed.getTime())) {
+          dateLabel = parsed.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+        }
+      } catch {}
+    }
+    return {
     dayNum: d.dayNumber,
     date: d.date || `Day ${d.dayNumber}`,
-    label: `Day ${d.dayNumber}`,
+    label: dateLabel,
     activities: d.activities.map(a => ({
       id: a.id,
       name: activityDiffs[a.id]?.name || a.name,
@@ -337,7 +347,8 @@ export default function ItineraryViewPage() {
         status: "confirmed" as string,
       };
     }),
-  }));
+  };
+  });
 
   const currentDay = planCardDays[selectedDay];
   const allActivities = planCardDays.flatMap(d => d.activities);
