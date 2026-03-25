@@ -1,0 +1,438 @@
+# IMPLEMENTATION BRIEF: Itinerary PlanCard Redesign
+## For Replit Agent — Read This Entire Document Before Writing Any Code
+
+**What this is:** A complete specification for redesigning the itinerary card system. The current PlanCard component in `client/src/pages/dashboard.tsx` (lines ~95–291) needs to be replaced with a two-section architecture that separates Activities from Transport, supports collaboration tracking, and exports to Maps/Calendar as layers.
+
+**When this triggers:** This card is generated the moment a user creates an itinerary. Every itinerary gets a PlanCard. The card is the primary interface for viewing, sharing, collaborating on, and navigating a trip.
+
+---
+
+## 1. CORE ARCHITECTURE CHANGE
+
+### Current Problem
+The existing PlanCard is a static display card with a photo hero, vibe tags, and action buttons. Transport data was bolted on as a separate "Trip Transport" summary box and a "Ground Transportation" sidebar widget — three disconnected transport sections that don't relate to each other or to the activities timeline.
+
+### New Architecture
+The card has **two distinct sections with a deliberate sequence**:
+
+```
+PlanCard
+├── Hero (photo, title, destination, dates, status, share/export buttons)
+├── Stats Row (days, activities count, transit legs, total transit time)
+├── Day Selector (tab per day)
+├── Section Tabs
+│   ├── "Activities" tab (always accessible)
+│   ├── "Transport" tab (LOCKED until activities are finalized)
+│   └── "Changes" button (opens changelog panel)
+├── Section Content
+│   ├── IF activities: Timeline list of activities with type badges, status, comments, change indicators
+│   └── IF transport: Summary bar + transport legs with mode/duration/cost + accept/reject for suggestions
+└── Maps CTA (Open in Google Maps / Apple Maps with layers)
+```
+
+**Critical Rule:** The Transport tab shows a lock icon and "finalize activities first" message when ANY activity in the selected day has `status: "pending"`. Transport can only be filled in AFTER all activities for that day are confirmed. This is because transport routes depend on knowing the final activity locations.
+
+---
+
+## 2. DATA MODEL CHANGES
+
+### Add to the existing trip/itinerary schema:
+
+```typescript
+// Each day in an itinerary has activities AND transport segments
+interface ItineraryDay {
+  dayNum: number;
+  date: string;           // "Sat, Jan 31"
+  label: string;          // "Arrival & Asakusa" — auto-generated from activities
+  activities: Activity[];
+  transports: TransportLeg[];
+}
+
+interface Activity {
+  id: string;
+  time: string;           // "14:00"
+  name: string;
+  location: string;
+  type: 'dining' | 'attraction' | 'shopping' | 'transport' | 'activity' | 'accommodation';
+  status: 'confirmed' | 'pending' | 'suggested';
+  cost: number;
+  latitude: number;
+  longitude: number;
+  comments: Comment[];
+  changes: ChangeRecord[];
+}
+
+interface TransportLeg {
+  id: string;
+  fromActivityId: string;  // References Activity.id
+  toActivityId: string;    // References Activity.id
+  mode: 'walk' | 'train' | 'taxi' | 'car' | 'bus' | 'bike' | 'shuttle' | 'ferry';
+  duration: number;        // minutes
+  cost: number;
+  currency: string;        // "USD", "JPY", etc.
+  line?: string;           // "Narita Express → Asakusa Line"
+  status: 'confirmed' | 'suggested';
+  suggestedBy?: 'ai' | 'expert' | 'user';
+}
+
+interface ChangeRecord {
+  id: string;
+  who: string;            // "Expert Yuki", "Friend Mika", "AI", "You"
+  action: string;         // "Moved Senso-ji to Day 1 for golden hour light"
+  when: string;           // ISO timestamp
+  type: 'edit' | 'suggest' | 'ai' | 'confirm' | 'reorder' | 'add' | 'remove';
+  role: 'owner' | 'expert' | 'friend' | 'ai';
+}
+
+interface Comment {
+  id: string;
+  author: string;
+  text: string;
+  timestamp: string;
+  role: 'owner' | 'expert' | 'friend';
+}
+```
+
+### Database Migration Needed
+Add these tables/columns to support the new architecture:
+
+1. `transport_legs` table — stores transport segments between activities
+2. `itinerary_changes` table — stores the change log with who/what/when/role
+3. `activity_comments` table — stores comments on individual activities
+4. Add `latitude`, `longitude` columns to the activities table if not present
+5. Add `suggested_by` column to track AI vs expert vs user suggestions
+
+---
+
+## 3. COMPONENT STRUCTURE
+
+### Replace the existing PlanCard with this component tree:
+
+```
+PlanCard.tsx (main container)
+├── PlanCardHero.tsx
+│   ├── Photo background with gradient overlay
+│   ├── Status badge (confirmed/planning/draft)
+│   ├── Traveler count badge
+│   ├── Share button → opens share modal
+│   ├── Export button → calendar/maps export options
+│   └── Title, destination, dates, budget overlay
+│
+├── PlanCardStats.tsx
+│   └── 4-column grid: Days | Activities | Transit Legs | Transit Time
+│
+├── DaySelector.tsx
+│   └── Horizontal scrollable tab bar, one tab per day
+│
+├── SectionTabs.tsx
+│   ├── "Activities" tab with count badge
+│   ├── "Transport" tab with count badge + lock icon (when locked)
+│   └── "Changes" button with unread count
+│
+├── ChangeLogPanel.tsx (collapsible)
+│   └── Chronological list of all changes with color-coded type dots
+│
+├── ActivitiesSection.tsx
+│   ├── Day header (date + label)
+│   ├── "Open in Maps" button
+│   └── ActivityRow.tsx (repeated)
+│       ├── Time column with timeline dot + connecting line
+│       ├── Activity name + type badge + status badge
+│       ├── Location with pin icon + cost
+│       └── Comment count + latest change indicator
+│
+├── TransportSection.tsx
+│   ├── TransportSummaryBar.tsx
+│   │   ├── Legs count, total time, estimated cost
+│   │   └── Mode breakdown pills (walk 11m, train 65m, etc.)
+│   ├── TransportLegRow.tsx (repeated)
+│   │   ├── Mode icon with colored background
+│   │   ├── From → To activity names
+│   │   ├── Mode badge, duration, cost, line info
+│   │   ├── Status badge + "AI suggested" / "Expert suggested" label
+│   │   └── Accept/Change buttons (for suggested status)
+│   └── MapsCTA.tsx
+│       └── "Open Day N in Maps" with Google Maps + Apple Maps buttons
+│
+└── MapControlCenter.tsx (alternate view)
+    ├── Map display area (using actual map library — Mapbox or Google Maps)
+    ├── Day selector overlay
+    ├── Activity pins (toggleable layer)
+    ├── Transport routes (toggleable layer)
+    ├── LayerToggle.tsx (Activities layer on/off, Transport layer on/off)
+    ├── Route summary bar
+    └── Export buttons (Google Maps, Apple Maps, Add to Calendar)
+```
+
+---
+
+## 4. SHARING & COLLABORATION
+
+### Role-Based Permissions
+When a PlanCard is shared, the recipient's capabilities depend on their role:
+
+| Capability | Owner | Expert | Friend |
+|-----------|-------|--------|--------|
+| View activities | ✅ | ✅ | ✅ |
+| View transport | ✅ | ✅ | ✅ |
+| Add comments | ✅ | ✅ | ✅ |
+| Suggest activities | ✅ | ✅ | ✅ |
+| Reorder activities | ✅ | ✅ | ❌ |
+| Add/remove activities | ✅ | ✅ | ❌ |
+| Edit activity details | ✅ | ✅ | ❌ |
+| Fill in transport | ✅ | ✅ | ❌ |
+| Confirm/finalize | ✅ | ❌ | ❌ |
+
+### Change Tracking
+**Every modification is logged.** The change log stores:
+- WHO made the change (name + role)
+- WHAT they changed (human-readable description)
+- WHEN (timestamp)
+- TYPE (edit, suggest, ai, confirm, reorder, add, remove)
+
+Display color coding for change types:
+- Blue dot = expert edit
+- Purple dot = friend suggestion  
+- Green dot = AI auto-suggestion
+- Amber dot = owner confirmation
+
+### Transport Filling Sources
+Transport legs can be populated by multiple sources (in priority order):
+1. **AI auto-suggests** — Based on activity locations, time gaps, and user preferences (walking vs transit preference, budget level). These appear with status "suggested" and suggestedBy "ai"
+2. **Expert recommends** — Expert fills in transport as part of their service. Status "suggested", suggestedBy "expert"
+3. **User picks manually** — User selects mode for each leg. Status "confirmed"
+4. **User accepts suggestion** — User clicks "Accept" on AI/expert suggestion, changing status to "confirmed"
+
+---
+
+## 5. MAP & CALENDAR EXPORT
+
+### This is the most important feature. The card must export as a control center.
+
+### Map Export (Google Maps / Apple Maps)
+When "Open in Maps" is clicked, generate a deep link or file that creates TWO layers:
+
+**Layer 1: Activities (Pins)**
+- Each activity becomes a pin/marker on the map
+- Pin color matches activity type (dining=amber, attraction=blue, shopping=pink, transport=green)
+- Pin label shows activity name + time
+- All pins for the selected day are shown
+
+**Layer 2: Transport (Routes)**  
+- Each transport leg becomes a route/direction between two pins
+- Route style varies by mode:
+  - Walk = dashed green line
+  - Train = solid blue line
+  - Taxi/car = solid amber line
+  - Bus = solid purple line
+- Route label shows duration + mode
+
+**Implementation approach:**
+- For Google Maps: Generate a URL with waypoints for directions, OR create a KML file with two folders (Activities, Transport) that the user can import into Google My Maps
+- For Apple Maps: Generate a `.maps` link or use MapKit JS for the in-app preview
+- The in-app Map Control Center view should use a real map library (Mapbox GL JS or Google Maps JavaScript API) to show the actual map with toggleable layers
+
+### Calendar Export
+When "Add to Calendar" is clicked, generate an .ics file or deep link that creates:
+- One calendar event per activity (with location, time, duration)
+- One calendar event per transport leg (with "Transit: [mode] from [A] to [B]" as title, duration as the event length)
+- Events should include:
+  - Location coordinates for map integration
+  - Description with any notes/tips
+  - Correct timezone for the destination
+
+```
+Example .ics structure for one day:
+
+EVENT: 14:00-15:30 "Airport Arrival" @ Narita International (35.7647, 140.3864)
+EVENT: 15:30-16:30 "🚆 Train: Narita Express → Asakusa" (transit event)
+EVENT: 16:30-17:45 "Senso-ji Temple" @ Asakusa, Taito City (35.7148, 139.7967)  
+EVENT: 17:45-17:48 "🚶 Walk to Nakamise" (transit event)
+EVENT: 18:00-19:15 "Nakamise Shopping Street" @ Asakusa (35.7118, 139.7963)
+EVENT: 19:15-19:23 "🚶 Walk to Ichiran" (transit event)
+EVENT: 19:30-20:30 "Ichiran Ramen" @ Asakusa (35.7108, 139.7955)
+```
+
+---
+
+## 6. TEMPLATE-ADAPTIVE BEHAVIOR
+
+The card layout adapts based on the experience type. The core two-section (Activities + Transport) architecture stays the same, but certain UI elements change:
+
+### Travel Template
+- Stats row shows: Days | Activities | Transit Legs | Transit Time
+- Activity types include: dining, attraction, shopping, transport
+- Transport modes include all options
+- Standard behavior as described above
+
+### Wedding Template  
+- Stats row shows: Days | Events | Vendors Confirmed (8/12) | Guest Groups
+- "Activities" tab is labeled "Events & Vendors"
+- Activity types include: ceremony, reception, rehearsal, vendor_setup, guest_activity
+- Transport section focuses on: Guest shuttles (with capacity), vendor arrivals, bridal party logistics
+- Additional indicator: Vendor confirmation status
+- Change log emphasizes vendor coordination changes
+
+### Corporate Template
+- Stats row shows: Days | Sessions | Attendees | Venues
+- "Activities" tab is labeled "Agenda"
+- Activity types include: keynote, breakout, networking, team_building, meal
+- Transport section focuses on: Airport pickups (staggered), venue transfers (group coach)
+- Additional indicator: Attendee group assignments
+- Transport legs may have "capacity" field for group logistics
+
+### Proposal Template
+- Stats row shows: Moments | Vendors | Backup Plans | Budget
+- Minimal transport section (usually single-evening)
+- Emphasis on timing precision and weather contingency
+- Change log is hidden from the person being proposed to (obviously)
+
+### Date Night Template
+- Simplified card — usually single evening
+- Stats row shows: Stops | Total Time | Budget
+- Transport section is streamlined (fewer legs)
+- Emphasis on reservation times and peak timing
+
+### Implementation:
+```typescript
+// In the PlanCard component, use the trip.type to conditionally render:
+const templateConfig = {
+  travel: {
+    activityLabel: "Activities",
+    stats: ["days", "activities", "transitLegs", "transitTime"],
+    activityTypes: ["dining", "attraction", "shopping", "transport"],
+  },
+  wedding: {
+    activityLabel: "Events & Vendors", 
+    stats: ["days", "events", "vendorsConfirmed", "guestGroups"],
+    activityTypes: ["ceremony", "reception", "rehearsal", "vendor_setup", "guest_activity"],
+  },
+  corporate: {
+    activityLabel: "Agenda",
+    stats: ["days", "sessions", "attendees", "venues"],
+    activityTypes: ["keynote", "breakout", "networking", "team_building", "meal"],
+  },
+  // ... etc
+};
+```
+
+---
+
+## 7. IMPLEMENTATION ORDER
+
+**Do this in sequence. Do not skip steps.**
+
+### Step 1: Database & API
+1. Create the `transport_legs`, `itinerary_changes`, and `activity_comments` tables
+2. Add `latitude`, `longitude` to activities table
+3. Create CRUD API endpoints for transport legs
+4. Create API endpoint for change log (auto-logs on any itinerary mutation)
+5. Create API endpoint for comments on activities
+
+### Step 2: Core PlanCard Component
+1. Create the new PlanCard component with Hero, Stats, Day Selector
+2. Implement the Section Tabs with Activities/Transport toggle
+3. Implement the transport lock logic (locked when any activity is pending)
+4. Build the Activities section with timeline view
+5. Build the Transport section with summary bar and leg rows
+
+### Step 3: Collaboration Features  
+1. Implement the change log panel with color-coded entries
+2. Add comment indicators on activity rows
+3. Implement change tracking — every mutation to an itinerary automatically creates a change record
+4. Build the share modal with role-based permission selection
+
+### Step 4: Transport Population
+1. Implement AI auto-suggest for transport legs (use activity lat/lng to calculate routes)
+2. Add accept/reject UI for suggested transport legs
+3. Allow manual transport mode selection
+4. Implement expert transport recommendation flow
+
+### Step 5: Map Integration
+1. Add a real map library (Mapbox GL JS recommended — free tier covers launch volume)
+2. Build the Map Control Center view with activity pins and transport route layers
+3. Implement layer toggles (Activities layer, Transport layer)
+4. Build Google Maps deep link generation with waypoints
+5. Build Apple Maps link generation
+
+### Step 6: Calendar Export
+1. Build .ics file generation with activities + transport events
+2. Add timezone support based on destination
+3. Add "Add to Calendar" button that downloads the .ics or opens Google Calendar
+
+### Step 7: Template Adaptation
+1. Create the templateConfig object with per-template settings
+2. Conditionally render stats, labels, and activity types based on trip.type
+3. Test with travel, wedding, and corporate templates
+
+---
+
+## 8. VISUAL DESIGN SPECIFICATIONS
+
+### Color System
+```css
+/* Activity type colors */
+--dining: #f59e0b (amber)
+--attraction: #3b82f6 (blue)
+--shopping: #ec4899 (pink)
+--transport: #22c55e (green)
+
+/* Transport mode colors */
+--walk: #22c55e
+--train: #3b82f6
+--taxi: #f59e0b
+--bus: #8b5cf6
+--shuttle: #ec4899
+
+/* Status colors */
+--confirmed-bg: #dcfce7  --confirmed-fg: #166534
+--pending-bg: #fef9c3    --pending-fg: #854d0e
+--suggested-bg: #e0e7ff  --suggested-fg: #3730a3
+
+/* Change type dots */
+--change-edit: #3b82f6 (expert edit)
+--change-suggest: #a855f7 (friend suggestion)
+--change-ai: #22c55e (AI)
+--change-confirm: #f59e0b (owner)
+```
+
+### Typography
+- Card title: serif font (DM Serif Display or similar), 26px
+- Activity names: 15px, weight 600
+- Time labels: 13px, weight 700
+- Badges: 10px, weight 700, uppercase, letter-spacing 0.3px
+- Meta text (location, cost): 12px, color muted
+
+### Key UI Patterns
+- Timeline dots on activity rows with connecting gradient lines
+- Transport mode icons in colored rounded squares (40x40px)
+- Lock icon + disabled state on Transport tab when activities aren't finalized
+- Accept/Change button pair on suggested transport legs
+- Unread count badge on Changes button (amber circle)
+- Route lines on map: dashed for walking, solid for motorized transport
+
+---
+
+## 9. WHAT NOT TO DO
+
+- **Do NOT** put transport data inline between activities. Activities and Transport are separate sections.
+- **Do NOT** allow transport editing before activities are confirmed for that day.
+- **Do NOT** create separate "Trip Transport" summary widgets disconnected from the card.
+- **Do NOT** use a "Ground Transportation" booking sidebar. Transport booking happens within the Transport section of each day.
+- **Do NOT** mix the map view with the card view — they are two distinct views toggled by a button.
+- **Do NOT** lose the photo hero visual appeal. This is a "balanced overview" — logistics data is layered into the existing attractive design, not replacing it.
+- **Do NOT** implement all template types at once. Start with Travel template, then add Wedding and Corporate.
+
+---
+
+## 10. REFERENCE PROTOTYPE
+
+A React prototype of this design exists as `PlanCard_Redesign.jsx`. Use it as a visual reference for layout, spacing, color usage, and interaction patterns. The prototype uses inline styles — convert these to your project's styling system (Tailwind/shadcn) during implementation.
+
+The prototype demonstrates:
+- Card View with Activities/Transport section toggle
+- Map Control Center view with toggleable layers
+- Change log panel
+- Transport lock behavior
+- Accept/reject flow for suggested transport
+- Mode-colored route visualization

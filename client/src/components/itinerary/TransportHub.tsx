@@ -1,23 +1,19 @@
 /**
- * TransportHub Component
+ * TransportHub Component v3 — Aggregate Overview
  *
- * Main interface for viewing and booking transport options
- * Displays:
- * - Summary cards (total legs, booked, cost, time)
- * - Days with transport legs and booking options
+ * Summary-only transport dashboard:
+ * - Overview stat bar (Total Legs / Booked / Est. Cost / Travel Time)
+ * - Mode breakdown row (e.g. "🚃 65% Train • 🚶 20% Walk")
  * - Multi-day pass recommendations
+ * - Per-day summary rows (no per-leg editing — that lives in each day's Transport tab)
  */
 
-import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Clock,
-  MapPin,
   DollarSign,
   Zap,
   ExternalLink,
@@ -29,14 +25,67 @@ import { MultiDayPassCard } from "./MultiDayPassCard";
 interface TransportHubProps {
   tripId: string;
   readOnly?: boolean;
+  onNavigateToDay?: (dayNumber: number) => void;
+}
+
+interface ModeBreakdownItem {
+  mode: string;
+  count: number;
+  percent: number;
+}
+
+interface BookingOption {
+  id: string;
+  bookingType: "platform" | "affiliate" | "deep_link" | "info_only";
+  source: string;
+  title: string;
+  description?: string;
+  modeType: string;
+  iconType?: string;
+  priceDisplay?: string;
+  estimatedMinutes?: number;
+  rating?: number;
+  reviewCount?: number;
+  externalUrl?: string;
+  deepLinkScheme?: string;
+  isRecommended?: boolean;
+  bookingStatus?: string;
+  confirmationRef?: string | null;
+  isMultiDayPass?: boolean;
+}
+
+interface TransportLeg {
+  id: string;
+  legOrder: number;
+  fromName: string;
+  toName: string;
+  distanceDisplay: string;
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  estimatedDurationMinutes: number;
+  estimatedCostUsd: number | null;
+  alternativeModes?: Array<{
+    mode: string;
+    durationMinutes: number;
+    costUsd: number | null;
+    energyCost: number;
+    reason: string;
+  }>;
+  fromLat: number;
+  fromLng: number;
+  toLat: number;
+  toLng: number;
+  bookingOptions: BookingOption[];
 }
 
 interface TransportHubData {
+  status?: "no_activities" | "calculating" | "ready";
   summary: {
     totalLegs: number;
     bookedLegs: number;
     estimatedCostRange: { low: number; high: number };
     totalTravelMinutes: number;
+    modeBreakdown?: ModeBreakdownItem[];
     preferences: {
       priority: string;
       maxWalkMinutes: number;
@@ -45,30 +94,12 @@ interface TransportHubData {
   };
   days: Array<{
     dayNumber: number;
-    legs: Array<{
-      id: string;
-      legOrder: number;
-      fromName: string;
-      toName: string;
-      distanceDisplay: string;
-      recommendedMode: string;
-      userSelectedMode: string | null;
-      estimatedDurationMinutes: number;
-      estimatedCostUsd: number | null;
-      fromLat: number;
-      fromLng: number;
-      toLat: number;
-      toLng: number;
-      bookingOptions: any[];
-    }>;
+    legs: TransportLeg[];
   }>;
-  multiDayPasses: any[];
+  multiDayPasses: MultiDayPass[];
 }
 
-export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
-  const [activeDay, setActiveDay] = useState<number | null>(null);
-
-  // Fetch transport hub data
+export function TransportHub({ tripId, readOnly = false, onNavigateToDay }: TransportHubProps) {
   const { data, isLoading, error } = useQuery<TransportHubData>({
     queryKey: ["/api/itinerary", tripId, "transport-hub"],
     queryFn: async () => {
@@ -76,13 +107,6 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
       return res.json();
     },
   });
-
-  // Set first day as active
-  useEffect(() => {
-    if (data?.days && data.days.length > 0 && activeDay === null) {
-      setActiveDay(data.days[0].dayNumber);
-    }
-  }, [data, activeDay]);
 
   if (isLoading) {
     return <TransportHubSkeleton />;
@@ -92,7 +116,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
     return (
       <Card className="border-destructive bg-destructive/5">
         <CardContent className="pt-6">
-          <p className="text-sm text-destructive">Failed to load transport options</p>
+          <p className="text-sm text-destructive">Failed to load transport options. Please try again.</p>
         </CardContent>
       </Card>
     );
@@ -129,7 +153,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
+      {/* ── Summary stat bar ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SummaryCard
           icon={<Zap className="h-4 w-4" />}
@@ -138,7 +162,7 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
           color="blue"
         />
         <SummaryCard
-          icon={<Badge className="h-4 w-4 bg-green-100 text-green-700 text-xs p-0.5">✓</Badge>}
+          icon={<CheckCircle2 className="h-4 w-4" />}
           label="Booked"
           value={`${summary.bookedLegs}/${summary.totalLegs}`}
           color="green"
@@ -146,184 +170,127 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
         <SummaryCard
           icon={<DollarSign className="h-4 w-4" />}
           label="Est. Cost"
-          value={`$${summary.estimatedCostRange.low.toFixed(0)}-${summary.estimatedCostRange.high.toFixed(0)}`}
+          value={costDisplay}
           color="amber"
         />
         <SummaryCard
           icon={<Clock className="h-4 w-4" />}
           label="Total Travel"
-          value={`${summary.totalTravelMinutes}h`}
-          description={`${Math.round(summary.totalTravelMinutes / 60)}h ${summary.totalTravelMinutes % 60}m`}
+          value={travelTimeDisplay}
           color="purple"
         />
       </div>
 
-      {/* Transport Preferences */}
-      <Card className="border-muted bg-muted/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Transport Preferences</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Priority:</span>
-              <Badge variant="outline" className="capitalize">{summary.preferences.priority}</Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Max Walk:</span>
-              <span className="font-medium">{summary.preferences.maxWalkMinutes} min</span>
-            </div>
-            {summary.preferences.avoidModes.length > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Avoid:</span>
-                <div className="flex gap-1">
-                  {summary.preferences.avoidModes.map(mode => (
-                    <Badge key={mode} variant="secondary" className="text-xs">{mode}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Days with Transport Legs */}
-      {days.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Transport Options by Day</h3>
-
-          {days.length > 1 && (
-            <Tabs
-              value={activeDay?.toString() || ""}
-              onValueChange={(val) => setActiveDay(parseInt(val))}
-              className="w-full"
-            >
-              <TabsList className="w-full justify-start overflow-x-auto">
-                {days.map(day => (
-                  <TabsTrigger key={day.dayNumber} value={day.dayNumber.toString()}>
-                    Day {day.dayNumber}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              {days.map(day => (
-                <TabsContent key={day.dayNumber} value={day.dayNumber.toString()}>
-                  <DayTransportLegs day={day} readOnly={readOnly} />
-                </TabsContent>
-              ))}
-            </Tabs>
-          )}
-
-          {days.length === 1 && <DayTransportLegs day={days[0]} readOnly={readOnly} />}
+      {/* ── Mode breakdown row ── */}
+      {summary.modeBreakdown && summary.modeBreakdown.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap text-sm">
+          {summary.modeBreakdown.map((item, i) => (
+            <span key={item.mode} className="flex items-center gap-1">
+              {i > 0 && <span className="text-muted-foreground mx-1">•</span>}
+              <span>{TRANSPORT_MODE_ICONS[item.mode] || "🚌"}</span>
+              <span className="font-medium text-gray-700 dark:text-gray-300">
+                {item.percent}% {TRANSPORT_MODE_LABELS[item.mode] || item.mode}
+              </span>
+            </span>
+          ))}
         </div>
       )}
 
-      {/* Multi-Day Passes */}
+      {/* ── Transport preferences ── */}
+      <div className="flex items-center gap-2 flex-wrap text-sm text-gray-500 dark:text-gray-400">
+        <span className="font-medium text-gray-700 dark:text-gray-300">Preferences:</span>
+        <Badge variant="outline" className="capitalize">{summary.preferences.priority}</Badge>
+        <span>•</span>
+        <span>Max walk: {summary.preferences.maxWalkMinutes} min</span>
+        {summary.preferences.avoidModes.length > 0 && (
+          <>
+            <span>•</span>
+            <span>Avoid: {summary.preferences.avoidModes.join(", ")}</span>
+          </>
+        )}
+      </div>
+
+      {/* ── Multi-day passes — TOP (before day sections) ── */}
       {multiDayPasses.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Travel Passes</h3>
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              Multi-Day Transport Passes
+            </h3>
+            <p className="text-sm text-gray-500 mt-0.5">Recommended based on your itinerary</p>
+          </div>
           <div className="grid gap-3">
-            {multiDayPasses.map(pass => (
+            {multiDayPasses.map((pass) => (
               <MultiDayPassCard key={pass.id} pass={pass} readOnly={readOnly} />
             ))}
           </div>
         </div>
       )}
 
-      {/* Empty State */}
-      {days.length === 0 && multiDayPasses.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="pt-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              No transport options available yet. Your transport options will appear after optimization.
+      {/* ── Per-day summary rows ── */}
+      {days.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              Per-Day Overview
+            </h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Use the Transport tab on each day card for detailed mode selection, booking, and 12Go options
             </p>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="grid gap-2">
+            {days.map((day) => {
+              const totalMins = day.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
+              const totalCostDay = day.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0);
+              const modes = new Set(day.legs.map(l => l.userSelectedMode || l.recommendedMode));
+              return (
+                <div
+                  key={day.dayNumber}
+                  className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50"
+                  data-testid={`transport-day-summary-${day.dayNumber}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-sm text-gray-900 dark:text-white">Day {day.dayNumber}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {day.legs.length} {day.legs.length === 1 ? "leg" : "legs"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      {Array.from(modes).map(m => (
+                        <span key={m} title={TRANSPORT_MODE_LABELS[m] || m}>{TRANSPORT_MODE_ICONS[m] || "🚌"}</span>
+                      ))}
+                    </span>
+                    {totalMins > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {totalMins} min
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" />
+                      {totalCostDay === 0 ? "Free" : `$${totalCostDay.toFixed(0)}`}
+                    </span>
+                    {onNavigateToDay && (
+                      <button
+                        onClick={() => onNavigateToDay(day.dayNumber)}
+                        className="text-primary hover:underline font-medium ml-1"
+                        data-testid={`hub-goto-day-${day.dayNumber}`}
+                      >
+                        View →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-/**
- * Transport legs for a single day
- */
-function DayTransportLegs({
-  day,
-  readOnly,
-}: {
-  day: TransportHubData["days"][0];
-  readOnly?: boolean;
-}) {
-  if (day.legs.length === 0) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="pt-6 text-center">
-          <p className="text-sm text-muted-foreground">No transport legs for this day</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {day.legs.map((leg, idx) => (
-        <Card key={leg.id}>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <MapPin className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{leg.fromName} → {leg.toName}</span>
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  {leg.distanceDisplay} • {leg.estimatedDurationMinutes} min
-                </CardDescription>
-              </div>
-              <Badge variant="outline" className="shrink-0">
-                Leg {leg.legOrder}
-              </Badge>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            {/* Current selection */}
-            <div className="p-3 rounded-lg bg-muted/50">
-              <div className="text-sm font-medium mb-2">Selected Mode</div>
-              <Badge className="bg-primary text-white">
-                {leg.userSelectedMode || leg.recommendedMode}
-              </Badge>
-              {leg.estimatedCostUsd && (
-                <div className="text-sm text-muted-foreground mt-2">
-                  ${leg.estimatedCostUsd.toFixed(0)}
-                </div>
-              )}
-            </div>
-
-            {/* Booking options */}
-            {leg.bookingOptions.length > 0 ? (
-              <div className="space-y-3">
-                <div className="text-sm font-medium">Booking Options</div>
-                {leg.bookingOptions.map(option => (
-                  <TransportBookingCard
-                    key={option.id}
-                    option={option}
-                    readOnly={readOnly}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No booking options available</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Summary card component
- */
 function SummaryCard({
   icon,
   label,
@@ -337,7 +304,7 @@ function SummaryCard({
   description?: string;
   color?: string;
 }) {
-  const colorClasses = {
+  const colorClasses: Record<string, string> = {
     blue: "bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-300",
     green: "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-300",
     amber: "bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-300",
@@ -345,12 +312,12 @@ function SummaryCard({
   };
 
   return (
-    <div className={`rounded-lg p-4 ${colorClasses[color as keyof typeof colorClasses] || colorClasses.blue}`}>
+    <div className={`rounded-lg p-4 ${colorClasses[color || "blue"]}`}>
       <div className="flex items-center gap-2 mb-1">
         {icon}
         <span className="text-xs font-medium">{label}</span>
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-xl font-bold truncate">{value}</div>
       {description && <p className="text-xs mt-1 opacity-75">{description}</p>}
     </div>
   );
@@ -362,25 +329,22 @@ function SummaryCard({
 function TransportHubSkeleton() {
   return (
     <div className="space-y-6">
-      {/* Summary cards skeleton */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map(i => (
+        {[1, 2, 3, 4].map((i) => (
           <div key={i} className="rounded-lg p-4 bg-muted">
             <Skeleton className="h-4 w-16 mb-2" />
             <Skeleton className="h-6 w-20" />
           </div>
         ))}
       </div>
-
-      {/* Content skeleton */}
+      <Skeleton className="h-5 w-48" />
       <Card>
         <CardHeader>
-          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-6 w-32" />
         </CardHeader>
         <CardContent className="space-y-4">
-          <Skeleton className="h-20" />
-          <Skeleton className="h-20" />
-          <Skeleton className="h-20" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
         </CardContent>
       </Card>
     </div>
