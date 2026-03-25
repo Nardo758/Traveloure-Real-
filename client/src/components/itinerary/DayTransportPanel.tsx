@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { InlineTransportLegData } from "./InlineTransportSelector";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { TransportBookingCard } from "./TransportBookingCard";
 
 const ENHANCED_MODES = [
   { mode: "private_driver", label: "Private Car", icon: Car, description: "Door-to-door private driver" },
@@ -129,6 +130,39 @@ interface ModeUpdateResult {
   };
 }
 
+interface LegBookingOption {
+  id: string;
+  bookingType: "platform" | "affiliate" | "deep_link" | "info_only";
+  source: string;
+  title: string;
+  description?: string;
+  modeType: string;
+  iconType?: string;
+  priceDisplay?: string;
+  estimatedMinutes?: number;
+  rating?: number;
+  reviewCount?: number;
+  externalUrl?: string;
+  deepLinkScheme?: string;
+  isRecommended?: boolean;
+  bookingStatus?: string;
+  confirmationRef?: string | null;
+}
+
+interface HubLeg {
+  id: string;
+  bookingOptions: LegBookingOption[];
+}
+
+interface HubDay {
+  dayNumber: number;
+  legs: HubLeg[];
+}
+
+interface HubData {
+  days: HubDay[];
+}
+
 interface DayTransportPanelProps {
   dayNumber: number;
   legs: InlineTransportLegData[];
@@ -152,6 +186,27 @@ export function DayTransportPanel({
   onModeChange,
   onModeChangeSuccess,
 }: DayTransportPanelProps) {
+  const { data: hubData } = useQuery<HubData>({
+    queryKey: ["/api/itinerary", tripId, "transport-hub"],
+    queryFn: async () => {
+      if (!tripId) return { days: [] };
+      const res = await fetch(`/api/itinerary/${tripId}/transport-hub`, { credentials: "include" });
+      if (!res.ok) return { days: [] };
+      return res.json();
+    },
+    enabled: !!tripId,
+  });
+
+  const bookingOptionsMap = new Map<string, BookingOption[]>();
+  if (hubData?.days) {
+    const dayData = hubData.days.find(d => d.dayNumber === dayNumber);
+    if (dayData) {
+      for (const leg of dayData.legs) {
+        bookingOptionsMap.set(leg.id, leg.bookingOptions || []);
+      }
+    }
+  }
+
   if (!legs || legs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-4 text-center" data-testid={`transport-panel-empty-day-${dayNumber}`}>
@@ -199,6 +254,7 @@ export function DayTransportPanel({
             isExpertMode={isExpertMode}
             onModeChange={onModeChange}
             onModeChangeSuccess={onModeChangeSuccess}
+            bookingOptions={bookingOptionsMap.get(leg.id) || []}
           />
         ))}
       </div>
@@ -215,6 +271,7 @@ function TransportLegCard({
   isExpertMode,
   onModeChange,
   onModeChangeSuccess,
+  bookingOptions,
 }: {
   leg: InlineTransportLegData;
   readOnly?: boolean;
@@ -224,6 +281,7 @@ function TransportLegCard({
   isExpertMode?: boolean;
   onModeChange?: (legId: string, newMode: string, originalMode: string) => void;
   onModeChangeSuccess?: (legId: string, timeDiffMinutes: number) => void;
+  bookingOptions: LegBookingOption[];
 }) {
   const { toast } = useToast();
   const originalMode = leg.userSelectedMode || leg.recommendedMode;
@@ -536,6 +594,31 @@ function TransportLegCard({
                 </div>
               </div>
             )}
+
+            {bookingOptions.length > 0 && (() => {
+              const platformOpts = bookingOptions.filter(o => o.bookingType === "platform");
+              const thirdPartyOpts = bookingOptions.filter(o => o.bookingType !== "platform");
+              return (
+                <div className="space-y-2">
+                  {platformOpts.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Platform Options</p>
+                      {platformOpts.map(opt => (
+                        <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly || false} />
+                      ))}
+                    </div>
+                  )}
+                  {thirdPartyOpts.length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Third-Party Options</p>
+                      {thirdPartyOpts.map(opt => (
+                        <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly || false} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {(isTransitMode(currentMode) || ["private_driver", "rental_car", "taxi", "rideshare"].includes(currentMode)) && (
               <TwelveGoTransport
