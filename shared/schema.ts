@@ -683,6 +683,7 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   endDate: date("end_date"),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   travelers: integer("travelers").default(1),
+  experienceTypeSlug: varchar("experience_type_slug", { length: 50 }),
   status: varchar("status", { length: 30 }).default("pending"),
   selectedVariantId: varchar("selected_variant_id"),
   createdAt: timestamp("created_at").defaultNow(),

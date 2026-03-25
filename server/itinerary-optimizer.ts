@@ -16,6 +16,8 @@ import {
   temporalAnchors,
   dayBoundaries,
   transportLegs,
+  experienceTypes,
+  ExperienceType,
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import {
@@ -160,6 +162,55 @@ function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   return desc;
 }
 
+function buildLogisticsContext(expType: ExperienceType): string {
+  const lines: string[] = [];
+
+  lines.push(`EXPERIENCE TYPE: ${expType.name} (${expType.slug})`);
+
+  if (expType.typicalGroupSizeMin != null && expType.typicalGroupSizeMax != null) {
+    lines.push(`GROUP SIZE: ${expType.typicalGroupSizeMin}–${expType.typicalGroupSizeMax} people — size all venue/transport recommendations accordingly`);
+  }
+
+  if (expType.typicalDurationMinDays != null && expType.typicalDurationMaxDays != null) {
+    const dMin = expType.typicalDurationMinDays;
+    const dMax = expType.typicalDurationMaxDays;
+    lines.push(`TYPICAL DURATION: ${dMin === dMax ? `${dMin} day${dMin > 1 ? 's' : ''}` : `${dMin}–${dMax} days`}`);
+  }
+
+  const timingGuide: Record<string, string> = {
+    low: "Flexible timing — 15–20 min transitions are fine",
+    medium: "Standard timing — allow 20–30 min transitions between activities",
+    high: "Tight scheduling — include 30–45 min buffers between major activities",
+    very_high: "Complex timing — build in 45+ min buffers; sequence activities to avoid conflicts",
+    extreme: "Precision scheduling — every activity needs an exact time slot; zero slack tolerated",
+  };
+  if (expType.timingComplexity && timingGuide[expType.timingComplexity]) {
+    lines.push(`TIMING: ${timingGuide[expType.timingComplexity]}`);
+  }
+
+  const contingencyGuide: Record<string, string> = {
+    flexible: "Minor contingencies acceptable — no backup plans required",
+    important: "Flag weather-sensitive activities and suggest indoor alternatives where relevant",
+    critical: "Include a backup option for EVERY major activity or venue — failure is not an option",
+  };
+  if (expType.contingencyLevel && contingencyGuide[expType.contingencyLevel]) {
+    lines.push(`CONTINGENCY: ${contingencyGuide[expType.contingencyLevel]}`);
+  }
+
+  const paymentGuide: Record<string, string> = {
+    joint: "Costs shared between couple/partners — keep per-pair totals visible",
+    group_split: "Costs split evenly across group — prioritize per-person cost clarity",
+    single_payer: "One person pays everything — total cost transparency is key",
+    multi_stakeholder: "Multiple parties paying (e.g., families, sponsors) — group line items by who pays",
+    individual_with_discount: "Individual payments with group discounts — highlight group savings",
+  };
+  if (expType.paymentFlowType && paymentGuide[expType.paymentFlowType]) {
+    lines.push(`PAYMENT: ${paymentGuide[expType.paymentFlowType]}`);
+  }
+
+  return `\n\nEXPERIENCE CONTEXT (use this to tailor the itinerary style and pacing):\n${lines.join('\n')}`;
+}
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -201,6 +252,22 @@ IMPORTANT: These are fixed commitments (flights, reservations, ceremonies). You 
         }));
         anchorPromptSection += `\n\nDAY BOUNDARIES:
 ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart ? `starts at ${b.earliestActivityStart}` : 'normal start'}${b.latestActivityEnd ? `, must end by ${b.latestActivityEnd}` : ''}${b.mustReturnToHotel ? ' (must return to hotel)' : ''}`).join('\n')}`;
+      }
+    }
+
+    // Look up logistics context from experience type
+    let logisticsContextSection = '';
+    const [compRecord] = await db
+      .select({ experienceTypeSlug: itineraryComparisons.experienceTypeSlug })
+      .from(itineraryComparisons)
+      .where(eq(itineraryComparisons.id, comparisonId));
+    if (compRecord?.experienceTypeSlug) {
+      const [expType] = await db
+        .select()
+        .from(experienceTypes)
+        .where(eq(experienceTypes.slug, compRecord.experienceTypeSlug));
+      if (expType) {
+        logisticsContextSection = buildLogisticsContext(expType);
       }
     }
 
@@ -395,7 +462,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${anchorPromptSection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${anchorPromptSection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
