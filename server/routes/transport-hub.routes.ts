@@ -20,6 +20,7 @@ import {
 import { eq, and, desc, isNotNull } from "drizzle-orm";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant } from "../services/transport-booking-options.service";
+import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
@@ -31,7 +32,7 @@ const router = Router();
  * - Days with legs and booking options
  * - Multi-day pass recommendations
  */
-router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
+router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
 
@@ -208,6 +209,7 @@ router.get("/api/itinerary/:tripId/transport-hub", async (req, res) => {
  */
 router.post(
   "/api/transport-booking-options/:optionId/book",
+  isAuthenticated,
   async (req, res) => {
     try {
       const { optionId } = req.params;
@@ -290,6 +292,7 @@ router.post(
  */
 router.post(
   "/api/transport-booking-options/:optionId/click",
+  isAuthenticated,
   async (req, res) => {
     try {
       const { optionId } = req.params;
@@ -353,6 +356,7 @@ router.post(
  */
 router.patch(
   "/api/transport-booking-options/:optionId/status",
+  isAuthenticated,
   async (req, res) => {
     try {
       const { optionId } = req.params;
@@ -390,7 +394,7 @@ router.patch(
  *
  * Dev/test endpoint: populates booking options for all legs of a variant
  */
-router.post("/api/transport-booking-options/seed/:variantId", async (req, res) => {
+router.post("/api/transport-booking-options/seed/:variantId", isAuthenticated, async (req, res) => {
   try {
     const { variantId } = req.params;
     const variant = await db.query.itineraryVariants.findFirst({
@@ -416,7 +420,7 @@ router.post("/api/transport-booking-options/seed/:variantId", async (req, res) =
  *
  * Fetch details for a specific booking option
  */
-router.get("/api/transport-booking-options/:optionId", async (req, res) => {
+router.get("/api/transport-booking-options/:optionId", isAuthenticated, async (req, res) => {
   try {
     const { optionId } = req.params;
 
