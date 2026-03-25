@@ -12217,7 +12217,9 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const { token } = req.params;
       const { notes, activityDiffs, transportDiffs } = req.body;
+      const userId = (req as any).user?.id;
 
+      if (!userId) return res.status(401).json({ error: "Authentication required to submit suggestions" });
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
 
       const [shared] = await db
@@ -12229,7 +12231,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "Share link has expired" });
       }
-      if (shared.permissions !== "suggest") {
+      if (!["suggest", "edit"].includes(shared.permissions)) {
         return res.status(403).json({ error: "This share link does not allow suggestions" });
       }
 
