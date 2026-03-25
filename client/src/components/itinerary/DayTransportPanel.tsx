@@ -197,7 +197,7 @@ export function DayTransportPanel({
     enabled: !!tripId,
   });
 
-  const bookingOptionsMap = new Map<string, BookingOption[]>();
+  const bookingOptionsMap = new Map<string, LegBookingOption[]>();
   if (hubData?.days) {
     const dayData = hubData.days.find(d => d.dayNumber === dayNumber);
     if (dayData) {
