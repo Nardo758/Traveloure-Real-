@@ -20,13 +20,9 @@ import {
   Navigation,
 } from "lucide-react";
 import { MultiDayPassCard, type MultiDayPass } from "./MultiDayPassCard";
-import { TransportBookingCard } from "./TransportBookingCard";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
-  openInMaps,
-  detectMapsPlatform,
 } from "@/lib/maps-platform";
 
 interface TransportHubProps {
@@ -253,110 +249,58 @@ export function TransportHub({ tripId, readOnly = false }: TransportHubProps) {
         </div>
       )}
 
-      {/* ── Per-day sections with full leg details and booking cards ── */}
-      {days.map((day) => {
-        const totalMins = day.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
-        return (
-          <div key={day.dayNumber} className="space-y-3" data-testid={`transport-day-section-${day.dayNumber}`}>
-            <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-2">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <span>📅</span> Day {day.dayNumber}
-                {day.legs.length > 0 && (
-                  <Badge variant="outline" className="text-xs font-normal">
-                    {day.legs.length} leg{day.legs.length !== 1 ? "s" : ""} · {totalMins} min
-                  </Badge>
-                )}
-              </h3>
-            </div>
-            <div className="space-y-4">
-              {day.legs.map((leg) => (
-                <TransportHubLegCard key={leg.id} leg={leg} readOnly={readOnly} />
-              ))}
-            </div>
+      {/* ── Per-day summary rows ── */}
+      {days.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              Per-Day Overview
+            </h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Use the Transport tab on each day card for detailed mode selection, booking, and 12Go options
+            </p>
           </div>
-        );
-      })}
+          <div className="grid gap-2">
+            {days.map((day) => {
+              const totalMins = day.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
+              const totalCostDay = day.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0);
+              const modes = new Set(day.legs.map(l => l.userSelectedMode || l.recommendedMode));
+              return (
+                <div
+                  key={day.dayNumber}
+                  className="flex items-center justify-between px-4 py-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50"
+                  data-testid={`transport-day-summary-${day.dayNumber}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="font-semibold text-sm text-gray-900 dark:text-white">Day {day.dayNumber}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {day.legs.length} {day.legs.length === 1 ? "leg" : "legs"}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      {Array.from(modes).map(m => (
+                        <span key={m} title={TRANSPORT_MODE_LABELS[m] || m}>{TRANSPORT_MODE_ICONS[m] || "🚌"}</span>
+                      ))}
+                    </span>
+                    {totalMins > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {totalMins} min
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1">
+                      <DollarSign className="h-3 w-3" />
+                      {totalCostDay === 0 ? "Free" : `$${totalCostDay.toFixed(0)}`}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
-  );
-}
-
-function TransportHubLegCard({ leg, readOnly }: { leg: TransportLeg; readOnly: boolean }) {
-  const activeMode = leg.userSelectedMode || leg.recommendedMode;
-  const modeIcon = TRANSPORT_MODE_ICONS[activeMode] || "🚌";
-  const modeLabel = TRANSPORT_MODE_LABELS[activeMode] || activeMode;
-  const isTransit = ["transit", "train", "tram", "bus", "ferry"].includes(activeMode);
-  const isGround = ["private_driver", "rental_car", "taxi", "rideshare"].includes(activeMode);
-
-  const platformOptions = leg.bookingOptions.filter(o => o.bookingType === "platform");
-  const thirdPartyOptions = leg.bookingOptions.filter(o => o.bookingType !== "platform");
-
-  const handleOpenInMaps = () => {
-    if (!leg.fromLat || !leg.toLat) return;
-    const platform = detectMapsPlatform();
-    const googleMode = isTransit ? "transit" : activeMode === "walk" ? "walking" : activeMode === "bike" ? "bicycling" : "driving";
-    const url = platform === "apple"
-      ? `maps://?saddr=${leg.fromLat},${leg.fromLng}&daddr=${leg.toLat},${leg.toLng}&dirflg=r`
-      : `https://www.google.com/maps/dir/?api=1&origin=${leg.fromLat},${leg.fromLng}&destination=${leg.toLat},${leg.toLng}&travelmode=${googleMode}`;
-    openInMaps(url);
-  };
-
-  return (
-    <Card className="border border-gray-200 dark:border-gray-700" data-testid={`hub-leg-${leg.id}`}>
-      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xl leading-none">{modeIcon}</span>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">{leg.fromName}</span>
-          <span className="text-muted-foreground text-xs">→</span>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">{leg.toName}</span>
-        </div>
-        <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-          <span>{leg.distanceDisplay}</span>
-          <span>·</span>
-          <span>Recommended: {modeLabel}</span>
-          <span>·</span>
-          <span>~{leg.estimatedDurationMinutes} min</span>
-        </div>
-      </div>
-
-      <CardContent className="p-4 space-y-3">
-        {platformOptions.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Platform Options</p>
-            {platformOptions.map(opt => (
-              <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly} />
-            ))}
-          </div>
-        )}
-
-        {thirdPartyOptions.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Third-Party Options</p>
-            {thirdPartyOptions.map(opt => (
-              <TransportBookingCard key={opt.id} option={opt} readOnly={readOnly} />
-            ))}
-          </div>
-        )}
-
-        {(isTransit || isGround) && (
-          <TwelveGoTransport
-            origin={leg.fromName}
-            destination={leg.toName}
-            variant="compact"
-          />
-        )}
-
-        {leg.fromLat && leg.toLat && (
-          <button
-            onClick={handleOpenInMaps}
-            className="flex items-center gap-1.5 text-xs text-primary hover:underline mt-1"
-            data-testid={`hub-maps-${leg.id}`}
-          >
-            <Navigation className="h-3 w-3" />
-            Open in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
-          </button>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 
