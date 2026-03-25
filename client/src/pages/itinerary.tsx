@@ -120,6 +120,7 @@ export default function ItineraryPage() {
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const [realLegsMap, setRealLegsMap] = useState<Record<number, InlineTransportLegData[]>>({});
   const [showMap, setShowMap] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
   const { toast } = useToast();
 
   const activateTransportMutation = useMutation({
@@ -349,8 +350,6 @@ export default function ItineraryPage() {
     numberOfTravelers: itinerary.travelers,
     budget: itinerary.budget,
   };
-
-  const [showChanges, setShowChanges] = useState(false);
 
   const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
     dayNum: d.day,
