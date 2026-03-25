@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { AlertCircle, Share2, MessageCircle, User, ExternalLink } from "lucide-react";
-import { ItineraryCard, type ItineraryCardData } from "@/components/itinerary/ItineraryCard";
-import type { TransportLegData } from "@/components/itinerary/TransportLeg";
+import { AlertCircle, Share2, MessageCircle, User, ExternalLink, CheckCircle, XCircle, Eye } from "lucide-react";
+import { ItineraryCard, type ItineraryCardData, type ActivityDiff, type TransportDiff } from "@/components/itinerary/ItineraryCard";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
 
 interface SharedItineraryResponse {
@@ -36,7 +36,7 @@ interface SharedItineraryResponse {
         location?: string | null;
         duration?: number | null;
       }>;
-      transportLegs: TransportLegData[];
+      transportLegs: InlineTransportLegData[];
     }>;
     transportSummary?: {
       totalLegs: number;
@@ -55,6 +55,12 @@ interface SharedItineraryResponse {
   permissions?: string;
   shareToken?: string;
   expertStatus?: string;
+  expertNotes?: string | null;
+  expertDiff?: {
+    activityDiffs?: Record<string, ActivityDiff>;
+    transportDiffs?: Record<string, TransportDiff>;
+    submittedAt?: string;
+  } | null;
   sharedWithExpert?: boolean;
   isOwner?: boolean;
 }
@@ -63,8 +69,13 @@ export default function ItineraryViewPage() {
   const { token } = useParams<{ token: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   const [showSuggestDialog, setShowSuggestDialog] = useState(false);
   const [expertNotes, setExpertNotes] = useState("");
+  const [activityDiffs, setActivityDiffs] = useState<Record<string, ActivityDiff>>({});
+  const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
+  const [showDiffReview, setShowDiffReview] = useState(false);
 
   const { data, isLoading, error } = useQuery<SharedItineraryResponse>({
     queryKey: ["/api/itinerary-share", token],
@@ -82,10 +93,15 @@ export default function ItineraryViewPage() {
 
   const suggestModMutation = useMutation({
     mutationFn: async () => {
+      if (!expertNotes.trim()) throw new Error("Notes are required");
       const res = await fetch(`/api/itinerary-share/${token}/suggest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: expertNotes }),
+        body: JSON.stringify({
+          notes: expertNotes,
+          activityDiffs,
+          transportDiffs,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed" }));
@@ -96,14 +112,41 @@ export default function ItineraryViewPage() {
     onSuccess: () => {
       setShowSuggestDialog(false);
       setExpertNotes("");
-      toast({ title: "Suggestions sent!", description: "The traveler has been notified of your feedback." });
+      toast({ title: "Edits sent!", description: "The traveler has been notified of your suggestions." });
     },
     onError: (err: Error) => {
-      toast({ title: "Failed to send suggestions", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to send edits", description: err.message, variant: "destructive" });
     },
   });
 
-  // Set social meta tags (og:title, og:description, og:image, document.title)
+  const acknowledgeMutation = useMutation({
+    mutationFn: async (action: "accept" | "reject") => {
+      const res = await fetch(`/api/itinerary-share/${token}/acknowledge`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to acknowledge");
+      }
+      return res.json();
+    },
+    onSuccess: (_data, action) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share", token] });
+      setShowDiffReview(false);
+      toast({
+        title: action === "accept" ? "Edits accepted" : "Edits rejected",
+        description: action === "accept"
+          ? "The expert's suggestions have been accepted."
+          : "The expert's suggestions have been dismissed.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+    },
+  });
+
   useEffect(() => {
     if (!data?.variant) return;
 
@@ -112,7 +155,6 @@ export default function ItineraryViewPage() {
     const days = data.variant.days?.length || 0;
     const dayText = days > 0 ? `${days} day${days !== 1 ? "s" : ""}` : "";
 
-    // Extract vibe tags (activity categories)
     const categorySet = new Set<string>();
     data.variant.days?.forEach((day) => {
       day.activities?.forEach((act) => {
@@ -121,14 +163,11 @@ export default function ItineraryViewPage() {
     });
     const vibeTags = Array.from(categorySet).slice(0, 3).join(", ");
 
-    // Build description
     const descriptionParts = [vibeTags, dayText, cost].filter(Boolean);
     const description = `${destination} itinerary: ${descriptionParts.join(" • ")}`;
 
-    // Set document title
     document.title = `${destination} Itinerary • Traveloure`;
 
-    // Helper to set meta tags
     const setMetaTag = (property: string, content: string) => {
       let tag = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
       if (!tag) {
@@ -149,17 +188,14 @@ export default function ItineraryViewPage() {
       tag.setAttribute("content", content);
     };
 
-    // Set Open Graph tags
     setMetaTag("og:title", `${destination} Itinerary • Traveloure`);
     setMetaTag("og:description", description);
     setMetaName("description", description);
 
-    // Use a generic cover image (or could use destination-specific image if available)
     const coverImageUrl = "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1200&h=630&q=80";
     setMetaTag("og:image", coverImageUrl);
     setMetaTag("og:type", "website");
 
-    // Cleanup: reset title on unmount
     return () => {
       document.title = "Traveloure";
     };
@@ -219,10 +255,17 @@ export default function ItineraryViewPage() {
   };
 
   const isExpertView = data.permissions === "suggest" || data.sharedWithExpert;
+  const isOwnerView = !!data.isOwner;
+  const expertStatus = data.expertStatus;
+  const hasPendingReview = isOwnerView && expertStatus === "review_sent";
+
+  const totalDiffs = Object.keys(activityDiffs).length + Object.keys(transportDiffs).length;
+  const reviewActivityDiffs = data.expertDiff?.activityDiffs || {};
+  const reviewTransportDiffs = data.expertDiff?.transportDiffs || {};
+  const totalReviewDiffs = Object.keys(reviewActivityDiffs).length + Object.keys(reviewTransportDiffs).length;
 
   return (
     <div className="min-h-screen bg-background">
-
       <div className="max-w-2xl mx-auto p-4 pb-12">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -258,7 +301,8 @@ export default function ItineraryViewPage() {
               <div className="flex-1">
                 <p className="font-medium text-sm text-amber-800 dark:text-amber-200">Expert Review Mode</p>
                 <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
-                  You can adjust transport modes below, then send your notes to the traveler.
+                  Edit activity names, times, and notes directly on the cards below. You can also swap transport modes.
+                  {totalDiffs > 0 && ` (${totalDiffs} pending change${totalDiffs !== 1 ? "s" : ""})`}
                   {data.sharedBy?.name && ` Shared by ${data.sharedBy.name}.`}
                 </p>
               </div>
@@ -270,7 +314,7 @@ export default function ItineraryViewPage() {
                   data-testid="button-suggest-modifications"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  Send Notes
+                  Send Edits
                 </Button>
                 {data.sharedBy?.userId && (
                   <Button
@@ -289,6 +333,70 @@ export default function ItineraryViewPage() {
           </div>
         )}
 
+        {hasPendingReview && (
+          <div className="mb-4 p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800" data-testid="expert-review-banner">
+            <div className="flex items-start gap-3">
+              <Eye className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-sm text-blue-800 dark:text-blue-200">Expert has sent edits for review</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">
+                  {data.expertDiff?.submittedAt && `Sent ${new Date(data.expertDiff.submittedAt).toLocaleDateString()}.`}
+                  {totalReviewDiffs > 0 && ` ${totalReviewDiffs} suggestion${totalReviewDiffs !== 1 ? "s" : ""} awaiting your review.`}
+                </p>
+                {data.expertNotes && (
+                  <p className="text-sm text-blue-800 dark:text-blue-200 mt-2 italic">
+                    "{data.expertNotes}"
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                {totalReviewDiffs > 0 && (
+                  <Button
+                    size="sm"
+                    onClick={() => setShowDiffReview(true)}
+                    className="gap-2"
+                    variant="outline"
+                    data-testid="button-review-diffs"
+                  >
+                    <Eye className="h-4 w-4" />
+                    Review Changes
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => acknowledgeMutation.mutate("accept")}
+                  disabled={acknowledgeMutation.isPending}
+                  className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  data-testid="button-accept-all"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Accept All
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => acknowledgeMutation.mutate("reject")}
+                  disabled={acknowledgeMutation.isPending}
+                  className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+                  data-testid="button-reject-all"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject All
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {expertStatus === "acknowledged" && isOwnerView && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800" data-testid="expert-accepted-banner">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <p className="text-sm text-green-800 dark:text-green-200">Expert edits accepted.</p>
+            </div>
+          </div>
+        )}
+
         <ItineraryCard
           data={cardData}
           mapsLinks={data.mapsLinks}
@@ -298,6 +406,9 @@ export default function ItineraryViewPage() {
           readOnly={data.permissions === "view" && !data.isOwner}
           isOwner={!!data.isOwner}
           variantId={data.variant.id}
+          expertDiff={data.expertDiff}
+          onActivityDiffsChange={isExpertView ? setActivityDiffs : undefined}
+          onTransportDiffsChange={isExpertView ? setTransportDiffs : undefined}
         />
 
         {!isExpertView && (
@@ -312,14 +423,32 @@ export default function ItineraryViewPage() {
         )}
       </div>
 
+      {/* Expert Send Edits Dialog */}
       <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Send Suggestions to Traveler</DialogTitle>
+            <DialogTitle>Send Edits to Traveler</DialogTitle>
             <DialogDescription>
-              Share your expert recommendations. The traveler will receive a notification with your notes.
+              Add your overall notes below. Your activity and transport edits will be included automatically.
             </DialogDescription>
           </DialogHeader>
+
+          {totalDiffs > 0 && (
+            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs font-medium text-blue-800 dark:text-blue-200">
+                {totalDiffs} tracked change{totalDiffs !== 1 ? "s" : ""} will be included:
+              </p>
+              <ul className="mt-1 text-xs text-blue-700 dark:text-blue-300 space-y-0.5">
+                {Object.entries(activityDiffs).map(([id, diff]) => (
+                  <li key={id}>• Activity: {diff.name || diff.originalName} {diff.name !== diff.originalName ? `(renamed from "${diff.originalName}")` : ""}</li>
+                ))}
+                {Object.entries(transportDiffs).map(([id, diff]) => (
+                  <li key={id}>• Transport leg {diff.legOrder}: {diff.originalMode} → {diff.newMode}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <Textarea
             placeholder="E.g. 'Day 2 is too packed — consider splitting the temple visit to Day 3. Also, the restaurant on Day 1 is fully booked in peak season, try XYZ instead...'"
             value={expertNotes}
@@ -328,9 +457,11 @@ export default function ItineraryViewPage() {
             className="mt-2"
             data-testid="textarea-expert-notes"
           />
-          <p className="text-xs text-muted-foreground">
-            You can also swap transport modes directly in the itinerary below — changes are saved automatically.
-          </p>
+          {totalDiffs === 0 && (
+            <p className="text-xs text-muted-foreground">
+              You can also edit activities directly in the itinerary — changes are tracked and sent with your notes.
+            </p>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowSuggestDialog(false)}>Cancel</Button>
             <Button
@@ -339,6 +470,98 @@ export default function ItineraryViewPage() {
               data-testid="button-send-suggestions"
             >
               {suggestModMutation.isPending ? "Sending..." : "Send to Traveler"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Traveler Diff Review Dialog */}
+      <Dialog open={showDiffReview} onOpenChange={setShowDiffReview}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Expert Suggestions</DialogTitle>
+            <DialogDescription>
+              Review the changes your expert proposed. Accept all to apply them, or reject to dismiss.
+            </DialogDescription>
+          </DialogHeader>
+
+          {data.expertNotes && (
+            <div className="p-3 rounded-lg bg-muted border mb-2">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Expert notes:</p>
+              <p className="text-sm italic">"{data.expertNotes}"</p>
+            </div>
+          )}
+
+          {Object.keys(reviewActivityDiffs).length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Activity Changes</h4>
+              <div className="space-y-2">
+                {Object.entries(reviewActivityDiffs).map(([id, diff]) => (
+                  <div key={id} className="p-3 rounded-lg border bg-amber-50 dark:bg-amber-950/20">
+                    {diff.name && diff.name !== diff.originalName && (
+                      <div className="text-xs">
+                        <span className="font-medium">Name:</span>{" "}
+                        <span className="line-through text-muted-foreground">{diff.originalName}</span>
+                        {" → "}
+                        <span className="font-medium text-amber-800 dark:text-amber-200">{diff.name}</span>
+                      </div>
+                    )}
+                    {diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
+                      <div className="text-xs mt-1">
+                        <span className="font-medium">Time:</span>{" "}
+                        <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
+                        {" → "}
+                        <span className="font-medium text-amber-800 dark:text-amber-200">{diff.startTime}</span>
+                      </div>
+                    )}
+                    {diff.note && (
+                      <div className="text-xs mt-1 italic text-amber-700 dark:text-amber-300">
+                        Note: "{diff.note}"
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {Object.keys(reviewTransportDiffs).length > 0 && (
+            <div className="mt-3">
+              <h4 className="text-sm font-medium mb-2">Transport Changes</h4>
+              <div className="space-y-2">
+                {Object.entries(reviewTransportDiffs).map(([id, diff]) => (
+                  <div key={id} className="p-3 rounded-lg border bg-blue-50 dark:bg-blue-950/20">
+                    <div className="text-xs">
+                      <span className="font-medium">Leg {diff.legOrder}:</span>{" "}
+                      <span className="line-through text-muted-foreground">{diff.originalMode}</span>
+                      {" → "}
+                      <span className="font-medium text-blue-800 dark:text-blue-200">{diff.newMode}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4">
+            <Button
+              variant="outline"
+              onClick={() => acknowledgeMutation.mutate("reject")}
+              disabled={acknowledgeMutation.isPending}
+              className="gap-2 border-red-300 text-red-700 hover:bg-red-50"
+              data-testid="button-reject-diffs"
+            >
+              <XCircle className="h-4 w-4" />
+              Reject All
+            </Button>
+            <Button
+              onClick={() => acknowledgeMutation.mutate("accept")}
+              disabled={acknowledgeMutation.isPending}
+              className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+              data-testid="button-accept-diffs"
+            >
+              <CheckCircle className="h-4 w-4" />
+              Accept All
             </Button>
           </DialogFooter>
         </DialogContent>

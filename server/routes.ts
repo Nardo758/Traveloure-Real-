@@ -11777,6 +11777,9 @@ export async function registerDiscoveryRoutes(app: Express) {
             }
           : { name: "A traveler", avatarUrl: null, userId: null },
         permissions: shared.permissions,
+        expertStatus: shared.expertStatus,
+        expertNotes: (shared as any).expertNotes || null,
+        expertDiff: (shared as any).expertDiff || null,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
         isOwner: !!(shared.sharedByUserId && (req as any).user?.id === shared.sharedByUserId),
@@ -12209,11 +12212,11 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // POST /api/itinerary-share/:token/suggest — Expert suggests modifications (MVP: sends notification)
+  // POST /api/itinerary-share/:token/suggest — Expert suggests modifications with diff tracking
   app.post("/api/itinerary-share/:token/suggest", async (req, res) => {
     try {
       const { token } = req.params;
-      const { notes } = req.body;
+      const { notes, activityDiffs, transportDiffs } = req.body;
 
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
 
@@ -12242,22 +12245,73 @@ export async function registerDiscoveryRoutes(app: Express) {
         .from(itineraryComparisons)
         .where(eq(itineraryComparisons.id, variant.comparisonId));
 
+      // Build diff payload
+      const expertDiff = {
+        activityDiffs: activityDiffs || {},
+        transportDiffs: transportDiffs || {},
+        submittedAt: new Date().toISOString(),
+      };
+
+      // Save diff + notes + update status on shared_itineraries
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = 'review_sent', expert_notes = ${notes}, expert_diff = ${JSON.stringify(expertDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
+      );
+
       // Send notification to the owner
       if (comparison?.userId) {
+        const hasDiffs = Object.keys(expertDiff.activityDiffs).length > 0 || Object.keys(expertDiff.transportDiffs).length > 0;
+        const diffSummary = hasDiffs
+          ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
+          : "";
         await db.insert(notifications).values({
           userId: comparison.userId,
           type: "expert_suggestion",
-          title: "Expert modification suggestions",
-          message: `An expert has reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and has suggestions: ${notes.substring(0, 200)}${notes.length > 200 ? "..." : ""}`,
+          title: "Expert sent itinerary edits",
+          message: `An expert has reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and sent suggestions${diffSummary}: ${notes.substring(0, 150)}${notes.length > 150 ? "..." : ""}`,
           relatedId: shared.variantId,
           relatedType: "itinerary_variant",
         });
       }
 
-      res.json({ success: true, message: "Suggestions sent to traveler" });
+      res.json({ success: true, message: "Edits sent to traveler" });
     } catch (err: any) {
       console.error("Expert suggest error:", err);
       res.status(500).json({ error: "Failed to send suggestions" });
+    }
+  });
+
+  // PATCH /api/itinerary-share/:token/acknowledge — Owner accepts or rejects expert edits
+  app.patch("/api/itinerary-share/:token/acknowledge", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { action } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!action || !["accept", "reject"].includes(action)) {
+        return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
+      }
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Share not found" });
+
+      // Only the original sharer (owner) can acknowledge
+      if (userId && shared.sharedByUserId !== userId) {
+        return res.status(403).json({ error: "Only the itinerary owner can acknowledge edits" });
+      }
+
+      const newStatus = action === "accept" ? "acknowledged" : "rejected";
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
+      );
+
+      res.json({ success: true, status: newStatus });
+    } catch (err: any) {
+      console.error("Acknowledge expert edits error:", err);
+      res.status(500).json({ error: "Failed to acknowledge edits" });
     }
   });
 

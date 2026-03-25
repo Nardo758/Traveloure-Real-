@@ -54,6 +54,8 @@ interface InlineTransportSelectorProps {
   tripId?: string;
   className?: string;
   onModeChangeSuccess?: (legId: string, timeDiffMinutes: number) => void;
+  onModeChange?: (legId: string, newMode: string, originalMode: string) => void;
+  expertChanged?: boolean;
 }
 
 function getAppleFlag(mode: string): string {
@@ -87,6 +89,8 @@ export function InlineTransportSelector({
   tripId,
   className,
   onModeChangeSuccess,
+  onModeChange,
+  expertChanged = false,
 }: InlineTransportSelectorProps) {
   const { toast } = useToast();
   const activeMode = leg.userSelectedMode || leg.recommendedMode;
@@ -158,6 +162,10 @@ export function InlineTransportSelector({
 
       if (onModeChangeSuccess && impact?.nextActivityStartTimeShift !== undefined) {
         onModeChangeSuccess(leg.id, impact.nextActivityStartTimeShift);
+      }
+
+      if (onModeChange) {
+        onModeChange(leg.id, selectedMode, activeMode);
       }
     },
     onError: (_err, _mode, context: any) => {
@@ -243,6 +251,14 @@ export function InlineTransportSelector({
                     className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-4 px-1"
                   >
                     Customized
+                  </Badge>
+                )}
+                {expertChanged && !isCustomized && (
+                  <Badge
+                    variant="outline"
+                    className="border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-700 text-xs h-4 px-1"
+                  >
+                    Expert edit
                   </Badge>
                 )}
                 <ChevronDown className="h-3 w-3 ml-1 text-muted-foreground/60" />
