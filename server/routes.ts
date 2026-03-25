@@ -11670,6 +11670,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const latest = shares[shares.length - 1];
       return res.json({
         shareToken: latest.shareToken,
+        variantId: latest.variantId,
         expertStatus: latest.expertStatus,
         expertNotes: latest.expertNotes,
         expertDiff: latest.expertDiff,
