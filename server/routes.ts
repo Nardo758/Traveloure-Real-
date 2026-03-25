@@ -11637,6 +11637,49 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // GET /api/trips/:id/share-info — Returns share token + expert review status for a trip (owner only)
+  app.get("/api/trips/:id/share-info", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
+      const tripId = req.params.id;
+
+      const comparisons = await db
+        .select({ id: itineraryComparisons.id, selectedVariantId: itineraryComparisons.selectedVariantId })
+        .from(itineraryComparisons)
+        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
+
+      if (comparisons.length === 0) return res.json({});
+
+      const variantIds = comparisons.map(c => c.id);
+      const variantRows = await db
+        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(inArray(itineraryVariants.comparisonId, variantIds));
+
+      if (variantRows.length === 0) return res.json({});
+
+      const vids = variantRows.map(v => v.id);
+      const shares = await db
+        .select()
+        .from(sharedItineraries)
+        .where(and(inArray(sharedItineraries.variantId, vids), eq(sharedItineraries.sharedByUserId, userId)))
+        .orderBy(sharedItineraries.createdAt);
+
+      if (shares.length === 0) return res.json({});
+
+      const latest = shares[shares.length - 1];
+      return res.json({
+        shareToken: latest.shareToken,
+        expertStatus: latest.expertStatus,
+        expertNotes: latest.expertNotes,
+        expertDiff: latest.expertDiff,
+      });
+    } catch (err: any) {
+      console.error("Share info error:", err);
+      res.status(500).json({ error: "Failed to fetch share info" });
+    }
+  });
+
   // GET /api/itinerary-share/:token — PUBLIC
   app.get("/api/itinerary-share/:token", async (req, res) => {
     try {
