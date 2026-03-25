@@ -7,8 +7,10 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-function getUserId(req: Request): string | undefined {
-  return (req as any).user?.id?.toString();
+function getUserId(req: Request): string {
+  const userId = (req as any).user?.claims?.sub;
+  if (!userId) throw new Error("User ID not found in session");
+  return userId;
 }
 
 function parseId(raw: string): number | null {
