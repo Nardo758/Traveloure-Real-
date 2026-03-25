@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,7 @@ interface ItineraryCardProps {
   onActivityDiffsChange?: (diffs: Record<string, ActivityDiff>) => void;
   onTransportDiffsChange?: (diffs: Record<string, TransportDiff>) => void;
   onExpertNotesChange?: (notes: string) => void;
+  expertNotesValue?: string;
 }
 
 function formatDate(dateStr?: string | null): string {
@@ -250,6 +251,7 @@ export function ItineraryCard({
   onActivityDiffsChange,
   onTransportDiffsChange,
   onExpertNotesChange,
+  expertNotesValue,
 }: ItineraryCardProps) {
   const { toast } = useToast();
   const [copiedUrl, setCopiedUrl] = useState("");
@@ -265,8 +267,14 @@ export function ItineraryCard({
   const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
   const [editingActivity, setEditingActivity] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ name: string; startTime: string; note: string }>({ name: "", startTime: "", note: "" });
-  const [expertNotesText, setExpertNotesText] = useState("");
+  const [expertNotesText, setExpertNotesText] = useState(expertNotesValue ?? "");
   const [expertNotesExpanded, setExpertNotesExpanded] = useState(isExpertMode);
+
+  useEffect(() => {
+    if (expertNotesValue !== undefined && expertNotesValue !== expertNotesText) {
+      setExpertNotesText(expertNotesValue);
+    }
+  }, [expertNotesValue]);
 
   const [activityTimingOverrides, setActivityTimingOverrides] = useState<Record<string, string>>({});
 
