@@ -754,12 +754,13 @@ export default function ItineraryPage() {
 
         <div className="flex flex-col lg:flex-row gap-6 pb-12">
           <div className="lg:w-72 flex-shrink-0">
-            <Card className="bg-white dark:bg-gray-800 lg:sticky lg:top-4 z-10">
+            <div className="lg:sticky lg:top-4 space-y-4 max-h-[calc(100vh-2rem)] overflow-y-auto pb-4">
+            <Card className="bg-white dark:bg-gray-800">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-[#6B7280]">Trip Days</CardTitle>
               </CardHeader>
               <CardContent className="p-2">
-                <ScrollArea className="h-auto lg:h-[400px]">
+                <ScrollArea className="h-auto lg:h-[360px]">
                   <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-x-visible pb-2 lg:pb-0">
                     {itinerary.days.map((day) => (
                       <button
@@ -800,8 +801,8 @@ export default function ItineraryPage() {
               departureDate={itinerary.startDate.toISOString()}
               passengers={itinerary.travelers}
               variant="full"
-              className="mt-4"
             />
+            </div>
           </div>
 
           <div className="flex-1">
