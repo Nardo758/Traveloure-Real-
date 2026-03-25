@@ -684,38 +684,36 @@ export function ItineraryCard({
               </CollapsibleTrigger>
 
               <CollapsibleContent>
-                {day.transportLegs.length > 0 && (
-                  <div className="flex items-center gap-1 mb-3 px-1" onClick={e => e.stopPropagation()}>
-                    <div className="flex items-center rounded-md border overflow-hidden">
-                      <button
-                        onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "activities" }))}
-                        className={cn(
-                          "flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors",
-                          (dayContentTab[day.dayNumber] ?? "activities") === "activities"
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted text-muted-foreground"
-                        )}
-                        data-testid={`tab-activities-day-${day.dayNumber}`}
-                      >
-                        <List className="h-3 w-3" />
-                        Activities ({day.activities.length})
-                      </button>
-                      <button
-                        onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "transport" }))}
-                        className={cn(
-                          "flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-l transition-colors",
-                          (dayContentTab[day.dayNumber] ?? "activities") === "transport"
-                            ? "bg-primary text-primary-foreground"
-                            : "hover:bg-muted text-muted-foreground"
-                        )}
-                        data-testid={`tab-transport-day-${day.dayNumber}`}
-                      >
-                        <Car className="h-3 w-3" />
-                        Transport ({day.transportLegs.length})
-                      </button>
-                    </div>
+                <div className="flex items-center gap-1 mb-3 px-1" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center rounded-md border overflow-hidden">
+                    <button
+                      onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "activities" }))}
+                      className={cn(
+                        "flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors",
+                        (dayContentTab[day.dayNumber] ?? "activities") === "activities"
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted text-muted-foreground"
+                      )}
+                      data-testid={`tab-activities-day-${day.dayNumber}`}
+                    >
+                      <List className="h-3 w-3" />
+                      Activities ({day.activities.length})
+                    </button>
+                    <button
+                      onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "transport" }))}
+                      className={cn(
+                        "flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-l transition-colors",
+                        (dayContentTab[day.dayNumber] ?? "activities") === "transport"
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted text-muted-foreground"
+                      )}
+                      data-testid={`tab-transport-day-${day.dayNumber}`}
+                    >
+                      <Car className="h-3 w-3" />
+                      Transport ({day.transportLegs.length})
+                    </button>
                   </div>
-                )}
+                </div>
 
                 {(dayContentTab[day.dayNumber] ?? "activities") === "transport" && day.transportLegs.length > 0 ? (
                   <DayTransportPanel
