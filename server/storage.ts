@@ -81,6 +81,9 @@ import {
   type ExpertMatchAnalytics, type InsertExpertMatchAnalytics,
   type DestinationSearchPattern, type InsertDestinationSearchPattern,
   type DestinationMetricsHistory, type InsertDestinationMetricsHistory,
+  itineraryChanges, activityComments,
+  type ItineraryChange, type InsertItineraryChange,
+  type ActivityComment, type InsertActivityComment,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, avg } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -461,6 +464,16 @@ export interface IStorage {
   getDestinationSearchTrends(days?: number): Promise<Array<{ destination: string; searchCount: number; conversionRate: number }>>;
   createDestinationMetricsHistory(data: InsertDestinationMetricsHistory): Promise<DestinationMetricsHistory>;
   getDestinationMetricsHistory(destination: string, metricType: string, days?: number): Promise<DestinationMetricsHistory[]>;
+
+  // Itinerary Changes (PlanCard change tracking)
+  getItineraryChanges(tripId: string, limit?: number): Promise<ItineraryChange[]>;
+  createItineraryChange(change: InsertItineraryChange): Promise<ItineraryChange>;
+
+  // Activity Comments (PlanCard collaboration)
+  getActivityComments(activityId: string): Promise<ActivityComment[]>;
+  getActivityCommentCounts(tripId: string): Promise<Record<string, number>>;
+  createActivityComment(comment: InsertActivityComment): Promise<ActivityComment>;
+  deleteActivityComment(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3125,6 +3138,47 @@ export class DatabaseStorage implements IStorage {
         gte(destinationMetricsHistory.recordedAt, cutoff)
       ))
       .orderBy(desc(destinationMetricsHistory.recordedAt));
+  }
+
+  async getItineraryChanges(tripId: string, limit: number = 50): Promise<ItineraryChange[]> {
+    return await db.select().from(itineraryChanges)
+      .where(eq(itineraryChanges.tripId, tripId))
+      .orderBy(desc(itineraryChanges.createdAt))
+      .limit(limit);
+  }
+
+  async createItineraryChange(change: InsertItineraryChange): Promise<ItineraryChange> {
+    const [created] = await db.insert(itineraryChanges).values(change).returning();
+    return created;
+  }
+
+  async getActivityComments(activityId: string): Promise<ActivityComment[]> {
+    return await db.select().from(activityComments)
+      .where(eq(activityComments.activityId, activityId))
+      .orderBy(desc(activityComments.createdAt));
+  }
+
+  async getActivityCommentCounts(tripId: string): Promise<Record<string, number>> {
+    const rows = await db.select({
+      activityId: activityComments.activityId,
+      count: count(),
+    }).from(activityComments)
+      .where(eq(activityComments.tripId, tripId))
+      .groupBy(activityComments.activityId);
+    const result: Record<string, number> = {};
+    for (const row of rows) {
+      result[row.activityId] = row.count;
+    }
+    return result;
+  }
+
+  async createActivityComment(comment: InsertActivityComment): Promise<ActivityComment> {
+    const [created] = await db.insert(activityComments).values(comment).returning();
+    return created;
+  }
+
+  async deleteActivityComment(id: string): Promise<void> {
+    await db.delete(activityComments).where(eq(activityComments.id, id));
   }
 }
 

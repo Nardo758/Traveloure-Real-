@@ -2644,6 +2644,9 @@ export const itineraryItems = pgTable("itinerary_items", {
   privateNotes: text("private_notes"), // Organizer-only notes
   attachments: jsonb("attachments").default([]), // [{name, url, type}]
   
+  // Suggestion tracking
+  suggestedBy: varchar("suggested_by", { length: 20 }), // 'ai', 'expert', 'user'
+
   // Ordering
   sortOrder: integer("sort_order").default(0),
   
@@ -4479,3 +4482,34 @@ export type SharedItinerary = typeof sharedItineraries.$inferSelect;
 export type InsertSharedItinerary = z.infer<typeof insertSharedItinerarySchema>;
 export type MapsExportCache = typeof mapsExportCache.$inferSelect;
 export type InsertMapsExportCache = z.infer<typeof insertMapsExportCacheSchema>;
+
+export const itineraryChanges = pgTable("itinerary_changes", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  activityId: varchar("activity_id"),
+  who: varchar("who", { length: 255 }).notNull(),
+  action: text("action").notNull(),
+  changeType: varchar("change_type", { length: 20 }).notNull(), // edit, suggest, ai, confirm, reorder, add, remove
+  role: varchar("role", { length: 20 }).notNull(), // owner, expert, friend, ai
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const activityComments = pgTable("activity_comments", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  activityId: varchar("activity_id").notNull(),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull(),
+  authorName: varchar("author_name", { length: 255 }).notNull(),
+  text: text("text").notNull(),
+  role: varchar("role", { length: 20 }).notNull(), // owner, expert, friend
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertItineraryChangeSchema = createInsertSchema(itineraryChanges).omit({ id: true, createdAt: true });
+export const insertActivityCommentSchema = createInsertSchema(activityComments).omit({ id: true, createdAt: true });
+
+export type ItineraryChange = typeof itineraryChanges.$inferSelect;
+export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
+export type ActivityComment = typeof activityComments.$inferSelect;
+export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
