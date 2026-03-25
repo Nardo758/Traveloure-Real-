@@ -1114,7 +1114,6 @@ export default function ItineraryPage() {
               <div className="space-y-2">
                 {Object.entries(reviewActivityDiffs).map(([id, diff]) => {
                   const isRejected = rejectedDiffIds.has(id);
-                  const typedDiff = diff as any;
                   return (
                     <div key={id} className={cn(
                       "p-3 rounded-lg border transition-opacity",
@@ -1124,25 +1123,25 @@ export default function ItineraryPage() {
                     )} data-testid={`diff-activity-${id}`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 space-y-1">
-                          {typedDiff.name && typedDiff.name !== typedDiff.originalName && (
+                          {diff.name && diff.name !== diff.originalName && (
                             <div className="text-xs">
                               <span className="font-medium">Name:</span>{" "}
-                              <span className="line-through text-muted-foreground">{typedDiff.originalName}</span>
+                              <span className="line-through text-muted-foreground">{diff.originalName}</span>
                               {" → "}
-                              <span className="font-medium text-green-700 dark:text-green-400">{typedDiff.name}</span>
+                              <span className="font-medium text-green-700 dark:text-green-400">{diff.name}</span>
                             </div>
                           )}
-                          {typedDiff.startTime && typedDiff.originalStartTime && typedDiff.startTime !== typedDiff.originalStartTime && (
+                          {diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
                             <div className="text-xs">
                               <span className="font-medium">Time:</span>{" "}
-                              <span className="line-through text-muted-foreground">{typedDiff.originalStartTime}</span>
+                              <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
                               {" → "}
-                              <span className="font-medium text-green-700 dark:text-green-400">{typedDiff.startTime}</span>
+                              <span className="font-medium text-green-700 dark:text-green-400">{diff.startTime}</span>
                             </div>
                           )}
-                          {typedDiff.note && (
+                          {diff.note && (
                             <div className="text-xs italic text-amber-700 dark:text-amber-300">
-                              Note: "{typedDiff.note}"
+                              Note: "{diff.note}"
                             </div>
                           )}
                         </div>
@@ -1176,7 +1175,6 @@ export default function ItineraryPage() {
               <div className="space-y-2">
                 {Object.entries(reviewTransportDiffs).map(([id, diff]) => {
                   const isRejected = rejectedDiffIds.has(id);
-                  const typedDiff = diff as any;
                   return (
                     <div key={id} className={cn(
                       "p-3 rounded-lg border transition-opacity",
@@ -1186,10 +1184,10 @@ export default function ItineraryPage() {
                     )} data-testid={`diff-transport-${id}`}>
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-xs">
-                          <span className="font-medium">Leg {typedDiff.legOrder}:</span>{" "}
-                          <span className="line-through text-muted-foreground">{typedDiff.originalMode}</span>
+                          <span className="font-medium">Leg {diff.legOrder}:</span>{" "}
+                          <span className="line-through text-muted-foreground">{diff.originalMode}</span>
                           {" → "}
-                          <span className="font-medium text-green-700 dark:text-green-400">{typedDiff.newMode}</span>
+                          <span className="font-medium text-green-700 dark:text-green-400">{diff.newMode}</span>
                         </div>
                         <button
                           onClick={() => setRejectedDiffIds(prev => {
