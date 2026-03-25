@@ -1,16 +1,26 @@
 import type { Express, Request, Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { chatStorage } from "./storage";
+import { isAuthenticated } from "../auth";
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+function getUserId(req: Request): string | undefined {
+  return (req as any).user?.id?.toString();
+}
+
+function parseId(raw: string): number | null {
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export function registerChatRoutes(app: Express): void {
-  // Get all conversations
-  app.get("/api/conversations", async (req: Request, res: Response) => {
+  app.get("/api/conversations", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const conversations = await chatStorage.getAllConversations();
+      const userId = getUserId(req);
+      const conversations = await chatStorage.getAllConversations(userId);
       res.json(conversations);
     } catch (error) {
       console.error("Error fetching conversations:", error);
@@ -18,11 +28,12 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Get single conversation with messages
-  app.get("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.get("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
-      const conversation = await chatStorage.getConversation(id);
+      const id = parseId(req.params.id);
+      if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
+      const userId = getUserId(req);
+      const conversation = await chatStorage.getConversation(id, userId);
       if (!conversation) {
         return res.status(404).json({ error: "Conversation not found" });
       }
@@ -34,11 +45,11 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Create new conversation
-  app.post("/api/conversations", async (req: Request, res: Response) => {
+  app.post("/api/conversations", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { title } = req.body;
-      const conversation = await chatStorage.createConversation(title || "New Chat");
+      const userId = getUserId(req);
+      const conversation = await chatStorage.createConversation(title || "New Chat", userId);
       res.status(201).json(conversation);
     } catch (error) {
       console.error("Error creating conversation:", error);
@@ -46,11 +57,12 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Delete conversation
-  app.delete("/api/conversations/:id", async (req: Request, res: Response) => {
+  app.delete("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const id = parseInt(req.params.id);
-      await chatStorage.deleteConversation(id);
+      const id = parseId(req.params.id);
+      if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
+      const userId = getUserId(req);
+      await chatStorage.deleteConversation(id, userId);
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting conversation:", error);
@@ -58,25 +70,29 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  // Send message and get AI response (streaming)
-  app.post("/api/conversations/:id/messages", async (req: Request, res: Response) => {
+  app.post("/api/conversations/:id/messages", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const conversationId = parseInt(req.params.id);
+      const conversationId = parseId(req.params.id);
+      if (!conversationId) return res.status(400).json({ error: "Invalid conversation ID" });
       const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
 
-      // Save user message
+      const userId = getUserId(req);
+      const conversation = await chatStorage.getConversation(conversationId, userId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversation not found" });
+      }
+
       await chatStorage.createMessage(conversationId, "user", content);
 
-      // Get conversation history for context
       const messages = await chatStorage.getMessagesByConversation(conversationId);
       
-      // Transform messages to Anthropic format with proper alternation
       const chatMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
       for (const m of messages) {
-        // Ensure alternating pattern by checking last message role
         const lastRole = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1].role : null;
         if (lastRole === m.role) {
-          // Merge consecutive messages of same role
           chatMessages[chatMessages.length - 1].content += "\n" + m.content;
         } else {
           chatMessages.push({
@@ -86,17 +102,14 @@ export function registerChatRoutes(app: Express): void {
         }
       }
       
-      // Ensure first message is from user (Anthropic requirement)
       if (chatMessages.length > 0 && chatMessages[0].role !== "user") {
         chatMessages.unshift({ role: "user", content: "Hello" });
       }
 
-      // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
       res.setHeader("Connection", "keep-alive");
 
-      // Stream response from Claude
       let fullResponse = "";
       
       const stream = await anthropic.messages.create({
@@ -114,14 +127,12 @@ export function registerChatRoutes(app: Express): void {
         }
       }
 
-      // Save assistant message
       await chatStorage.createMessage(conversationId, "assistant", fullResponse);
 
       res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
       res.end();
     } catch (error) {
       console.error("Error sending message:", error);
-      // Check if headers already sent (SSE streaming started)
       if (res.headersSent) {
         res.write(`data: ${JSON.stringify({ error: "Failed to send message" })}\n\n`);
         res.end();
@@ -131,4 +142,3 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 }
-
