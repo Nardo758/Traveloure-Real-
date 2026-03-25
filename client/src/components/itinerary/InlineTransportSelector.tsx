@@ -128,10 +128,12 @@ export function InlineTransportSelector({
     })),
   ];
 
+  const isSynthesizedLeg = leg.id.startsWith("synth-");
+
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
-      if (isExpertMode) {
-        return { expertOnly: true, selectedMode };
+      if (isExpertMode || isSynthesizedLeg) {
+        return { localOnly: true, selectedMode };
       }
       return apiRequest("PATCH", `/api/transport-legs/${leg.id}/mode`, { selectedMode, shareToken });
     },
@@ -152,6 +154,12 @@ export function InlineTransportSelector({
         if (onModeChange) {
           onModeChange(leg.id, selectedMode, originalMode);
         }
+        return;
+      }
+
+      if (data?.localOnly) {
+        const modeLabel = TRANSPORT_MODE_LABELS[selectedMode] || selectedMode;
+        toast({ title: `Switched to ${modeLabel}`, description: "Preference saved for this session" });
         return;
       }
 
