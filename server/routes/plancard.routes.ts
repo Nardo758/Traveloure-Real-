@@ -181,6 +181,15 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
 
 router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
   try {
+    const { tripId } = req.query;
+    if (!tripId) {
+      return res.status(400).json({ error: "tripId query parameter required" });
+    }
+    const userId = (req.user as any)?.claims?.sub;
+    const trip = await storage.getTrip(tripId as string);
+    if (!trip || trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
     const comments = await storage.getActivityComments(req.params.activityId);
     res.json(comments);
   } catch (error) {
@@ -191,10 +200,26 @@ router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, 
 router.post("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
   try {
     const { activityId } = req.params;
+    const userId = (req.user as any)?.claims?.sub;
+    const userName = (req.user as any)?.claims?.name || "User";
+    const { tripId, text, role } = req.body;
+
+    if (!tripId || !text || !role) {
+      return res.status(400).json({ error: "Missing required fields: tripId, text, role" });
+    }
+
+    const trip = await storage.getTrip(tripId);
+    if (!trip || trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
     const parsed = insertActivityCommentSchema.safeParse({
-      ...req.body,
       activityId,
+      tripId,
+      authorId: userId,
+      authorName: userName,
+      text,
+      role,
     });
 
     if (!parsed.success) {
@@ -203,7 +228,7 @@ router.post("/api/activities/:activityId/comments", isAuthenticated, async (req,
 
     const comment = await storage.createActivityComment(parsed.data);
 
-    await logChange(parsed.data.tripId, parsed.data.authorName, `Commented on activity`, "edit", parsed.data.role, activityId);
+    await logChange(tripId, userName, `Commented on activity`, "edit", role, activityId);
 
     res.status(201).json(comment);
   } catch (error) {
@@ -213,6 +238,17 @@ router.post("/api/activities/:activityId/comments", isAuthenticated, async (req,
 
 router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
   try {
+    const userId = (req.user as any)?.claims?.sub;
+    const comment = await storage.getActivityComment(req.params.id);
+    if (!comment) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+    if (comment.authorId !== userId) {
+      const trip = await storage.getTrip(comment.tripId);
+      if (!trip || trip.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    }
     await storage.deleteActivityComment(req.params.id);
     res.json({ success: true });
   } catch (error) {
@@ -222,6 +258,11 @@ router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
+    const userId = (req.user as any)?.claims?.sub;
+    const trip = await storage.getTrip(req.params.tripId);
+    if (!trip || trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
     const limit = parseInt(req.query.limit as string) || 50;
     const changes = await storage.getItineraryChanges(req.params.tripId, limit);
     res.json(changes);
@@ -233,10 +274,18 @@ router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
+    const userId = (req.user as any)?.claims?.sub;
+    const userName = (req.user as any)?.claims?.name || "User";
+
+    const trip = await storage.getTrip(tripId);
+    if (!trip || trip.userId !== userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
 
     const parsed = insertItineraryChangeSchema.safeParse({
       ...req.body,
       tripId,
+      who: userName,
     });
 
     if (!parsed.success) {
@@ -245,7 +294,7 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 
     const change = await logChange(
       tripId,
-      parsed.data.who,
+      userName,
       parsed.data.action,
       parsed.data.changeType,
       parsed.data.role,
