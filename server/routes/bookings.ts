@@ -8,6 +8,7 @@ import { bookingService } from '../services/booking.service';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
+import { isAuthenticated } from '../replit_integrations/auth';
 import Stripe from 'stripe';
 
 const router = Router();
@@ -16,7 +17,7 @@ const router = Router();
  * POST /api/bookings/process-cart
  * Process cart and create bookings
  */
-router.post('/process-cart', async (req, res) => {
+router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
     const { userId, cartItems, paymentMethod = 'full' } = req.body;
 
@@ -43,7 +44,7 @@ router.post('/process-cart', async (req, res) => {
  * POST /api/bookings/confirm-payment
  * Confirm booking after payment success
  */
-router.post('/confirm-payment', async (req, res) => {
+router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
     const { bookingId, paymentIntentId } = req.body;
 
@@ -144,7 +145,7 @@ router.get('/availability-calendar/:providerId', async (req, res) => {
  * POST /api/bookings/estimate-cost
  * Get price estimate for trip items
  */
-router.post('/estimate-cost', async (req, res) => {
+router.post('/estimate-cost', isAuthenticated, async (req, res) => {
   try {
     const { tripItems } = req.body;
 
@@ -171,7 +172,7 @@ router.post('/estimate-cost', async (req, res) => {
  * POST /api/bookings/apply-promo
  * Apply promo code to booking
  */
-router.post('/apply-promo', async (req, res) => {
+router.post('/apply-promo', isAuthenticated, async (req, res) => {
   try {
     const { code, amount, userId } = req.body;
 
@@ -238,7 +239,7 @@ router.post('/webhooks/stripe', async (req, res) => {
  * POST /api/bookings/refund
  * Create refund for a booking
  */
-router.post('/refund', async (req, res) => {
+router.post('/refund', isAuthenticated, async (req, res) => {
   try {
     const { bookingId, amount, reason } = req.body;
 
