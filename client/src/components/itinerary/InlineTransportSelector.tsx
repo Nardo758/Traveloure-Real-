@@ -59,6 +59,8 @@ interface InlineTransportSelectorProps {
   expertChanged?: boolean;
   isExpertMode?: boolean;
   reviewedTransportDiff?: { originalMode: string; newMode: string } | null;
+  compactSummary?: boolean;
+  onSwitchToTransport?: () => void;
 }
 
 function getAppleFlag(mode: string): string {
@@ -96,6 +98,8 @@ export function InlineTransportSelector({
   expertChanged = false,
   isExpertMode = false,
   reviewedTransportDiff = null,
+  compactSummary = false,
+  onSwitchToTransport,
 }: InlineTransportSelectorProps) {
   const { toast } = useToast();
   const originalMode = leg.userSelectedMode || leg.recommendedMode;
@@ -230,6 +234,68 @@ export function InlineTransportSelector({
 
   const modeIcon = TRANSPORT_MODE_ICONS[currentMode] || "🚌";
   const modeLabel = TRANSPORT_MODE_LABELS[currentMode] || currentMode;
+
+  if (compactSummary) {
+    return (
+      <div
+        className={cn("flex flex-col my-1", className)}
+        data-testid={`inline-transport-summary-${leg.legOrder}`}
+      >
+        <div className="flex items-start gap-2">
+          <div className="flex flex-col items-center self-stretch ml-3 mr-2">
+            <div className="w-px flex-1 border-l-2 border-dashed border-muted-foreground/30 min-h-[8px]" />
+          </div>
+          <div className="flex-1 mb-1">
+            <div className="flex items-center gap-1">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onSwitchToTransport?.()}
+                onKeyDown={(e) => e.key === "Enter" && onSwitchToTransport?.()}
+                className={cn(
+                  "flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border transition-all",
+                  onSwitchToTransport ? "cursor-pointer hover:bg-muted/80 hover:border-muted-foreground/40" : "cursor-default",
+                  "bg-muted/40 border-muted-foreground/20 text-muted-foreground",
+                  isCustomized && "border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300"
+                )}
+                data-testid={`pill-transport-summary-${leg.legOrder}`}
+              >
+                <span className="text-sm leading-none">{modeIcon}</span>
+                <span className="font-medium">{modeLabel}</span>
+                <span className="text-muted-foreground/60">·</span>
+                <span>{displayDuration} min</span>
+                <span className="text-muted-foreground/60">·</span>
+                <span className={displayCost === 0 || displayCost === null ? "text-green-600 dark:text-green-400" : ""}>
+                  {formatCost(displayCost)}
+                </span>
+                {showModeBadge && diffFrom && diffTo && (
+                  <Badge
+                    variant="outline"
+                    className="border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-700 text-xs h-4 px-1"
+                  >
+                    Changed
+                  </Badge>
+                )}
+                {isCustomized && !showModeBadge && (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-700 text-xs h-4 px-1"
+                  >
+                    Customized
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-start gap-2">
+          <div className="flex flex-col items-center self-stretch ml-3 mr-2">
+            <div className="w-px flex-1 border-l-2 border-dashed border-muted-foreground/30 min-h-[8px]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
