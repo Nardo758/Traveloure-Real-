@@ -19,7 +19,7 @@ import {
   serviceBookings, serviceReviews, notifications, wallets, creditTransactions,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
-  temporalAnchors, itineraryItems
+  temporalAnchors, itineraryItems, generatedItineraries
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray } from "drizzle-orm";
@@ -8908,6 +8908,121 @@ Respond with this exact JSON structure:
       res.json(estimate);
     } catch (error) {
       res.status(500).json({ message: "Failed to estimate travel time" });
+    }
+  });
+
+  // POST /api/trips/:tripId/activate-transport
+  // Creates or reuses an itinerary comparison+variant for the trip's AI-generated itinerary,
+  // then calculates and persists real transport legs so users can select modes.
+  app.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const userId = (req as any).user?.id;
+
+      const [trip] = await db
+        .select()
+        .from(trips)
+        .where(and(eq(trips.id, tripId), eq(trips.userId, userId)));
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+      const [genItinerary] = await db
+        .select()
+        .from(generatedItineraries)
+        .where(eq(generatedItineraries.tripId, tripId));
+      if (!genItinerary?.itineraryData) {
+        return res.status(404).json({ error: "No generated itinerary found for this trip" });
+      }
+
+      let [comparison] = await db
+        .select()
+        .from(itineraryComparisons)
+        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
+
+      if (!comparison) {
+        const [created] = await db.insert(itineraryComparisons).values({
+          userId,
+          tripId,
+          title: trip.title || trip.destination || "My Trip",
+          destination: trip.destination,
+          status: "active",
+        }).returning();
+        comparison = created;
+      }
+
+      let [variant] = await db
+        .select()
+        .from(itineraryVariants)
+        .where(and(
+          eq(itineraryVariants.comparisonId, comparison.id),
+          eq(itineraryVariants.source, "ai")
+        ));
+
+      if (!variant) {
+        const [created] = await db.insert(itineraryVariants).values({
+          comparisonId: comparison.id,
+          name: "AI Generated",
+          source: "ai",
+          status: "active",
+        }).returning();
+        variant = created;
+      }
+
+      const data: any = genItinerary.itineraryData;
+      const daysData: any[] = data?.days || data?.dailyItinerary || [];
+
+      const activities: import("./services/transport-leg-calculator").ActivityLocation[] = [];
+      for (const day of daysData) {
+        const dayNum: number = day.day || day.dayNumber || 1;
+        const dayActs: any[] = day.activities || [];
+        dayActs.forEach((act: any, idx: number) => {
+          if (act.lat && act.lng) {
+            activities.push({
+              id: act.id || `day${dayNum}-act${idx}`,
+              name: act.title || act.name || "Activity",
+              lat: parseFloat(act.lat),
+              lng: parseFloat(act.lng),
+              scheduledTime: act.time || act.startTime || `${9 + idx}:00`,
+              dayNumber: dayNum,
+              order: idx,
+            });
+          }
+        });
+      }
+
+      if (activities.length < 2) {
+        return res.json({ variantId: variant.id, legs: [], message: "Not enough geolocated activities to calculate transport" });
+      }
+
+      await calculateTransportLegs(variant.id, activities, trip.destination || "", {});
+
+      const savedLegs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, variant.id));
+
+      return res.json({
+        variantId: variant.id,
+        legs: savedLegs.map(leg => ({
+          id: leg.id,
+          legOrder: leg.legOrder,
+          dayNumber: leg.dayNumber,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          distanceDisplay: leg.distanceDisplay,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          alternativeModes: leg.alternativeModes || [],
+        })),
+      });
+    } catch (err: any) {
+      console.error("Activate transport error:", err);
+      res.status(500).json({ error: "Failed to activate transport" });
     }
   });
 

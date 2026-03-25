@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -343,9 +343,9 @@ function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
       estimatedDurationMinutes: 15,
       estimatedCostUsd: null,
       alternativeModes: [
-        { mode: "walking", durationMinutes: 15, costUsd: null, energyCost: 0, reason: "Scenic walk" },
         { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
         { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
+        { mode: "rideshare", durationMinutes: 7, costUsd: 6, energyCost: 25, reason: "Convenient pickup" },
       ],
       fromLat: from.lat || null,
       fromLng: from.lng || null,
@@ -356,7 +356,7 @@ function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
   return legs;
 }
 
-function buildItineraryCardData(itinerary: any, tripData: any): ItineraryCardData {
+function buildItineraryCardData(itinerary: any, tripData: any, realLegsMap?: Record<number, InlineTransportLegData[]>): ItineraryCardData {
   return {
     id: itinerary.id || "local",
     name: itinerary.title || "My Trip",
@@ -386,10 +386,16 @@ function buildItineraryCardData(itinerary: any, tripData: any): ItineraryCardDat
         bookingType: act.bookingType || getBookingType(act.type),
         partnerName: act.partnerName || getPartnerName(act.type),
       }));
+      const dayNum = day.day || day.dayNumber || 1;
+      const realLegs = realLegsMap?.[dayNum];
       const existingLegs = (day.transportLegs || []) as InlineTransportLegData[];
-      const transportLegs = existingLegs.length > 0 ? existingLegs : synthesizeTransportLegs(day.activities || []);
+      const transportLegs = realLegs?.length
+        ? realLegs
+        : existingLegs.length > 0
+          ? existingLegs
+          : synthesizeTransportLegs(day.activities || []);
       return {
-        dayNumber: day.day || day.dayNumber || 1,
+        dayNumber: dayNum,
         date: day.date ? (day.date instanceof Date ? day.date.toISOString() : day.date) : undefined,
         title: day.title || `Day ${day.day || 1}`,
         activities,
@@ -412,7 +418,43 @@ export default function ItineraryPage() {
   const [rejectedDiffIds, setRejectedDiffIds] = useState<Set<string>>(new Set());
   const [expertNotes, setExpertNotes] = useState("");
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
+  const [realLegsMap, setRealLegsMap] = useState<Record<number, InlineTransportLegData[]>>({});
   const { toast } = useToast();
+
+  const activateTransportMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/trips/${tripId}/activate-transport`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      if (!res.ok) return null;
+      return res.json() as Promise<{ variantId: string; legs: Array<InlineTransportLegData & { dayNumber: number }> }>;
+    },
+    onSuccess: (data) => {
+      if (!data?.legs?.length) return;
+      const byDay: Record<number, InlineTransportLegData[]> = {};
+      for (const leg of data.legs) {
+        const d = leg.dayNumber;
+        if (!byDay[d]) byDay[d] = [];
+        byDay[d].push(leg);
+      }
+      setRealLegsMap(byDay);
+    },
+  });
+
+  useEffect(() => {
+    if (tripId === "1") return;
+    if (!generatedItinerary?.itineraryData) return;
+    const data: any = generatedItinerary.itineraryData;
+    const daysData: any[] = data?.days || data?.dailyItinerary || [];
+    const hasCoords = daysData.some((d: any) =>
+      (d.activities || []).some((a: any) => a.lat && a.lng)
+    );
+    if (hasCoords) {
+      activateTransportMutation.mutate();
+    }
+  }, [tripId, generatedItinerary?.itineraryData]);
 
   const { data: shareData } = useQuery<{
     shareToken?: string;
@@ -830,7 +872,7 @@ export default function ItineraryPage() {
             )}
 
             <ItineraryCard
-              data={buildItineraryCardData(itinerary, tripData)}
+              data={buildItineraryCardData(itinerary, tripData, Object.keys(realLegsMap).length ? realLegsMap : undefined)}
               isOwner={true}
               showShareButton={!!shareData?.shareToken && !!shareData?.variantId}
               shareToken={shareData?.shareToken}
