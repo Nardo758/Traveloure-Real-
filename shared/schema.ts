@@ -4376,6 +4376,12 @@ export const sharedItineraries = pgTable("shared_itineraries", {
   sharedWithUserId: varchar("shared_with_user_id").references(() => users.id),
   permissions: varchar("permissions", { length: 20 }).notNull().default("view"),
   expertStatus: varchar("expert_status", { length: 30 }).default("pending"),
+  expertNotes: text("expert_notes"),
+  expertDiff: jsonb("expert_diff").$type<{
+    activityDiffs: Record<string, { name?: string; startTime?: string; note?: string; originalName: string; originalStartTime?: string }>;
+    transportDiffs: Record<string, { originalMode: string; newMode: string; legOrder: number }>;
+    submittedAt: string;
+  }>(),
   transportPreferences: jsonb("transport_preferences").$type<{
     defaultMode: string;
     avoidModes: string[];
