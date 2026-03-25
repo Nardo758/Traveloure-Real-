@@ -16,14 +16,13 @@ import type { ActivityDiff, TransportDiff } from "@/components/itinerary/Itinera
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
 import {
   getTemplateConfig,
-  TYPE_COLORS, STATUS_STYLES, MODE_COLORS, ModeIcon,
-  type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip,
+  TYPE_COLORS, MODE_COLORS, ModeIcon,
+  type PlanCardDay, type PlanCardTrip,
 } from "@/components/plancard/plancard-types";
 import { HeroSection } from "@/components/plancard/HeroSection";
-import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
+import { StatsRow, CostIcon, type ExtraStat } from "@/components/plancard/StatsRow";
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
@@ -297,6 +296,7 @@ export default function ItineraryViewPage() {
 
   const destination = data.variant.destination || data.variant.name;
   const templateConfig = getTemplateConfig(null);
+  const GOOGLE_MAPS_AVAILABLE = !!(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 
   const planCardTrip: PlanCardTrip = {
     id: data.variant.id,
@@ -631,20 +631,22 @@ export default function ItineraryViewPage() {
           )}
         </Card>
 
-        <div className="flex items-center justify-end mt-4">
-          <Button
-            variant={showMap ? "default" : "outline"}
-            size="sm"
-            className="gap-2 text-xs"
-            onClick={() => setShowMap(!showMap)}
-            data-testid="button-toggle-map"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            {showMap ? "Hide Map" : "Show Map"}
-          </Button>
-        </div>
+        {GOOGLE_MAPS_AVAILABLE && (
+          <div className="flex items-center justify-end mt-4">
+            <Button
+              variant={showMap ? "default" : "outline"}
+              size="sm"
+              className="gap-2 text-xs"
+              onClick={() => setShowMap(!showMap)}
+              data-testid="button-toggle-map"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              {showMap ? "Hide Map" : "Show Map"}
+            </Button>
+          </div>
+        )}
 
-        {showMap && (
+        {GOOGLE_MAPS_AVAILABLE && showMap && (
           <MapControlCenter
             tripId={data.variant.id}
             tripDestination={destination}
@@ -878,7 +880,7 @@ export default function ItineraryViewPage() {
           )}
 
           <DialogFooter className="mt-4 flex-wrap gap-2">
-            {hasDiffMapData && daysWithActivityDiffs.length > 0 && (
+            {GOOGLE_MAPS_AVAILABLE && hasDiffMapData && daysWithActivityDiffs.length > 0 && (
               <Button
                 variant="outline"
                 onClick={() => {
