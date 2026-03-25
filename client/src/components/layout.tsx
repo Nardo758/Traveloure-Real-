@@ -306,7 +306,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* User Actions */}
+            {/* User Actions - Sign in buttons hidden on mobile, shown on md+ */}
             <div className="hidden md:flex items-center gap-2">
               {!user && (
                 <>
@@ -324,13 +324,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </Button>
                 </>
               )}
-              {user && (
-                <>
-                  <NotificationBell />
-                  <UserMenu />
-                </>
-              )}
             </div>
+
+            {/* User menu - always visible when logged in */}
+            {user && (
+              <div className="flex items-center gap-2">
+                <NotificationBell />
+                <UserMenu />
+              </div>
+            )}
 
             {/* Mobile menu button */}
             <div className="flex items-center md:hidden">
