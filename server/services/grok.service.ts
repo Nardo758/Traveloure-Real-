@@ -1,5 +1,17 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { aiUsageService } from "./ai-usage.service";
+
+// Lazy Anthropic client for fallback
+let _anthropicClient: Anthropic | null = null;
+function getAnthropicClient(): Anthropic {
+  if (!_anthropicClient) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
+    _anthropicClient = new Anthropic({ apiKey });
+  }
+  return _anthropicClient;
+}
 
 // xAI Grok service using OpenAI-compatible API
 // Reference: blueprint:javascript_xai
@@ -625,9 +637,38 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
       const usage = this.extractUsageStats(response);
 
       return { result, usage };
-    } catch (error: any) {
-      console.error("Grok autonomous itinerary error:", error);
-      throw new Error(`Autonomous itinerary generation failed: ${error.message}`);
+    } catch (grokError: any) {
+      console.warn("Grok autonomous itinerary failed, falling back to Anthropic:", grokError.message);
+
+      try {
+        const anthropicResponse = await getAnthropicClient().messages.create({
+          model: "claude-3-5-sonnet-20241022",
+          max_tokens: 8192,
+          system: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only — no markdown, no explanation.",
+          messages: [{ role: "user", content: userPrompt }],
+        });
+
+        const content = anthropicResponse.content[0].type === "text"
+          ? anthropicResponse.content[0].text
+          : null;
+        if (!content) throw new Error("Empty response from Anthropic");
+
+        // Strip any markdown code fences just in case
+        const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        const result = JSON.parse(cleaned) as AutonomousItineraryResult;
+
+        const usage: GrokUsageStats = {
+          promptTokens: anthropicResponse.usage.input_tokens,
+          completionTokens: anthropicResponse.usage.output_tokens,
+          totalTokens: anthropicResponse.usage.input_tokens + anthropicResponse.usage.output_tokens,
+          estimatedCost: (anthropicResponse.usage.input_tokens * 0.000003) + (anthropicResponse.usage.output_tokens * 0.000015),
+        };
+
+        return { result, usage };
+      } catch (anthropicError: any) {
+        console.error("Anthropic fallback also failed:", anthropicError.message);
+        throw new Error(`Autonomous itinerary generation failed: ${anthropicError.message}`);
+      }
     }
   }
 
