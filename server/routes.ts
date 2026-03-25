@@ -12369,13 +12369,27 @@ export async function registerDiscoveryRoutes(app: Express) {
       const resolvedActivityDiffs = activityDiffs || {};
       const resolvedTransportDiffs = transportDiffs || {};
 
+      // Helper: merge HH:MM expert edit with the original ISO date to produce a full ISO timestamp
+      const mergeExpertTime = (originalISO: string | null | undefined, hhMM: string | undefined): string | null | undefined => {
+        if (!hhMM) return originalISO;
+        if (!originalISO) return originalISO;
+        try {
+          const base = new Date(originalISO);
+          const [h, m] = hhMM.split(":").map(Number);
+          base.setHours(h, m, 0, 0);
+          return base.toISOString();
+        } catch {
+          return originalISO;
+        }
+      };
+
       const editedActivities = originalItems.map(item => {
         const diff = resolvedActivityDiffs[item.id];
         if (!diff) return { id: item.id, name: item.name, startTime: item.startTime, endTime: item.endTime, dayNumber: item.dayNumber, sortOrder: item.sortOrder, location: item.location, description: item.description };
         return {
           id: item.id,
           name: diff.name ?? item.name,
-          startTime: diff.startTime ?? item.startTime,
+          startTime: mergeExpertTime(item.startTime, diff.startTime) ?? item.startTime,
           endTime: item.endTime,
           dayNumber: item.dayNumber,
           sortOrder: item.sortOrder,

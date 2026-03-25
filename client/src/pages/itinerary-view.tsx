@@ -257,7 +257,7 @@ export default function ItineraryViewPage() {
     transportSummary: data.variant.transportSummary,
   };
 
-  const isExpertView = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert || urlRole === "expert";
+  const isExpertView = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert;
   const isOwnerView = !!data.isOwner;
   const expertStatus = data.expertStatus;
   const hasPendingReview = isOwnerView && expertStatus === "review_sent";
