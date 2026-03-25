@@ -1,0 +1,64 @@
+TRAVELOURE API SMOKE TEST REPORT
+=================================
+Date: 2026-03-25 20:53 UTC
+
+PUBLIC ENDPOINTS (15 tested, 15 passed):
+  ✓ GET  /api/platform/stats                         => 200 (keys: totalTrips,totalUsers,totalExperts,totalReviews,totalBookings,totalCountries,avgRating)
+  ✓ GET  /api/experience-types                        => 200 (array, 22 items)
+  ✓ GET  /api/catalog/destinations                    => 200 (valid JSON)
+  ✓ GET  /api/catalog/search?q=temple                 => 200
+  ✓ GET  /api/vendors                                 => 200
+  ✓ GET  /api/service-categories                      => 200
+  ✓ GET  /api/auth/terms-versions                     => 200 (termsVersion: 1.0, privacyVersion: 1.0)
+  ✓ GET  /api/faqs                                    => 200
+  ✓ GET  /api/provider-services                       => 200
+  ✓ GET  /api/custom-venues                           => 200
+  ✓ GET  /api/bookings/availability/:id               => 200
+  ✓ GET  /api/bookings/availability-calendar/:id      => 200
+  ✓ GET  /api/shared-trips/:token                     => 404 (correct: token not found, public access)
+  ✓ GET  /api/invites/:token                          => 200 (correct: public guest invite endpoint)
+  ✓ POST /api/bookings/webhooks/stripe                => 400 (correct: signature validation, not session auth)
+
+PROTECTED ENDPOINTS (29 tested, 29 passed - all return 401 without auth):
+  ✓ POST  /api/bookings/process-cart                  => 401
+  ✓ POST  /api/bookings/confirm-payment               => 401
+  ✓ POST  /api/bookings/estimate-cost                 => 401
+  ✓ POST  /api/bookings/apply-promo                   => 401
+  ✓ POST  /api/bookings/refund                        => 401
+  ✓ POST  /api/expert-requests/payment-intent         => 401
+  ✓ POST  /api/expert-requests                        => 401
+  ✓ POST  /api/saved-trips                            => 401
+  ✓ POST  /api/shared-trips                           => 401
+  ✓ GET   /api/conversations                          => 401
+  ✓ GET   /api/auth/user                              => 401
+  ✓ GET   /api/user-experiences                       => 401
+  ✓ POST  /api/generated-itineraries                  => 401
+  ✓ GET   /api/itinerary/:id/transport-hub            => 401
+  ✓ POST  /api/transport-booking-options/:id/book     => 401
+  ✓ POST  /api/transport-booking-options/:id/click    => 401
+  ✓ PATCH /api/transport-booking-options/:id/status   => 401
+  ✓ GET   /api/transport-booking-options/:id          => 401
+  ✓ POST  /api/transport-booking-options/seed/:id     => 401
+  ✓ GET   /api/my-itinerary/:id                       => 401
+  ✓ GET   /api/my-itinerary/:id/calendar              => 401
+  ✓ GET   /api/admin/stats                            => 401
+  ✓ GET   /api/expert-application                     => 401
+  ✓ GET   /api/provider-application                   => 401
+  ✓ POST  /api/ai/generate-blueprint                  => 401
+  ✓ POST  /api/ai/chat                                => 401
+  ✓ GET   /api/admin/users                            => 401
+  ✓ GET   /api/admin/trips                            => 401
+  ✓ GET   /api/admin/analytics/overview               => 401
+
+FRONTEND (1 tested, 1 passed):
+  ✓ GET / => 200 (46,901 bytes, contains React root div)
+
+FIXES APPLIED DURING SMOKE TEST:
+  1. Added isAuthenticated middleware to 17 previously unprotected endpoints:
+     - bookings.ts: process-cart, confirm-payment, estimate-cost, apply-promo, refund
+     - booking-actions.ts: expert-requests/payment-intent, expert-requests, saved-trips, shared-trips (POST)
+     - transport-hub.routes.ts: transport-hub GET, book, click, status, option GET, seed
+     - my-itinerary.routes.ts: itinerary GET, calendar GET
+  2. Fixed emptyHub bug in transport-hub.routes.ts (was called as function, defined as object)
+
+SUMMARY: 45/45 endpoints passing. 0 failures.
