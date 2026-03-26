@@ -2,3 +2,4 @@ export { setupAuth, isAuthenticated, getSession } from "./replitAuth";
 export { authStorage, type IAuthStorage } from "./storage";
 export { registerAuthRoutes } from "./routes";
 export { setupFacebookAuth } from "./facebookAuth";
+export { setupEmailAuth } from "./emailAuth";

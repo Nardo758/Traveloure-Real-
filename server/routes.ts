@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -116,6 +116,7 @@ export async function registerRoutes(
     await setupAuth(app);
     registerAuthRoutes(app);
     setupFacebookAuth(app);
+    setupEmailAuth(app);
   } catch (error) {
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
