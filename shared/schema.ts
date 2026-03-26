@@ -988,7 +988,43 @@ export const generatedItinerariesRelations = relations(generatedItineraries, ({ 
 
 // === Schemas ===
 
-export const insertTripSchema = createInsertSchema(trips).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+// Valid event types for trips
+const validEventTypes = [
+  "vacation",
+  "wedding",
+  "honeymoon",
+  "anniversary",
+  "birthday",
+  "business",
+  "family",
+  "adventure",
+  "romantic",
+  "cultural",
+  "other",
+] as const;
+
+// Base schema from drizzle
+const baseTripSchema = createInsertSchema(trips).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
+
+// Enhanced trip schema with better validations
+export const insertTripSchema = baseTripSchema.extend({
+  title: z.string().min(1, "Title is required").max(255),
+  destination: z.string().min(1, "Destination is required").max(255),
+  eventType: z.enum(validEventTypes).optional().default("vacation"),
+  numberOfTravelers: z.coerce.number().int().min(1, "Must have at least 1 traveler").default(1),
+  budget: z.string().optional().refine(
+    (val) => !val || parseFloat(val) >= 0,
+    { message: "Budget must be a positive number" }
+  ),
+}).refine(
+  (data) => {
+    if (data.startDate && data.endDate) {
+      return new Date(data.endDate) >= new Date(data.startDate);
+    }
+    return true;
+  },
+  { message: "End date must be on or after start date", path: ["endDate"] }
+);
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertUserAndExpertChatSchema = createInsertSchema(userAndExpertChats).omit({ id: true, createdAt: true });

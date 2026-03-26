@@ -146,7 +146,8 @@ export async function registerRoutes(
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const trips = await storage.getTrips(userId);
+    const status = req.query.status as string | undefined;
+    const trips = await storage.getTrips(userId, status);
     res.json(trips);
   });
 

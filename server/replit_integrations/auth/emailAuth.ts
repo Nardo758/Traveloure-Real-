@@ -27,11 +27,22 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   });
 }
 
+// Valid user roles for registration
+const validUserTypes = [
+  "user",
+  "travel_expert",
+  "local_expert",
+  "event_planner",
+  "service_provider",
+  "executive_assistant",
+] as const;
+
 const registerSchema = z.object({
   email: z.string().email("Invalid email address"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
+  userType: z.enum(validUserTypes).optional().default("user"),
 });
 
 const loginSchema = z.object({
@@ -51,7 +62,7 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
-      const { email, password, firstName, lastName } = validation.data;
+      const { email, password, firstName, lastName, userType } = validation.data;
 
       // Check if user already exists
       const existingUser = await db
@@ -77,6 +88,7 @@ export function setupEmailAuth(app: Express): void {
           password: hashedPassword,
           firstName,
           lastName,
+          role: userType, // Map userType to role
           authProvider: "email",
           termsAcceptedAt: new Date(),
           privacyAcceptedAt: new Date(),
