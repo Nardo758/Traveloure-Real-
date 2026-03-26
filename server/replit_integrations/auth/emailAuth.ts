@@ -69,7 +69,7 @@ export function setupEmailAuth(app: Express): void {
       // Hash password
       const hashedPassword = await hashPassword(password);
 
-      // Create user
+      // Create user with terms accepted at registration time
       const [newUser] = await db
         .insert(users)
         .values({
@@ -78,6 +78,10 @@ export function setupEmailAuth(app: Express): void {
           firstName,
           lastName,
           authProvider: "email",
+          termsAcceptedAt: new Date(),
+          privacyAcceptedAt: new Date(),
+          termsVersion: "1.0",
+          privacyVersion: "1.0",
         })
         .returning();
 
