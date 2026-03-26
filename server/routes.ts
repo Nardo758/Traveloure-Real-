@@ -20,7 +20,8 @@ import {
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
-  userAndExpertChats, insertUserAndExpertChatSchema
+  userAndExpertChats, insertUserAndExpertChatSchema,
+  expertPayouts, providerPayouts
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -10711,12 +10712,12 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Provider earnings endpoints
   app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const earnings = await storage.getProviderEarnings(user.claims.metadata.id);
+      const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider earnings", error: error.message });
@@ -10725,12 +10726,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const summary = await storage.getProviderEarningsSummary(user.claims.metadata.id);
+      const summary = await storage.getProviderEarningsSummary(userId);
       res.json(summary);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider earnings summary", error: error.message });
@@ -10739,13 +10740,13 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
-      const details = await revenueTrackingService.getProviderRevenueDetails(user.claims.metadata.id);
+      const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider earnings details", error: error.message });
@@ -10755,12 +10756,12 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Provider payout requests
   app.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const payouts = await storage.getProviderPayouts(user.claims.metadata.id);
+      const payouts = await storage.getProviderPayouts(userId);
       res.json(payouts);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider payouts", error: error.message });
@@ -10769,8 +10770,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
@@ -10779,13 +10780,13 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
 
-      const summary = await storage.getProviderEarningsSummary(user.claims.metadata.id);
+      const summary = await storage.getProviderEarningsSummary(userId);
       if (amount > summary.available) {
         return res.status(400).json({ error: "Insufficient available balance" });
       }
 
       const payout = await storage.createProviderPayout({
-        providerId: user.claims.metadata.id,
+        providerId: userId,
         amount: String(amount),
         payoutMethod: payoutMethod || 'bank_transfer',
         status: 'pending',
@@ -10800,17 +10801,112 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Expert earnings details endpoint
   app.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
-      const details = await revenueTrackingService.getExpertRevenueDetails(user.claims.metadata.id);
+      const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get expert earnings details", error: error.message });
     }
+  });
+
+  // === Stripe Connect Onboarding ===
+
+  app.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      if (!['expert', 'service_provider'].includes(user.role || '')) {
+        return res.status(403).json({ error: "Only experts and providers can onboard for payouts" });
+      }
+
+      const existing = await storage.getUserStripeAccount(userId);
+      if (existing.stripeAccountId && existing.stripeAccountStatus === 'active') {
+        return res.status(400).json({ error: "Stripe account already active" });
+      }
+
+      const { stripeConnectService } = await import('./services/stripe-connect.service');
+      let accountId = existing.stripeAccountId;
+      if (!accountId) {
+        const result = await stripeConnectService.createConnectedAccount(
+          userId, user.email, user.role === 'expert' ? 'expert' : 'provider', user.name || undefined
+        );
+        accountId = result.accountId;
+        await storage.updateUserStripeAccount(userId, accountId, 'onboarding_incomplete');
+      }
+
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const link = await stripeConnectService.createOnboardingLink(
+        accountId,
+        `${baseUrl}/stripe/connect/return`,
+        `${baseUrl}/stripe/connect/refresh`
+      );
+      res.json({ url: link.url, accountId });
+    } catch (error: any) {
+      console.error('Stripe Connect onboard error:', error);
+      res.status(500).json({ message: "Failed to start Stripe onboarding", error: error.message });
+    }
+  });
+
+  app.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const account = await storage.getUserStripeAccount(userId);
+      if (!account.stripeAccountId) {
+        return res.json({ connected: false, status: 'not_connected' });
+      }
+
+      const { stripeConnectService } = await import('./services/stripe-connect.service');
+      const status = await stripeConnectService.getAccountStatus(account.stripeAccountId);
+
+      if (status.status !== account.stripeAccountStatus) {
+        await storage.updateUserStripeAccount(userId, account.stripeAccountId, status.status);
+      }
+
+      res.json({
+        connected: true,
+        accountId: account.stripeAccountId,
+        ...status,
+      });
+    } catch (error: any) {
+      console.error('Stripe Connect status error:', error);
+      res.status(500).json({ message: "Failed to check Stripe status", error: error.message });
+    }
+  });
+
+  app.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const account = await storage.getUserStripeAccount(userId);
+      if (!account.stripeAccountId) {
+        return res.status(400).json({ error: "No Stripe account connected" });
+      }
+
+      const { stripeConnectService } = await import('./services/stripe-connect.service');
+      const link = await stripeConnectService.createLoginLink(account.stripeAccountId);
+      res.json({ url: link.url });
+    } catch (error: any) {
+      console.error('Stripe dashboard link error:', error);
+      res.status(500).json({ message: "Failed to create dashboard link", error: error.message });
+    }
+  });
+
+  app.get("/stripe/connect/return", (_req, res) => {
+    res.redirect("/dashboard?stripe=connected");
+  });
+
+  app.get("/stripe/connect/refresh", (_req, res) => {
+    res.redirect("/dashboard?stripe=refresh");
   });
 
   // === Admin Payouts Management ===
@@ -10861,10 +10957,60 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid requesterType. Must be 'expert' or 'provider'" });
       }
       let updated;
-      if (requesterType === 'expert') {
-        updated = await storage.updateExpertPayoutStatus(id, status, notes, transactionId);
+      if (status === 'completed') {
+        const recipientId = requesterType === 'expert'
+          ? (await db.select({ expertId: expertPayouts.expertId }).from(expertPayouts).where(eq(expertPayouts.id, id)))[0]?.expertId
+          : (await db.select({ providerId: providerPayouts.providerId }).from(providerPayouts).where(eq(providerPayouts.id, id)))[0]?.providerId;
+
+        if (!recipientId) {
+          return res.status(404).json({ error: "Payout not found" });
+        }
+
+        const recipientStripe = await storage.getUserStripeAccount(recipientId);
+
+        if (recipientStripe.stripeAccountId && recipientStripe.canReceivePayments) {
+          try {
+            const { stripeConnectService } = await import('./services/stripe-connect.service');
+            const payoutAmount = requesterType === 'expert'
+              ? (await db.select({ amount: expertPayouts.amount }).from(expertPayouts).where(eq(expertPayouts.id, id)))[0]?.amount
+              : (await db.select({ amount: providerPayouts.amount }).from(providerPayouts).where(eq(providerPayouts.id, id)))[0]?.amount;
+
+            const transfer = await stripeConnectService.createTransfer(
+              parseFloat(payoutAmount || '0'),
+              'usd',
+              recipientStripe.stripeAccountId,
+              `Traveloure ${requesterType} payout`,
+              { payoutId: id, requesterType, recipientId }
+            );
+
+            if (requesterType === 'expert') {
+              updated = await storage.updateExpertPayoutStatus(id, 'completed', notes, transfer.transferId);
+            } else {
+              updated = await storage.updateProviderPayoutStatus(id, 'completed', notes, transfer.transferId);
+            }
+          } catch (stripeError: any) {
+            console.error('Stripe transfer failed:', stripeError);
+            if (requesterType === 'expert') {
+              updated = await storage.updateExpertPayoutStatus(id, 'failed', `Stripe transfer failed: ${stripeError.message}`);
+            } else {
+              updated = await storage.updateProviderPayoutStatus(id, 'failed', `Stripe transfer failed: ${stripeError.message}`);
+            }
+            return res.json({ ...updated, stripeError: stripeError.message });
+          }
+        } else {
+          return res.status(400).json({
+            error: "Recipient does not have an active Stripe Connect account. They must complete onboarding first.",
+            recipientId,
+            hasStripeAccount: !!recipientStripe.stripeAccountId,
+            canReceivePayments: recipientStripe.canReceivePayments,
+          });
+        }
       } else {
-        updated = await storage.updateProviderPayoutStatus(id, status, notes, payoutReference);
+        if (requesterType === 'expert') {
+          updated = await storage.updateExpertPayoutStatus(id, status, notes, transactionId);
+        } else {
+          updated = await storage.updateProviderPayoutStatus(id, status, notes, payoutReference);
+        }
       }
       if (!updated) {
         return res.status(404).json({ error: "Payout not found" });
