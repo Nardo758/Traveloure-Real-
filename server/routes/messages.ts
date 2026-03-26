@@ -23,6 +23,10 @@ const sendMessageSchema = z.object({
   attachment: z.string().url().optional(),
 });
 
+router.get("/", isAuthenticated, async (req, res) => {
+  res.redirect(307, "/api/messages/conversations");
+});
+
 router.get("/conversations", isAuthenticated, async (req, res) => {
   try {
     const userId = (req as any).user?.claims?.sub;
@@ -133,6 +137,33 @@ router.get("/unread/count", isAuthenticated, async (req, res) => {
     res.json({ count: result?.count || 0 });
   } catch (error) {
     res.status(500).json({ message: "Failed to get unread count" });
+  }
+});
+
+router.get("/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    const { id } = req.params;
+    const [message] = await db
+      .select()
+      .from(userAndExpertChats)
+      .where(eq(userAndExpertChats.id, id));
+    if (!message) return res.status(404).json({ message: "Message not found" });
+    if (message.senderId !== userId && message.receiverId !== userId) {
+      return res.status(403).json({ message: "Not authorized" });
+    }
+    res.json({
+      id: message.id,
+      conversationId: getConversationId(message.senderId, message.receiverId || ""),
+      message: message.message,
+      attachment: message.attachment,
+      isFromMe: message.senderId === userId,
+      createdAt: message.createdAt,
+      readAt: message.readAt,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to load message" });
   }
 });
 
