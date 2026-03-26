@@ -480,9 +480,13 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // Trips
-  async getTrips(userId?: string): Promise<Trip[]> {
+  async getTrips(userId?: string, status?: string): Promise<Trip[]> {
     if (!userId) return [];
-    return await db.select().from(trips).where(eq(trips.userId, userId));
+    const conditions = [eq(trips.userId, userId)];
+    if (status) {
+      conditions.push(eq(trips.status, status));
+    }
+    return await db.select().from(trips).where(and(...conditions));
   }
 
   async getTrip(id: string): Promise<Trip | undefined> {
@@ -1813,8 +1817,9 @@ export class DatabaseStorage implements IStorage {
 
   // Get experts with full profile (experience types, services, specializations)
   async getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]> {
-    // Get all users with expert role
-    const experts = await db.select().from(users).where(eq(users.role, "expert"));
+    // Get all users with any expert-like role
+    const expertRoles = ["expert", "travel_expert", "local_expert", "event_planner", "executive_assistant"];
+    const experts = await db.select().from(users).where(inArray(users.role, expertRoles));
     
     const expertsWithProfiles = await Promise.all(experts.map(async (expert) => {
       // Get expert's experience types

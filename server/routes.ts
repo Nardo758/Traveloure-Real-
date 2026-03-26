@@ -19,7 +19,8 @@ import {
   serviceBookings, serviceReviews, notifications, wallets, creditTransactions,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
-  temporalAnchors, itineraryItems, generatedItineraries
+  temporalAnchors, itineraryItems, generatedItineraries,
+  userAndExpertChats, insertUserAndExpertChatSchema
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -107,6 +108,29 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Simple XSS sanitization - strips HTML tags and dangerous characters
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
+
+// Sanitize object string fields recursively
+function sanitizeObject<T extends Record<string, any>>(obj: T): T {
+  const result = { ...obj };
+  for (const key of Object.keys(result)) {
+    if (typeof result[key] === 'string') {
+      result[key] = sanitizeInput(result[key]);
+    }
+  }
+  return result;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -121,9 +145,60 @@ export async function registerRoutes(
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
   }
+
+  // Health check aliases (main health is at /health via health router)
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+  app.get("/api/status", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
   
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);
+
+  // Start a chat with an expert
+  app.post("/api/chat/start", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { expertId, message, tripId } = req.body;
+
+      if (!expertId) {
+        return res.status(400).json({ message: "Expert ID is required" });
+      }
+
+      // Verify expert exists
+      const expert = await db.select().from(users).where(eq(users.id, expertId)).then(r => r[0]);
+      if (!expert) {
+        return res.status(404).json({ message: "Expert not found" });
+      }
+
+      // Create initial chat message
+      const [chat] = await db.insert(userAndExpertChats).values({
+        senderId: userId,
+        receiverId: expertId,
+        message: message || "Hello, I would like to connect with you.",
+      }).returning();
+
+      // Create notification for expert
+      await db.insert(notifications).values({
+        userId: expertId,
+        type: "new_chat",
+        title: "New message",
+        message: `You have a new message from a traveler`,
+        data: { chatId: chat.id, senderId: userId, tripId },
+      });
+
+      res.status(201).json({
+        message: "Chat started successfully",
+        chatId: chat.id,
+        chat,
+      });
+    } catch (error) {
+      console.error("Error starting chat:", error);
+      res.status(500).json({ message: "Failed to start chat" });
+    }
+  });
 
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);
@@ -146,7 +221,8 @@ export async function registerRoutes(
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const trips = await storage.getTrips(userId);
+    const status = req.query.status as string | undefined;
+    const trips = await storage.getTrips(userId, status);
     res.json(trips);
   });
 
@@ -166,8 +242,10 @@ export async function registerRoutes(
   app.post(api.trips.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.trips.create.input.parse(req.body);
+      // Sanitize string inputs to prevent XSS
+      const sanitizedInput = sanitizeObject(input);
       const userId = (req.user as any).claims.sub;
-      const trip = await storage.createTrip({ ...input, userId });
+      const trip = await storage.createTrip({ ...sanitizedInput, userId });
       res.status(201).json(trip);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -180,13 +258,15 @@ export async function registerRoutes(
   app.patch(api.trips.update.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.trips.update.input.parse(req.body);
+      // Sanitize string inputs to prevent XSS
+      const sanitizedInput = sanitizeObject(input);
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
       
       const userId = (req.user as any).claims.sub;
       if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const updatedTrip = await storage.updateTrip(req.params.id, input);
+      const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
       res.json(updatedTrip);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -660,6 +740,25 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // Alias: /api/expert-forms -> /api/expert-application (for API compatibility)
+  app.post("/api/expert-forms", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getLocalExpertForm(userId);
+      if (existing) {
+        return res.status(400).json({ message: "You already have an application submitted" });
+      }
+      const input = insertLocalExpertFormSchema.parse(req.body);
+      const form = await storage.createLocalExpertForm({ ...input, userId });
+      res.status(201).json(form);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to submit application" });
+    }
+  });
+
   // Admin: Get platform stats
   app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
     const user = req.user as any;
@@ -775,6 +874,25 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: err.errors[0].message });
       }
       console.error("Error creating provider application:", err);
+      res.status(500).json({ message: "Failed to submit application" });
+    }
+  });
+
+  // Alias: /api/provider-forms -> /api/provider-application (for API compatibility)
+  app.post("/api/provider-forms", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getServiceProviderForm(userId);
+      if (existing) {
+        return res.status(400).json({ message: "You already have an application submitted" });
+      }
+      const input = insertServiceProviderFormSchema.parse(req.body);
+      const form = await storage.createServiceProviderForm({ ...input, userId });
+      res.status(201).json(form);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
       res.status(500).json({ message: "Failed to submit application" });
     }
   });
@@ -1136,6 +1254,17 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Get available destinations from all providers
   app.get("/api/catalog/destinations", async (req, res) => {
+    try {
+      const destinations = await experienceCatalogService.getDestinations();
+      res.json(destinations);
+    } catch (error) {
+      console.error("Error fetching destinations:", error);
+      res.status(500).json({ message: "Failed to fetch destinations" });
+    }
+  });
+
+  // Alias: /api/destinations -> /api/catalog/destinations
+  app.get("/api/destinations", async (req, res) => {
     try {
       const destinations = await experienceCatalogService.getDestinations();
       res.json(destinations);
