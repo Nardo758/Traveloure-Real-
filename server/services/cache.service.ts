@@ -436,10 +436,62 @@ export class CacheService {
     }
   }
 
+  private async enrichProductsWithCoordinates(products: ViatorProduct[]): Promise<ViatorProduct[]> {
+    const BATCH_SIZE = 5;
+    const enriched = [...products];
+
+    for (let i = 0; i < enriched.length; i += BATCH_SIZE) {
+      const batch = enriched.slice(i, i + BATCH_SIZE);
+      const details = await Promise.allSettled(
+        batch.map(p => viatorService.getProductDetails(p.productCode))
+      );
+
+      details.forEach((result, idx) => {
+        if (result.status === "fulfilled" && result.value) {
+          const detail = result.value;
+          if (detail.logistics) {
+            enriched[i + idx] = { ...enriched[i + idx], logistics: detail.logistics };
+          }
+          if (detail.itinerary) {
+            enriched[i + idx] = { ...enriched[i + idx], itinerary: detail.itinerary };
+          }
+        }
+      });
+    }
+
+    return enriched;
+  }
+
+  private coordinateRefreshAttempts = new Map<string, number>();
+
   async getActivitiesWithCache(destination: string, currency: string = "USD", count: number = 20): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
     const cached = await this.getCachedActivities(destination);
-    
+
     if (cached.length > 0) {
+      const hasMissingCoordinates = cached.some(a => !a.latitude || !a.longitude);
+      const destKey = destination.toLowerCase();
+      const lastAttempt = this.coordinateRefreshAttempts.get(destKey) || 0;
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+      const shouldRefresh = hasMissingCoordinates && lastAttempt < oneHourAgo;
+
+      if (shouldRefresh) {
+        this.coordinateRefreshAttempts.set(destKey, Date.now());
+        try {
+          const result = await viatorService.searchByFreetext(destination, currency, count);
+          if (result.products && result.products.length > 0) {
+            const enrichedProducts = await this.enrichProductsWithCoordinates(result.products);
+            await this.cacheActivities(enrichedProducts, destination);
+            const normalized = enrichedProducts.map(p => {
+              const coords = p.logistics?.start?.[0]?.location?.coordinates;
+              return { ...p, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null };
+            });
+            return { data: normalized, fromCache: false };
+          }
+        } catch (error) {
+          console.error(`Coordinate refresh failed for ${destination}, serving stale cache:`, error);
+        }
+      }
+
       const activitiesWithLocation = cached.map(a => ({
         productCode: a.productCode,
         title: a.title,
@@ -465,11 +517,16 @@ export class CacheService {
       return { data: activitiesWithLocation, fromCache: true, lastUpdated: cached[0]?.lastUpdated || undefined };
     }
 
-    // Fetch from API
     const result = await viatorService.searchByFreetext(destination, currency, count);
     
     if (result.products && result.products.length > 0) {
-      await this.cacheActivities(result.products, destination);
+      const enrichedProducts = await this.enrichProductsWithCoordinates(result.products);
+      await this.cacheActivities(enrichedProducts, destination);
+      const normalized = enrichedProducts.map(p => {
+        const coords = p.logistics?.start?.[0]?.location?.coordinates;
+        return { ...p, latitude: coords?.latitude ?? null, longitude: coords?.longitude ?? null };
+      });
+      return { data: normalized, fromCache: false };
     }
     
     return { data: result.products || [], fromCache: false };
