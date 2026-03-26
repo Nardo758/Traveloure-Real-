@@ -4738,3 +4738,107 @@ export const activityDemandTrends = pgTable("activity_demand_trends", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+
+// Enhanced Location & Trip Analytics (for tourism board sales)
+export const tripAnalyticsEnhanced = pgTable("trip_analytics_enhanced", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Destination Details
+  destinationCountry: varchar("destination_country", { length: 100 }),
+  destinationRegion: varchar("destination_region", { length: 100 }), // e.g., "Tuscany", "Provence", "Bali"
+  destinationCity: varchar("destination_city", { length: 100 }),
+  destinationType: varchar("destination_type", { length: 50 }), // beach, city, mountain, countryside, island
+  
+  // Source Market (Where traveler is FROM)
+  originCountry: varchar("origin_country", { length: 100 }),
+  originRegion: varchar("origin_region", { length: 100 }),
+  originCity: varchar("origin_city", { length: 100 }),
+  
+  // Trip Timing
+  bookingDate: timestamp("booking_date"),
+  tripStartDate: timestamp("trip_start_date"),
+  tripEndDate: timestamp("trip_end_date"),
+  leadTimeDays: integer("lead_time_days"), // Days between booking and trip
+  lengthOfStay: integer("length_of_stay"), // Nights
+  season: varchar("season", { length: 20 }), // spring, summer, fall, winter
+  
+  // Traveler Profile
+  partySize: integer("party_size"),
+  partyComposition: varchar("party_composition", { length: 50 }), // solo, couple, family, group, business
+  hasChildren: boolean("has_children"),
+  tripPurpose: varchar("trip_purpose", { length: 50 }), // leisure, business, wedding, honeymoon, anniversary
+  
+  // Spending
+  totalBudget: decimal("total_budget", { precision: 12, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  accommodationBudget: decimal("accommodation_budget", { precision: 10, scale: 2 }),
+  activitiesBudget: decimal("activities_budget", { precision: 10, scale: 2 }),
+  diningBudget: decimal("dining_budget", { precision: 10, scale: 2 }),
+  transportBudget: decimal("transport_budget", { precision: 10, scale: 2 }),
+  spendPerDay: decimal("spend_per_day", { precision: 10, scale: 2 }),
+  priceSegment: varchar("price_segment", { length: 20 }), // budget, mid-range, luxury, ultra-luxury
+  
+  // Activities Booked
+  activitiesBooked: jsonb("activities_booked"), // [{type: "photography", price: 500}, ...]
+  primaryActivity: varchar("primary_activity", { length: 100 }),
+  
+  // Accommodation
+  accommodationType: varchar("accommodation_type", { length: 50 }), // hotel, resort, villa, airbnb, hostel
+  starRating: integer("star_rating"),
+  
+  // Booking Channel
+  bookingChannel: varchar("booking_channel", { length: 50 }), // direct, platform, agent
+  deviceUsed: varchar("device_used", { length: 20 }),
+  
+  // Competitor Data
+  otherDestinationsConsidered: jsonb("other_destinations_considered"), // ["Barcelona", "Rome", "Lisbon"]
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Destination Comparison Reports (sell to competing destinations)
+export const destinationBenchmarks = pgTable("destination_benchmarks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  period: varchar("period", { length: 20 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  
+  // Volume Metrics
+  searchVolume: integer("search_volume"),
+  bookingVolume: integer("booking_volume"),
+  marketShare: decimal("market_share", { precision: 5, scale: 2 }), // % of total bookings
+  
+  // Source Markets
+  topSourceCountries: jsonb("top_source_countries"), // [{country: "USA", share: 25}, ...]
+  
+  // Spending
+  avgTripSpend: decimal("avg_trip_spend", { precision: 10, scale: 2 }),
+  avgDailySpend: decimal("avg_daily_spend", { precision: 10, scale: 2 }),
+  revenueEstimate: decimal("revenue_estimate", { precision: 14, scale: 2 }),
+  
+  // Trip Characteristics
+  avgLengthOfStay: decimal("avg_length_of_stay", { precision: 5, scale: 1 }),
+  avgLeadTime: decimal("avg_lead_time", { precision: 5, scale: 1 }),
+  avgPartySize: decimal("avg_party_size", { precision: 5, scale: 1 }),
+  
+  // Seasonality
+  peakMonths: jsonb("peak_months"), // ["June", "July", "August"]
+  seasonalityIndex: jsonb("seasonality_index"), // {jan: 0.5, feb: 0.6, ...}
+  
+  // Activity Mix
+  topActivities: jsonb("top_activities"), // [{activity: "photography", share: 15}, ...]
+  
+  // Competitor Comparison
+  similarDestinations: jsonb("similar_destinations"), // ["Barcelona", "Lisbon"]
+  competitorComparison: jsonb("competitor_comparison"), // vs similar destinations
+  
+  // Sentiment
+  avgRating: decimal("avg_rating", { precision: 3, scale: 2 }),
+  sentimentScore: decimal("sentiment_score", { precision: 3, scale: 2 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
