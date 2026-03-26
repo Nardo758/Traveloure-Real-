@@ -13523,3 +13523,194 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+
+  // Track activity/service interactions
+  app.post("/api/track/activity", async (req, res) => {
+    try {
+      const { activityBookingAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(activityBookingAnalytics).values({
+        sessionId: req.body.sessionId,
+        userId,
+        activityType: req.body.activityType,
+        activityCategory: req.body.activityCategory,
+        serviceName: req.body.serviceName,
+        providerId: req.body.providerId,
+        providerType: req.body.providerType,
+        destination: req.body.destination,
+        country: req.body.country,
+        city: req.body.city,
+        bookingStatus: req.body.status, // viewed, inquired, booked
+        price: req.body.price,
+        groupSize: req.body.groupSize,
+        tripType: req.body.tripType,
+        travelerOriginCountry: req.headers["cf-ipcountry"] as string || req.body.originCountry,
+        bookingLeadDays: req.body.leadDays,
+        deviceType: req.body.deviceType,
+        referralSource: req.body.referralSource,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Track activity error:", err);
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Activity Demand Report - What activities are trending
+  app.get("/api/admin/reports/activity-demand", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { activityBookingAnalytics } = await import("@shared/schema");
+      
+      // Activity types by popularity
+      const byActivityType = await db.select({
+        activityType: activityBookingAnalytics.activityType,
+        views: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'viewed' then 1 else 0 end)::int`,
+        inquiries: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'inquired' then 1 else 0 end)::int`,
+        bookings: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then 1 else 0 end)::int`,
+        revenue: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then ${activityBookingAnalytics.price} else 0 end)::numeric(12,2)`,
+        avgPrice: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+        avgGroupSize: sql<number>`avg(${activityBookingAnalytics.groupSize})::numeric(5,1)`,
+      })
+      .from(activityBookingAnalytics)
+      .groupBy(activityBookingAnalytics.activityType)
+      .orderBy(sql`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then 1 else 0 end) desc`);
+
+      // Activities by destination
+      const byDestination = await db.select({
+        destination: activityBookingAnalytics.destination,
+        activityType: activityBookingAnalytics.activityType,
+        bookings: sql<number>`count(*)::int`,
+      })
+      .from(activityBookingAnalytics)
+      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
+      .groupBy(activityBookingAnalytics.destination, activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      // Activities by trip type
+      const byTripType = await db.select({
+        tripType: activityBookingAnalytics.tripType,
+        activityType: activityBookingAnalytics.activityType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(activityBookingAnalytics)
+      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
+      .groupBy(activityBookingAnalytics.tripType, activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      // Top origin countries for activities
+      const byOriginCountry = await db.select({
+        originCountry: activityBookingAnalytics.travelerOriginCountry,
+        activityType: activityBookingAnalytics.activityType,
+        bookings: sql<number>`count(*)::int`,
+        avgSpend: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
+      .groupBy(activityBookingAnalytics.travelerOriginCountry, activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      res.json({
+        reportType: "activity_demand",
+        generatedAt: new Date().toISOString(),
+        byActivityType: byActivityType.map(a => ({
+          type: a.activityType,
+          views: a.views || 0,
+          inquiries: a.inquiries || 0,
+          bookings: a.bookings || 0,
+          revenue: `$${Number(a.revenue || 0).toLocaleString()}`,
+          avgPrice: `$${Number(a.avgPrice || 0).toFixed(0)}`,
+          avgGroupSize: a.avgGroupSize || 0,
+          conversionRate: a.views > 0 ? `${((a.bookings / a.views) * 100).toFixed(1)}%` : "0%",
+        })),
+        byDestination,
+        byTripType,
+        byOriginCountry: byOriginCountry.map(o => ({
+          country: o.originCountry || "Unknown",
+          activityType: o.activityType,
+          bookings: o.bookings,
+          avgSpend: `$${Number(o.avgSpend || 0).toFixed(0)}`,
+        })),
+        insights: {
+          topActivities: byActivityType.slice(0, 5).map(a => a.activityType),
+          highestRevenue: byActivityType.sort((a, b) => Number(b.revenue) - Number(a.revenue)).slice(0, 3).map(a => a.activityType),
+          highestConversion: byActivityType.filter(a => a.views > 10).sort((a, b) => (b.bookings / b.views) - (a.bookings / a.views)).slice(0, 3).map(a => a.activityType),
+        }
+      });
+    } catch (err) {
+      console.error("Activity demand report error:", err);
+      res.status(500).json({ message: "Failed to generate activity report" });
+    }
+  });
+
+  // Activity trends by category (for selling to specific industries)
+  app.get("/api/admin/reports/activity-trends/:activityType", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const activityType = req.params.activityType;
+      const { activityBookingAnalytics } = await import("@shared/schema");
+      
+      // Detailed breakdown for specific activity type
+      const destinations = await db.select({
+        destination: activityBookingAnalytics.destination,
+        country: activityBookingAnalytics.country,
+        bookings: sql<number>`count(*)::int`,
+        revenue: sql<number>`sum(${activityBookingAnalytics.price})::numeric(12,2)`,
+        avgPrice: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(and(
+        eq(activityBookingAnalytics.activityType, activityType),
+        eq(activityBookingAnalytics.bookingStatus, "booked")
+      ))
+      .groupBy(activityBookingAnalytics.destination, activityBookingAnalytics.country)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+      const travelerProfiles = await db.select({
+        tripType: activityBookingAnalytics.tripType,
+        originCountry: activityBookingAnalytics.travelerOriginCountry,
+        count: sql<number>`count(*)::int`,
+        avgGroupSize: sql<number>`avg(${activityBookingAnalytics.groupSize})::numeric(5,1)`,
+        avgSpend: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(and(
+        eq(activityBookingAnalytics.activityType, activityType),
+        eq(activityBookingAnalytics.bookingStatus, "booked")
+      ))
+      .groupBy(activityBookingAnalytics.tripType, activityBookingAnalytics.travelerOriginCountry)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+      res.json({
+        reportType: `activity_trends_${activityType}`,
+        activityType,
+        generatedAt: new Date().toISOString(),
+        topDestinations: destinations,
+        travelerProfiles,
+        summary: {
+          totalBookings: destinations.reduce((sum, d) => sum + d.bookings, 0),
+          totalRevenue: `$${destinations.reduce((sum, d) => sum + Number(d.revenue || 0), 0).toLocaleString()}`,
+          topMarket: destinations[0]?.destination || "N/A",
+        }
+      });
+    } catch (err) {
+      console.error("Activity trends report error:", err);
+      res.status(500).json({ message: "Failed to generate activity trends" });
+    }
+  });
+

@@ -4670,3 +4670,71 @@ export const pricingIntelligence = pgTable("pricing_intelligence", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+
+// Activity & Service Booking Analytics
+export const activityBookingAnalytics = pgTable("activity_booking_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Activity/Service Details
+  activityType: varchar("activity_type", { length: 100 }).notNull(), // photography, tour, wedding_planning, adventure, culinary, wellness, etc.
+  activityCategory: varchar("activity_category", { length: 100 }), // outdoor, cultural, romantic, family, luxury, budget
+  serviceName: varchar("service_name", { length: 255 }),
+  providerId: varchar("provider_id"),
+  providerType: varchar("provider_type", { length: 50 }), // expert, service_provider
+  
+  // Location Data
+  destination: varchar("destination", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  
+  // Booking Details
+  bookingStatus: varchar("booking_status", { length: 50 }), // viewed, inquired, booked, completed, cancelled
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  groupSize: integer("group_size"),
+  
+  // Traveler Profile
+  tripType: varchar("trip_type", { length: 50 }), // vacation, honeymoon, wedding, business, adventure, family
+  travelerOriginCountry: varchar("traveler_origin_country", { length: 100 }),
+  
+  // Timing
+  bookingLeadDays: integer("booking_lead_days"), // Days between booking and activity
+  activityDate: timestamp("activity_date"),
+  
+  // Device & Source
+  deviceType: varchar("device_type", { length: 20 }),
+  referralSource: varchar("referral_source", { length: 100 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Activity Demand Trends - Aggregated insights
+export const activityDemandTrends = pgTable("activity_demand_trends", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  activityType: varchar("activity_type", { length: 100 }).notNull(),
+  destination: varchar("destination", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  period: varchar("period", { length: 20 }).notNull(), // daily, weekly, monthly
+  periodStart: timestamp("period_start").notNull(),
+  
+  // Metrics
+  searchCount: integer("search_count").default(0),
+  viewCount: integer("view_count").default(0),
+  inquiryCount: integer("inquiry_count").default(0),
+  bookingCount: integer("booking_count").default(0),
+  totalRevenue: decimal("total_revenue", { precision: 12, scale: 2 }).default("0"),
+  avgPrice: decimal("avg_price", { precision: 10, scale: 2 }),
+  avgGroupSize: decimal("avg_group_size", { precision: 5, scale: 1 }),
+  
+  // Traveler Demographics
+  topOriginCountries: jsonb("top_origin_countries"), // [{country: "USA", count: 50}, ...]
+  tripTypeBreakdown: jsonb("trip_type_breakdown"), // {honeymoon: 30, vacation: 50, ...}
+  
+  // Conversion
+  conversionRate: decimal("conversion_rate", { precision: 5, scale: 2 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
