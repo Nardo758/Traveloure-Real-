@@ -1,0 +1,34 @@
+| Category     | Endpoint                           | Status               |
+| ------------ | ---------------------------------- | -------------------- |
+| Auth         | POST /api/auth/login               | ✅                    |
+|              | POST /api/auth/logout              | ✅                    |
+|              | GET /api/auth/me                   | ⚠️ HTML              |
+| Trips        | GET /api/trips                     | ✅                    |
+|              | POST /api/trips                    | ✅                    |
+|              | POST /api/trips/generate-itinerary | ✅                    |
+| Experiences  | GET /api/user-experiences          | ✅                    |
+|              | GET /api/experience-types          | ✅                    |
+|              | GET /api/experience-types/:slug    | ✅                    |
+| Messaging    | GET /api/messages                  | ✅                    |
+|              | GET /api/messages/conversations    | ✅                    |
+|              | GET /api/messages/unread/count     | ✅                    |
+|              | POST /api/messages                 | ✅                    |
+| Cart/Booking | GET /api/cart                      | ✅                    |
+|              | POST /api/cart/items               | ✅                    |
+|              | GET /api/bookings/user             | ✅                    |
+|              | GET /api/service-bookings          | ✅                    |
+| Wallet       | GET /api/wallet                    | ✅                    |
+|              | GET /api/notifications             | ✅                    |
+| Expert       | GET /api/expert/dashboard          | ✅                    |
+|              | GET /api/expert/earnings           | ✅                    |
+| Provider     | GET /api/provider/dashboard        | ✅                    |
+|              | GET /api/provider/earnings         | ✅                    |
+|              | GET /api/provider/services         | ✅                    |
+| Admin        | GET /api/admin/stats               | ✅ (blocks non-admin) |
+|              | GET /api/admin/expert-applications | ✅ (blocks non-admin) |
+|              | GET /api/admin/bookings            | ✅ (blocks non-admin) |
+| Public       | GET /api/experts                   | ✅                    |
+|              | GET /api/destinations              | ✅                    |
+|              | GET /api/provider-services         | ✅                    |
+|              | GET /api/travelpulse/cities        | ✅                    |
+|              | GET /api/health                    | ✅                    |
