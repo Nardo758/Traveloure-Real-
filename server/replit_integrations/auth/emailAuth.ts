@@ -257,4 +257,13 @@ export function setupEmailAuth(app: Express): void {
       res.status(500).json({ message: "Failed to reset password" });
     }
   });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout(() => {
+      req.session?.destroy(() => {
+        res.clearCookie("connect.sid", { path: "/" });
+        res.json({ message: "Logged out successfully" });
+      });
+    });
+  });
 }
