@@ -68,6 +68,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { trackSearchEvent } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -1843,6 +1844,16 @@ export default function ExperienceTemplatePage() {
                   disabled={!!dateError || !destination.trim()}
                   onClick={() => {
                     setDetailsSubmitted(true);
+                    // Track search event for tourism analytics
+                    trackSearchEvent({
+                      destination,
+                      origin: originCity || undefined,
+                      startDate: startDate?.toISOString().split('T')[0],
+                      endDate: endDate?.toISOString().split('T')[0],
+                      travelers: adults + kids,
+                      experienceType: experienceType?.slug || slug,
+                      searchContext: 'experience-template',
+                    });
                     toast({
                       title: "Details Saved",
                       description: slug === "wedding" 
