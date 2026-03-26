@@ -342,6 +342,32 @@ export async function registerRoutes(
     res.status(204).send();
   });
 
+  app.post("/api/trips/generate-itinerary", isAuthenticated, async (req, res) => {
+    const { tripId } = req.body;
+    if (!tripId) {
+      return res.status(400).json({ message: "tripId is required in the request body" });
+    }
+    const trip = await storage.getTrip(tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    const itinerary = await storage.createGeneratedItinerary({
+      tripId: trip.id,
+      itineraryData: {
+        days: [
+          { day: 1, activities: [
+            { time: "10:00 AM", title: "Visit City Center", description: "Explore the main square." },
+            { time: "2:00 PM", title: "Lunch at Local Cafe", description: "Try the famous pastry." }
+          ]},
+          { day: 2, activities: [
+            { time: "09:00 AM", title: "Museum Tour", description: "Learn about local history." },
+            { time: "4:00 PM", title: "Sunset View", description: "Best view in the city." }
+          ]}
+        ]
+      },
+      status: "generated"
+    });
+    res.status(201).json(itinerary);
+  });
+
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     const trip = await storage.getTrip(req.params.id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
