@@ -116,8 +116,9 @@ export const searchRateLimiter = createRateLimiter({
 
 export const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
-  maxRequests: 5,
-  keyGenerator: (req) => `auth:${req.ip || "unknown"}`,
+  maxRequests: 20,
+  keyGenerator: (req) => `auth:${req.ip || "unknown"}:${req.path}`,
+  skip: (req) => req.method === "GET",
 });
 
 export const strictRateLimiter = createRateLimiter({
