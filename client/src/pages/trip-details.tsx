@@ -85,7 +85,7 @@ export default function TripDetails() {
         description: "Please sign in to add items to your cart" 
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = "/";
       }, 1500);
       return;
     }

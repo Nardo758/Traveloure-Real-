@@ -46,7 +46,7 @@ export default function AcceptTermsPage() {
 
   useEffect(() => {
     if (!isLoadingUser && !user) {
-      window.location.href = "/api/login";
+      window.location.href = "/";
     }
   }, [isLoadingUser, user]);
 

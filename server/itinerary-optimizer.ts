@@ -16,6 +16,8 @@ import {
   temporalAnchors,
   dayBoundaries,
   transportLegs,
+  experienceTypes,
+  ExperienceType,
 } from "@shared/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import {
@@ -60,7 +62,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 16384,
+        max_tokens: 5120,
       });
       const content = response.choices[0]?.message?.content;
       if (content) return content;
@@ -73,7 +75,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   if (anthropic) {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 16384,
+      max_tokens: 5120,
       system: systemPrompt,
       messages: [
         { role: "user", content: userPrompt },
@@ -160,6 +162,55 @@ function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   return desc;
 }
 
+function buildLogisticsContext(expType: ExperienceType): string {
+  const lines: string[] = [];
+
+  lines.push(`EXPERIENCE TYPE: ${expType.name} (${expType.slug})`);
+
+  if (expType.typicalGroupSizeMin != null && expType.typicalGroupSizeMax != null) {
+    lines.push(`GROUP SIZE: ${expType.typicalGroupSizeMin}–${expType.typicalGroupSizeMax} people — size all venue/transport recommendations accordingly`);
+  }
+
+  if (expType.typicalDurationMinDays != null && expType.typicalDurationMaxDays != null) {
+    const dMin = expType.typicalDurationMinDays;
+    const dMax = expType.typicalDurationMaxDays;
+    lines.push(`TYPICAL DURATION: ${dMin === dMax ? `${dMin} day${dMin > 1 ? 's' : ''}` : `${dMin}–${dMax} days`}`);
+  }
+
+  const timingGuide: Record<string, string> = {
+    low: "Flexible timing — 15–20 min transitions are fine",
+    medium: "Standard timing — allow 20–30 min transitions between activities",
+    high: "Tight scheduling — include 30–45 min buffers between major activities",
+    very_high: "Complex timing — build in 45+ min buffers; sequence activities to avoid conflicts",
+    extreme: "Precision scheduling — every activity needs an exact time slot; zero slack tolerated",
+  };
+  if (expType.timingComplexity && timingGuide[expType.timingComplexity]) {
+    lines.push(`TIMING: ${timingGuide[expType.timingComplexity]}`);
+  }
+
+  const contingencyGuide: Record<string, string> = {
+    flexible: "Minor contingencies acceptable — no backup plans required",
+    important: "Flag weather-sensitive activities and suggest indoor alternatives where relevant",
+    critical: "Include a backup option for EVERY major activity or venue — failure is not an option",
+  };
+  if (expType.contingencyLevel && contingencyGuide[expType.contingencyLevel]) {
+    lines.push(`CONTINGENCY: ${contingencyGuide[expType.contingencyLevel]}`);
+  }
+
+  const paymentGuide: Record<string, string> = {
+    joint: "Costs shared between couple/partners — keep per-pair totals visible",
+    group_split: "Costs split evenly across group — prioritize per-person cost clarity",
+    single_payer: "One person pays everything — total cost transparency is key",
+    multi_stakeholder: "Multiple parties paying (e.g., families, sponsors) — group line items by who pays",
+    individual_with_discount: "Individual payments with group discounts — highlight group savings",
+  };
+  if (expType.paymentFlowType && paymentGuide[expType.paymentFlowType]) {
+    lines.push(`PAYMENT: ${paymentGuide[expType.paymentFlowType]}`);
+  }
+
+  return `\n\nEXPERIENCE CONTEXT (use this to tailor the itinerary style and pacing):\n${lines.join('\n')}`;
+}
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -204,6 +255,22 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       }
     }
 
+    // Look up logistics context from experience type
+    let logisticsContextSection = '';
+    const [compRecord] = await db
+      .select({ experienceTypeSlug: itineraryComparisons.experienceTypeSlug })
+      .from(itineraryComparisons)
+      .where(eq(itineraryComparisons.id, comparisonId));
+    if (compRecord?.experienceTypeSlug) {
+      const [expType] = await db
+        .select()
+        .from(experienceTypes)
+        .where(eq(experienceTypes.slug, compRecord.experienceTypeSlug));
+      if (expType) {
+        logisticsContextSection = buildLogisticsContext(expType);
+      }
+    }
+
     await db
       .update(itineraryComparisons)
       .set({ status: "generating" })
@@ -235,21 +302,22 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     }));
     const baselineEnhancedMetrics = calculateItineraryMetrics(baselineForMetrics, travelers || 1);
 
-    for (let i = 0; i < baselineItems.length; i++) {
-      const item = baselineItems[i];
-      await db.insert(itineraryVariantItems).values({
-        variantId: baselineVariant[0].id,
-        dayNumber: item.dayNumber || 1,
-        timeSlot: item.timeSlot || "morning",
-        name: item.name,
-        description: item.description,
-        serviceType: item.serviceType,
-        price: item.price?.toString(),
-        rating: item.rating?.toString(),
-        location: item.location,
-        duration: item.duration,
-        sortOrder: i,
-      });
+    if (baselineItems.length > 0) {
+      await db.insert(itineraryVariantItems).values(
+        baselineItems.map((item, i) => ({
+          variantId: baselineVariant[0].id,
+          dayNumber: item.dayNumber || 1,
+          timeSlot: item.timeSlot || "morning",
+          name: item.name,
+          description: item.description,
+          serviceType: item.serviceType,
+          price: item.price?.toString(),
+          rating: item.rating?.toString(),
+          location: item.location,
+          duration: item.duration,
+          sortOrder: i,
+        }))
+      );
     }
 
     await db
@@ -344,9 +412,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       },
     ];
 
-    for (const metric of baselineMetrics) {
-      await db.insert(itineraryVariantMetrics).values(metric);
-    }
+    await db.insert(itineraryVariantMetrics).values(baselineMetrics);
 
     // Calculate transport legs for the baseline variant
     // Only compute if we have persisted variant items (which may have real coords from DB)
@@ -386,24 +452,101 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       description: s.shortDescription,
     }));
 
-    const prompt = `You are a travel optimization AI. Analyze the user's current itinerary and generate 2 optimized alternative versions.
+    const compactServicesList = servicesList.slice(0, 20).map(s =>
+      `${s.id}|${s.name}|${s.type}|$${s.price}|${s.rating}★|${s.location}`
+    ).join('\n');
 
-DESTINATION: ${destination}
-DATES: ${startDate} to ${endDate}
-TRAVELERS: ${travelers || 1}
-BUDGET: ${budget ? `$${budget}` : "Not specified"}${anchorPromptSection}
+    const compactBaseline = baselineItems.map(item =>
+      `Day${item.dayNumber || 1} ${item.timeSlot || 'morning'}: ${item.name} ($${item.price || 0}, ${item.duration || 120}min, ${item.location || 'TBD'})`
+    ).join('\n');
+
+    // ── Marquee / signature item detection ────────────────────────────────────
+    const MARQUEE_KEYWORDS = [
+      "helicopter", "private", "exclusive", "yacht", "charter",
+      "hot air balloon", "skydiving", "bespoke", "luxury", "vip",
+      "concierge", "villa", "penthouse", "seaplane", "submarine",
+      "float plane", "paragliding", "paramotor", "jet ski",
+    ];
+    // Commodity types are always replaceable — never lock them as "protected"
+    const COMMODITY_TYPES = new Set([
+      'hotel', 'hotels', 'accommodation', 'lodging', 'hostel',
+      'flight', 'flights', 'transport', 'transportation', 'transfer',
+      'car', 'car_rental', 'rental', 'shuttle',
+    ]);
+    // Raised to $300 to avoid accidentally protecting mid-tier restaurants
+    const MARQUEE_PRICE_THRESHOLD = 300;
+
+    const marqueeItems = baselineItems.filter(item => {
+      const nameLower = (item.name || '').toLowerCase();
+      const serviceTypeLower = (item.serviceType || '').toLowerCase();
+      const isCommodity = COMMODITY_TYPES.has(serviceTypeLower);
+      const isKeyword = MARQUEE_KEYWORDS.some(kw => nameLower.includes(kw));
+      const isHighValueExperience = !isCommodity && (item.price || 0) >= MARQUEE_PRICE_THRESHOLD;
+      return isKeyword || isHighValueExperience;
+    });
+
+    let marqueeSection = '';
+    if (marqueeItems.length > 0) {
+      const marqueeList = marqueeItems
+        .map(item => `- Day ${item.dayNumber || 1} ${item.timeSlot || ''} | ${item.name} | $${item.price || 0}`)
+        .join('\n');
+      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
+    }
+
+    // ── Empty day detection ───────────────────────────────────────────────────
+    let emptyDaySection = '';
+    if (startDate && endDate) {
+      const startMs = new Date(startDate).getTime();
+      const endMs = new Date(endDate).getTime();
+      if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
+        const tripDurationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
+        if (tripDurationDays > 1) {
+          const coveredDays = new Set(baselineItems.map(item => item.dayNumber || 1));
+          const emptyDays: number[] = [];
+          for (let d = 1; d <= tripDurationDays; d++) {
+            if (!coveredDays.has(d)) emptyDays.push(d);
+          }
+          if (emptyDays.length > 0) {
+            const coveredList = [...coveredDays].sort((a, b) => a - b).join(', ');
+            emptyDaySection = `\n\nTRIP DURATION: ${tripDurationDays} days (Days 1–${tripDurationDays})
+DAYS WITH USER ACTIVITIES: Days ${coveredList}
+EMPTY DAYS TO FILL: Days ${emptyDays.join(', ')}
+
+For each empty day, add activities that match the user's experience style (inferred from their existing selections), the destination, and their overall budget pace. Each empty day must include at least: a morning activity, a dining experience, an afternoon activity, and accommodation. These auto-filled days must feel cohesive with the user's existing selections. All variants must cover all ${tripDurationDays} days.`;
+          }
+        }
+      }
+    }
+
+    const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
+
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
-${JSON.stringify(baselineItems, null, 2)}
+${compactBaseline}
 
-AVAILABLE SERVICES TO CHOOSE FROM:
-${JSON.stringify(servicesList.slice(0, 50), null, 2)}
+AVAILABLE SERVICES (id|name|type|price|rating|location):
+${compactServicesList}
 
-Generate 2 alternative itineraries that improve upon the user's plan. Each alternative should:
-1. Optimize for different goals (e.g., one for cost savings, one for better experiences)
-2. Include metrics showing WHY it's better
+Generate EXACTLY 2 alternative itineraries. They MUST be meaningfully different from each other and from the user's plan:
+
+VARIANT 1 — "Budget Optimizer":
+- Goal: Reduce total cost by 15–30% while keeping the spirit of the trip
+- Strategy: Replace hotels with well-rated budget alternatives, swap paid attractions with free or low-cost equivalents, consolidate transport legs
+- Keep: the overall destination rhythm, key meals, and any PROTECTED ITEMS
+
+VARIANT 2 — "Experience Enhancer":
+- Goal: Upgrade the quality and variety of experiences, even at slightly higher cost
+- Strategy: Find higher-rated venues, add a unique local or cultural experience, improve accommodation quality, replace generic activities with standout alternatives
+- Keep: the same trip duration and any PROTECTED ITEMS
+
+Rules for both variants:
+1. The two variants must differ from each other in at least 40% of their line items
+2. Include metrics showing WHY each variant is better than the user's plan
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
+5. Preserve all PROTECTED ITEMS exactly — never replace, remove, or move them
+6. Cover all trip days, auto-filling any empty days with contextually appropriate activities
 
 Respond with valid JSON in this exact format:
 {
@@ -459,9 +602,7 @@ Respond with valid JSON in this exact format:
       throw new Error("Failed to parse AI response");
     }
 
-    for (let v = 0; v < aiResponse.variants.length; v++) {
-      const variant = aiResponse.variants[v];
-
+    await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
       const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
         name: item.name,
@@ -556,33 +697,34 @@ Respond with valid JSON in this exact format:
         })
         .returning();
 
-      // Store reordered items with methodology notes in metadata
-      for (let i = 0; i < reorderedItems.length; i++) {
-        const item = reorderedItems[i];
-        // Find methodology notes for this activity
-        const activityNotes = methodologyNotes.filter(
-          n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
+      // Batch-insert all variant items in one round-trip
+      if (reorderedItems.length > 0) {
+        await db.insert(itineraryVariantItems).values(
+          reorderedItems.map((item, i) => {
+            const activityNotes = methodologyNotes.filter(
+              n => n.type === 'activity' && n.note.toLowerCase().includes(item.name.toLowerCase().slice(0, 10))
+            );
+            return {
+              variantId: newVariant.id,
+              dayNumber: item.dayNumber,
+              timeSlot: item.timeSlot,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              name: item.name,
+              description: item.description,
+              serviceType: item.serviceType,
+              price: typeof item.price === 'number' ? item.price.toString() : item.price?.toString(),
+              rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
+              location: item.location,
+              duration: item.duration,
+              travelTimeFromPrevious: item.travelTimeFromPrevious,
+              isReplacement: item.isReplacement,
+              replacementReason: item.replacementReason,
+              metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
+              sortOrder: i,
+            };
+          })
         );
-        
-        await db.insert(itineraryVariantItems).values({
-          variantId: newVariant.id,
-          dayNumber: item.dayNumber,
-          timeSlot: item.timeSlot,
-          startTime: item.startTime,
-          endTime: item.endTime,
-          name: item.name,
-          description: item.description,
-          serviceType: item.serviceType,
-          price: typeof item.price === 'number' ? item.price.toString() : item.price?.toString(),
-          rating: typeof item.rating === 'number' ? item.rating.toString() : item.rating?.toString(),
-          location: item.location,
-          duration: item.duration,
-          travelTimeFromPrevious: item.travelTimeFromPrevious,
-          isReplacement: item.isReplacement,
-          replacementReason: item.replacementReason,
-          metadata: activityNotes.length > 0 ? { methodologyNotes: activityNotes } : {},
-          sortOrder: i,
-        });
       }
 
       const costSavings = baselineTotal - variant.metrics.totalCost;
@@ -650,7 +792,6 @@ Respond with valid JSON in this exact format:
           betterIsLower: false,
           description: `Overall score: ${combinedOptimizationScore}/100`,
         },
-        // Smart Sequencing Metrics
         {
           variantId: newVariant.id,
           metricKey: "balance_score",
@@ -727,10 +868,9 @@ Respond with valid JSON in this exact format:
         },
       ];
 
-      // Store day-level and itinerary-level methodology notes as a summary metric
+      // Add methodology summary metric if applicable
       const dayNotes = methodologyNotes.filter(n => n.type === 'day');
       const itineraryNotes = methodologyNotes.filter(n => n.type === 'itinerary');
-      
       if (dayNotes.length > 0 || itineraryNotes.length > 0) {
         metricsToInsert.push({
           variantId: newVariant.id,
@@ -745,12 +885,10 @@ Respond with valid JSON in this exact format:
         });
       }
 
-      for (const metric of metricsToInsert) {
-        await db.insert(itineraryVariantMetrics).values(metric);
-      }
+      // Batch-insert all metrics in one round-trip
+      await db.insert(itineraryVariantMetrics).values(metricsToInsert);
 
-      // Calculate transport legs for the new variant after metrics are finalized
-      // Only use items that have real coordinates to avoid bogus legs
+      // Transport legs — only for items with real coordinates
       try {
         const variantItems = await db
           .select()
@@ -776,7 +914,7 @@ Respond with valid JSON in this exact format:
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
       }
-    }
+    }));
 
     await db
       .update(itineraryComparisons)

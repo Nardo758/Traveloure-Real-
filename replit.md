@@ -7,6 +7,10 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (March 2026)
+- **Viator Activity Coordinate Fix**: Enriched Viator freetext search results with product details and destination center coordinates. Activities now have lat/lng for maps, transport legs, and exports. Stale cache entries (missing coordinates) are auto-refreshed.
+- **Chat API Authentication & User Scoping**: All `/api/conversations` routes now require authentication via `isAuthenticated` middleware. Conversations are scoped per user (`user_id` column added) to prevent cross-user data access.
+- **Database Schema Sync**: Added missing `energy_cost`, `energy_type`, `attendance_requirement`, `conflicts_with`, `peak_timing_preference` columns to `itinerary_items` table.
+- **Kyoto Expert Coverage**: Added 2 Kyoto-based travel experts (Yuki Nakamura, Takeshi Yamamoto) to seed data alongside existing Tokyo-based Kenji Tanaka.
 - **Transport Hub System**: Complete transport booking layer with `transport_booking_options` DB table, `TransportHub` / `TransportBookingCard` / `MultiDayPassCard` components, AI-powered booking option population, Stripe checkout for platform bookings, and affiliate click tracking (12Go, Uber, Viator, etc.)
 - **Transport Tab on Itinerary Page**: Added "Itinerary" + "Transport" tabs to `/itinerary/:id`. Transport tab shows summary stats, legs grouped by day (fully editable via `TransportLeg`), 12Go CTA, and empty state linking to AI Optimization.
 - **Shareable Itinerary Card System**: `transport_legs`, `shared_itineraries`, `maps_export_cache` tables; 8 API endpoints; `TransportLeg`, `DayMapsButton`, `TripExportButton`, `NavigateNextButton`, `ItineraryCard` components; public `/itinerary-view/:token` route.
@@ -16,12 +20,12 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### UI/UX Decisions
-The application uses a modern, responsive design with Tailwind CSS and shadcn/ui for consistent components, and Framer Motion for smooth transitions. The primary color scheme is `#FF385C` with a gray-900 palette for admin interfaces and amber accents. Dashboards are role-specific (Provider, Admin, Executive Assistant) with distinct layouts and collapsible sidebars.
+The application uses a modern, responsive design built with React, Tailwind CSS, shadcn/ui for consistent components, and Framer Motion for smooth transitions. The primary color scheme is `#FF385C` with a gray-900 palette for admin interfaces and amber accents. Dashboards are role-specific (Provider, Admin, Executive Assistant) with distinct layouts and collapsible sidebars.
 
 ### Technical Implementations
 - **Frontend**: React 18, TypeScript, Wouter for routing, TanStack Query for server state management, and Vite.
 - **Backend**: Node.js and Express with TypeScript, implementing RESTful APIs with Zod for validation and type safety.
-- **Authentication**: Replit Auth with OpenID Connect (OIDC) via Passport.js, using PostgreSQL for session management.
+- **Authentication**: Three methods — Email/password (scrypt hashing in `emailAuth.ts`), Replit Auth with OIDC (`replitAuth.ts`), and Facebook/Instagram OAuth (`facebookAuth.ts`). All use Passport.js with PostgreSQL session store. DB columns: `password` (varchar 255), `auth_provider` (varchar 20, default 'email'), `email_verified` (timestamp).
 - **Data Storage**: PostgreSQL with Drizzle ORM for schema management.
 - **API Structure**: Declarative API definitions using HTTP methods, paths, and Zod schemas.
 - **Storage Abstraction**: A server-side abstraction layer provides flexible database operations.
@@ -69,7 +73,7 @@ The application uses a modern, responsive design with Tailwind CSS and shadcn/ui
 - **Google Maps**: Interactive mapping, route visualization, and transit information.
 - **Amadeus Self-Service API**: Comprehensive travel content including real-time flight and hotel search, POI discovery, Tours and Activities search, Airport Transfer booking, and Destination Safety Ratings.
 - **Viator Partner API**: Real-time tours and activities search.
-- **Fever Partner API**: Event discovery and ticketing in global cities.
+- **Fever Partner API**: Event discovery and ticketing.
 - **12Go Transportation Booking**: Affiliate widget for ground transportation bookings.
 - **External API Caching System**: Provides 24-hour caching for hotel, flight, and activity data.
 - **Unified Experience Catalog Service**: Unifies search across cached provider data.

@@ -384,6 +384,32 @@ const mockExperts = [
     responseTime: "< 1 hour",
     destinations: ["Singapore", "Hong Kong", "Bangkok"],
     yearsOfExperience: "10 years"
+  },
+  {
+    firstName: "Yuki",
+    lastName: "Nakamura",
+    email: "yuki.nakamura@example.com",
+    bio: "Kyoto-born travel curator specializing in traditional Japanese arts, temple stays, geisha district walking tours, and seasonal experiences like cherry blossom and autumn foliage viewing.",
+    specialties: ["Temple & Shrine Tours", "Tea Ceremony", "Traditional Arts", "Seasonal Experiences"],
+    city: "Kyoto",
+    country: "Japan",
+    languages: ["English", "Japanese"],
+    responseTime: "< 1 hour",
+    destinations: ["Kyoto", "Nara", "Osaka"],
+    yearsOfExperience: "14 years"
+  },
+  {
+    firstName: "Takeshi",
+    lastName: "Yamamoto",
+    email: "takeshi.yamamoto@example.com",
+    bio: "Adventure and food guide based in Kyoto with expertise in hidden local eateries, sake brewery tours, bamboo forest hikes, and day trips to rural Japan.",
+    specialties: ["Food & Sake Tours", "Hiking", "Off-the-Beaten-Path", "Day Trips"],
+    city: "Kyoto",
+    country: "Japan",
+    languages: ["English", "Japanese", "Korean"],
+    responseTime: "< 2 hours",
+    destinations: ["Kyoto", "Nara", "Kobe", "Lake Biwa"],
+    yearsOfExperience: "9 years"
   }
 ];
 

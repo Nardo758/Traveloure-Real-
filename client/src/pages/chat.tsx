@@ -1,6 +1,6 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock, Wifi, WifiOff } from "lucide-react";
@@ -8,7 +8,8 @@ import { format } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -63,9 +64,48 @@ export default function Chat() {
   const { data: chats, isLoading, refetch } = useChats();
   const sendMessageMutation = useSendMessage();
   const { toast } = useToast();
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const expertIdFromUrl = urlParams.get("expertId");
+
+  const { data: linkedExpert } = useQuery<any>({
+    queryKey: ["/api/experts", expertIdFromUrl],
+    queryFn: async () => {
+      const res = await fetch(`/api/experts/${expertIdFromUrl}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return {
+        id: data.id,
+        name: `${data.firstName} ${data.lastName}`,
+        location: data.destinations?.[0] || data.location || "Travel Expert",
+        avatar: data.profileImage || "",
+        rating: data.rating || 5.0,
+        reviews: data.reviewCount || 0,
+        specialties: data.specialties || [],
+        languages: data.languages || ["English"],
+        responseTime: data.responseTime || "< 2 hours",
+      };
+    },
+    enabled: !!expertIdFromUrl,
+  });
+
+  const allExperts = useMemo(() => {
+    if (linkedExpert) {
+      const exists = sampleExperts.some(e => String(e.id) === String(linkedExpert.id));
+      if (!exists) return [linkedExpert, ...sampleExperts];
+    }
+    return sampleExperts;
+  }, [linkedExpert]);
+
   const [message, setMessage] = useState("");
   const [selectedExpert, setSelectedExpert] = useState<typeof sampleExperts[0] | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (linkedExpert && !selectedExpert) {
+      setSelectedExpert(linkedExpert);
+    }
+  }, [linkedExpert]);
   const [realtimeMessages, setRealtimeMessages] = useState<RealtimeMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -156,10 +196,10 @@ export default function Chat() {
     }
   };
 
-  const filteredExperts = sampleExperts.filter(expert => 
+  const filteredExperts = allExperts.filter(expert => 
     expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     expert.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    expert.specialties.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()))
+    expert.specialties.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
   if (isLoading) {
