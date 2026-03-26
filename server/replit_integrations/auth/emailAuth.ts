@@ -104,6 +104,7 @@ export function setupEmailAuth(app: Express): void {
           email: newUser.email,
           first_name: newUser.firstName,
           last_name: newUser.lastName,
+          role: newUser.role,
         },
         expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
       };
@@ -185,6 +186,7 @@ export function setupEmailAuth(app: Express): void {
           email: user.email,
           first_name: user.firstName,
           last_name: user.lastName,
+          role: user.role,
         },
         expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days
       };
