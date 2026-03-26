@@ -58,7 +58,7 @@ router.get("/", isAuthenticated, async (req, res) => {
 
   if (userIds.length > 0) {
     const otherUsers = await db
-      .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImage: users.profileImage, role: users.role })
+      .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, role: users.role })
       .from(users)
       .where(sql`${users.id} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
 
@@ -70,7 +70,7 @@ router.get("/", isAuthenticated, async (req, res) => {
           id: user.id,
           firstName: user.firstName,
           lastName: user.lastName,
-          profileImage: user.profileImage,
+          profileImageUrl: user.profileImageUrl,
           role: user.role,
         };
       }
