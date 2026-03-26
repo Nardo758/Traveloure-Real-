@@ -702,6 +702,7 @@ export const userAndExpertChats = pgTable("user_and_expert_chats", {
   attachment: text("attachment"), // URL
   itinerarySubmitId: varchar("itinerary_submit_id").references(() => submitItineraryFeedbacks.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
+  readAt: timestamp("read_at"),
 });
 
 
