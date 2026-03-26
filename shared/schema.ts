@@ -72,6 +72,8 @@ export const trips = pgTable("trips", {
   destination: varchar("destination", { length: 255 }).notNull(),
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
   numberOfTravelers: integer("number_of_travelers").default(1),
+  adults: integer("adults").default(2),
+  kids: integer("kids").default(0),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   preferences: jsonb("preferences").default({}),
   eventDetails: jsonb("event_details").default({}),
@@ -998,6 +1000,8 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
   numberOfTravelers: z.coerce.number().int().min(1).default(1),
+  adults: z.coerce.number().int().min(1).default(2),
+  kids: z.coerce.number().int().min(0).default(0),
 });
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });

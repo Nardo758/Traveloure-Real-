@@ -178,7 +178,8 @@ export default function QuickStartItinerary() {
   const [customCountry, setCustomCountry] = useState(country);
   const [startDate, setStartDate] = useState<Date | undefined>(addDays(new Date(), 1));
   const [endDate, setEndDate] = useState<Date | undefined>(addDays(new Date(), 4));
-  const [travelers, setTravelers] = useState(2);
+  const [adults, setAdults] = useState(2);
+  const [kids, setKids] = useState(0);
   const [interests, setInterests] = useState<string[]>(["culture", "food"]);
   const [pacePreference, setPacePreference] = useState<string>("moderate");
   const [selectedExperienceType, setSelectedExperienceType] = useState<string>("travel");
@@ -210,6 +211,8 @@ export default function QuickStartItinerary() {
       startDate: string;
       endDate: string;
       travelers: number;
+      adults?: number;
+      kids?: number;
       itineraryId?: string;
     }) => {
       const response = await apiRequest("POST", "/api/trips", tripData);
@@ -223,7 +226,7 @@ export default function QuickStartItinerary() {
       generateMutation.mutate({
         destination,
         country: country || undefined,
-        travelers: 2,
+        travelers: adults + kids,
         interests: ["culture", "food", "nature"],
         pacePreference: "moderate",
       });
@@ -246,7 +249,7 @@ export default function QuickStartItinerary() {
         start: format(startDate, "yyyy-MM-dd"),
         end: format(endDate, "yyyy-MM-dd"),
       } : undefined,
-      travelers,
+      travelers: adults + kids,
       interests,
       pacePreference,
     });
@@ -272,7 +275,9 @@ export default function QuickStartItinerary() {
         title: itinerary.title,
         startDate: itinerary.dailyItinerary[0]?.date || format(startDate || new Date(), "yyyy-MM-dd"),
         endDate: itinerary.dailyItinerary[itinerary.dailyItinerary.length - 1]?.date || format(endDate || addDays(new Date(), 3), "yyyy-MM-dd"),
-        travelers,
+        travelers: adults + kids,
+        adults,
+        kids,
         itineraryId: itinerary.id,
       });
       
@@ -324,7 +329,7 @@ export default function QuickStartItinerary() {
           type: "activity",
           name: activity.name,
           price: activity.estimatedCost || 0,
-          quantity: travelers,
+          quantity: adults + kids,
           date: day.date,
           details: activity.description,
           provider: activity.location || "AI Suggested",
@@ -343,7 +348,7 @@ export default function QuickStartItinerary() {
           type: "meal",
           name: `${meal.type.charAt(0).toUpperCase() + meal.type.slice(1)}: ${meal.suggestion}`,
           price: meal.priceRange === "$$$" ? 75 : meal.priceRange === "$$" ? 35 : 15,
-          quantity: travelers,
+          quantity: adults + kids,
           date: day.date,
           details: `${meal.cuisine} cuisine`,
           provider: "AI Suggested",
@@ -388,7 +393,7 @@ export default function QuickStartItinerary() {
           roomCategory: accommodation.type,
           checkInDate: startDate ? format(startDate, "yyyy-MM-dd") : undefined,
           checkOutDate: endDate ? format(endDate, "yyyy-MM-dd") : undefined,
-          travelers,
+          travelers: adults + kids,
         },
       });
     });
@@ -402,7 +407,7 @@ export default function QuickStartItinerary() {
       country: customCountry || country,
       startDate: startDate ? format(startDate, "yyyy-MM-dd") : null,
       endDate: endDate ? format(endDate, "yyyy-MM-dd") : null,
-      travelers,
+      travelers: adults + kids,
       interests,
       itineraryId: itinerary.id,
     };
@@ -558,19 +563,33 @@ export default function QuickStartItinerary() {
               </div>
 
               <div className="space-y-2">
-                <Label>Number of Travelers</Label>
-                <Select value={travelers.toString()} onValueChange={(v) => setTravelers(parseInt(v))}>
-                  <SelectTrigger data-testid="select-travelers">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                      <SelectItem key={n} value={n.toString()}>
-                        {n} {n === 1 ? "traveler" : "travelers"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Adults & Kids</Label>
+                <div className="flex gap-3">
+                  <Select value={adults.toString()} onValueChange={(v) => setAdults(parseInt(v))}>
+                    <SelectTrigger data-testid="select-adults" className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <SelectItem key={n} value={n.toString()}>
+                          {n} {n === 1 ? "adult" : "adults"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
+                    <SelectTrigger data-testid="select-kids" className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                        <SelectItem key={n} value={n.toString()}>
+                          {n} {n === 1 ? "kid" : "kids"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">

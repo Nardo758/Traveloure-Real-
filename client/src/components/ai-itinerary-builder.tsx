@@ -59,6 +59,8 @@ interface AIItineraryBuilderProps {
   startDate?: Date;
   endDate?: Date;
   travelers: number;
+  adults?: number;
+  kids?: number;
   experienceType?: string;
   tripId?: string;
   onClose?: () => void;
@@ -175,11 +177,16 @@ export function AIItineraryBuilder({
   startDate,
   endDate,
   travelers,
+  adults,
+  kids,
   experienceType,
   tripId,
   onClose,
   onSave,
 }: AIItineraryBuilderProps) {
+  // If adults/kids provided, use them; otherwise fall back to travelers count
+  const effectiveAdults = adults ?? travelers;
+  const effectiveKids = kids ?? 0;
   const [currentStep, setCurrentStep] = useState(0);
   const [interests, setInterests] = useState<string[]>([]);
   const [budget, setBudget] = useState<string>("");
@@ -274,6 +281,8 @@ export function AIItineraryBuilder({
         startDate: startDate ? format(startDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
         endDate: endDate ? format(endDate, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
         numberOfTravelers: travelers,
+        adults: effectiveAdults,
+        kids: effectiveKids,
         budget: budget || undefined,
         eventType: experienceType || "vacation",
         status: "planning",
