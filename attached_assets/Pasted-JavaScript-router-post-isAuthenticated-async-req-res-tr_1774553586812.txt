@@ -1,0 +1,52 @@
+JavaScript
+
+router.post("/", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const validation = sendMessageSchema.safeParse(req.body);
+    if (!validation.success) return res.status(400).json({ message: validation.error.errors[0]?.message });
+    const { recipientId, conversationId, message, attachment } = validation.data;
+
+    let targetRecipientId: string;
+    if (recipientId) { targetRecipientId = recipientId; }
+    else if (conversationId) { const { userId1, userId2 } = parseConversationId(conversationId); if (userId !== userId1 && userId !== userId2) return res.status(403).json({ message: "Not authorized" }); targetRecipientId = userId === userId1 ? userId2 : userId1; }
+    else { return res.status(400).json({ message: "recipientId or conversationId required" }); }
+
+    if (targetRecipientId === userId) return res.status(400).json({ message: "Cannot message yourself" });
+    const [recipient] = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, targetRecipientId));
+    if (!recipient) return res.status(404).json({ message: "Recipient not found" });
+
+    const trackingNumber = `MSG${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const [newMessage] = await db.insert(userAndExpertChats).values({ senderId: userId, receiverId: targetRecipientId, message, attachment: attachment || null, trackingNumber }).returning();
+
+    const [sender] = await db.select({ firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, userId));
+    await db.insert(notifications).values({ userId: targetRecipientId, type: "message_received", title: "New message", message: `${[sender?.firstName, sender?.lastName].filter(Boolean).join(' ') || 'Someone'} sent you a message`, relatedId: newMessage.id, relatedType: "message" });
+
+    res.status(201).json({ id: newMessage.id, conversationId: getConversationId(userId, targetRecipientId), message: newMessage.message, isFromMe: true, createdAt: newMessage.createdAt });
+  } catch (error) { console.error(error); res.status(500).json({ message: "Failed to send message" }); }
+});
+
+// PATCH /api/messages/:messageId/read
+router.patch("/:messageId/read", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { messageId } = req.params;
+    const [message] = await db.select().from(userAndExpertChats).where(eq(userAndExpertChats.id, messageId));
+    if (!message) return res.status(404).json({ message: "Message not found" });
+    if (message.receiverId !== userId) return res.status(403).json({ message: "Can only mark your messages as read" });
+    if (message.readAt) return res.json({ id: message.id, readAt: message.readAt });
+    const [updated] = await db.update(userAndExpertChats).set({ readAt: new Date() }).where(eq(userAndExpertChats.id, messageId)).returning();
+    res.json({ id: updated.id, readAt: updated.readAt });
+  } catch (error) { res.status(500).json({ message: "Failed to mark as read" }); }
+});
+
+export default router;
+Then add to server/routes.ts:
+
+JavaScript
+
+// Add import at top:
+import messagesRouter from "./routes/messages";
+
+// Add after other app.use() calls:
+app.use("/api/messages", messagesRouter);

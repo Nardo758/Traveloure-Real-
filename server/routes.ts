@@ -27,6 +27,7 @@ import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
+import messagesRouter from "./routes/messages";
 import { amadeusService } from "./services/amadeus.service";
 import { viatorService } from "./services/viator.service";
 import { cacheService } from "./services/cache.service";
@@ -250,6 +251,7 @@ export async function registerRoutes(
 
   // Booking Actions API routes - Expert Review, Save, Share
   app.use("/api", bookingActionsRoutes);
+  app.use("/api/messages", messagesRouter);
 
   // My Itinerary routes - final itinerary view with smart sequencing
   app.use(myItineraryRoutes);
