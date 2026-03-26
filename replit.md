@@ -7,6 +7,8 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (March 2026)
+- **QA Endpoint Fixes**: Added missing API routes: `GET /api/bookings/user`, `GET /api/service-bookings`, `POST /api/cart/items`, `GET /api/expert/dashboard`, `GET /api/provider/dashboard`, `GET /api/admin/bookings`, `GET /api/admin/revenue`. These complement existing routes (`/api/my-bookings`, `POST /api/cart`, `/api/expert/analytics/dashboard`, `/api/provider/analytics/dashboard`, `/api/admin/revenue/dashboard`).
+- **POST /api/auth/logout**: Added logout endpoint that destroys session and clears cookie.
 - **Viator Activity Coordinate Fix**: Enriched Viator freetext search results with product details and destination center coordinates. Activities now have lat/lng for maps, transport legs, and exports. Stale cache entries (missing coordinates) are auto-refreshed.
 - **Chat API Authentication & User Scoping**: All `/api/conversations` routes now require authentication via `isAuthenticated` middleware. Conversations are scoped per user (`user_id` column added) to prevent cross-user data access.
 - **Database Schema Sync**: Added missing `energy_cost`, `energy_type`, `attendance_requirement`, `conflicts_with`, `peak_timing_preference` columns to `itinerary_items` table.
