@@ -1,0 +1,70 @@
+~/workspace$ git pull origin main
+npm run db:push
+From https://github.com/Nardo758/Traveloure-Platform
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+
+> rest-express@1.0.0 db:push
+> drizzle-kit push
+
+No config path provided, using default 'drizzle.config.ts'
+Reading config file '/home/runner/workspace/drizzle.config.ts'
+Using 'pg' driver for database querying
+[✓] Pulling schema from database...
+~ trip_items › activity_booking_analytics table will be renamed/moved
++ activity_demand_trends table will be created
++ booking_funnel_analytics table will be created
++ demand_signals table will be created
++ destination_benchmarks table will be created
++ market_intelligence table will be created
++ page_view_analytics table will be created
++ pricing_intelligence table will be created
++ provider_performance_metrics table will be created
++ search_analytics table will be created
++ trip_analytics_enhanced table will be created
+--- all table conflicts resolved ---
+
+
++ session_id column will be created
+
++ user_id column will be created
+
++ activity_type column will be created
+
++ activity_category column will be created
+
++ service_name column will be created
+
++ provider_type column will be created
+
++ destination column will be created
+
++ country column will be created
+
++ city column will be created
+
++ group_size column will be created
+
++ trip_type column will be created
+
++ traveler_origin_country column will be created
+
++ booking_lead_days column will be created
+
++ activity_date column will be created
+
++ device_type column will be created
+
++ referral_source column will be created
+--- all columns conflicts in activity_booking_analytics table resolved ---
+
+TypeError: Cannot read properties of undefined (reading 'columns')
+    at preparePgAlterColumns (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:28061:63)
+    at /home/runner/workspace/node_modules/drizzle-kit/bin.cjs:30288:16
+    at Array.map (<anonymous>)
+    at applyPgSnapshotsDiff (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:30287:51)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async preparePgPush (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:33974:52)
+    at async pgPush (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:84372:26)
+    at async Object.handler (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:93871:9)
+    at async run (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:93117:7)
