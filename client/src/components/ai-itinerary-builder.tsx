@@ -53,6 +53,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
+import { trackItineraryGenerated } from "@/lib/analytics";
 
 interface AIItineraryBuilderProps {
   destination: string;
@@ -266,6 +267,19 @@ export function AIItineraryBuilder({
       setSelectedVariation(0);
       setSelectedDay(0);
       setCurrentStep(3);
+      
+      // Track itinerary generation for tourism analytics
+      const selectedItinerary = data.variations?.[0];
+      trackItineraryGenerated({
+        tripId: tripId,
+        destination,
+        activities: selectedItinerary?.dailyItinerary?.flatMap(d => d.activities?.map(a => a.name) || []) || [],
+        duration: tripDays,
+        travelers,
+        budget: budget ? parseFloat(budget) : undefined,
+        variationType: selectedItinerary?.variationType,
+        experienceType,
+      });
     },
   });
 
