@@ -534,6 +534,12 @@ function Router() {
       <Route path="/credits-billing">
         <Redirect to="/credits" />
       </Route>
+      <Route path="/checkout">
+        <Redirect to="/cart" />
+      </Route>
+      <Route path="/admin">
+        <Redirect to="/admin/dashboard" />
+      </Route>
       
       <Route path="/trip/:id">
         {() => <Layout><ProtectedRoute component={TripDetails} /></Layout>}
