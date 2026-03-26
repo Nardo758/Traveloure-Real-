@@ -38,6 +38,8 @@ export const userRoleEnum = [
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
+  password: varchar("password", { length: 255 }), // Hashed password for email/password auth
+  emailVerified: timestamp("email_verified"), // When email was verified (null = not verified)
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -50,6 +52,7 @@ export const users = pgTable("users", {
   privacyVersion: varchar("privacy_version", { length: 20 }),
   instagramUserId: varchar("instagram_user_id"),
   instagramAccessToken: varchar("instagram_access_token", { length: 512 }),
+  authProvider: varchar("auth_provider", { length: 20 }).default("email"), // email, replit, google, etc.
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
