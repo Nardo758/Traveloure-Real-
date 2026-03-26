@@ -1030,7 +1030,17 @@ export const insertCreditTransactionSchema = createInsertSchema(creditTransactio
 
 // Service Templates, Bookings, Reviews schemas
 export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
-export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ id: true, confirmedAt: true, completedAt: true, cancelledAt: true, createdAt: true, updatedAt: true });
+// travelerId and providerId are set server-side from auth context and service lookup
+export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ 
+  id: true, 
+  travelerId: true,  // Set server-side from authenticated user
+  providerId: true,  // Set server-side from service lookup
+  confirmedAt: true, 
+  completedAt: true, 
+  cancelledAt: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
 export const insertContractSchema = createInsertSchema(userAndExpertContracts).omit({ id: true, status: true, isPaid: true, paymentUrl: true, createdAt: true });
