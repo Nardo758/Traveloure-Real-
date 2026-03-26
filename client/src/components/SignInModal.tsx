@@ -9,7 +9,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -28,6 +29,8 @@ export function SignInModal({
 }: SignInModalProps) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [isLoading, setIsLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -39,6 +42,16 @@ export function SignInModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (mode === "signup" && (!acceptTerms || !acceptPrivacy)) {
+      toast({
+        title: "Please accept the agreements",
+        description: "You must accept the Terms of Service and Privacy Policy to create an account.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -169,7 +182,46 @@ export function SignInModal({
             </div>
           </div>
 
-          <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+          {mode === "signup" && (
+            <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
+              <div className="flex items-start gap-2.5">
+                <Checkbox
+                  id="signup-terms"
+                  checked={acceptTerms}
+                  onCheckedChange={(checked) => setAcceptTerms(checked === true)}
+                  data-testid="checkbox-signup-terms"
+                />
+                <label htmlFor="signup-terms" className="text-xs leading-snug cursor-pointer">
+                  I have read and agree to the{" "}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                    Terms of Service
+                  </a>
+                </label>
+              </div>
+              <div className="flex items-start gap-2.5">
+                <Checkbox
+                  id="signup-privacy"
+                  checked={acceptPrivacy}
+                  onCheckedChange={(checked) => setAcceptPrivacy(checked === true)}
+                  data-testid="checkbox-signup-privacy"
+                />
+                <label htmlFor="signup-privacy" className="text-xs leading-snug cursor-pointer">
+                  I have read and agree to the{" "}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                    Privacy Policy
+                  </a>
+                </label>
+              </div>
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            disabled={isLoading || (mode === "signup" && (!acceptTerms || !acceptPrivacy))}
+            data-testid="button-auth-submit"
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -197,6 +249,7 @@ export function SignInModal({
             variant="outline"
             className="w-full"
             onClick={handleReplitSignIn}
+            data-testid="button-social-login"
           >
             Continue with Social Login
           </Button>
@@ -209,6 +262,7 @@ export function SignInModal({
                   type="button"
                   className="text-primary hover:underline font-medium"
                   onClick={() => setMode("signup")}
+                  data-testid="link-switch-signup"
                 >
                   Sign up
                 </button>
@@ -220,15 +274,12 @@ export function SignInModal({
                   type="button"
                   className="text-primary hover:underline font-medium"
                   onClick={() => setMode("signin")}
+                  data-testid="link-switch-signin"
                 >
                   Sign in
                 </button>
               </>
             )}
-          </p>
-
-          <p className="text-xs text-center text-muted-foreground">
-            By signing in, you agree to our Terms of Service and Privacy Policy.
           </p>
         </form>
       </DialogContent>
