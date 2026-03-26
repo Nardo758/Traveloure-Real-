@@ -410,6 +410,12 @@ export interface IStorage {
   // Provider Payouts
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
   createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout>;
+
+  // Admin Payouts
+  getAllExpertPayouts(status?: string): Promise<(ExpertPayout & { requesterName?: string; requesterEmail?: string })[]>;
+  getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]>;
+  updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout>;
+  updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
   
   // Platform Revenue
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
@@ -2528,6 +2534,72 @@ export class DatabaseStorage implements IStorage {
   async createProviderPayout(payout: InsertProviderPayout): Promise<ProviderPayout> {
     const [newPayout] = await db.insert(providerPayouts).values(payout).returning();
     return newPayout;
+  }
+
+  // Admin Payouts
+  async getAllExpertPayouts(status?: string): Promise<(ExpertPayout & { requesterName?: string; requesterEmail?: string })[]> {
+    const conditions = status ? [eq(expertPayouts.status, status)] : [];
+    const payouts = await db.select({
+      id: expertPayouts.id,
+      expertId: expertPayouts.expertId,
+      amount: expertPayouts.amount,
+      currency: expertPayouts.currency,
+      payoutMethod: expertPayouts.payoutMethod,
+      status: expertPayouts.status,
+      processedAt: expertPayouts.processedAt,
+      failureReason: expertPayouts.failureReason,
+      transactionId: expertPayouts.transactionId,
+      metadata: expertPayouts.metadata,
+      requestedAt: expertPayouts.requestedAt,
+      requesterName: users.name,
+      requesterEmail: users.email,
+    }).from(expertPayouts)
+      .leftJoin(users, eq(expertPayouts.expertId, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(expertPayouts.requestedAt));
+    return payouts;
+  }
+
+  async getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]> {
+    const conditions = status ? [eq(providerPayouts.status, status)] : [];
+    const payouts = await db.select({
+      id: providerPayouts.id,
+      providerId: providerPayouts.providerId,
+      amount: providerPayouts.amount,
+      currency: providerPayouts.currency,
+      payoutMethod: providerPayouts.payoutMethod,
+      status: providerPayouts.status,
+      payoutReference: providerPayouts.payoutReference,
+      notes: providerPayouts.notes,
+      requestedAt: providerPayouts.requestedAt,
+      processedAt: providerPayouts.processedAt,
+      completedAt: providerPayouts.completedAt,
+      requesterName: users.name,
+      requesterEmail: users.email,
+    }).from(providerPayouts)
+      .leftJoin(users, eq(providerPayouts.providerId, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(providerPayouts.requestedAt));
+    return payouts;
+  }
+
+  async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout> {
+    const updates: any = { status };
+    if (status === 'completed' || status === 'failed') updates.processedAt = new Date();
+    if (notes) updates.failureReason = notes;
+    if (transactionId) updates.transactionId = transactionId;
+    const [updated] = await db.update(expertPayouts).set(updates).where(eq(expertPayouts.id, id)).returning();
+    return updated;
+  }
+
+  async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout> {
+    const updates: any = { status };
+    if (status === 'processing') updates.processedAt = new Date();
+    if (status === 'completed') updates.completedAt = new Date();
+    if (notes) updates.notes = notes;
+    if (payoutReference) updates.payoutReference = payoutReference;
+    const [updated] = await db.update(providerPayouts).set(updates).where(eq(providerPayouts.id, id)).returning();
+    return updated;
   }
 
   // === Platform Revenue ===
