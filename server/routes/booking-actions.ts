@@ -8,6 +8,7 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { stripePaymentService } from '../services/stripe-payment.service';
+import { isAuthenticated } from '../replit_integrations/auth';
 
 const router = Router();
 
@@ -20,7 +21,7 @@ function generateToken(): string {
  * POST /api/expert-requests/payment-intent
  * Create Stripe payment intent for expert review service (embedded checkout)
  */
-router.post('/expert-requests/payment-intent', async (req, res) => {
+router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res) => {
   try {
     const {
       userId,
@@ -59,7 +60,7 @@ router.post('/expert-requests/payment-intent', async (req, res) => {
  * POST /api/expert-requests
  * Create expert review request
  */
-router.post('/expert-requests', async (req, res) => {
+router.post('/expert-requests', isAuthenticated, async (req, res) => {
   try {
     const {
       userId,
@@ -129,7 +130,7 @@ router.post('/expert-requests', async (req, res) => {
  * POST /api/saved-trips
  * Save trip for later
  */
-router.post('/saved-trips', async (req, res) => {
+router.post('/saved-trips', isAuthenticated, async (req, res) => {
   try {
     const { userId, variantId, comparisonId, notes } = req.body;
 
@@ -191,7 +192,7 @@ router.post('/saved-trips', async (req, res) => {
  * POST /api/shared-trips
  * Generate shareable link
  */
-router.post('/shared-trips', async (req, res) => {
+router.post('/shared-trips', isAuthenticated, async (req, res) => {
   try {
     const { variantId, comparisonId, sharedBy } = req.body;
 

@@ -111,7 +111,8 @@ export const reviewRatings = pgTable("review_ratings", {
 
 export const expertUpdatedItineraries = pgTable("expert_updated_itineraries", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
+  shareToken: varchar("share_token"),
   itineraryData: jsonb("itinerary_data").default({}),
   message: text("message"),
   status: varchar("status", { length: 20 }).default("pending"),
@@ -252,9 +253,14 @@ export const affiliatePlatforms = pgTable("affiliate_platforms", {
 
 // === Local Expert & Service Provider Applications ===
 
+// Expert type enum for application forms
+export const expertTypeEnum = ["travel_expert", "local_expert", "event_planner", "executive_assistant"] as const;
+
 export const localExpertForms = pgTable("local_expert_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Expert Type (travel_expert, local_expert, event_planner, executive_assistant)
+  expertType: varchar("expert_type", { length: 30 }).default("travel_expert"),
   // Basic Info
   firstName: varchar("first_name", { length: 100 }),
   lastName: varchar("last_name", { length: 100 }),
@@ -682,6 +688,7 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   endDate: date("end_date"),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   travelers: integer("travelers").default(1),
+  experienceTypeSlug: varchar("experience_type_slug", { length: 50 }),
   status: varchar("status", { length: 30 }).default("pending"),
   selectedVariantId: varchar("selected_variant_id"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -2642,6 +2649,9 @@ export const itineraryItems = pgTable("itinerary_items", {
   privateNotes: text("private_notes"), // Organizer-only notes
   attachments: jsonb("attachments").default([]), // [{name, url, type}]
   
+  // Suggestion tracking
+  suggestedBy: varchar("suggested_by", { length: 20 }), // 'ai', 'expert', 'user'
+
   // Ordering
   sortOrder: integer("sort_order").default(0),
   
@@ -4376,6 +4386,12 @@ export const sharedItineraries = pgTable("shared_itineraries", {
   sharedWithUserId: varchar("shared_with_user_id").references(() => users.id),
   permissions: varchar("permissions", { length: 20 }).notNull().default("view"),
   expertStatus: varchar("expert_status", { length: 30 }).default("pending"),
+  expertNotes: text("expert_notes"),
+  expertDiff: jsonb("expert_diff").$type<{
+    activityDiffs: Record<string, { name?: string; startTime?: string; note?: string; originalName: string; originalStartTime?: string }>;
+    transportDiffs: Record<string, { originalMode: string; newMode: string; legOrder: number }>;
+    submittedAt: string;
+  }>(),
   transportPreferences: jsonb("transport_preferences").$type<{
     defaultMode: string;
     avoidModes: string[];
@@ -4440,6 +4456,7 @@ export const transportBookingOptions = pgTable("transport_booking_options", {
 
   // Booking and pass metadata
   bookingStatus: text("booking_status").default("available"), // "available", "booked", "confirmed", "cancelled"
+  confirmationRef: text("confirmation_ref"),
   bookingId: integer("booking_id"),
   isMultiDayPass: boolean("is_multi_day_pass").default(false),
   passValidDays: integer("pass_valid_days"),
@@ -4470,3 +4487,35 @@ export type SharedItinerary = typeof sharedItineraries.$inferSelect;
 export type InsertSharedItinerary = z.infer<typeof insertSharedItinerarySchema>;
 export type MapsExportCache = typeof mapsExportCache.$inferSelect;
 export type InsertMapsExportCache = z.infer<typeof insertMapsExportCacheSchema>;
+
+export const itineraryChanges = pgTable("itinerary_changes", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  activityId: varchar("activity_id"),
+  who: varchar("who", { length: 255 }).notNull(),
+  action: text("action").notNull(),
+  changeType: varchar("change_type", { length: 20 }).notNull(), // edit, suggest, ai, confirm, reorder, add, remove
+  role: varchar("role", { length: 20 }).notNull(), // owner, expert, friend, ai
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const activityComments = pgTable("activity_comments", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  activityId: varchar("activity_id").notNull(),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull(),
+  authorName: varchar("author_name", { length: 255 }).notNull(),
+  text: text("text").notNull(),
+  role: varchar("role", { length: 20 }).notNull(),
+  parentId: varchar("parent_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertItineraryChangeSchema = createInsertSchema(itineraryChanges).omit({ id: true, createdAt: true });
+export const insertActivityCommentSchema = createInsertSchema(activityComments).omit({ id: true, createdAt: true });
+
+export type ItineraryChange = typeof itineraryChanges.$inferSelect;
+export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
+export type ActivityComment = typeof activityComments.$inferSelect;
+export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;

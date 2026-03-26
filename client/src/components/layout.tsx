@@ -119,12 +119,12 @@ const navItems = [
       {
         title: "BECOME A PARTNER",
         items: [
-          { name: "Travel Expert", href: "/become-expert", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/become-expert", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/become-expert", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/become-expert", icon: Briefcase, description: "Manage high-end clients" },
+          { name: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane, description: "Share your destination expertise" },
+          { name: "Local Expert", href: "/become-expert?type=local_expert", icon: Globe, description: "Guide travelers in your city" },
+          { name: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar, description: "Plan weddings & celebrations" },
+          { name: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase, description: "Manage high-end clients" },
           { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
-          { name: "Influencer Program", href: "/become-expert?influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
+          { name: "Influencer Program", href: "/become-expert?type=travel_expert&influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
         ],
       },
     ],
@@ -281,11 +281,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm">
+      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm overflow-x-clip">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              {/* Logo */}
+          <div className="flex h-16">
+            <div className="flex items-center flex-1 min-w-0">
               <Link href="/" className="flex-shrink-0 flex items-center gap-3" data-testid="link-logo">
                 <div className="flex items-center gap-1.5">
                   <Compass className="h-6 w-6 text-primary" />
@@ -298,18 +297,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </Link>
               
-              {/* Desktop Nav - Same for all users */}
-              <div className="hidden md:ml-10 md:flex md:items-center gap-1">
+              <div className="hidden lg:ml-8 lg:flex lg:items-center gap-1">
                 {navItems.map((item) => (
                   <DesktopDropdown key={item.name} item={item} isActive={item.href === location} />
                 ))}
               </div>
             </div>
 
-            {/* User Actions */}
-            <div className="hidden md:flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {!user && (
-                <>
+                <div className="hidden lg:flex items-center gap-2">
                   <Link href="/become-expert">
                     <Button variant="outline" size="sm" data-testid="button-become-expert">
                       Become an Expert
@@ -322,29 +319,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   >
                     Sign In
                   </Button>
-                </>
+                </div>
               )}
+
               {user && (
                 <>
                   <NotificationBell />
                   <UserMenu />
                 </>
               )}
-            </div>
 
-            {/* Mobile menu button */}
-            <div className="flex items-center md:hidden">
-              <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
-                data-testid="button-mobile-menu"
-              >
-                {isMobileMenuOpen ? (
-                  <X className="block h-6 w-6" />
-                ) : (
-                  <Menu className="block h-6 w-6" />
-                )}
-              </button>
+              <div className="flex items-center lg:hidden">
+                <button
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+                  data-testid="button-mobile-menu"
+                >
+                  {isMobileMenuOpen ? (
+                    <X className="block h-6 w-6" />
+                  ) : (
+                    <Menu className="block h-6 w-6" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -356,7 +353,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden border-t border-border bg-background"
+              className="lg:hidden border-t border-border bg-background"
             >
               {/* Mobile Nav - Same for all users */}
               <div className="pt-2 pb-3 space-y-1 px-4">

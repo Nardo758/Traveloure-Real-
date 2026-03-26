@@ -22,11 +22,12 @@ import {
   calculateItineraryMetrics,
   mapServiceTypeToCategory
 } from "../services/smart-sequencing.service";
+import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
 // Get full itinerary with smart sequencing notes and metrics
-router.get("/api/my-itinerary/:id", async (req, res) => {
+router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -188,6 +189,7 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
 
     const response = {
       id: comparison.id,
+      userId: comparison.userId,
       title: comparison.title || `${comparison.destination} Trip`,
       destination: comparison.destination,
       startDate: comparison.startDate,
@@ -216,7 +218,7 @@ router.get("/api/my-itinerary/:id", async (req, res) => {
 });
 
 // Generate .ics calendar file
-router.get("/api/my-itinerary/:id/calendar", async (req, res) => {
+router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
     

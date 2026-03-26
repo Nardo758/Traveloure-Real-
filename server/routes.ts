@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -19,7 +19,7 @@ import {
   serviceBookings, serviceReviews, notifications, wallets, creditTransactions,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
-  temporalAnchors, itineraryItems
+  temporalAnchors, itineraryItems, generatedItineraries
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -45,7 +45,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -56,6 +56,7 @@ import bookingsRoutes from "./routes/bookings";
 import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
+import plancardRoutes from "./routes/plancard.routes";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -69,6 +70,18 @@ import {
 async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
   const trip = await storage.getTrip(tripId);
   return trip?.userId === userId;
+}
+
+function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
+  return storage.createItineraryChange({
+    tripId,
+    activityId: activityId || null,
+    who,
+    action,
+    changeType,
+    role,
+    metadata: metadata || {},
+  }).catch(err => console.error("Failed to log itinerary change:", err));
 }
 
 // Helper function to map Fever categories to TravelPulse event types
@@ -103,6 +116,7 @@ export async function registerRoutes(
     await setupAuth(app);
     registerAuthRoutes(app);
     setupFacebookAuth(app);
+    setupEmailAuth(app);
   } catch (error) {
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
@@ -125,6 +139,9 @@ export async function registerRoutes(
 
   // Transport Hub routes - booking interface for transport legs
   app.use(transportHubRoutes);
+
+  // PlanCard routes - change tracking, comments, structured day data
+  app.use(plancardRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
@@ -721,9 +738,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       return res.status(404).json({ message: "Application not found" });
     }
     
-    // If approved, update user role to expert
+    // If approved, update user role based on expert type
     if (status === "approved") {
-      await db.update(users).set({ role: "expert" }).where(eq(users.id, updated.userId));
+      // Use the expertType from the form, default to "expert" for backwards compatibility
+      const role = (updated as any).expertType || "expert";
+      await db.update(users).set({ role }).where(eq(users.id, updated.userId));
     }
     
     res.json(updated);
@@ -782,6 +801,12 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
+    
+    // If approved, update user role to service_provider
+    if (status === "approved") {
+      await db.update(users).set({ role: "service_provider" }).where(eq(users.id, updated.userId));
+    }
+    
     res.json(updated);
   });
 
@@ -3988,7 +4013,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
 
       const [comparison] = await db
         .insert(itineraryComparisons)
@@ -4002,6 +4027,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
           endDate,
           budget: budget?.toString(),
           travelers: travelers || 1,
+          experienceTypeSlug: experienceTypeSlug || null,
           status: "generating",
         })
         .returning();
@@ -8836,10 +8862,13 @@ Respond with this exact JSON structure:
 
   app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const userName = (req.user as any).claims.name || "User";
       const item = await itineraryIntelligenceService.createItem({
         ...req.body,
         tripId: req.params.tripId,
       });
+      logItineraryChange(req.params.tripId, userName, `Added "${item.title}"`, "add", "owner", item.id);
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
@@ -8849,6 +8878,7 @@ Respond with this exact JSON structure:
   app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -8857,6 +8887,8 @@ Respond with this exact JSON structure:
         return res.status(403).json({ message: "Access denied" });
       }
       const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
+      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
+      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", "owner", req.params.id);
       res.json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to update itinerary item" });
@@ -8883,8 +8915,10 @@ Respond with this exact JSON structure:
 
   app.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
+      const userName = (req.user as any).claims.name || "User";
       const { dayNumber, itemIds } = req.body;
       const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
+      logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", "owner");
       res.json(items);
     } catch (error) {
       res.status(500).json({ message: "Failed to reorder items" });
@@ -8911,9 +8945,125 @@ Respond with this exact JSON structure:
     }
   });
 
+  // POST /api/trips/:tripId/activate-transport
+  // Creates or reuses an itinerary comparison+variant for the trip's AI-generated itinerary,
+  // then calculates and persists real transport legs so users can select modes.
+  app.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const userId = (req as any).user?.id;
+
+      const [trip] = await db
+        .select()
+        .from(trips)
+        .where(and(eq(trips.id, tripId), eq(trips.userId, userId)));
+      if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+      const [genItinerary] = await db
+        .select()
+        .from(generatedItineraries)
+        .where(eq(generatedItineraries.tripId, tripId));
+      if (!genItinerary?.itineraryData) {
+        return res.status(404).json({ error: "No generated itinerary found for this trip" });
+      }
+
+      let [comparison] = await db
+        .select()
+        .from(itineraryComparisons)
+        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
+
+      if (!comparison) {
+        const [created] = await db.insert(itineraryComparisons).values({
+          userId,
+          tripId,
+          title: trip.title || trip.destination || "My Trip",
+          destination: trip.destination,
+          status: "active",
+        }).returning();
+        comparison = created;
+      }
+
+      let [variant] = await db
+        .select()
+        .from(itineraryVariants)
+        .where(and(
+          eq(itineraryVariants.comparisonId, comparison.id),
+          eq(itineraryVariants.source, "ai")
+        ));
+
+      if (!variant) {
+        const [created] = await db.insert(itineraryVariants).values({
+          comparisonId: comparison.id,
+          name: "AI Generated",
+          source: "ai",
+          status: "active",
+        }).returning();
+        variant = created;
+      }
+
+      const data: any = genItinerary.itineraryData;
+      const daysData: any[] = data?.days || data?.dailyItinerary || [];
+
+      const activities: import("./services/transport-leg-calculator").ActivityLocation[] = [];
+      for (const day of daysData) {
+        const dayNum: number = day.day || day.dayNumber || 1;
+        const dayActs: any[] = day.activities || [];
+        dayActs.forEach((act: any, idx: number) => {
+          if (act.lat && act.lng) {
+            activities.push({
+              id: act.id || `day${dayNum}-act${idx}`,
+              name: act.title || act.name || "Activity",
+              lat: parseFloat(act.lat),
+              lng: parseFloat(act.lng),
+              scheduledTime: act.time || act.startTime || `${9 + idx}:00`,
+              dayNumber: dayNum,
+              order: idx,
+            });
+          }
+        });
+      }
+
+      if (activities.length < 2) {
+        return res.json({ variantId: variant.id, legs: [], message: "Not enough geolocated activities to calculate transport" });
+      }
+
+      await calculateTransportLegs(variant.id, activities, trip.destination || "", {});
+
+      const savedLegs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, variant.id));
+
+      return res.json({
+        variantId: variant.id,
+        legs: savedLegs.map(leg => ({
+          id: leg.id,
+          legOrder: leg.legOrder,
+          dayNumber: leg.dayNumber,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          distanceDisplay: leg.distanceDisplay,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          alternativeModes: leg.alternativeModes || [],
+        })),
+      });
+    } catch (err: any) {
+      console.error("Activate transport error:", err);
+      res.status(500).json({ error: "Failed to activate transport" });
+    }
+  });
+
   app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
+      const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -8922,6 +9072,7 @@ Respond with this exact JSON structure:
         return res.status(403).json({ message: "Access denied" });
       }
       await itineraryIntelligenceService.deleteItem(req.params.id);
+      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", "owner", req.params.id);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete itinerary item" });
@@ -11637,6 +11788,50 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // GET /api/trips/:id/share-info — Returns share token + expert review status for a trip (owner only)
+  app.get("/api/trips/:id/share-info", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
+      const tripId = req.params.id;
+
+      const comparisons = await db
+        .select({ id: itineraryComparisons.id, selectedVariantId: itineraryComparisons.selectedVariantId })
+        .from(itineraryComparisons)
+        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)));
+
+      if (comparisons.length === 0) return res.json({});
+
+      const variantIds = comparisons.map(c => c.id);
+      const variantRows = await db
+        .select({ id: itineraryVariants.id, comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(inArray(itineraryVariants.comparisonId, variantIds));
+
+      if (variantRows.length === 0) return res.json({});
+
+      const vids = variantRows.map(v => v.id);
+      const shares = await db
+        .select()
+        .from(sharedItineraries)
+        .where(and(inArray(sharedItineraries.variantId, vids), eq(sharedItineraries.sharedByUserId, userId)))
+        .orderBy(sharedItineraries.createdAt);
+
+      if (shares.length === 0) return res.json({});
+
+      const latest = shares[shares.length - 1];
+      return res.json({
+        shareToken: latest.shareToken,
+        variantId: latest.variantId,
+        expertStatus: latest.expertStatus,
+        expertNotes: latest.expertNotes,
+        expertDiff: latest.expertDiff,
+      });
+    } catch (err: any) {
+      console.error("Share info error:", err);
+      res.status(500).json({ error: "Failed to fetch share info" });
+    }
+  });
+
   // GET /api/itinerary-share/:token — PUBLIC
   app.get("/api/itinerary-share/:token", async (req, res) => {
     try {
@@ -11777,6 +11972,9 @@ export async function registerDiscoveryRoutes(app: Express) {
             }
           : { name: "A traveler", avatarUrl: null, userId: null },
         permissions: shared.permissions,
+        expertStatus: shared.expertStatus,
+        expertNotes: shared.expertNotes || null,
+        expertDiff: shared.expertDiff || null,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
         isOwner: !!(shared.sharedByUserId && (req as any).user?.id === shared.sharedByUserId),
@@ -11922,6 +12120,14 @@ export async function registerDiscoveryRoutes(app: Express) {
         downstreamMessage = `Switching to ${selectedMode} adds ${timeDiff} minutes.`;
       } else {
         downstreamMessage = `Transport mode updated to ${selectedMode}.`;
+      }
+
+      if (variant) {
+        const [comp] = await db.select({ tripId: itineraryComparisons.tripId }).from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
+        if (comp?.tripId) {
+          const who = userId ? ((req.user as any)?.claims?.name || "User") : "Guest";
+          logItineraryChange(comp.tripId, who, `Changed transport mode to ${selectedMode} (${leg.fromName} → ${leg.toName})`, "transport", shareToken ? "friend" : "owner", undefined, { legId, selectedMode, previousMode: leg.userSelectedMode || leg.recommendedMode });
+        }
       }
 
       res.json({
@@ -12250,12 +12456,15 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // POST /api/itinerary-share/:token/suggest — Expert suggests modifications (MVP: sends notification)
+  // POST /api/itinerary-share/:token/suggest — DEPRECATED: Expert suggests modifications (legacy)
+  // Use POST /api/expert-review/:shareToken/submit instead (stores full snapshot)
   app.post("/api/itinerary-share/:token/suggest", async (req, res) => {
     try {
       const { token } = req.params;
-      const { notes } = req.body;
+      const { notes, activityDiffs, transportDiffs } = req.body;
+      const userId = (req as any).user?.id;
 
+      if (!userId) return res.status(401).json({ error: "Authentication required to submit suggestions" });
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
 
       const [shared] = await db
@@ -12267,7 +12476,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
         return res.status(410).json({ error: "Share link has expired" });
       }
-      if (shared.permissions !== "suggest") {
+      if (!["suggest", "edit"].includes(shared.permissions)) {
         return res.status(403).json({ error: "This share link does not allow suggestions" });
       }
 
@@ -12283,22 +12492,277 @@ export async function registerDiscoveryRoutes(app: Express) {
         .from(itineraryComparisons)
         .where(eq(itineraryComparisons.id, variant.comparisonId));
 
+      // Build diff payload
+      const expertDiff = {
+        activityDiffs: activityDiffs || {},
+        transportDiffs: transportDiffs || {},
+        submittedAt: new Date().toISOString(),
+      };
+
+      // Save diff + notes + update status on shared_itineraries
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = 'review_sent', expert_notes = ${notes}, expert_diff = ${JSON.stringify(expertDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
+      );
+
       // Send notification to the owner
       if (comparison?.userId) {
+        const hasDiffs = Object.keys(expertDiff.activityDiffs).length > 0 || Object.keys(expertDiff.transportDiffs).length > 0;
+        const diffSummary = hasDiffs
+          ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
+          : "";
         await db.insert(notifications).values({
           userId: comparison.userId,
           type: "expert_suggestion",
-          title: "Expert modification suggestions",
-          message: `An expert has reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and has suggestions: ${notes.substring(0, 200)}${notes.length > 200 ? "..." : ""}`,
+          title: "Expert sent itinerary edits",
+          message: `An expert has reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and sent suggestions${diffSummary}: ${notes.substring(0, 150)}${notes.length > 150 ? "..." : ""}`,
           relatedId: shared.variantId,
           relatedType: "itinerary_variant",
         });
       }
 
-      res.json({ success: true, message: "Suggestions sent to traveler" });
+      res.json({ success: true, message: "Edits sent to traveler" });
     } catch (err: any) {
       console.error("Expert suggest error:", err);
       res.status(500).json({ error: "Failed to send suggestions" });
+    }
+  });
+
+  // PATCH /api/itinerary-share/:token/acknowledge — Owner accepts or rejects expert edits
+  app.patch("/api/itinerary-share/:token/acknowledge", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { action } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!action || !["accept", "reject"].includes(action)) {
+        return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
+      }
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Share not found" });
+
+      // Only the original sharer (owner) can acknowledge
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required to acknowledge edits" });
+      }
+      if (shared.sharedByUserId !== userId) {
+        return res.status(403).json({ error: "Only the itinerary owner can acknowledge edits" });
+      }
+
+      const newStatus = action === "accept" ? "acknowledged" : "rejected";
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
+      );
+
+      res.json({ success: true, status: newStatus });
+    } catch (err: any) {
+      console.error("Acknowledge expert edits error:", err);
+      res.status(500).json({ error: "Failed to acknowledge edits" });
+    }
+  });
+
+  // POST /api/expert-review/:shareToken/submit — Expert submits diff + notes to expert_updated_itineraries
+  app.post("/api/expert-review/:shareToken/submit", async (req, res) => {
+    try {
+      const { shareToken } = req.params;
+      const { notes, activityDiffs, transportDiffs } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
+      if (!userId) return res.status(401).json({ error: "Authentication required to submit expert edits" });
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, shareToken));
+
+      if (!shared) return res.status(404).json({ error: "Share not found" });
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "Share link has expired" });
+      }
+      if (!["suggest", "edit"].includes(shared.permissions)) {
+        return res.status(403).json({ error: "This share link does not allow expert edits" });
+      }
+
+      const [variant] = await db
+        .select({ comparisonId: itineraryVariants.comparisonId, name: itineraryVariants.name })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, shared.variantId));
+
+      if (!variant) return res.status(404).json({ error: "Variant not found" });
+
+      const [comparison] = await db
+        .select({ userId: itineraryComparisons.userId, destination: itineraryComparisons.destination, tripId: itineraryComparisons.tripId })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+      // Build full itinerary snapshot: original items with expert diffs applied
+      const originalItems = await db
+        .select()
+        .from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, shared.variantId));
+
+      const originalLegs = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, shared.variantId));
+
+      const resolvedActivityDiffs = activityDiffs || {};
+      const resolvedTransportDiffs = transportDiffs || {};
+
+      // Helper: merge HH:MM expert edit with the original ISO date to produce a full ISO timestamp
+      const mergeExpertTime = (originalISO: string | null | undefined, hhMM: string | undefined): string | null | undefined => {
+        if (!hhMM) return originalISO;
+        if (!originalISO) return originalISO;
+        try {
+          const base = new Date(originalISO);
+          const [h, m] = hhMM.split(":").map(Number);
+          base.setHours(h, m, 0, 0);
+          return base.toISOString();
+        } catch {
+          return originalISO;
+        }
+      };
+
+      const editedActivities = originalItems.map(item => {
+        const diff = resolvedActivityDiffs[item.id];
+        if (!diff) return { id: item.id, name: item.name, startTime: item.startTime, endTime: item.endTime, dayNumber: item.dayNumber, sortOrder: item.sortOrder, location: item.location, description: item.description };
+        return {
+          id: item.id,
+          name: diff.name ?? item.name,
+          startTime: mergeExpertTime(item.startTime, diff.startTime) ?? item.startTime,
+          endTime: item.endTime,
+          dayNumber: item.dayNumber,
+          sortOrder: item.sortOrder,
+          location: item.location,
+          description: diff.note ? `${item.description || ""}\nExpert note: ${diff.note}`.trim() : item.description,
+          expertNote: diff.note,
+        };
+      });
+
+      const editedLegs = originalLegs.map(leg => {
+        const diff = resolvedTransportDiffs[leg.id];
+        if (!diff) return { id: leg.id, legOrder: leg.legOrder, dayNumber: leg.dayNumber, recommendedMode: leg.recommendedMode, userSelectedMode: leg.userSelectedMode };
+        return { id: leg.id, legOrder: leg.legOrder, dayNumber: leg.dayNumber, recommendedMode: leg.recommendedMode, userSelectedMode: diff.newMode };
+      });
+
+      const itinerarySnapshot = {
+        variantId: shared.variantId,
+        variantName: variant.name,
+        editedAt: new Date().toISOString(),
+        activities: editedActivities,
+        transportLegs: editedLegs,
+        expertNotes: notes,
+        diffs: {
+          activityDiffs: resolvedActivityDiffs,
+          transportDiffs: resolvedTransportDiffs,
+        },
+      };
+
+      const expertDiff = {
+        activityDiffs: resolvedActivityDiffs,
+        transportDiffs: resolvedTransportDiffs,
+        submittedAt: new Date().toISOString(),
+      };
+
+      // Save full edited snapshot + message to expert_updated_itineraries
+      await db.insert(expertUpdatedItineraries).values({
+        tripId: comparison?.tripId || null,
+        shareToken,
+        itineraryData: itinerarySnapshot,
+        message: notes,
+        status: "pending",
+        createdById: userId,
+      });
+
+      // Update shared_itineraries with status + diff for traveler review
+      await db.execute(
+        sql`UPDATE shared_itineraries SET expert_status = 'review_sent', expert_notes = ${notes}, expert_diff = ${JSON.stringify(expertDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
+      );
+
+      // Notify the itinerary owner
+      if (comparison?.userId) {
+        const hasDiffs = Object.keys(expertDiff.activityDiffs).length > 0 || Object.keys(expertDiff.transportDiffs).length > 0;
+        const diffSummary = hasDiffs
+          ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
+          : "";
+        await db.insert(notifications).values({
+          userId: comparison.userId,
+          type: "expert_suggestion",
+          title: "Expert sent itinerary edits",
+          message: `An expert reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and sent suggestions${diffSummary}: ${notes.substring(0, 150)}${notes.length > 150 ? "..." : ""}`,
+          relatedId: shared.variantId,
+          relatedType: "itinerary_variant",
+        });
+      }
+
+      res.json({ success: true, message: "Edits submitted and traveler notified" });
+    } catch (err: any) {
+      console.error("Expert review submit error:", err);
+      res.status(500).json({ error: "Failed to submit expert edits" });
+    }
+  });
+
+  // PATCH /api/expert-review/:shareToken/acknowledge — Owner acknowledges expert edits
+  app.patch("/api/expert-review/:shareToken/acknowledge", async (req, res) => {
+    try {
+      const { shareToken } = req.params;
+      const { action, acceptedDiffIds, rejectedDiffIds } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!action || !["accept", "reject"].includes(action)) {
+        return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
+      }
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, shareToken));
+
+      if (!shared) return res.status(404).json({ error: "Share not found" });
+
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required to acknowledge edits" });
+      }
+      if (shared.sharedByUserId !== userId) {
+        return res.status(403).json({ error: "Only the itinerary owner can acknowledge edits" });
+      }
+
+      const newStatus = action === "accept" ? "acknowledged" : "rejected";
+
+      // If partial accept/reject, update expert_diff to reflect accepted subset
+      if (action === "accept" && (acceptedDiffIds || rejectedDiffIds)) {
+        const currentDiff = shared.expertDiff;
+        if (currentDiff && rejectedDiffIds?.length > 0) {
+          const updatedActivityDiffs = { ...currentDiff.activityDiffs };
+          const updatedTransportDiffs = { ...currentDiff.transportDiffs };
+          for (const id of rejectedDiffIds) {
+            delete updatedActivityDiffs[id];
+            delete updatedTransportDiffs[id];
+          }
+          const updatedDiff = { ...currentDiff, activityDiffs: updatedActivityDiffs, transportDiffs: updatedTransportDiffs };
+          await db.execute(
+            sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, expert_diff = ${JSON.stringify(updatedDiff)}::jsonb, updated_at = NOW() WHERE id = ${shared.id}`
+          );
+        } else {
+          await db.execute(
+            sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
+          );
+        }
+      } else {
+        await db.execute(
+          sql`UPDATE shared_itineraries SET expert_status = ${newStatus}, updated_at = NOW() WHERE id = ${shared.id}`
+        );
+      }
+
+      res.json({ success: true, status: newStatus });
+    } catch (err: any) {
+      console.error("Expert review acknowledge error:", err);
+      res.status(500).json({ error: "Failed to acknowledge edits" });
     }
   });
 

@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Navigation, Loader2 } from "lucide-react";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
-import type { TransportLegData } from "./TransportLeg";
+import type { InlineTransportLegData } from "./InlineTransportSelector";
 
 interface NavigateNextButtonProps {
-  leg: TransportLegData;
+  leg: InlineTransportLegData;
   shareToken?: string;
   dayNumber?: number;
   toActivityName: string;

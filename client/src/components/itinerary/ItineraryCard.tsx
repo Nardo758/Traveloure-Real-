@@ -1,20 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import {
   Share2,
   User,
   MapPin,
+  Map,
+  List,
   Clock,
   DollarSign,
   ChevronDown,
   ChevronUp,
-  Navigation,
   Star,
   Car,
   Bus,
@@ -23,12 +27,20 @@ import {
   Bike,
   Ship,
   UserCheck,
+  Pencil,
+  Check,
+  X,
+  MessageSquare,
 } from "lucide-react";
-import { TransportLeg, type TransportLegData } from "./TransportLeg";
+import { InlineTransportSelector, type InlineTransportLegData } from "./InlineTransportSelector";
+import { DayTransportPanel } from "./DayTransportPanel";
 import { DayMapsButton } from "./DayMapsButton";
 import { TripExportButton } from "./TripExportButton";
 import { NavigateNextButton } from "./NavigateNextButton";
+import { ItineraryMapView } from "./ItineraryMapView";
 import { cn } from "@/lib/utils";
+
+const GOOGLE_MAPS_AVAILABLE = !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
 export interface ItineraryActivity {
   id: string;
@@ -42,6 +54,10 @@ export interface ItineraryActivity {
   description?: string | null;
   location?: string | null;
   duration?: number | null;
+  booked?: boolean;
+  bookingStatus?: "pending" | "booked" | "confirmed";
+  bookingType?: "inApp" | "partner";
+  partnerName?: string | null;
 }
 
 export interface ItineraryDay {
@@ -49,7 +65,7 @@ export interface ItineraryDay {
   date?: string;
   title?: string;
   activities: ItineraryActivity[];
-  transportLegs: TransportLegData[];
+  transportLegs: InlineTransportLegData[];
 }
 
 export interface ItineraryCardData {
@@ -66,6 +82,20 @@ export interface ItineraryCardData {
     totalMinutes: number;
     totalCostUsd: number;
   };
+}
+
+export interface ActivityDiff {
+  name?: string;
+  startTime?: string;
+  note?: string;
+  originalName: string;
+  originalStartTime?: string;
+}
+
+export interface TransportDiff {
+  originalMode: string;
+  newMode: string;
+  legOrder: number;
 }
 
 interface ItineraryCardProps {
@@ -87,6 +117,17 @@ interface ItineraryCardProps {
   onShareSuccess?: (token: string, url: string) => void;
   onSendToExpert?: () => void;
   liveMode?: boolean;
+  expertDiff?: {
+    activityDiffs?: Record<string, ActivityDiff>;
+    transportDiffs?: Record<string, TransportDiff>;
+    submittedAt?: string;
+  } | null;
+  onActivityDiffsChange?: (diffs: Record<string, ActivityDiff>) => void;
+  onTransportDiffsChange?: (diffs: Record<string, TransportDiff>) => void;
+  onExpertNotesChange?: (notes: string) => void;
+  expertNotesValue?: string;
+  forcedMapDays?: number[];
+  focusDay?: number;
 }
 
 function formatDate(dateStr?: string | null): string {
@@ -104,6 +145,15 @@ function formatDayDate(dateStr?: string | null): string {
     return new Date(dateStr).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
   } catch {
     return dateStr;
+  }
+}
+
+function formatTime(timeStr?: string | null): string {
+  if (!timeStr) return "";
+  try {
+    return new Date(timeStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch {
+    return timeStr;
   }
 }
 
@@ -127,7 +177,7 @@ function getModeColor(mode: string): string {
   return "bg-orange-500";
 }
 
-function TransportModeBar({ legs }: { legs: TransportLegData[] }) {
+function TransportModeBar({ legs }: { legs: InlineTransportLegData[] }) {
   if (!legs || legs.length === 0) return null;
 
   const totalMinutes = legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
@@ -209,6 +259,13 @@ export function ItineraryCard({
   onShareSuccess,
   onSendToExpert,
   liveMode = false,
+  expertDiff,
+  onActivityDiffsChange,
+  onTransportDiffsChange,
+  onExpertNotesChange,
+  expertNotesValue,
+  forcedMapDays,
+  focusDay,
 }: ItineraryCardProps) {
   const { toast } = useToast();
   const [copiedUrl, setCopiedUrl] = useState("");
@@ -218,11 +275,62 @@ export function ItineraryCard({
     return init;
   });
 
-  // State for tracking activity timing changes (for cascading updates)
+  const isExpertMode = permissions === "suggest" || permissions === "edit";
+
+  const [activityDiffs, setActivityDiffs] = useState<Record<string, ActivityDiff>>({});
+  const [transportDiffs, setTransportDiffs] = useState<Record<string, TransportDiff>>({});
+  const [editingActivity, setEditingActivity] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{ name: string; startTime: string; note: string }>({ name: "", startTime: "", note: "" });
+  const [expertNotesText, setExpertNotesText] = useState(expertNotesValue ?? "");
+  const [expertNotesExpanded, setExpertNotesExpanded] = useState(isExpertMode);
+
+  useEffect(() => {
+    if (expertNotesValue !== undefined && expertNotesValue !== expertNotesText) {
+      setExpertNotesText(expertNotesValue);
+    }
+  }, [expertNotesValue]);
+
   const [activityTimingOverrides, setActivityTimingOverrides] = useState<Record<string, string>>({});
+  const [dayViewMode, setDayViewMode] = useState<Record<number, "list" | "map">>({});
+  const [dayContentTab, setDayContentTab] = useState<Record<number, "activities" | "transport">>({});
+
+  useEffect(() => {
+    if (!forcedMapDays || forcedMapDays.length === 0) return;
+    setDayViewMode(m => {
+      const next = { ...m };
+      forcedMapDays.forEach(n => { next[n] = "map"; });
+      return next;
+    });
+    forcedMapDays.forEach(n => {
+      setExpandedDays(m => ({ ...m, [n]: true }));
+    });
+  }, [forcedMapDays]);
+
+  useEffect(() => {
+    if (!focusDay) return;
+    setExpandedDays(m => ({ ...m, [focusDay]: true }));
+    const el = document.getElementById(`itinerary-day-${focusDay}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focusDay]);
+
+  const handleActivityReorder = (dayNumber: number, fromIdx: number, toIdx: number) => {
+    const day = data.days.find(d => d.dayNumber === dayNumber);
+    if (!day || !isExpertMode) return;
+    const validActs = day.activities.filter(a => a.lat != null && a.lng != null);
+    const movedActivity = validActs[fromIdx];
+    if (!movedActivity) return;
+    const newDiffs = { ...activityDiffs };
+    newDiffs[movedActivity.id] = {
+      ...newDiffs[movedActivity.id],
+      name: movedActivity.name,
+      originalName: movedActivity.name,
+      reorderIndex: toIdx,
+    } as ActivityDiff & { reorderIndex: number };
+    setActivityDiffs(newDiffs);
+    onActivityDiffsChange?.(newDiffs);
+  };
 
   const handleLegModeChange = (legId: string, timeDiffMinutes: number) => {
-    // Find which day and activity this leg belongs to
     let targetDayNum: number | null = null;
     let legOrder: number | null = null;
 
@@ -237,30 +345,88 @@ export function ItineraryCard({
 
     if (targetDayNum === null || legOrder === null) return;
 
-    // Find the target day and the next activity (after legOrder)
     const targetDay = data.days.find(d => d.dayNumber === targetDayNum);
     if (!targetDay) return;
 
     const nextActivityIdx = legOrder;
-    if (nextActivityIdx >= targetDay.activities.length) return; // No activity to update
+    if (nextActivityIdx >= targetDay.activities.length) return;
 
     const nextActivity = targetDay.activities[nextActivityIdx];
-    if (!nextActivity.startTime) return; // Can't update if no start time
+    if (!nextActivity.startTime) return;
 
-    // Parse current start time and add the time difference
     try {
       const currentTime = new Date(nextActivity.startTime);
       const newTime = new Date(currentTime.getTime() + timeDiffMinutes * 60 * 1000);
-      const newTimeStr = newTime.toISOString();
-
-      // Store the override
-      setActivityTimingOverrides(prev => ({
-        ...prev,
-        [nextActivity.id]: newTimeStr,
-      }));
+      setActivityTimingOverrides(prev => ({ ...prev, [nextActivity.id]: newTime.toISOString() }));
     } catch (e) {
       console.error("Failed to parse activity time:", e);
     }
+  };
+
+  const handleTransportModeChange = (legId: string, newMode: string, originalMode: string) => {
+    if (!isExpertMode) return;
+    const newDiffs = { ...transportDiffs };
+    if (newMode === originalMode) {
+      delete newDiffs[legId];
+    } else {
+      let legOrder = 0;
+      for (const day of data.days) {
+        const leg = day.transportLegs.find(l => l.id === legId);
+        if (leg) { legOrder = leg.legOrder; break; }
+      }
+      newDiffs[legId] = { originalMode, newMode, legOrder };
+    }
+    setTransportDiffs(newDiffs);
+    onTransportDiffsChange?.(newDiffs);
+  };
+
+  const startEditActivity = (activity: ItineraryActivity) => {
+    setEditingActivity(activity.id);
+    const existing = activityDiffs[activity.id];
+    setEditValues({
+      name: existing?.name ?? activity.name,
+      startTime: existing?.startTime ?? (activity.startTime ? formatTime(activity.startTime) : ""),
+      note: existing?.note ?? "",
+    });
+  };
+
+  const confirmEditActivity = (activity: ItineraryActivity) => {
+    const nameChanged = editValues.name !== activity.name;
+    const timeChanged = editValues.startTime !== (activity.startTime ? formatTime(activity.startTime) : "");
+    const noteAdded = editValues.note.trim() !== "";
+    const hasChange = nameChanged || timeChanged || noteAdded;
+
+    if (hasChange) {
+      const newDiffs = {
+        ...activityDiffs,
+        [activity.id]: {
+          ...(nameChanged ? { name: editValues.name } : {}),
+          ...(timeChanged ? { startTime: editValues.startTime } : {}),
+          ...(noteAdded ? { note: editValues.note } : {}),
+          originalName: activity.name,
+          originalStartTime: activity.startTime ? formatTime(activity.startTime) : undefined,
+        },
+      };
+      setActivityDiffs(newDiffs);
+      onActivityDiffsChange?.(newDiffs);
+    } else {
+      const newDiffs = { ...activityDiffs };
+      delete newDiffs[activity.id];
+      setActivityDiffs(newDiffs);
+      onActivityDiffsChange?.(newDiffs);
+    }
+    setEditingActivity(null);
+  };
+
+  const cancelEditActivity = () => {
+    setEditingActivity(null);
+  };
+
+  const clearActivityDiff = (activityId: string) => {
+    const newDiffs = { ...activityDiffs };
+    delete newDiffs[activityId];
+    setActivityDiffs(newDiffs);
+    onActivityDiffsChange?.(newDiffs);
   };
 
   const shareMutation = useMutation({
@@ -286,7 +452,6 @@ export function ItineraryCard({
     setExpandedDays(prev => ({ ...prev, [dayNum]: !prev[dayNum] }));
   };
 
-  // Calculate transport summary dynamically based on current mode selections
   const calculateTransportSummary = () => {
     let totalLegs = 0;
     let totalMinutes = 0;
@@ -305,15 +470,11 @@ export function ItineraryCard({
       }
     }
 
-    return {
-      totalLegs,
-      totalMinutes,
-      totalCostUsd,
-      modeTotals,
-    };
+    return { totalLegs, totalMinutes, totalCostUsd, modeTotals };
   };
 
   const transportSummary = calculateTransportSummary();
+  const totalChanges = Object.keys(activityDiffs).length + Object.keys(transportDiffs).length;
 
   return (
     <div className="space-y-0" data-testid="itinerary-card">
@@ -402,6 +563,20 @@ export function ItineraryCard({
         )}
       </div>
 
+      {isExpertMode && totalChanges > 0 && (
+        <div className="mb-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800" data-testid="expert-changes-summary">
+          <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+            {totalChanges} pending change{totalChanges !== 1 ? "s" : ""} tracked
+          </p>
+          <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+            {Object.keys(activityDiffs).length > 0 && `${Object.keys(activityDiffs).length} activity edit${Object.keys(activityDiffs).length !== 1 ? "s" : ""}`}
+            {Object.keys(activityDiffs).length > 0 && Object.keys(transportDiffs).length > 0 && ", "}
+            {Object.keys(transportDiffs).length > 0 && `${Object.keys(transportDiffs).length} transport change${Object.keys(transportDiffs).length !== 1 ? "s" : ""}`}
+            {' — use "Send Edits" above when ready.'}
+          </p>
+        </div>
+      )}
+
       {transportSummary.totalLegs > 0 && (
         <Card className="mb-5" data-testid="transport-summary">
           <CardContent className="p-4">
@@ -437,11 +612,13 @@ export function ItineraryCard({
         const isOpen = expandedDays[day.dayNumber] ?? true;
 
         const totalDayTransportMin = day.transportLegs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0);
-        const totalDayTransportCost = day.transportLegs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0);
+
+        const currentDayView = dayViewMode[day.dayNumber] ?? "list";
+        const hasMapData = day.activities.some(a => a.lat != null && a.lng != null);
 
         return (
           <Collapsible key={day.dayNumber} open={isOpen} onOpenChange={() => toggleDay(day.dayNumber)}>
-            <div className="mb-2" data-testid={`day-section-${day.dayNumber}`}>
+            <div className="mb-2" id={`itinerary-day-${day.dayNumber}`} data-testid={`day-section-${day.dayNumber}`}>
               <CollapsibleTrigger asChild>
                 <div className="flex items-center justify-between mb-1 cursor-pointer rounded-lg px-2 py-2 hover:bg-muted/50 group">
                   <div>
@@ -458,6 +635,39 @@ export function ItineraryCard({
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    {GOOGLE_MAPS_AVAILABLE && hasMapData && isOpen && (
+                      <div
+                        className="flex items-center rounded-md border overflow-hidden"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={e => { e.stopPropagation(); setDayViewMode(m => ({ ...m, [day.dayNumber]: "list" })); }}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1 text-xs",
+                            currentDayView === "list"
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                          )}
+                          data-testid={`button-list-view-day-${day.dayNumber}`}
+                        >
+                          <List className="h-3 w-3" />
+                          List
+                        </button>
+                        <button
+                          onClick={e => { e.stopPropagation(); setDayViewMode(m => ({ ...m, [day.dayNumber]: "map" })); }}
+                          className={cn(
+                            "flex items-center gap-1 px-2 py-1 text-xs border-l",
+                            currentDayView === "map"
+                              ? "bg-primary text-primary-foreground"
+                              : "hover:bg-muted"
+                          )}
+                          data-testid={`button-map-view-day-${day.dayNumber}`}
+                        >
+                          <Map className="h-3 w-3" />
+                          Map
+                        </button>
+                      </div>
+                    )}
                     {(googleUrl || appleUrl || appleWebUrl) && isOpen && (
                       <DayMapsButton
                         dayNumber={day.dayNumber}
@@ -474,60 +684,309 @@ export function ItineraryCard({
               </CollapsibleTrigger>
 
               <CollapsibleContent>
+                <div className="flex items-center gap-1 mb-3 px-1" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center rounded-md border overflow-hidden">
+                    <button
+                      onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "activities" }))}
+                      className={cn(
+                        "flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors",
+                        (dayContentTab[day.dayNumber] ?? "activities") === "activities"
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted text-muted-foreground"
+                      )}
+                      data-testid={`tab-activities-day-${day.dayNumber}`}
+                    >
+                      <List className="h-3 w-3" />
+                      Activities ({day.activities.length})
+                    </button>
+                    <button
+                      onClick={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "transport" }))}
+                      className={cn(
+                        "flex items-center gap-1 px-3 py-1.5 text-xs font-medium border-l transition-colors",
+                        (dayContentTab[day.dayNumber] ?? "activities") === "transport"
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted text-muted-foreground"
+                      )}
+                      data-testid={`tab-transport-day-${day.dayNumber}`}
+                    >
+                      <Car className="h-3 w-3" />
+                      Transport ({day.transportLegs.length})
+                    </button>
+                  </div>
+                </div>
+
+                {(dayContentTab[day.dayNumber] ?? "activities") === "transport" && day.transportLegs.length > 0 ? (
+                  <DayTransportPanel
+                    dayNumber={day.dayNumber}
+                    legs={day.transportLegs}
+                    readOnly={readOnly && !isExpertMode}
+                    tripId={data.id}
+                    shareToken={shareToken}
+                    destination={data.destination || undefined}
+                    isExpertMode={isExpertMode}
+                    onModeChange={isExpertMode ? handleTransportModeChange : undefined}
+                    onModeChangeSuccess={isExpertMode ? undefined : handleLegModeChange}
+                  />
+                ) : currentDayView === "map" && GOOGLE_MAPS_AVAILABLE ? (
+                  <ItineraryMapView
+                    day={day}
+                    isExpertMode={isExpertMode}
+                    transportDiffs={transportDiffs}
+                    activityDiffs={activityDiffs}
+                    showGhostPins={!!expertDiff && !isExpertMode}
+                    onActivityReorder={handleActivityReorder}
+                    className="mb-4"
+                    height="360px"
+                  />
+                ) : (
                 <div className="space-y-0 pl-1">
                   {day.activities.map((activity, actIdx) => {
                     const legAfter = day.transportLegs.find(l => l.legOrder === actIdx + 1);
                     const isCurrentOrNext = liveMode && actIdx === 0;
+                    const diff = activityDiffs[activity.id];
+                    const hasDiff = !!diff;
+                    const isEditing = editingActivity === activity.id;
+                    const displayedTime = activityTimingOverrides[activity.id] || activity.startTime;
+                    const displayedName = diff?.name ?? activity.name;
+                    const displayedStartTime = diff?.startTime ?? (displayedTime ? formatTime(displayedTime) : "");
+                    const reviewedDiff = expertDiff?.activityDiffs?.[activity.id];
 
                     return (
                       <div key={activity.id}>
-                        <Card className={cn("border", isCurrentOrNext && "border-primary/50 bg-primary/5")}>
+                        <Card className={cn(
+                          "border",
+                          isCurrentOrNext && "border-primary/50 bg-primary/5",
+                          hasDiff && "border-blue-300 dark:border-blue-700",
+                          reviewedDiff && !isExpertMode && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20"
+                        )}>
                           <CardContent className="p-4">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                {(activityTimingOverrides[activity.id] || activity.startTime) && (
-                                  <p className="text-xs font-mono text-muted-foreground mb-0.5">
-                                    {(() => {
-                                      const time = activityTimingOverrides[activity.id] || activity.startTime;
-                                      try {
-                                        return new Date(time).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-                                      } catch {
-                                        return time;
-                                      }
-                                    })()}
-                                  </p>
-                                )}
-                                <h4 className="font-medium text-sm leading-tight">{activity.name}</h4>
-                                <div className="flex flex-wrap gap-2 mt-1">
-                                  {activity.category && (
-                                    <Badge variant="secondary" className="text-xs capitalize">{activity.category}</Badge>
+                            {isEditing ? (
+                              <div className="space-y-2" data-testid={`edit-activity-${activity.id}`}>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    value={editValues.name}
+                                    onChange={e => setEditValues(v => ({ ...v, name: e.target.value }))}
+                                    className="text-sm font-medium h-8"
+                                    placeholder="Activity name"
+                                    data-testid={`input-activity-name-${activity.id}`}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                    type="time"
+                                    value={editValues.startTime}
+                                    onChange={e => setEditValues(v => ({ ...v, startTime: e.target.value }))}
+                                    className="text-xs h-7 w-28 font-mono"
+                                    data-testid={`input-activity-time-${activity.id}`}
+                                  />
+                                  <span className="text-xs text-muted-foreground">start time</span>
+                                </div>
+                                <Textarea
+                                  value={editValues.note}
+                                  onChange={e => setEditValues(v => ({ ...v, note: e.target.value }))}
+                                  className="text-xs min-h-[56px]"
+                                  placeholder="Expert note (optional)…"
+                                  rows={2}
+                                  data-testid={`textarea-activity-note-${activity.id}`}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="h-7 text-xs gap-1"
+                                    onClick={() => confirmEditActivity(activity)}
+                                    data-testid={`button-confirm-edit-${activity.id}`}
+                                  >
+                                    <Check className="h-3 w-3" /> Save
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-xs gap-1"
+                                    onClick={cancelEditActivity}
+                                    data-testid={`button-cancel-edit-${activity.id}`}
+                                  >
+                                    <X className="h-3 w-3" /> Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                    {displayedStartTime && (
+                                      <p className="text-xs font-mono text-muted-foreground">
+                                        {displayedStartTime}
+                                        {diff?.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
+                                          <span className="ml-1 line-through text-muted-foreground/50">{diff.originalStartTime}</span>
+                                        )}
+                                      </p>
+                                    )}
+                                    {hasDiff && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="text-xs h-4 px-1 bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300 border border-yellow-300 cursor-help">
+                                              Changed
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-xs p-3 space-y-1.5" side="top">
+                                            {diff?.name && diff.name !== activity.name && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Name</span>
+                                                <span className="line-through text-muted-foreground">{activity.name}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{diff.name}</span>
+                                              </div>
+                                            )}
+                                            {diff?.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Time</span>
+                                                <span className="line-through text-muted-foreground">{diff.originalStartTime}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{diff.startTime}</span>
+                                              </div>
+                                            )}
+                                            {diff?.note && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Expert note</span>
+                                                <span className="italic text-muted-foreground">"{diff.note}"</span>
+                                              </div>
+                                            )}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                    {reviewedDiff && !isExpertMode && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Badge className="text-xs h-4 px-1 bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 border border-amber-300 cursor-help">
+                                              Expert edit
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-xs p-3 space-y-1.5" side="top">
+                                            {reviewedDiff.name && reviewedDiff.name !== activity.name && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Suggested name</span>
+                                                <span className="line-through text-muted-foreground">{activity.name}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{reviewedDiff.name}</span>
+                                              </div>
+                                            )}
+                                            {reviewedDiff.startTime && reviewedDiff.originalStartTime && reviewedDiff.startTime !== reviewedDiff.originalStartTime && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Suggested time</span>
+                                                <span className="line-through text-muted-foreground">{reviewedDiff.originalStartTime}</span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="text-green-600 dark:text-green-400 font-medium">{reviewedDiff.startTime}</span>
+                                              </div>
+                                            )}
+                                            {reviewedDiff.note && (
+                                              <div className="text-xs">
+                                                <span className="font-medium block mb-0.5">Expert note</span>
+                                                <span className="italic text-muted-foreground">"{reviewedDiff.note}"</span>
+                                              </div>
+                                            )}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
+                                  <h4 className="font-medium text-sm leading-tight">
+                                    {displayedName}
+                                    {diff?.name && diff.name !== activity.name && (
+                                      <span className="ml-2 text-xs line-through text-muted-foreground/50">{activity.name}</span>
+                                    )}
+                                  </h4>
+                                  {reviewedDiff?.name && !isExpertMode && (
+                                    <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                                      Expert suggests: <strong>{reviewedDiff.name}</strong>
+                                      {activity.name !== reviewedDiff.name && (
+                                        <span className="ml-1 text-muted-foreground">(was: {activity.name})</span>
+                                      )}
+                                    </p>
                                   )}
-                                  {activity.duration && (
-                                    <span className="text-xs text-muted-foreground">{activity.duration} min</span>
+                                  {reviewedDiff?.note && !isExpertMode && (
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 italic">
+                                      Expert note: "{reviewedDiff.note}"
+                                    </p>
                                   )}
-                                  {activity.cost !== undefined && activity.cost !== null && (
-                                    <span className="text-xs text-muted-foreground">
-                                      {activity.cost === 0 ? "Free" : `$${activity.cost}`}
-                                    </span>
+                                  {diff?.note && isExpertMode && (
+                                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5 italic">Note: {diff.note}</p>
+                                  )}
+                                  <div className="flex flex-wrap gap-2 mt-1">
+                                    {activity.bookingStatus === "confirmed" && (
+                                      <Badge className="text-xs bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 border border-green-300" data-testid={`badge-confirmed-${activity.id}`}>
+                                        Confirmed
+                                      </Badge>
+                                    )}
+                                    {activity.bookingStatus === "booked" && (
+                                      <Badge className="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border border-blue-300" data-testid={`badge-booked-${activity.id}`}>
+                                        Booked
+                                      </Badge>
+                                    )}
+                                    {activity.bookingStatus === "pending" && (
+                                      <Badge className="text-xs bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border border-orange-300" data-testid={`badge-pending-${activity.id}`}>
+                                        Pending
+                                      </Badge>
+                                    )}
+                                    {activity.category && (
+                                      <Badge variant="secondary" className="text-xs capitalize">{activity.category}</Badge>
+                                    )}
+                                    {activity.duration && (
+                                      <span className="text-xs text-muted-foreground">{activity.duration} min</span>
+                                    )}
+                                    {activity.cost !== undefined && activity.cost !== null && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {activity.cost === 0 ? "Free" : `$${activity.cost}`}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {activity.location && (
+                                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{activity.location}</p>
                                   )}
                                 </div>
-                                {activity.location && (
-                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{activity.location}</p>
-                                )}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {isExpertMode && (
+                                    <button
+                                      onClick={() => startEditActivity(activity)}
+                                      className={cn(
+                                        "p-1.5 rounded-md transition-colors",
+                                        hasDiff
+                                          ? "text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900"
+                                          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                      )}
+                                      title="Edit activity"
+                                      data-testid={`button-edit-activity-${activity.id}`}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  {isExpertMode && hasDiff && (
+                                    <button
+                                      onClick={() => clearActivityDiff(activity.id)}
+                                      className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                      title="Remove edit"
+                                      data-testid={`button-clear-edit-${activity.id}`}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  {activity.lat && activity.lng && (
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.name)}&center=${activity.lat},${activity.lng}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="shrink-0 text-primary hover:text-primary/80 p-1"
+                                      title="Open in Maps"
+                                      data-testid={`link-activity-maps-${activity.id}`}
+                                    >
+                                      <MapPin className="h-4 w-4" />
+                                    </a>
+                                  )}
+                                </div>
                               </div>
-                              {activity.lat && activity.lng && (
-                                <a
-                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(activity.name)}&center=${activity.lat},${activity.lng}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="shrink-0 text-primary hover:text-primary/80"
-                                  title="Open in Maps"
-                                  data-testid={`link-activity-maps-${activity.id}`}
-                                >
-                                  <MapPin className="h-4 w-4" />
-                                </a>
-                              )}
-                            </div>
+                            )}
 
                             {liveMode && legAfter && (
                               <div className="mt-3 pt-3 border-t">
@@ -543,21 +1002,30 @@ export function ItineraryCard({
                         </Card>
 
                         {legAfter && (
-                          <TransportLeg
+                          <InlineTransportSelector
                             leg={legAfter}
-                            readOnly={readOnly}
+                            readOnly={readOnly && !isExpertMode}
                             shareToken={shareToken}
-                            dayNumber={day.dayNumber}
                             className="my-1"
-                            onModeChangeSuccess={handleLegModeChange}
+                            isExpertMode={isExpertMode}
+                            onModeChangeSuccess={isExpertMode ? undefined : handleLegModeChange}
+                            onModeChange={isExpertMode ? handleTransportModeChange : undefined}
+                            expertChanged={!!transportDiffs[legAfter.id] || !!expertDiff?.transportDiffs?.[legAfter.id]}
+                            reviewedTransportDiff={!isExpertMode && expertDiff?.transportDiffs?.[legAfter.id]
+                              ? { originalMode: expertDiff.transportDiffs[legAfter.id].originalMode, newMode: expertDiff.transportDiffs[legAfter.id].newMode }
+                              : null
+                            }
+                            compactSummary={true}
+                            onSwitchToTransport={() => setDayContentTab(t => ({ ...t, [day.dayNumber]: "transport" }))}
                           />
                         )}
                       </div>
                     );
                   })}
                 </div>
+                )}
 
-                {day.transportLegs.length > 0 && (
+                {currentDayView === "list" && day.transportLegs.length > 0 && (
                   <div className="mt-3 px-2">
                     <TransportModeBar legs={day.transportLegs} />
                   </div>
@@ -567,6 +1035,49 @@ export function ItineraryCard({
           </Collapsible>
         );
       })}
+
+      {isExpertMode && (
+        <div className="mt-6 border rounded-xl overflow-hidden" data-testid="expert-notes-panel">
+          <button
+            className="w-full flex items-center justify-between px-4 py-3 bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/30 transition-colors text-left"
+            onClick={() => setExpertNotesExpanded(v => !v)}
+            data-testid="button-toggle-expert-notes"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-amber-600" />
+              <span className="text-sm font-medium text-amber-800 dark:text-amber-200">Expert Notes</span>
+              {expertNotesText.trim() && (
+                <Badge className="text-xs h-4 px-1 bg-amber-200 text-amber-800 border-amber-300">
+                  {expertNotesText.trim().length} chars
+                </Badge>
+              )}
+            </div>
+            {expertNotesExpanded ? (
+              <ChevronUp className="h-4 w-4 text-amber-600" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-amber-600" />
+            )}
+          </button>
+          {expertNotesExpanded && (
+            <div className="p-4 bg-white dark:bg-background border-t border-amber-100 dark:border-amber-900">
+              <p className="text-xs text-muted-foreground mb-2">
+                Write a covering note for the traveler to accompany your edits. This will be sent along with all tracked changes.
+              </p>
+              <Textarea
+                placeholder="E.g. 'Day 2 is too packed — I split the temple visit to Day 3. Also, the restaurant on Day 1 is fully booked in peak season, try XYZ instead...'"
+                value={expertNotesText}
+                onChange={e => {
+                  setExpertNotesText(e.target.value);
+                  onExpertNotesChange?.(e.target.value);
+                }}
+                rows={4}
+                className="text-sm resize-none"
+                data-testid="textarea-expert-notes-panel"
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

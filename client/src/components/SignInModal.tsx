@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,7 +7,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { LogIn, Shield, Sparkles, Heart } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2, FileText } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface SignInModalProps {
   open: boolean;
@@ -21,7 +27,76 @@ export function SignInModal({
   title = "Sign in to continue",
   description = "Create an account or sign in to access this feature and personalize your travel experience.",
 }: SignInModalProps) {
-  const handleSignIn = () => {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [isLoading, setIsLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+    firstName: "",
+    lastName: "",
+  });
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (mode === "signup" && (!acceptTerms || !acceptPrivacy)) {
+      toast({
+        title: "Please accept the agreements",
+        description: "You must accept the Terms of Service and Privacy Policy to create an account.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const endpoint = mode === "signin" ? "/api/auth/login" : "/api/auth/register";
+      const body = mode === "signin"
+        ? { email: formData.email, password: formData.password }
+        : formData;
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "include",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Authentication failed");
+      }
+
+      // Invalidate user query to refresh auth state
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+
+      toast({
+        title: mode === "signin" ? "Welcome back!" : "Account created!",
+        description: data.message,
+      });
+
+      onOpenChange(false);
+      
+      // Redirect to dashboard
+      window.location.href = "/dashboard";
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReplitSignIn = () => {
     window.location.href = "/api/login";
   };
 
@@ -33,49 +108,180 @@ export function SignInModal({
             <LogIn className="h-6 w-6 text-primary" />
           </div>
           <DialogTitle className="text-xl" data-testid="text-sign-in-title">
-            {title}
+            {mode === "signin" ? title : "Create your account"}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {description}
+            {mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                <Shield className="h-4 w-4 text-green-600 dark:text-green-400" />
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+          {mode === "signup" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="firstName">First Name</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="firstName"
+                    placeholder="John"
+                    className="pl-9"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                    required
+                  />
+                </div>
               </div>
-              <span>Secure authentication with Google, GitHub, or email</span>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="lastName"
+                    placeholder="Doe"
+                    className="pl-9"
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center flex-shrink-0">
-                <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-              </div>
-              <span>Personalized travel recommendations</span>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                className="pl-9"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+              />
             </div>
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="h-8 w-8 rounded-full bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center flex-shrink-0">
-                <Heart className="h-4 w-4 text-pink-600 dark:text-pink-400" />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="password"
+                type="password"
+                placeholder={mode === "signup" ? "Min 8 characters" : "••••••••"}
+                className="pl-9"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                minLength={mode === "signup" ? 8 : 1}
+              />
+            </div>
+          </div>
+
+          {mode === "signup" && (
+            <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
+              <div className="flex items-start gap-2.5">
+                <Checkbox
+                  id="signup-terms"
+                  checked={acceptTerms}
+                  onCheckedChange={(checked) => setAcceptTerms(checked === true)}
+                  data-testid="checkbox-signup-terms"
+                />
+                <label htmlFor="signup-terms" className="text-xs leading-snug cursor-pointer">
+                  I have read and agree to the{" "}
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                    Terms of Service
+                  </a>
+                </label>
               </div>
-              <span>Save trips, favorites, and preferences</span>
+              <div className="flex items-start gap-2.5">
+                <Checkbox
+                  id="signup-privacy"
+                  checked={acceptPrivacy}
+                  onCheckedChange={(checked) => setAcceptPrivacy(checked === true)}
+                  data-testid="checkbox-signup-privacy"
+                />
+                <label htmlFor="signup-privacy" className="text-xs leading-snug cursor-pointer">
+                  I have read and agree to the{" "}
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
+                    Privacy Policy
+                  </a>
+                </label>
+              </div>
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            disabled={isLoading || (mode === "signup" && (!acceptTerms || !acceptPrivacy))}
+            data-testid="button-auth-submit"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {mode === "signin" ? "Signing in..." : "Creating account..."}
+              </>
+            ) : (
+              <>
+                <LogIn className="mr-2 h-4 w-4" />
+                {mode === "signin" ? "Sign In" : "Create Account"}
+              </>
+            )}
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">Or</span>
             </div>
           </div>
 
           <Button
-            onClick={handleSignIn}
+            type="button"
+            variant="outline"
             className="w-full"
-            size="lg"
-            data-testid="button-sign-in-modal"
+            onClick={handleReplitSignIn}
+            data-testid="button-social-login"
           >
-            <LogIn className="mr-2 h-4 w-4" />
-            Sign In
+            Continue with Social Login
           </Button>
 
-          <p className="text-xs text-center text-muted-foreground">
-            By signing in, you agree to our Terms of Service and Privacy Policy.
+          <p className="text-sm text-center text-muted-foreground">
+            {mode === "signin" ? (
+              <>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => setMode("signup")}
+                  data-testid="link-switch-signup"
+                >
+                  Sign up
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => setMode("signin")}
+                  data-testid="link-switch-signin"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
           </p>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
