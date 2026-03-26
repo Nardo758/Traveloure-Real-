@@ -10813,6 +10813,68 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // === Admin Payouts Management ===
+
+  app.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const status = req.query.status as string | undefined;
+      const validStatuses = ['pending', 'processing', 'approved', 'completed', 'failed'];
+      if (status && !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status filter" });
+      }
+      const [expertPayouts, providerPayouts] = await Promise.all([
+        storage.getAllExpertPayouts(status),
+        storage.getAllProviderPayouts(status),
+      ]);
+      const allPayouts = [
+        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
+        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
+      ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+      res.json(allPayouts);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get payouts", error: error.message });
+    }
+  });
+
+  app.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { id } = req.params;
+      const { status, notes, transactionId, payoutReference, requesterType } = req.body;
+      const validStatuses = ['processing', 'completed', 'failed'];
+      const validTypes = ['expert', 'provider'];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be one of: processing, completed, failed" });
+      }
+      if (!requesterType || !validTypes.includes(requesterType)) {
+        return res.status(400).json({ error: "Invalid requesterType. Must be 'expert' or 'provider'" });
+      }
+      let updated;
+      if (requesterType === 'expert') {
+        updated = await storage.updateExpertPayoutStatus(id, status, notes, transactionId);
+      } else {
+        updated = await storage.updateProviderPayoutStatus(id, status, notes, payoutReference);
+      }
+      if (!updated) {
+        return res.status(404).json({ error: "Payout not found" });
+      }
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to update payout", error: error.message });
+    }
+  });
+
   // === Logistics: Temporal Anchors ===
 
   app.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
