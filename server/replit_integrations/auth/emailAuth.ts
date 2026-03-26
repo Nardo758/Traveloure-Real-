@@ -145,11 +145,17 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
-      // Check if user has a password (might be OAuth-only user)
+      // Check if user has a password (might be OAuth-only or seeded user)
       if (!user.password) {
-        return res.status(401).json({
-          message: "This account uses social login. Please sign in with your social account.",
-        });
+        const providerHint = user.authProvider === "replit" 
+          ? "Replit" 
+          : user.authProvider === "facebook" 
+            ? "Facebook/Instagram" 
+            : null;
+        const message = providerHint
+          ? `This account was created via ${providerHint}. Please sign in using ${providerHint} instead, or set a password first.`
+          : "This account does not have a password set. Please sign in using Replit or set a password.";
+        return res.status(401).json({ message });
       }
 
       // Verify password
