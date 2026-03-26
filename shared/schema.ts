@@ -4539,3 +4539,134 @@ export type ItineraryChange = typeof itineraryChanges.$inferSelect;
 export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
 export type ActivityComment = typeof activityComments.$inferSelect;
 export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
+
+// ============================================
+// DATA MONETIZATION & ANALYTICS INFRASTRUCTURE
+// ============================================
+
+// Search Analytics - Track what travelers are looking for
+export const searchAnalytics = pgTable("search_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  searchType: varchar("search_type", { length: 50 }).notNull(), // destination, expert, service, hotel, flight, activity
+  query: text("query"),
+  destination: varchar("destination", { length: 255 }),
+  originCountry: varchar("origin_country", { length: 100 }),
+  originCity: varchar("origin_city", { length: 100 }),
+  travelDates: jsonb("travel_dates"), // {startDate, endDate}
+  travelers: integer("travelers"),
+  budget: varchar("budget", { length: 50 }),
+  filters: jsonb("filters"), // Applied filters
+  resultsCount: integer("results_count"),
+  clickedResults: jsonb("clicked_results"), // Array of clicked result IDs
+  convertedToBooking: boolean("converted_to_booking").default(false),
+  deviceType: varchar("device_type", { length: 20 }), // mobile, desktop, tablet
+  userAgent: text("user_agent"),
+  ipCountry: varchar("ip_country", { length: 100 }),
+  ipCity: varchar("ip_city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Page View Analytics - Track user journeys
+export const pageViewAnalytics = pgTable("page_view_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  pagePath: varchar("page_path", { length: 500 }).notNull(),
+  pageType: varchar("page_type", { length: 50 }), // home, search, expert, destination, booking, checkout
+  referrer: text("referrer"),
+  utmSource: varchar("utm_source", { length: 100 }),
+  utmMedium: varchar("utm_medium", { length: 100 }),
+  utmCampaign: varchar("utm_campaign", { length: 100 }),
+  timeOnPage: integer("time_on_page"), // seconds
+  scrollDepth: integer("scroll_depth"), // percentage
+  deviceType: varchar("device_type", { length: 20 }),
+  ipCountry: varchar("ip_country", { length: 100 }),
+  ipCity: varchar("ip_city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Booking Funnel Analytics - Conversion tracking
+export const bookingFunnelAnalytics = pgTable("booking_funnel_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  funnelStage: varchar("funnel_stage", { length: 50 }).notNull(), // search, view, cart, checkout, payment, complete, abandoned
+  serviceType: varchar("service_type", { length: 50 }), // expert, provider, hotel, flight, activity
+  serviceId: varchar("service_id"),
+  providerId: varchar("provider_id"),
+  destination: varchar("destination", { length: 255 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  abandonReason: varchar("abandon_reason", { length: 100 }),
+  ipCountry: varchar("ip_country", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Destination Demand Signals - What people want but can't find
+export const demandSignals = pgTable("demand_signals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  serviceType: varchar("service_type", { length: 50 }), // expert, photographer, tour_guide, hotel, etc.
+  searchCount: integer("search_count").default(0),
+  noResultsCount: integer("no_results_count").default(0), // Searches with zero results
+  avgBudget: decimal("avg_budget", { precision: 10, scale: 2 }),
+  peakMonth: varchar("peak_month", { length: 20 }),
+  travelersProfile: jsonb("travelers_profile"), // {solo: 10, couples: 20, families: 15}
+  originCountries: jsonb("origin_countries"), // {USA: 50, UK: 30, Germany: 20}
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Provider Performance Metrics - For selling insights to providers
+export const providerPerformanceMetrics = pgTable("provider_performance_metrics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  period: varchar("period", { length: 20 }).notNull(), // daily, weekly, monthly
+  periodStart: timestamp("period_start").notNull(),
+  impressions: integer("impressions").default(0),
+  profileViews: integer("profile_views").default(0),
+  searchAppearances: integer("search_appearances").default(0),
+  inquiries: integer("inquiries").default(0),
+  bookings: integer("bookings").default(0),
+  revenue: decimal("revenue", { precision: 10, scale: 2 }).default("0"),
+  avgResponseTime: integer("avg_response_time"), // minutes
+  conversionRate: decimal("conversion_rate", { precision: 5, scale: 2 }),
+  competitorRank: integer("competitor_rank"),
+  priceCompetitiveness: varchar("price_competitiveness", { length: 20 }), // below_avg, avg, above_avg
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Market Intelligence - Aggregated insights for selling to tourism boards
+export const marketIntelligence = pgTable("market_intelligence", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  reportType: varchar("report_type", { length: 50 }).notNull(), // destination, country, service_type, seasonal
+  targetEntity: varchar("target_entity", { length: 255 }).notNull(), // Country name, destination, etc.
+  period: varchar("period", { length: 20 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  metrics: jsonb("metrics").notNull(), // Flexible metrics storage
+  insights: jsonb("insights"), // AI-generated insights
+  recommendations: jsonb("recommendations"),
+  dataQuality: varchar("data_quality", { length: 20 }).default("high"), // high, medium, low
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Pricing Intelligence - Track market pricing
+export const pricingIntelligence = pgTable("pricing_intelligence", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceType: varchar("service_type", { length: 50 }).notNull(),
+  destination: varchar("destination", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  avgPrice: decimal("avg_price", { precision: 10, scale: 2 }),
+  minPrice: decimal("min_price", { precision: 10, scale: 2 }),
+  maxPrice: decimal("max_price", { precision: 10, scale: 2 }),
+  medianPrice: decimal("median_price", { precision: 10, scale: 2 }),
+  priceRange: varchar("price_range", { length: 50 }), // budget, mid-range, luxury
+  sampleSize: integer("sample_size"),
+  period: varchar("period", { length: 20 }),
+  periodStart: timestamp("period_start"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
