@@ -48,6 +48,7 @@ The application uses a modern, responsive design built with React, Tailwind CSS,
 - **Affiliate Web Scraping System**: AI-powered web scraping for partners without APIs, with partner management and automatic affiliate link generation.
 - **Content Tracking System**: Platform-wide content management and moderation with various content types and moderation workflows.
 - **Revenue Tracking System**: Complete platform revenue tracking linked to content tracking, including platform revenue, provider earnings, and payouts.
+- **Stripe Connect Payouts**: Automated expert/provider payouts via Stripe Connect. Experts and providers onboard through `/api/stripe/connect/onboard`, check status via `/api/stripe/connect/status`, and access their Stripe dashboard via `/api/stripe/connect/dashboard`. Admin payout execution automatically creates Stripe transfers to connected accounts. DB columns: `stripe_account_id`, `stripe_account_status`, `can_receive_payments` on users table. Service: `server/services/stripe-connect.service.ts`. UI: `StripeConnectCard` component on expert/provider earnings pages.
 - **Service Recommendation Engine**: AI-powered service opportunity recommendations based on TravelPulse trends.
 - **Shareable Itinerary System**: Publicly shareable itinerary views with KML/GPX export and platform-aware Maps deep links.
 

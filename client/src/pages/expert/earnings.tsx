@@ -15,6 +15,7 @@ import {
   Download,
   Loader2
 } from "lucide-react";
+import { StripeConnectCard } from "@/components/stripe-connect-card";
 
 interface EarningsData {
   earnings: Array<{
@@ -89,6 +90,8 @@ export default function ExpertEarnings() {
             Request Payout
           </Button>
         </div>
+
+        <StripeConnectCard />
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
