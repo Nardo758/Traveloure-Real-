@@ -85,7 +85,7 @@ import {
   type ItineraryChange, type InsertItineraryChange,
   type ActivityComment, type InsertActivityComment,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, avg } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 
 export interface IStorage {
