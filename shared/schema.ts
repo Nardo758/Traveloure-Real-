@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, doublePrecision, uuid, serial, time } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -72,9 +72,20 @@ export const trips = pgTable("trips", {
   destination: varchar("destination", { length: 255 }).notNull(),
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
   numberOfTravelers: integer("number_of_travelers").default(1),
+  adults: integer("adults").default(2),
+  kids: integer("kids").default(0),
   budget: decimal("budget", { precision: 10, scale: 2 }),
   preferences: jsonb("preferences").default({}),
   eventDetails: jsonb("event_details").default({}),
+  experienceType: varchar("experience_type", { length: 20 }),
+  travelers: integer("travelers"),
+  specialRequests: text("special_requests"),
+  expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  expertNotes: text("expert_notes"),
+  expertModifiedAt: timestamp("expert_modified_at"),
+  bookingReference: varchar("booking_reference", { length: 50 }),
+  isPublic: boolean("is_public").default(false),
+  shareToken: varchar("share_token", { length: 64 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -307,6 +318,28 @@ export const localExpertForms = pgTable("local_expert_forms", {
   referralCode: varchar("referral_code", { length: 50 }).unique(),
   tiktokLink: text("tiktok_link"),
   youtubeLink: text("youtube_link"),
+  canBookOnBehalf: boolean("can_book_on_behalf").default(false),
+  isPersonalAssistant: boolean("is_personal_assistant").default(false),
+  paAccessGrantedAt: timestamp("pa_access_granted_at"),
+  paAccessGrantedBy: varchar("pa_access_granted_by", { length: 255 }),
+  bookingFeeType: varchar("booking_fee_type", { length: 20 }),
+  bookingFeePercentage: decimal("booking_fee_percentage"),
+  bookingFeeFixed: decimal("booking_fee_fixed"),
+  bookingFeeHourly: decimal("booking_fee_hourly"),
+  minBookingFee: decimal("min_booking_fee"),
+  stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+  stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
+  canReceivePayments: boolean("can_receive_payments").default(false),
+  totalEarnings: decimal("total_earnings").default("0"),
+  pendingPayout: decimal("pending_payout").default("0"),
+  totalHandoffs: integer("total_handoffs").default(0),
+  completedHandoffs: integer("completed_handoffs").default(0),
+  totalBookingsAssisted: integer("total_bookings_assisted").default(0),
+  handoffResponseTimeHours: integer("handoff_response_time_hours"),
+  maxConcurrentHandoffs: integer("max_concurrent_handoffs").default(5),
+  acceptsNewHandoffs: boolean("accepts_new_handoffs").default(true),
+  feeSettings: jsonb("fee_settings").default({}),
+  payoutSchedule: varchar("payout_schedule", { length: 20 }),
   status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -998,6 +1031,8 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
   numberOfTravelers: z.coerce.number().int().min(1).default(1),
+  adults: z.coerce.number().int().min(1).default(2),
+  kids: z.coerce.number().int().min(0).default(0),
 });
 export const insertGeneratedItinerarySchema = createInsertSchema(generatedItineraries).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertReviewRatingSchema = createInsertSchema(reviewRatings).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1030,7 +1065,17 @@ export const insertCreditTransactionSchema = createInsertSchema(creditTransactio
 
 // Service Templates, Bookings, Reviews schemas
 export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
-export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ id: true, confirmedAt: true, completedAt: true, cancelledAt: true, createdAt: true, updatedAt: true });
+// travelerId and providerId are set server-side from auth context and service lookup
+export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ 
+  id: true, 
+  travelerId: true,  // Set server-side from authenticated user
+  providerId: true,  // Set server-side from service lookup
+  confirmedAt: true, 
+  completedAt: true, 
+  cancelledAt: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
 export const insertContractSchema = createInsertSchema(userAndExpertContracts).omit({ id: true, status: true, isPaid: true, paymentUrl: true, createdAt: true });
@@ -4529,3 +4574,415 @@ export type ItineraryChange = typeof itineraryChanges.$inferSelect;
 export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
 export type ActivityComment = typeof activityComments.$inferSelect;
 export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
+
+// ============================================
+// DATA MONETIZATION & ANALYTICS INFRASTRUCTURE
+// ============================================
+
+// Search Analytics - Track what travelers are looking for
+export const searchAnalytics = pgTable("search_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  searchType: varchar("search_type", { length: 50 }).notNull(), // destination, expert, service, hotel, flight, activity
+  query: text("query"),
+  destination: varchar("destination", { length: 255 }),
+  originCountry: varchar("origin_country", { length: 100 }),
+  originCity: varchar("origin_city", { length: 100 }),
+  travelDates: jsonb("travel_dates"), // {startDate, endDate}
+  travelers: integer("travelers"),
+  budget: varchar("budget", { length: 50 }),
+  filters: jsonb("filters"), // Applied filters
+  resultsCount: integer("results_count"),
+  clickedResults: jsonb("clicked_results"), // Array of clicked result IDs
+  convertedToBooking: boolean("converted_to_booking").default(false),
+  deviceType: varchar("device_type", { length: 20 }), // mobile, desktop, tablet
+  userAgent: text("user_agent"),
+  ipCountry: varchar("ip_country", { length: 100 }),
+  ipCity: varchar("ip_city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Page View Analytics - Track user journeys
+export const pageViewAnalytics = pgTable("page_view_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  pagePath: varchar("page_path", { length: 500 }).notNull(),
+  pageType: varchar("page_type", { length: 50 }), // home, search, expert, destination, booking, checkout
+  referrer: text("referrer"),
+  utmSource: varchar("utm_source", { length: 100 }),
+  utmMedium: varchar("utm_medium", { length: 100 }),
+  utmCampaign: varchar("utm_campaign", { length: 100 }),
+  timeOnPage: integer("time_on_page"), // seconds
+  scrollDepth: integer("scroll_depth"), // percentage
+  deviceType: varchar("device_type", { length: 20 }),
+  ipCountry: varchar("ip_country", { length: 100 }),
+  ipCity: varchar("ip_city", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Booking Funnel Analytics - Conversion tracking
+export const bookingFunnelAnalytics = pgTable("booking_funnel_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  funnelStage: varchar("funnel_stage", { length: 50 }).notNull(), // search, view, cart, checkout, payment, complete, abandoned
+  serviceType: varchar("service_type", { length: 50 }), // expert, provider, hotel, flight, activity
+  serviceId: varchar("service_id"),
+  providerId: varchar("provider_id"),
+  destination: varchar("destination", { length: 255 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  abandonReason: varchar("abandon_reason", { length: 100 }),
+  ipCountry: varchar("ip_country", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Destination Demand Signals - What people want but can't find
+export const demandSignals = pgTable("demand_signals", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  serviceType: varchar("service_type", { length: 50 }), // expert, photographer, tour_guide, hotel, etc.
+  searchCount: integer("search_count").default(0),
+  noResultsCount: integer("no_results_count").default(0), // Searches with zero results
+  avgBudget: decimal("avg_budget", { precision: 10, scale: 2 }),
+  peakMonth: varchar("peak_month", { length: 20 }),
+  travelersProfile: jsonb("travelers_profile"), // {solo: 10, couples: 20, families: 15}
+  originCountries: jsonb("origin_countries"), // {USA: 50, UK: 30, Germany: 20}
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Provider Performance Metrics - For selling insights to providers
+export const providerPerformanceMetrics = pgTable("provider_performance_metrics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  period: varchar("period", { length: 20 }).notNull(), // daily, weekly, monthly
+  periodStart: timestamp("period_start").notNull(),
+  impressions: integer("impressions").default(0),
+  profileViews: integer("profile_views").default(0),
+  searchAppearances: integer("search_appearances").default(0),
+  inquiries: integer("inquiries").default(0),
+  bookings: integer("bookings").default(0),
+  revenue: decimal("revenue", { precision: 10, scale: 2 }).default("0"),
+  avgResponseTime: integer("avg_response_time"), // minutes
+  conversionRate: decimal("conversion_rate", { precision: 5, scale: 2 }),
+  competitorRank: integer("competitor_rank"),
+  priceCompetitiveness: varchar("price_competitiveness", { length: 20 }), // below_avg, avg, above_avg
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Market Intelligence - Aggregated insights for selling to tourism boards
+export const marketIntelligence = pgTable("market_intelligence", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  reportType: varchar("report_type", { length: 50 }).notNull(), // destination, country, service_type, seasonal
+  targetEntity: varchar("target_entity", { length: 255 }).notNull(), // Country name, destination, etc.
+  period: varchar("period", { length: 20 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  metrics: jsonb("metrics").notNull(), // Flexible metrics storage
+  insights: jsonb("insights"), // AI-generated insights
+  recommendations: jsonb("recommendations"),
+  dataQuality: varchar("data_quality", { length: 20 }).default("high"), // high, medium, low
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Pricing Intelligence - Track market pricing
+export const pricingIntelligence = pgTable("pricing_intelligence", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceType: varchar("service_type", { length: 50 }).notNull(),
+  destination: varchar("destination", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  avgPrice: decimal("avg_price", { precision: 10, scale: 2 }),
+  minPrice: decimal("min_price", { precision: 10, scale: 2 }),
+  maxPrice: decimal("max_price", { precision: 10, scale: 2 }),
+  medianPrice: decimal("median_price", { precision: 10, scale: 2 }),
+  priceRange: varchar("price_range", { length: 50 }), // budget, mid-range, luxury
+  sampleSize: integer("sample_size"),
+  period: varchar("period", { length: 20 }),
+  periodStart: timestamp("period_start"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+
+// Activity & Service Booking Analytics
+export const activityBookingAnalytics = pgTable("activity_booking_analytics", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: varchar("session_id", { length: 100 }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Activity/Service Details
+  activityType: varchar("activity_type", { length: 100 }).notNull(), // photography, tour, wedding_planning, adventure, culinary, wellness, etc.
+  activityCategory: varchar("activity_category", { length: 100 }), // outdoor, cultural, romantic, family, luxury, budget
+  serviceName: varchar("service_name", { length: 255 }),
+  providerId: varchar("provider_id"),
+  providerType: varchar("provider_type", { length: 50 }), // expert, service_provider
+  
+  // Location Data
+  destination: varchar("destination", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  
+  // Booking Details
+  bookingStatus: varchar("booking_status", { length: 50 }), // viewed, inquired, booked, completed, cancelled
+  price: decimal("price", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  groupSize: integer("group_size"),
+  
+  // Traveler Profile
+  tripType: varchar("trip_type", { length: 50 }), // vacation, honeymoon, wedding, business, adventure, family
+  travelerOriginCountry: varchar("traveler_origin_country", { length: 100 }),
+  
+  // Timing
+  bookingLeadDays: integer("booking_lead_days"), // Days between booking and activity
+  activityDate: timestamp("activity_date"),
+  
+  // Device & Source
+  deviceType: varchar("device_type", { length: 20 }),
+  referralSource: varchar("referral_source", { length: 100 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Activity Demand Trends - Aggregated insights
+export const activityDemandTrends = pgTable("activity_demand_trends", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  activityType: varchar("activity_type", { length: 100 }).notNull(),
+  destination: varchar("destination", { length: 255 }),
+  country: varchar("country", { length: 100 }),
+  period: varchar("period", { length: 20 }).notNull(), // daily, weekly, monthly
+  periodStart: timestamp("period_start").notNull(),
+  
+  // Metrics
+  searchCount: integer("search_count").default(0),
+  viewCount: integer("view_count").default(0),
+  inquiryCount: integer("inquiry_count").default(0),
+  bookingCount: integer("booking_count").default(0),
+  totalRevenue: decimal("total_revenue", { precision: 12, scale: 2 }).default("0"),
+  avgPrice: decimal("avg_price", { precision: 10, scale: 2 }),
+  avgGroupSize: decimal("avg_group_size", { precision: 5, scale: 1 }),
+  
+  // Traveler Demographics
+  topOriginCountries: jsonb("top_origin_countries"), // [{country: "USA", count: 50}, ...]
+  tripTypeBreakdown: jsonb("trip_type_breakdown"), // {honeymoon: 30, vacation: 50, ...}
+  
+  // Conversion
+  conversionRate: decimal("conversion_rate", { precision: 5, scale: 2 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+
+// Enhanced Location & Trip Analytics (for tourism board sales)
+export const tripAnalyticsEnhanced = pgTable("trip_analytics_enhanced", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Destination Details
+  destinationCountry: varchar("destination_country", { length: 100 }),
+  destinationRegion: varchar("destination_region", { length: 100 }), // e.g., "Tuscany", "Provence", "Bali"
+  destinationCity: varchar("destination_city", { length: 100 }),
+  destinationType: varchar("destination_type", { length: 50 }), // beach, city, mountain, countryside, island
+  
+  // Source Market (Where traveler is FROM)
+  originCountry: varchar("origin_country", { length: 100 }),
+  originRegion: varchar("origin_region", { length: 100 }),
+  originCity: varchar("origin_city", { length: 100 }),
+  
+  // Trip Timing
+  bookingDate: timestamp("booking_date"),
+  tripStartDate: timestamp("trip_start_date"),
+  tripEndDate: timestamp("trip_end_date"),
+  leadTimeDays: integer("lead_time_days"), // Days between booking and trip
+  lengthOfStay: integer("length_of_stay"), // Nights
+  season: varchar("season", { length: 20 }), // spring, summer, fall, winter
+  
+  // Traveler Profile
+  partySize: integer("party_size"),
+  partyComposition: varchar("party_composition", { length: 50 }), // solo, couple, family, group, business
+  hasChildren: boolean("has_children"),
+  tripPurpose: varchar("trip_purpose", { length: 50 }), // leisure, business, wedding, honeymoon, anniversary
+  
+  // Spending
+  totalBudget: decimal("total_budget", { precision: 12, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD"),
+  accommodationBudget: decimal("accommodation_budget", { precision: 10, scale: 2 }),
+  activitiesBudget: decimal("activities_budget", { precision: 10, scale: 2 }),
+  diningBudget: decimal("dining_budget", { precision: 10, scale: 2 }),
+  transportBudget: decimal("transport_budget", { precision: 10, scale: 2 }),
+  spendPerDay: decimal("spend_per_day", { precision: 10, scale: 2 }),
+  priceSegment: varchar("price_segment", { length: 20 }), // budget, mid-range, luxury, ultra-luxury
+  
+  // Activities Booked
+  activitiesBooked: jsonb("activities_booked"), // [{type: "photography", price: 500}, ...]
+  primaryActivity: varchar("primary_activity", { length: 100 }),
+  
+  // Accommodation
+  accommodationType: varchar("accommodation_type", { length: 50 }), // hotel, resort, villa, airbnb, hostel
+  starRating: integer("star_rating"),
+  
+  // Booking Channel
+  bookingChannel: varchar("booking_channel", { length: 50 }), // direct, platform, agent
+  deviceUsed: varchar("device_used", { length: 20 }),
+  
+  // Competitor Data
+  otherDestinationsConsidered: jsonb("other_destinations_considered"), // ["Barcelona", "Rome", "Lisbon"]
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Destination Comparison Reports (sell to competing destinations)
+export const destinationBenchmarks = pgTable("destination_benchmarks", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  destination: varchar("destination", { length: 255 }).notNull(),
+  country: varchar("country", { length: 100 }),
+  period: varchar("period", { length: 20 }).notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  
+  // Volume Metrics
+  searchVolume: integer("search_volume"),
+  bookingVolume: integer("booking_volume"),
+  marketShare: decimal("market_share", { precision: 5, scale: 2 }), // % of total bookings
+  
+  // Source Markets
+  topSourceCountries: jsonb("top_source_countries"), // [{country: "USA", share: 25}, ...]
+  
+  // Spending
+  avgTripSpend: decimal("avg_trip_spend", { precision: 10, scale: 2 }),
+  avgDailySpend: decimal("avg_daily_spend", { precision: 10, scale: 2 }),
+  revenueEstimate: decimal("revenue_estimate", { precision: 14, scale: 2 }),
+  
+  // Trip Characteristics
+  avgLengthOfStay: decimal("avg_length_of_stay", { precision: 5, scale: 1 }),
+  avgLeadTime: decimal("avg_lead_time", { precision: 5, scale: 1 }),
+  avgPartySize: decimal("avg_party_size", { precision: 5, scale: 1 }),
+  
+  // Seasonality
+  peakMonths: jsonb("peak_months"), // ["June", "July", "August"]
+  seasonalityIndex: jsonb("seasonality_index"), // {jan: 0.5, feb: 0.6, ...}
+  
+  // Activity Mix
+  topActivities: jsonb("top_activities"), // [{activity: "photography", share: 15}, ...]
+  
+  // Competitor Comparison
+  similarDestinations: jsonb("similar_destinations"), // ["Barcelona", "Lisbon"]
+  competitorComparison: jsonb("competitor_comparison"), // vs similar destinations
+  
+  // Sentiment
+  avgRating: decimal("avg_rating", { precision: 3, scale: 2 }),
+  sentimentScore: decimal("sentiment_score", { precision: 3, scale: 2 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const bookings = pgTable("bookings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: varchar("user_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  tripId: varchar("trip_id", { length: 255 }).references(() => trips.id, { onDelete: "set null" }),
+  tripItemId: uuid("trip_item_id"),
+  providerId: varchar("provider_id", { length: 255 }),
+  expertId: varchar("expert_id", { length: 255 }),
+  bookingType: varchar("booking_type", { length: 20 }),
+  status: varchar("status", { length: 50 }).default("pending"),
+  title: varchar("title", { length: 255 }),
+  bookingDate: date("booking_date"),
+  bookingTime: time("booking_time"),
+  travelers: integer("travelers"),
+  serviceAmount: decimal("service_amount"),
+  platformFee: decimal("platform_fee"),
+  expertFee: decimal("expert_fee"),
+  totalAmount: decimal("total_amount"),
+  providerPayout: decimal("provider_payout"),
+  paymentMethod: varchar("payment_method", { length: 20 }),
+  depositAmount: decimal("deposit_amount"),
+  depositPaid: boolean("deposit_paid").default(false),
+  balanceAmount: decimal("balance_amount"),
+  balancePaid: boolean("balance_paid").default(false),
+  balanceDueDate: date("balance_due_date"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  stripeDepositIntentId: varchar("stripe_deposit_intent_id", { length: 255 }),
+  stripeBalanceIntentId: varchar("stripe_balance_intent_id", { length: 255 }),
+  paymentStatus: varchar("payment_status", { length: 50 }),
+  confirmationCode: varchar("confirmation_code", { length: 50 }),
+  confirmedAt: timestamp("confirmed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancellationReason: text("cancellation_reason"),
+  cancelledBy: varchar("cancelled_by", { length: 20 }),
+  refundAmount: decimal("refund_amount"),
+  refundStatus: varchar("refund_status", { length: 50 }),
+  refundedAt: timestamp("refunded_at"),
+  specialRequests: text("special_requests"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const platformFees = pgTable("platform_fees", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  feeType: varchar("fee_type", { length: 20 }),
+  category: varchar("category", { length: 50 }),
+  providerId: varchar("provider_id", { length: 255 }),
+  feeTypeMethod: varchar("fee_type_method", { length: 20 }),
+  feePercentage: decimal("fee_percentage"),
+  feeFixedAmount: decimal("fee_fixed_amount"),
+  minFee: decimal("min_fee"),
+  maxFee: decimal("max_fee"),
+  isActive: boolean("is_active").default(true),
+  priority: integer("priority").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const paymentIntents = pgTable("payment_intents", {
+  id: serial("id").primaryKey(),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  userId: varchar("user_id", { length: 255 }),
+  amount: decimal("amount"),
+  currency: varchar("currency", { length: 10 }).default("usd"),
+  status: varchar("status", { length: 50 }),
+  isDeposit: boolean("is_deposit").default(false),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const expertRequests = pgTable("expert_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id"),
+  variantId: text("variant_id"),
+  comparisonId: text("comparison_id"),
+  destinationCity: text("destination_city"),
+  requestType: text("request_type"),
+  expertFee: decimal("expert_fee"),
+  status: text("status").default("pending"),
+  assignedExpertId: text("assigned_expert_id"),
+  queuePosition: integer("queue_position"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  assignedAt: timestamp("assigned_at"),
+  completedAt: timestamp("completed_at"),
+});
+
+export const expertCityQueues = pgTable("expert_city_queues", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  city: text("city"),
+  expertIds: jsonb("expert_ids").default([]),
+  activeRequests: integer("active_requests").default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const savedTrips = pgTable("saved_trips", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id"),
+  variantId: text("variant_id"),
+  comparisonId: text("comparison_id"),
+  notes: text("notes"),
+  savedAt: timestamp("saved_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  priceSnapshot: decimal("price_snapshot"),
+  remindersSent: integer("reminders_sent").default(0),
+  status: text("status").default("active"),
+});
+

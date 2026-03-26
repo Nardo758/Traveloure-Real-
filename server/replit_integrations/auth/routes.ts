@@ -6,6 +6,13 @@ import { z } from "zod";
 const CURRENT_TERMS_VERSION = "1.0";
 const CURRENT_PRIVACY_VERSION = "1.0";
 
+// Sanitize user object to remove sensitive fields before sending to client
+function sanitizeUser(user: any) {
+  if (!user) return user;
+  const { password, ...safeUser } = user;
+  return safeUser;
+}
+
 const acceptTermsSchema = z.object({
   acceptTerms: z.boolean().refine(val => val === true, { message: "You must accept the Terms of Service" }),
   acceptPrivacy: z.boolean().refine(val => val === true, { message: "You must accept the Privacy Policy" }),
@@ -33,7 +40,7 @@ export function registerAuthRoutes(app: Express): void {
         return res.json({ authenticated: false, user: null });
       }
       const user = await authStorage.getUser(userId);
-      res.json({ authenticated: true, user });
+      res.json({ authenticated: true, user: sanitizeUser(user) });
     } catch (error) {
       console.error("Error checking session:", error);
       res.json({ authenticated: false, user: null });
@@ -48,7 +55,7 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -63,7 +70,7 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
@@ -85,7 +92,7 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       console.error("Error updating profile:", error);
       res.status(500).json({ message: "Failed to update profile" });
@@ -100,7 +107,7 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       console.error("Error fetching profile:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
@@ -112,7 +119,7 @@ export function registerAuthRoutes(app: Express): void {
     try {
       const userId = req.user.claims.sub;
       const user = await authStorage.getUser(userId);
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -144,7 +151,7 @@ export function registerAuthRoutes(app: Express): void {
 
       res.json({ 
         success: true, 
-        user,
+        user: sanitizeUser(user),
         message: "Terms and privacy policy accepted successfully" 
       });
     } catch (error) {

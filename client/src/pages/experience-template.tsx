@@ -844,7 +844,8 @@ export default function ExperienceTemplatePage() {
   const [hotelMaxPrice, setHotelMaxPrice] = useState(initialSettings?.hotelMaxPrice ?? 5000);
   const [hotelStarRating, setHotelStarRating] = useState<number>(initialSettings?.hotelStarRating ?? 0);
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
-  const [travelers, setTravelers] = useState(initialSettings?.travelers ?? 2);
+  const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
+  const [kids, setKids] = useState(initialSettings?.kids ?? 0);
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   
   // Template-based filters (for experience types with database-driven tabs)
@@ -926,7 +927,8 @@ export default function ExperienceTemplatePage() {
       setHotelMaxPrice(settings?.hotelMaxPrice ?? 5000);
       setHotelStarRating(settings?.hotelStarRating ?? 0);
       setHotelSortBy(settings?.hotelSortBy ?? "price");
-      setTravelers(settings?.travelers ?? 2);
+      setAdults(settings?.adults ?? settings?.travelers ?? 2);
+      setKids(settings?.kids ?? 0);
       setDetailsSubmitted(settings?.detailsSubmitted ?? false);
     }
   }, [slug, destinationsFromQuery, destinationFromQuery, countryFromQuery]);
@@ -953,7 +955,8 @@ export default function ExperienceTemplatePage() {
       hotelMaxPrice,
       hotelStarRating,
       hotelSortBy,
-      travelers,
+      adults,
+      kids,
       detailsSubmitted,
     };
     sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
@@ -961,7 +964,7 @@ export default function ExperienceTemplatePage() {
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
     searchQuery, priceRange, minRating, sortBy, selectedFilters, selectedInterests,
     flightMaxPrice, flightStops, flightSortBy, hotelMaxPrice, hotelStarRating,
-    hotelSortBy, travelers, detailsSubmitted
+    hotelSortBy, adults, kids, detailsSubmitted
   ]);
   
   const [cartOpen, setCartOpen] = useState(false);
@@ -1109,7 +1112,7 @@ export default function ExperienceTemplatePage() {
         startDate: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
         endDate: endDate?.toISOString().split('T')[0] || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: cartTotal.toString(),
-        travelers: 2,
+        travelers: adults + kids,
         baselineItems: cartItems,
         experienceTypeSlug: slug || "travel",
       });
@@ -1301,7 +1304,7 @@ export default function ExperienceTemplatePage() {
         destination,
         startDate: startDate?.toISOString().split('T')[0],
         endDate: endDate?.toISOString().split('T')[0],
-        travelers: 2
+        travelers: adults + kids
       }));
       return;
     }
@@ -1337,7 +1340,7 @@ export default function ExperienceTemplatePage() {
       destination,
       startDate: startDate?.toISOString().split('T')[0],
       endDate: endDate?.toISOString().split('T')[0],
-      travelers: 2
+      travelers: adults + kids
     }));
     setLocation("/cart");
   };
@@ -1662,7 +1665,7 @@ export default function ExperienceTemplatePage() {
                     destination,
                     startDate: startDate?.toISOString().split('T')[0],
                     endDate: endDate?.toISOString().split('T')[0],
-                    travelers: 2
+                    travelers: adults + kids
                   }));
                   setLocation("/cart");
                 }}
@@ -1699,16 +1702,28 @@ export default function ExperienceTemplatePage() {
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                   {experienceType.name} Details
                 </h2>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-gray-500" />
-                  <Select value={travelers.toString()} onValueChange={(v) => setTravelers(parseInt(v))}>
-                    <SelectTrigger className="w-[140px] h-8" data-testid="select-travelers">
+                  <Select value={adults.toString()} onValueChange={(v) => setAdults(parseInt(v))}>
+                    <SelectTrigger className="w-[110px] h-8" data-testid="select-adults">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                        <SelectItem key={n} value={n.toString()} data-testid={`select-travelers-${n}`}>
-                          {n} {n === 1 ? 'traveler' : 'travelers'}
+                        <SelectItem key={n} value={n.toString()} data-testid={`select-adults-${n}`}>
+                          {n} {n === 1 ? 'adult' : 'adults'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
+                    <SelectTrigger className="w-[100px] h-8" data-testid="select-kids">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                        <SelectItem key={n} value={n.toString()} data-testid={`select-kids-${n}`}>
+                          {n} {n === 1 ? 'kid' : 'kids'}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2003,7 +2018,7 @@ export default function ExperienceTemplatePage() {
                 destination={destination}
                 startDate={startDate}
                 endDate={endDate}
-                travelers={travelers}
+                travelers={adults + kids}
                 variantId={recentVariantId}
                 onBookTransfer={(segment, option) => {
                   addToCart({
@@ -2304,7 +2319,7 @@ export default function ExperienceTemplatePage() {
                 origin={originCity}
                 startDate={startDate}
                 endDate={endDate}
-                travelers={travelers}
+                travelers={adults + kids}
                 maxPrice={flightMaxPrice}
                 stops={flightStops}
                 sortBy={flightSortBy}
@@ -2341,7 +2356,7 @@ export default function ExperienceTemplatePage() {
                       arrivalTime: lastSegment?.arrival.at,
                       seatsLeft: flight.numberOfBookableSeats,
                       lastTicketingDate: flight.lastTicketingDate,
-                      travelers: travelers,
+                      travelers: adults + kids,
                       rawData: flight,
                     },
                   });
@@ -2356,7 +2371,7 @@ export default function ExperienceTemplatePage() {
                 destination={destination}
                 checkIn={startDate}
                 checkOut={endDate}
-                guests={travelers}
+                guests={adults + kids}
                 maxPrice={hotelMaxPrice}
                 starRating={hotelStarRating}
                 sortBy={hotelSortBy}
@@ -2407,7 +2422,7 @@ export default function ExperienceTemplatePage() {
                       pricePerNight: pricePerNight,
                       checkInDate: offer?.checkInDate,
                       checkOutDate: offer?.checkOutDate,
-                      travelers: travelers,
+                      travelers: adults + kids,
                       rawData: hotelData,
                     },
                   });
@@ -2441,7 +2456,7 @@ export default function ExperienceTemplatePage() {
                 destination={destination}
                 startDate={startDate}
                 endDate={endDate}
-                travelers={travelers}
+                travelers={adults + kids}
                 interests={selectedInterests}
                 onResultsLoaded={setActivitySearchMarkers}
                 destinationCenter={destinationCenter}
@@ -2476,7 +2491,7 @@ export default function ExperienceTemplatePage() {
                     id: `activity-${activity.productCode}`,
                     type: "activities",
                     name: activity.title,
-                    price: (activity.pricing?.summary?.fromPrice || 0) * travelers,
+                    price: (activity.pricing?.summary?.fromPrice || 0) * (adults + kids),
                     quantity: 1,
                     provider: "Viator",
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
@@ -2485,7 +2500,7 @@ export default function ExperienceTemplatePage() {
                       refundable: isRefundable,
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
                       duration: durationHours ? `${durationHours} hours` : undefined,
-                      travelers: travelers,
+                      travelers: adults + kids,
                       meetingPoint,
                       meetingPointCoordinates,
                       rawData: activity,
@@ -2740,7 +2755,7 @@ export default function ExperienceTemplatePage() {
                         destination,
                         startDate: startDate?.toISOString().split('T')[0],
                         endDate: endDate?.toISOString().split('T')[0],
-                        travelers: 2
+                        travelers: adults + kids
                       }));
                       setLocation("/cart");
                     }}
@@ -2821,7 +2836,7 @@ export default function ExperienceTemplatePage() {
                     destination,
                     startDate: startDate?.toISOString().split('T')[0],
                     endDate: endDate?.toISOString().split('T')[0],
-                    travelers: 2
+                    travelers: adults + kids
                   }));
                   setLocation("/cart");
                 }}
@@ -3153,7 +3168,7 @@ export default function ExperienceTemplatePage() {
                     startDate={startDate}
                     endDate={endDate}
                     experienceType={experienceType?.name}
-                    travelers={travelers}
+                    travelers={adults + kids}
                     preferences={selectedInterests}
                     userId={user?.id}
                     isVisible={true}
@@ -3222,7 +3237,9 @@ export default function ExperienceTemplatePage() {
                   destination={destination}
                   startDate={startDate}
                   endDate={endDate}
-                  travelers={travelers}
+                  travelers={adults + kids}
+                  adults={adults}
+                  kids={kids}
                   experienceType={experienceType?.name}
                   onClose={() => setAiItineraryDialogOpen(false)}
                   onSave={(tripId) => {

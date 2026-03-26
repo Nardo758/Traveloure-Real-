@@ -110,7 +110,8 @@ export default function ExpertsPage() {
   const [aiDestination, setAiDestination] = useState("");
   const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
   const [aiEndDate, setAiEndDate] = useState<Date | undefined>(undefined);
-  const [aiTravelers, setAiTravelers] = useState("2");
+  const [aiAdults, setAiAdults] = useState("2");
+  const [aiKids, setAiKids] = useState("0");
   const [matchedExperts, setMatchedExperts] = useState<MatchedExpert[]>([]);
   const [showMatches, setShowMatches] = useState(false);
 
@@ -123,7 +124,7 @@ export default function ExpertsPage() {
             start: aiStartDate?.toISOString(),
             end: aiEndDate?.toISOString(),
           },
-          travelers: parseInt(aiTravelers) || 2,
+          travelers: (parseInt(aiAdults) || 2) + (parseInt(aiKids) || 0),
           experienceType: selectedExperienceType || undefined,
           preferences: [],
         },
@@ -357,20 +358,34 @@ export default function ExpertsPage() {
                       </Popover>
                     </div>
                     <div>
-                      <Label className="text-sm font-medium">Travelers</Label>
-                      <Select value={aiTravelers} onValueChange={setAiTravelers}>
-                        <SelectTrigger className="mt-1" data-testid="select-ai-travelers">
-                          <Users className="w-4 h-4 mr-2" />
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                            <SelectItem key={n} value={String(n)}>
-                              {n} {n === 1 ? "traveler" : "travelers"}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label className="text-sm font-medium">Adults & Kids</Label>
+                      <div className="flex gap-2 mt-1">
+                        <Select value={aiAdults} onValueChange={setAiAdults}>
+                          <SelectTrigger data-testid="select-ai-adults" className="flex-1">
+                            <Users className="w-4 h-4 mr-2" />
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n} {n === 1 ? "adult" : "adults"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={aiKids} onValueChange={setAiKids}>
+                          <SelectTrigger data-testid="select-ai-kids" className="flex-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n} {n === 1 ? "kid" : "kids"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
                   <div className="flex justify-end mt-4">

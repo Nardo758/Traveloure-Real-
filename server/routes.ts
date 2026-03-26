@@ -153,6 +153,47 @@ export async function registerRoutes(
   app.get("/api/status", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
+
+  // Contact form endpoint
+  const contactSchema = z.object({
+    name: z.string().min(1, "Name is required").max(100),
+    email: z.string().email("Invalid email"),
+    phone: z.string().optional(),
+    subject: z.string().min(1, "Subject is required").max(200),
+    message: z.string().min(10, "Message must be at least 10 characters").max(2000),
+    preferredContactMethod: z.enum(["email", "phone"]).optional(),
+  });
+
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const input = contactSchema.parse(req.body);
+      
+      // Log contact form submission (in production, send email or save to DB)
+      console.log("Contact form submission:", {
+        name: input.name,
+        email: input.email,
+        subject: input.subject,
+        timestamp: new Date().toISOString(),
+      });
+
+      // TODO: Implement email sending (e.g., SendGrid, Resend, etc.)
+      // For now, just acknowledge receipt
+      
+      res.status(200).json({ 
+        success: true, 
+        message: "Thank you for your message. We'll get back to you soon!" 
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
+      }
+      console.error("Contact form error:", err);
+      res.status(500).json({ message: "Failed to submit contact form" });
+    }
+  });
   
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);
@@ -11646,6 +11687,248 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Country/Region Analytics
+  app.get("/api/admin/analytics/by-country", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Get experts by country
+      const expertsByCountry = await db.select({
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+        pending: sql<number>`sum(case when status = 'pending' then 1 else 0 end)::int`,
+      })
+      .from(localExpertForms)
+      .groupBy(localExpertForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Get providers by country (from serviceProviderForms)
+      const { serviceProviderForms } = await import("@shared/schema");
+      const providersByCountry = await db.select({
+        country: serviceProviderForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+        pending: sql<number>`sum(case when status = 'pending' then 1 else 0 end)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Get trips by destination country (extract country from destination string)
+      const tripsByDestination = await db.select({
+        destination: trips.destination,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(trips)
+      .groupBy(trips.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+      // Get bookings summary
+      const allBookings = await storage.getServiceBookings({});
+      const bookingsByStatus = {
+        total: allBookings.length,
+        completed: allBookings.filter(b => b.status === "completed").length,
+        pending: allBookings.filter(b => b.status === "pending").length,
+        cancelled: allBookings.filter(b => b.status === "cancelled").length,
+      };
+
+      res.json({
+        expertsByCountry: expertsByCountry.map(e => ({
+          country: e.country || "Unknown",
+          total: e.count,
+          approved: e.approved || 0,
+          pending: e.pending || 0,
+        })),
+        providersByCountry: providersByCountry.map(p => ({
+          country: p.country || "Unknown",
+          total: p.count,
+          approved: p.approved || 0,
+          pending: p.pending || 0,
+        })),
+        tripsByDestination: tripsByDestination.map(t => ({
+          destination: t.destination || "Unknown",
+          count: t.count,
+        })),
+        bookingsSummary: bookingsByStatus,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Country analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch country analytics" });
+    }
+  });
+
+  // Expert Analytics - detailed breakdown
+  app.get("/api/admin/analytics/experts", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Experts by country
+      const byCountry = await db.select({
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+      })
+      .from(localExpertForms)
+      .groupBy(localExpertForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Experts by city
+      const byCity = await db.select({
+        city: localExpertForms.city,
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.status, "approved"))
+      .groupBy(localExpertForms.city, localExpertForms.country)
+      .orderBy(sql`count(*) desc`)
+      .limit(15);
+
+      // Expert application status summary
+      const statusSummary = await db.select({
+        status: localExpertForms.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .groupBy(localExpertForms.status);
+
+      // Experts by experience level
+      const byExperience = await db.select({
+        years: localExpertForms.yearsOfExperience,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.status, "approved"))
+      .groupBy(localExpertForms.yearsOfExperience)
+      .orderBy(sql`count(*) desc`);
+
+      res.json({
+        byCountry: byCountry.map(c => ({
+          country: c.country || "Unknown",
+          total: c.count,
+          approved: c.approved || 0,
+        })),
+        byCity: byCity.map(c => ({
+          city: c.city || "Unknown",
+          country: c.country || "",
+          count: c.count,
+        })),
+        statusSummary: {
+          total: statusSummary.reduce((sum, s) => sum + s.count, 0),
+          pending: statusSummary.find(s => s.status === "pending")?.count || 0,
+          approved: statusSummary.find(s => s.status === "approved")?.count || 0,
+          rejected: statusSummary.find(s => s.status === "rejected")?.count || 0,
+        },
+        byExperience: byExperience.map(e => ({
+          years: e.years || "Unknown",
+          count: e.count,
+        })),
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Expert analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch expert analytics" });
+    }
+  });
+
+  // Provider Analytics - detailed breakdown
+  app.get("/api/admin/analytics/providers", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { serviceProviderForms, providerServices, serviceBookings } = await import("@shared/schema");
+
+      // Providers by business type
+      const byBusinessType = await db.select({
+        businessType: serviceProviderForms.businessType,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.businessType)
+      .orderBy(sql`count(*) desc`);
+
+      // Providers by country
+      const byCountry = await db.select({
+        country: serviceProviderForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Provider application status summary
+      const statusSummary = await db.select({
+        status: serviceProviderForms.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.status);
+
+      // Active services count
+      const activeServices = await db.select({
+        count: sql<number>`count(*)::int`,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.status, "active"));
+
+      // Top providers by bookings
+      const topProviders = await db.select({
+        userId: providerServices.userId,
+        serviceName: providerServices.serviceName,
+        bookingsCount: providerServices.bookingsCount,
+        totalRevenue: providerServices.totalRevenue,
+        averageRating: providerServices.averageRating,
+      })
+      .from(providerServices)
+      .orderBy(desc(providerServices.bookingsCount))
+      .limit(10);
+
+      res.json({
+        byBusinessType: byBusinessType.map(b => ({
+          type: b.businessType || "Unknown",
+          total: b.count,
+          approved: b.approved || 0,
+        })),
+        byCountry: byCountry.map(c => ({
+          country: c.country || "Unknown",
+          total: c.count,
+          approved: c.approved || 0,
+        })),
+        statusSummary: {
+          total: statusSummary.reduce((sum, s) => sum + s.count, 0),
+          pending: statusSummary.find(s => s.status === "pending")?.count || 0,
+          approved: statusSummary.find(s => s.status === "approved")?.count || 0,
+          rejected: statusSummary.find(s => s.status === "rejected")?.count || 0,
+        },
+        activeServicesCount: activeServices[0]?.count || 0,
+        topProviders: topProviders.map(p => ({
+          serviceName: p.serviceName,
+          bookings: p.bookingsCount || 0,
+          revenue: `$${Number(p.totalRevenue || 0).toLocaleString()}`,
+          rating: Number(p.averageRating || 0).toFixed(1),
+        })),
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Provider analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch provider analytics" });
+    }
+  });
+
   // === Admin System Health ===
   app.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     try {
@@ -12975,4 +13258,841 @@ export async function registerDiscoveryRoutes(app: Express) {
       next(); // Fall through to SPA on error
     }
   });
+
+  // ============================================
+  // DATA TRACKING & MONETIZATION APIs
+  // ============================================
+
+  // Track search events (called from frontend)
+  app.post("/api/track/search", async (req, res) => {
+    try {
+      const { searchAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(searchAnalytics).values({
+        sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
+        userId,
+        searchType: req.body.searchType,
+        query: req.body.query,
+        destination: req.body.destination,
+        originCountry: req.body.originCountry,
+        travelDates: req.body.travelDates,
+        travelers: req.body.travelers,
+        budget: req.body.budget,
+        filters: req.body.filters,
+        resultsCount: req.body.resultsCount,
+        deviceType: req.body.deviceType,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Track search error:", err);
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Track page views
+  app.post("/api/track/pageview", async (req, res) => {
+    try {
+      const { pageViewAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(pageViewAnalytics).values({
+        sessionId: req.body.sessionId,
+        userId,
+        pagePath: req.body.pagePath,
+        pageType: req.body.pageType,
+        referrer: req.body.referrer,
+        utmSource: req.body.utmSource,
+        utmMedium: req.body.utmMedium,
+        utmCampaign: req.body.utmCampaign,
+        deviceType: req.body.deviceType,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Track booking funnel events
+  app.post("/api/track/funnel", async (req, res) => {
+    try {
+      const { bookingFunnelAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(bookingFunnelAnalytics).values({
+        sessionId: req.body.sessionId,
+        userId,
+        funnelStage: req.body.stage,
+        serviceType: req.body.serviceType,
+        serviceId: req.body.serviceId,
+        providerId: req.body.providerId,
+        destination: req.body.destination,
+        price: req.body.price,
+        abandonReason: req.body.abandonReason,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // === DATA REPORTS FOR MONETIZATION ===
+
+  // Destination Demand Report (sell to tourism boards)
+  app.get("/api/admin/reports/destination-demand", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { searchAnalytics, demandSignals } = await import("@shared/schema");
+      
+      // Aggregate search data by destination
+      const destinationDemand = await db.select({
+        destination: searchAnalytics.destination,
+        searchCount: sql<number>`count(*)::int`,
+        uniqueUsers: sql<number>`count(distinct ${searchAnalytics.userId})::int`,
+        avgTravelers: sql<number>`avg(${searchAnalytics.travelers})::numeric(10,1)`,
+        topOriginCountries: sql<string>`array_agg(distinct ${searchAnalytics.ipCountry}) filter (where ${searchAnalytics.ipCountry} is not null)`,
+      })
+      .from(searchAnalytics)
+      .where(isNotNull(searchAnalytics.destination))
+      .groupBy(searchAnalytics.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(50);
+
+      res.json({
+        reportType: "destination_demand",
+        generatedAt: new Date().toISOString(),
+        data: destinationDemand,
+        summary: {
+          totalDestinations: destinationDemand.length,
+          totalSearches: destinationDemand.reduce((sum, d) => sum + d.searchCount, 0),
+        }
+      });
+    } catch (err) {
+      console.error("Destination demand report error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Service Provider Market Report
+  app.get("/api/admin/reports/provider-market", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { serviceProviderForms, providerServices } = await import("@shared/schema");
+      
+      // Market overview by business type
+      const marketByType = await db.select({
+        businessType: serviceProviderForms.businessType,
+        providerCount: sql<number>`count(*)::int`,
+        countries: sql<number>`count(distinct ${serviceProviderForms.country})::int`,
+      })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.status, "approved"))
+      .groupBy(serviceProviderForms.businessType)
+      .orderBy(sql`count(*) desc`);
+
+      // Top performing services
+      const topServices = await db.select({
+        serviceName: providerServices.serviceName,
+        bookings: providerServices.bookingsCount,
+        revenue: providerServices.totalRevenue,
+        rating: providerServices.averageRating,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.status, "active"))
+      .orderBy(desc(providerServices.bookingsCount))
+      .limit(20);
+
+      res.json({
+        reportType: "provider_market",
+        generatedAt: new Date().toISOString(),
+        marketByType,
+        topServices,
+      });
+    } catch (err) {
+      console.error("Provider market report error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Geographic Insights Report (sell to countries/tourism boards)
+  app.get("/api/admin/reports/geographic-insights", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Travelers by origin
+      const travelerOrigins = await db.select({
+        country: trips.destination,
+        tripCount: sql<number>`count(*)::int`,
+        avgBudget: sql<number>`avg(cast(${trips.budget} as numeric))::numeric(10,2)`,
+        avgTravelers: sql<number>`avg(${trips.numberOfTravelers})::numeric(10,1)`,
+      })
+      .from(trips)
+      .groupBy(trips.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      // Expert coverage by region
+      const expertCoverage = await db.select({
+        country: localExpertForms.country,
+        city: localExpertForms.city,
+        expertCount: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.status, "approved"))
+      .groupBy(localExpertForms.country, localExpertForms.city)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      res.json({
+        reportType: "geographic_insights",
+        generatedAt: new Date().toISOString(),
+        travelerOrigins,
+        expertCoverage,
+        insights: {
+          topDestinations: travelerOrigins.slice(0, 5).map(t => t.country),
+          underservedMarkets: expertCoverage.filter(e => e.expertCount < 3).map(e => `${e.city}, ${e.country}`),
+        }
+      });
+    } catch (err) {
+      console.error("Geographic insights error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Conversion Funnel Report
+  app.get("/api/admin/reports/conversion-funnel", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { bookingFunnelAnalytics } = await import("@shared/schema");
+      
+      const funnelData = await db.select({
+        stage: bookingFunnelAnalytics.funnelStage,
+        count: sql<number>`count(*)::int`,
+        uniqueUsers: sql<number>`count(distinct ${bookingFunnelAnalytics.userId})::int`,
+        avgPrice: sql<number>`avg(${bookingFunnelAnalytics.price})::numeric(10,2)`,
+      })
+      .from(bookingFunnelAnalytics)
+      .groupBy(bookingFunnelAnalytics.funnelStage);
+
+      const stages = ["search", "view", "cart", "checkout", "payment", "complete"];
+      const orderedFunnel = stages.map(stage => {
+        const data = funnelData.find(f => f.stage === stage);
+        return {
+          stage,
+          count: data?.count || 0,
+          uniqueUsers: data?.uniqueUsers || 0,
+          avgPrice: data?.avgPrice || 0,
+        };
+      });
+
+      res.json({
+        reportType: "conversion_funnel",
+        generatedAt: new Date().toISOString(),
+        funnel: orderedFunnel,
+        conversionRates: {
+          searchToView: orderedFunnel[0].count > 0 ? ((orderedFunnel[1].count / orderedFunnel[0].count) * 100).toFixed(1) + "%" : "0%",
+          viewToCart: orderedFunnel[1].count > 0 ? ((orderedFunnel[2].count / orderedFunnel[1].count) * 100).toFixed(1) + "%" : "0%",
+          cartToComplete: orderedFunnel[2].count > 0 ? ((orderedFunnel[5].count / orderedFunnel[2].count) * 100).toFixed(1) + "%" : "0%",
+        }
+      });
+    } catch (err) {
+      console.error("Conversion funnel error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+
+  // Track activity/service interactions
+  app.post("/api/track/activity", async (req, res) => {
+    try {
+      const { activityBookingAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(activityBookingAnalytics).values({
+        sessionId: req.body.sessionId,
+        userId,
+        activityType: req.body.activityType,
+        activityCategory: req.body.activityCategory,
+        serviceName: req.body.serviceName,
+        providerId: req.body.providerId,
+        providerType: req.body.providerType,
+        destination: req.body.destination,
+        country: req.body.country,
+        city: req.body.city,
+        bookingStatus: req.body.status, // viewed, inquired, booked
+        price: req.body.price,
+        groupSize: req.body.groupSize,
+        tripType: req.body.tripType,
+        travelerOriginCountry: req.headers["cf-ipcountry"] as string || req.body.originCountry,
+        bookingLeadDays: req.body.leadDays,
+        deviceType: req.body.deviceType,
+        referralSource: req.body.referralSource,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Track activity error:", err);
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Activity Demand Report - What activities are trending
+  app.get("/api/admin/reports/activity-demand", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { activityBookingAnalytics } = await import("@shared/schema");
+      
+      // Activity types by popularity
+      const byActivityType = await db.select({
+        activityType: activityBookingAnalytics.activityType,
+        views: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'viewed' then 1 else 0 end)::int`,
+        inquiries: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'inquired' then 1 else 0 end)::int`,
+        bookings: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then 1 else 0 end)::int`,
+        revenue: sql<number>`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then ${activityBookingAnalytics.price} else 0 end)::numeric(12,2)`,
+        avgPrice: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+        avgGroupSize: sql<number>`avg(${activityBookingAnalytics.groupSize})::numeric(5,1)`,
+      })
+      .from(activityBookingAnalytics)
+      .groupBy(activityBookingAnalytics.activityType)
+      .orderBy(sql`sum(case when ${activityBookingAnalytics.bookingStatus} = 'booked' then 1 else 0 end) desc`);
+
+      // Activities by destination
+      const byDestination = await db.select({
+        destination: activityBookingAnalytics.destination,
+        activityType: activityBookingAnalytics.activityType,
+        bookings: sql<number>`count(*)::int`,
+      })
+      .from(activityBookingAnalytics)
+      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
+      .groupBy(activityBookingAnalytics.destination, activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      // Activities by trip type
+      const byTripType = await db.select({
+        tripType: activityBookingAnalytics.tripType,
+        activityType: activityBookingAnalytics.activityType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(activityBookingAnalytics)
+      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
+      .groupBy(activityBookingAnalytics.tripType, activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      // Top origin countries for activities
+      const byOriginCountry = await db.select({
+        originCountry: activityBookingAnalytics.travelerOriginCountry,
+        activityType: activityBookingAnalytics.activityType,
+        bookings: sql<number>`count(*)::int`,
+        avgSpend: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(eq(activityBookingAnalytics.bookingStatus, "booked"))
+      .groupBy(activityBookingAnalytics.travelerOriginCountry, activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      res.json({
+        reportType: "activity_demand",
+        generatedAt: new Date().toISOString(),
+        byActivityType: byActivityType.map(a => ({
+          type: a.activityType,
+          views: a.views || 0,
+          inquiries: a.inquiries || 0,
+          bookings: a.bookings || 0,
+          revenue: `$${Number(a.revenue || 0).toLocaleString()}`,
+          avgPrice: `$${Number(a.avgPrice || 0).toFixed(0)}`,
+          avgGroupSize: a.avgGroupSize || 0,
+          conversionRate: a.views > 0 ? `${((a.bookings / a.views) * 100).toFixed(1)}%` : "0%",
+        })),
+        byDestination,
+        byTripType,
+        byOriginCountry: byOriginCountry.map(o => ({
+          country: o.originCountry || "Unknown",
+          activityType: o.activityType,
+          bookings: o.bookings,
+          avgSpend: `$${Number(o.avgSpend || 0).toFixed(0)}`,
+        })),
+        insights: {
+          topActivities: byActivityType.slice(0, 5).map(a => a.activityType),
+          highestRevenue: byActivityType.sort((a, b) => Number(b.revenue) - Number(a.revenue)).slice(0, 3).map(a => a.activityType),
+          highestConversion: byActivityType.filter(a => a.views > 10).sort((a, b) => (b.bookings / b.views) - (a.bookings / a.views)).slice(0, 3).map(a => a.activityType),
+        }
+      });
+    } catch (err) {
+      console.error("Activity demand report error:", err);
+      res.status(500).json({ message: "Failed to generate activity report" });
+    }
+  });
+
+  // Activity trends by category (for selling to specific industries)
+  app.get("/api/admin/reports/activity-trends/:activityType", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const activityType = req.params.activityType;
+      const { activityBookingAnalytics } = await import("@shared/schema");
+      
+      // Detailed breakdown for specific activity type
+      const destinations = await db.select({
+        destination: activityBookingAnalytics.destination,
+        country: activityBookingAnalytics.country,
+        bookings: sql<number>`count(*)::int`,
+        revenue: sql<number>`sum(${activityBookingAnalytics.price})::numeric(12,2)`,
+        avgPrice: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(and(
+        eq(activityBookingAnalytics.activityType, activityType),
+        eq(activityBookingAnalytics.bookingStatus, "booked")
+      ))
+      .groupBy(activityBookingAnalytics.destination, activityBookingAnalytics.country)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+      const travelerProfiles = await db.select({
+        tripType: activityBookingAnalytics.tripType,
+        originCountry: activityBookingAnalytics.travelerOriginCountry,
+        count: sql<number>`count(*)::int`,
+        avgGroupSize: sql<number>`avg(${activityBookingAnalytics.groupSize})::numeric(5,1)`,
+        avgSpend: sql<number>`avg(${activityBookingAnalytics.price})::numeric(10,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(and(
+        eq(activityBookingAnalytics.activityType, activityType),
+        eq(activityBookingAnalytics.bookingStatus, "booked")
+      ))
+      .groupBy(activityBookingAnalytics.tripType, activityBookingAnalytics.travelerOriginCountry)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+      res.json({
+        reportType: `activity_trends_${activityType}`,
+        activityType,
+        generatedAt: new Date().toISOString(),
+        topDestinations: destinations,
+        travelerProfiles,
+        summary: {
+          totalBookings: destinations.reduce((sum, d) => sum + d.bookings, 0),
+          totalRevenue: `$${destinations.reduce((sum, d) => sum + Number(d.revenue || 0), 0).toLocaleString()}`,
+          topMarket: destinations[0]?.destination || "N/A",
+        }
+      });
+    } catch (err) {
+      console.error("Activity trends report error:", err);
+      res.status(500).json({ message: "Failed to generate activity trends" });
+    }
+  });
+
+
+  // Track enhanced trip analytics
+  app.post("/api/track/trip-enhanced", async (req, res) => {
+    try {
+      const { tripAnalyticsEnhanced } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(tripAnalyticsEnhanced).values({
+        tripId: req.body.tripId,
+        userId,
+        destinationCountry: req.body.destinationCountry,
+        destinationRegion: req.body.destinationRegion,
+        destinationCity: req.body.destinationCity,
+        destinationType: req.body.destinationType,
+        originCountry: req.headers["cf-ipcountry"] as string || req.body.originCountry,
+        originCity: req.body.originCity,
+        bookingDate: new Date(),
+        tripStartDate: req.body.startDate ? new Date(req.body.startDate) : undefined,
+        tripEndDate: req.body.endDate ? new Date(req.body.endDate) : undefined,
+        leadTimeDays: req.body.leadTimeDays,
+        lengthOfStay: req.body.lengthOfStay,
+        season: req.body.season,
+        partySize: req.body.partySize,
+        partyComposition: req.body.partyComposition,
+        hasChildren: req.body.hasChildren,
+        tripPurpose: req.body.tripPurpose,
+        totalBudget: req.body.totalBudget,
+        spendPerDay: req.body.spendPerDay,
+        priceSegment: req.body.priceSegment,
+        activitiesBooked: req.body.activitiesBooked,
+        primaryActivity: req.body.primaryActivity,
+        accommodationType: req.body.accommodationType,
+        starRating: req.body.starRating,
+        otherDestinationsConsidered: req.body.otherDestinationsConsidered,
+        deviceUsed: req.body.deviceType,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Track trip enhanced error:", err);
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Destination Benchmark Report (premium product for tourism boards)
+  app.get("/api/admin/reports/destination-benchmark/:destination", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const destination = decodeURIComponent(req.params.destination);
+      const { tripAnalyticsEnhanced, activityBookingAnalytics } = await import("@shared/schema");
+      
+      // Aggregate destination metrics
+      const metrics = await db.select({
+        totalTrips: sql<number>`count(*)::int`,
+        avgBudget: sql<number>`avg(${tripAnalyticsEnhanced.totalBudget})::numeric(10,2)`,
+        avgLengthOfStay: sql<number>`avg(${tripAnalyticsEnhanced.lengthOfStay})::numeric(5,1)`,
+        avgLeadTime: sql<number>`avg(${tripAnalyticsEnhanced.leadTimeDays})::numeric(5,1)`,
+        avgPartySize: sql<number>`avg(${tripAnalyticsEnhanced.partySize})::numeric(5,1)`,
+      })
+      .from(tripAnalyticsEnhanced)
+      .where(or(
+        eq(tripAnalyticsEnhanced.destinationCity, destination),
+        eq(tripAnalyticsEnhanced.destinationCountry, destination),
+        eq(tripAnalyticsEnhanced.destinationRegion, destination)
+      ));
+
+      // Source markets
+      const sourceMarkets = await db.select({
+        country: tripAnalyticsEnhanced.originCountry,
+        count: sql<number>`count(*)::int`,
+        avgSpend: sql<number>`avg(${tripAnalyticsEnhanced.totalBudget})::numeric(10,2)`,
+      })
+      .from(tripAnalyticsEnhanced)
+      .where(or(
+        eq(tripAnalyticsEnhanced.destinationCity, destination),
+        eq(tripAnalyticsEnhanced.destinationCountry, destination)
+      ))
+      .groupBy(tripAnalyticsEnhanced.originCountry)
+      .orderBy(sql`count(*) desc`)
+      .limit(10);
+
+      // Trip purposes
+      const tripPurposes = await db.select({
+        purpose: tripAnalyticsEnhanced.tripPurpose,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(tripAnalyticsEnhanced)
+      .where(or(
+        eq(tripAnalyticsEnhanced.destinationCity, destination),
+        eq(tripAnalyticsEnhanced.destinationCountry, destination)
+      ))
+      .groupBy(tripAnalyticsEnhanced.tripPurpose)
+      .orderBy(sql`count(*) desc`);
+
+      // Party compositions
+      const partyTypes = await db.select({
+        composition: tripAnalyticsEnhanced.partyComposition,
+        count: sql<number>`count(*)::int`,
+        avgSpend: sql<number>`avg(${tripAnalyticsEnhanced.totalBudget})::numeric(10,2)`,
+      })
+      .from(tripAnalyticsEnhanced)
+      .where(or(
+        eq(tripAnalyticsEnhanced.destinationCity, destination),
+        eq(tripAnalyticsEnhanced.destinationCountry, destination)
+      ))
+      .groupBy(tripAnalyticsEnhanced.partyComposition)
+      .orderBy(sql`count(*) desc`);
+
+      // Top activities
+      const activities = await db.select({
+        activityType: activityBookingAnalytics.activityType,
+        bookings: sql<number>`count(*)::int`,
+        revenue: sql<number>`sum(${activityBookingAnalytics.price})::numeric(12,2)`,
+      })
+      .from(activityBookingAnalytics)
+      .where(and(
+        or(
+          eq(activityBookingAnalytics.destination, destination),
+          eq(activityBookingAnalytics.country, destination),
+          eq(activityBookingAnalytics.city, destination)
+        ),
+        eq(activityBookingAnalytics.bookingStatus, "booked")
+      ))
+      .groupBy(activityBookingAnalytics.activityType)
+      .orderBy(sql`count(*) desc`)
+      .limit(10);
+
+      // Seasonality (by month)
+      const seasonality = await db.select({
+        month: sql<string>`to_char(${tripAnalyticsEnhanced.tripStartDate}, 'Month')`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(tripAnalyticsEnhanced)
+      .where(or(
+        eq(tripAnalyticsEnhanced.destinationCity, destination),
+        eq(tripAnalyticsEnhanced.destinationCountry, destination)
+      ))
+      .groupBy(sql`to_char(${tripAnalyticsEnhanced.tripStartDate}, 'Month')`)
+      .orderBy(sql`count(*) desc`);
+
+      res.json({
+        reportType: "destination_benchmark",
+        destination,
+        generatedAt: new Date().toISOString(),
+        overview: metrics[0] || {},
+        sourceMarkets: sourceMarkets.map(s => ({
+          country: s.country || "Unknown",
+          visitors: s.count,
+          avgSpend: `$${Number(s.avgSpend || 0).toLocaleString()}`,
+          share: metrics[0]?.totalTrips ? `${((s.count / metrics[0].totalTrips) * 100).toFixed(1)}%` : "0%",
+        })),
+        tripPurposes: tripPurposes.map(t => ({
+          purpose: t.purpose || "Unknown",
+          count: t.count,
+        })),
+        partyTypes: partyTypes.map(p => ({
+          type: p.composition || "Unknown",
+          count: p.count,
+          avgSpend: `$${Number(p.avgSpend || 0).toLocaleString()}`,
+        })),
+        topActivities: activities.map(a => ({
+          activity: a.activityType,
+          bookings: a.bookings,
+          revenue: `$${Number(a.revenue || 0).toLocaleString()}`,
+        })),
+        seasonality: seasonality.map(s => ({
+          month: s.month?.trim() || "Unknown",
+          bookings: s.count,
+        })),
+        insights: {
+          topSourceMarket: sourceMarkets[0]?.country || "N/A",
+          primaryTripPurpose: tripPurposes[0]?.purpose || "N/A",
+          mostPopularActivity: activities[0]?.activityType || "N/A",
+          peakSeason: seasonality[0]?.month?.trim() || "N/A",
+        }
+      });
+    } catch (err) {
+      console.error("Destination benchmark error:", err);
+      res.status(500).json({ message: "Failed to generate benchmark report" });
+    }
+  });
+
+
+  // === AUTO-INFER ANALYTICS FROM USER BEHAVIOR ===
+  
+  // Middleware/helper to infer trip analytics from itinerary data
+  async function inferTripAnalytics(tripId: string, userId: string) {
+    try {
+      const { tripAnalyticsEnhanced } = await import("@shared/schema");
+      
+      // Get trip data
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return;
+
+      // Get itinerary items for this trip
+      const itineraryData = await db.select().from(generatedItineraries).where(eq(generatedItineraries.tripId, tripId)).then(r => r[0]);
+      const items = itineraryData?.itineraryData as any;
+
+      // Infer party composition from travelers + event type
+      let partyComposition = "group";
+      const travelers = trip.numberOfTravelers || 1;
+      const eventType = trip.eventType || "vacation";
+      
+      if (travelers === 1) partyComposition = "solo";
+      else if (travelers === 2 && ["honeymoon", "anniversary", "proposal", "romantic"].includes(eventType)) partyComposition = "couple";
+      else if (travelers <= 4 && eventType === "vacation") partyComposition = "family";
+      else partyComposition = "group";
+
+      // Infer if has children from activities (look for kid-friendly keywords)
+      let hasChildren = false;
+      if (items?.dailyItinerary) {
+        const allActivities = JSON.stringify(items.dailyItinerary).toLowerCase();
+        hasChildren = allActivities.includes("kid") || allActivities.includes("child") || 
+                     allActivities.includes("family") || allActivities.includes("playground") ||
+                     allActivities.includes("zoo") || allActivities.includes("aquarium");
+      }
+
+      // Calculate length of stay
+      const startDate = trip.startDate ? new Date(trip.startDate) : null;
+      const endDate = trip.endDate ? new Date(trip.endDate) : null;
+      const lengthOfStay = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+      // Determine season
+      let season = null;
+      if (startDate) {
+        const month = startDate.getMonth();
+        if (month >= 2 && month <= 4) season = "spring";
+        else if (month >= 5 && month <= 7) season = "summer";
+        else if (month >= 8 && month <= 10) season = "fall";
+        else season = "winter";
+      }
+
+      // Infer destination details
+      const destination = trip.destination || "";
+      // Try to extract country from destination string
+      const destinationParts = destination.split(",").map(s => s.trim());
+      const destinationCity = destinationParts[0] || destination;
+      const destinationCountry = destinationParts.length > 1 ? destinationParts[destinationParts.length - 1] : null;
+
+      // Infer price segment from budget
+      let priceSegment = "mid-range";
+      const budget = parseFloat(trip.budget || "0");
+      const dailyBudget = lengthOfStay && lengthOfStay > 0 ? budget / lengthOfStay : budget;
+      if (dailyBudget < 100) priceSegment = "budget";
+      else if (dailyBudget < 300) priceSegment = "mid-range";
+      else if (dailyBudget < 500) priceSegment = "luxury";
+      else priceSegment = "ultra-luxury";
+
+      // Infer primary activity from itinerary
+      let primaryActivity = null;
+      if (items?.dailyItinerary) {
+        const activityCounts: Record<string, number> = {};
+        for (const day of items.dailyItinerary) {
+          for (const activity of day.activities || []) {
+            const type = activity.type || activity.category || "sightseeing";
+            activityCounts[type] = (activityCounts[type] || 0) + 1;
+          }
+        }
+        primaryActivity = Object.entries(activityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+      }
+
+      // Upsert analytics record
+      await db.insert(tripAnalyticsEnhanced).values({
+        tripId,
+        userId,
+        destinationCity,
+        destinationCountry,
+        tripStartDate: startDate,
+        tripEndDate: endDate,
+        lengthOfStay,
+        season,
+        partySize: travelers,
+        partyComposition,
+        hasChildren,
+        tripPurpose: eventType,
+        totalBudget: trip.budget,
+        priceSegment,
+        primaryActivity,
+      }).onConflictDoUpdate({
+        target: [tripAnalyticsEnhanced.tripId],
+        set: {
+          partyComposition,
+          hasChildren,
+          lengthOfStay,
+          season,
+          priceSegment,
+          primaryActivity,
+        }
+      });
+
+      return true;
+    } catch (err) {
+      console.error("Error inferring trip analytics:", err);
+      return false;
+    }
+  }
+
+  // Hook into itinerary generation to auto-capture analytics
+  app.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const tripId = req.params.tripId;
+      
+      // Verify ownership
+      const trip = await storage.getTrip(tripId);
+      if (!trip || trip.userId !== userId) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      await inferTripAnalytics(tripId, userId);
+      res.json({ success: true, message: "Analytics captured" });
+    } catch (err) {
+      console.error("Infer analytics error:", err);
+      res.status(500).json({ message: "Failed to capture analytics" });
+    }
+  });
+
+  // Track searches automatically (what destinations were considered)
+  app.post("/api/track/destination-search", async (req, res) => {
+    try {
+      const { searchAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
+      
+      // Track this search
+      await db.insert(searchAnalytics).values({
+        sessionId,
+        userId,
+        searchType: "destination",
+        destination: req.body.destination,
+        query: req.body.query,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+        deviceType: req.body.deviceType,
+      });
+
+      // If user has a draft trip, track this as a "considered" destination
+      if (userId && req.body.tripId) {
+        const { tripAnalyticsEnhanced } = await import("@shared/schema");
+        const existing = await db.select().from(tripAnalyticsEnhanced).where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId)).then(r => r[0]);
+        
+        if (existing) {
+          const considered = (existing.otherDestinationsConsidered as string[] || []);
+          if (!considered.includes(req.body.destination) && req.body.destination !== existing.destinationCity) {
+            considered.push(req.body.destination);
+            await db.update(tripAnalyticsEnhanced)
+              .set({ otherDestinationsConsidered: considered.slice(-10) }) // Keep last 10
+              .where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId));
+          }
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Auto-capture accommodation preference from hotel searches/bookings
+  app.post("/api/track/accommodation-preference", async (req, res) => {
+    try {
+      const { tripAnalyticsEnhanced } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      if (userId && req.body.tripId) {
+        await db.update(tripAnalyticsEnhanced)
+          .set({ 
+            accommodationType: req.body.accommodationType,
+            starRating: req.body.starRating,
+          })
+          .where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId));
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
 }
