@@ -202,6 +202,13 @@ async function runDatabaseSeeding() {
       cacheSchedulerService.start();
       logger.info("Cache scheduler started");
       
+      // One-time admin promotion
+      import("./db").then(({ pool }) => {
+        pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
+          .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
+          .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
+      }).catch(() => {});
+
       // Run database seeding in background AFTER server is listening
       runDatabaseSeeding().catch(err => {
         logger.error({ err }, "Background seeding failed");
