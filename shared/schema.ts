@@ -1007,7 +1007,7 @@ const validEventTypes = [
 const baseTripSchema = createInsertSchema(trips).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 
 // Enhanced trip schema with better validations
-export const insertTripSchema = baseTripSchema.extend({
+export const insertTripSchemaBase = baseTripSchema.extend({
   title: z.string().min(1, "Title is required").max(255),
   destination: z.string().min(1, "Destination is required").max(255),
   eventType: z.enum(validEventTypes).optional().default("vacation"),
@@ -1016,7 +1016,8 @@ export const insertTripSchema = baseTripSchema.extend({
     (val) => !val || parseFloat(val) >= 0,
     { message: "Budget must be a positive number" }
   ),
-}).refine(
+});
+export const insertTripSchema = insertTripSchemaBase.refine(
   (data) => {
     if (data.startDate && data.endDate) {
       return new Date(data.endDate) >= new Date(data.startDate);
