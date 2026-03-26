@@ -264,7 +264,7 @@ export default function ServiceDetailPage() {
 
                 {!user && (
                   <p className="text-xs text-muted-foreground text-center mt-4">
-                    <a href="/api/login" className="underline">Sign in</a> to book this service
+                    <a href="/" className="underline">Sign in</a> to book this service
                   </p>
                 )}
               </CardContent>
