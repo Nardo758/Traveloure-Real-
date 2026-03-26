@@ -19,7 +19,8 @@ import {
   Link2,
   FileText,
   Cpu,
-  MapPin
+  MapPin,
+  Banknote
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,6 +36,7 @@ const navItems = [
   { icon: FolderKanban, label: "Categories", href: "/admin/categories" },
   { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
   { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },
+  { icon: Banknote, label: "Payouts", href: "/admin/payouts" },
   { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
   { icon: MapPin, label: "Tourism", href: "/admin/tourism-analytics" },
   { icon: Cpu, label: "AI Costs", href: "/admin/ai-costs" },
