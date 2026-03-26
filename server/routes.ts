@@ -244,6 +244,17 @@ export async function registerRoutes(
       const input = api.trips.create.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
+      
+      // Additional validations
+      if (sanitizedInput.startDate && sanitizedInput.endDate) {
+        if (new Date(sanitizedInput.endDate) < new Date(sanitizedInput.startDate)) {
+          return res.status(400).json({ message: "End date must be on or after start date" });
+        }
+      }
+      if (sanitizedInput.budget && parseFloat(sanitizedInput.budget) < 0) {
+        return res.status(400).json({ message: "Budget must be a positive number" });
+      }
+      
       const userId = (req.user as any).claims.sub;
       const trip = await storage.createTrip({ ...sanitizedInput, userId });
       res.status(201).json(trip);

@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { 
-  insertTripSchema,
-  insertTripSchemaBase,
+  insertTripSchema, 
   trips, 
   generatedItineraries, 
   insertGeneratedItinerarySchema,
@@ -63,7 +62,7 @@ export const api = {
     update: {
       method: 'PATCH' as const,
       path: '/api/trips/:id',
-      input: insertTripSchemaBase.partial(),
+      input: insertTripSchema.partial(),
       responses: {
         200: z.custom<typeof trips.$inferSelect>(),
         400: errorSchemas.validation,
