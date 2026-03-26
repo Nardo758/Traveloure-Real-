@@ -5,7 +5,7 @@ import path from "path";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -116,6 +116,7 @@ export async function registerRoutes(
     await setupAuth(app);
     registerAuthRoutes(app);
     setupFacebookAuth(app);
+    setupEmailAuth(app);
   } catch (error) {
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
@@ -737,9 +738,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       return res.status(404).json({ message: "Application not found" });
     }
     
-    // If approved, update user role to expert
+    // If approved, update user role based on expert type
     if (status === "approved") {
-      await db.update(users).set({ role: "expert" }).where(eq(users.id, updated.userId));
+      // Use the expertType from the form, default to "expert" for backwards compatibility
+      const role = (updated as any).expertType || "expert";
+      await db.update(users).set({ role }).where(eq(users.id, updated.userId));
     }
     
     res.json(updated);
@@ -798,6 +801,12 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
+    
+    // If approved, update user role to service_provider
+    if (status === "approved") {
+      await db.update(users).set({ role: "service_provider" }).where(eq(users.id, updated.userId));
+    }
+    
     res.json(updated);
   });
 
