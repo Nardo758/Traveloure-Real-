@@ -688,6 +688,136 @@ export default function ItineraryPage() {
                   })()}
                 </CardContent>
               </Card>
+
+            {/* Trip Logistics Dashboard */}
+            <TripLogisticsDashboard
+              tripId={tripId}
+              tripName={tripData?.title || tripData?.destination || "Trip"}
+              budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
+              destination={tripData?.destination || "destination"}
+            />
+
+            <Card className="bg-white dark:bg-gray-800">
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
+                      <MessageSquare className="w-6 h-6 text-[#FF385C]" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-[#111827] dark:text-white">Need help with your trip?</h4>
+                      <p className="text-sm text-[#6B7280]">Chat with our AI assistant or connect with an expert</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" data-testid="button-ai-help">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      AI Assistant
+                    </Button>
+                    <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
+                      Talk to Expert
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+          </div>
+
+          {/* ===== TRANSPORT SECTION ===== */}
+          <div className="pb-12 space-y-8">
+            {/* Editable legs section — shown only when legs have been generated */}
+            {legsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            ) : legsData?.legs?.length ? (
+              <div>
+                <div className="flex items-center gap-3 mb-5">
+                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Transport Legs</h3>
+                  <Badge variant="secondary">{legsData.legs.length} leg{legsData.legs.length !== 1 ? "s" : ""}</Badge>
+                </div>
+
+                {/* Summary row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                  {[
+                    { label: "Legs", value: legsData.legs.length },
+                    { label: "Travel Time", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0) / 60)}h` },
+                    { label: "Est. Cost", value: `$${legsData.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0).toFixed(0)}` },
+                    { label: "Distance", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.distanceMeters || 0), 0) / 1000)} km` },
+                  ].map(stat => (
+                    <Card key={stat.label} className="bg-white dark:bg-gray-800">
+                      <CardContent className="p-3 flex flex-col items-center">
+                        <span className="text-xl font-bold text-[#FF385C]">{stat.value}</span>
+                        <span className="text-xs text-gray-500 mt-0.5">{stat.label}</span>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Legs grouped by day */}
+                {(() => {
+                  const byDay: Record<number, typeof legsData.legs> = {};
+                  legsData.legs.forEach(leg => {
+                    const day = (leg as any).dayNumber ?? 0;
+                    if (!byDay[day]) byDay[day] = [];
+                    byDay[day].push(leg);
+                  });
+                  return Object.keys(byDay).map(Number).sort((a, b) => a - b).map(dayNum => (
+                    <div key={dayNum} className="mb-6">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="flex items-center justify-center w-7 h-7 rounded-full bg-[#FF385C] text-white text-xs font-bold flex-shrink-0">
+                          {dayNum === 0 ? "?" : dayNum}
+                        </div>
+                        <span className="text-sm font-semibold text-[#111827] dark:text-white">
+                          {dayNum === 0 ? "Unassigned" : `Day ${dayNum}`}
+                          {itinerary?.days?.[dayNum - 1]?.title ? ` — ${itinerary.days[dayNum - 1].title}` : ""}
+                        </span>
+                        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                        <Badge variant="outline" className="text-xs">{byDay[dayNum].length} leg{byDay[dayNum].length !== 1 ? "s" : ""}</Badge>
+                      </div>
+                      <div className="space-y-3">
+                        {byDay[dayNum].map(leg => (
+                          <TransportLeg
+                            key={leg.id}
+                            leg={{
+                              id: leg.id,
+                              legOrder: leg.legOrder,
+                              fromName: leg.fromName,
+                              fromLat: leg.fromLat,
+                              fromLng: leg.fromLng,
+                              toName: leg.toName,
+                              toLat: leg.toLat,
+                              toLng: leg.toLng,
+                              distanceMeters: leg.distanceMeters,
+                              distanceDisplay: leg.distanceDisplay,
+                              recommendedMode: leg.recommendedMode,
+                              userSelectedMode: leg.userSelectedMode,
+                              estimatedDurationMinutes: leg.estimatedDurationMinutes,
+                              estimatedCostUsd: leg.estimatedCostUsd,
+                              alternativeModes: leg.alternativeModes ?? [],
+                            }}
+                            readOnly={false}
+                            onModeChangeSuccess={() => {}}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : null}
+
+            {/* Transport Hub — booking options (always visible, handles its own empty/loading state) */}
+            <div>
+              {legsData?.legs?.length ? (
+                <div className="flex items-center gap-3 mb-5">
+                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Book Transport</h3>
+                </div>
+              ) : null}
+              <TransportHub tripId={tripId} destination={itinerary?.destination} />
             </div>
           </div>
         </div>
