@@ -13259,3 +13259,267 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 }
+
+  // ============================================
+  // DATA TRACKING & MONETIZATION APIs
+  // ============================================
+
+  // Track search events (called from frontend)
+  app.post("/api/track/search", async (req, res) => {
+    try {
+      const { searchAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(searchAnalytics).values({
+        sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
+        userId,
+        searchType: req.body.searchType,
+        query: req.body.query,
+        destination: req.body.destination,
+        originCountry: req.body.originCountry,
+        travelDates: req.body.travelDates,
+        travelers: req.body.travelers,
+        budget: req.body.budget,
+        filters: req.body.filters,
+        resultsCount: req.body.resultsCount,
+        deviceType: req.body.deviceType,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Track search error:", err);
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Track page views
+  app.post("/api/track/pageview", async (req, res) => {
+    try {
+      const { pageViewAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(pageViewAnalytics).values({
+        sessionId: req.body.sessionId,
+        userId,
+        pagePath: req.body.pagePath,
+        pageType: req.body.pageType,
+        referrer: req.body.referrer,
+        utmSource: req.body.utmSource,
+        utmMedium: req.body.utmMedium,
+        utmCampaign: req.body.utmCampaign,
+        deviceType: req.body.deviceType,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Track booking funnel events
+  app.post("/api/track/funnel", async (req, res) => {
+    try {
+      const { bookingFunnelAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      await db.insert(bookingFunnelAnalytics).values({
+        sessionId: req.body.sessionId,
+        userId,
+        funnelStage: req.body.stage,
+        serviceType: req.body.serviceType,
+        serviceId: req.body.serviceId,
+        providerId: req.body.providerId,
+        destination: req.body.destination,
+        price: req.body.price,
+        abandonReason: req.body.abandonReason,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // === DATA REPORTS FOR MONETIZATION ===
+
+  // Destination Demand Report (sell to tourism boards)
+  app.get("/api/admin/reports/destination-demand", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { searchAnalytics, demandSignals } = await import("@shared/schema");
+      
+      // Aggregate search data by destination
+      const destinationDemand = await db.select({
+        destination: searchAnalytics.destination,
+        searchCount: sql<number>`count(*)::int`,
+        uniqueUsers: sql<number>`count(distinct ${searchAnalytics.userId})::int`,
+        avgTravelers: sql<number>`avg(${searchAnalytics.travelers})::numeric(10,1)`,
+        topOriginCountries: sql<string>`array_agg(distinct ${searchAnalytics.ipCountry}) filter (where ${searchAnalytics.ipCountry} is not null)`,
+      })
+      .from(searchAnalytics)
+      .where(isNotNull(searchAnalytics.destination))
+      .groupBy(searchAnalytics.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(50);
+
+      res.json({
+        reportType: "destination_demand",
+        generatedAt: new Date().toISOString(),
+        data: destinationDemand,
+        summary: {
+          totalDestinations: destinationDemand.length,
+          totalSearches: destinationDemand.reduce((sum, d) => sum + d.searchCount, 0),
+        }
+      });
+    } catch (err) {
+      console.error("Destination demand report error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Service Provider Market Report
+  app.get("/api/admin/reports/provider-market", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { serviceProviderForms, providerServices } = await import("@shared/schema");
+      
+      // Market overview by business type
+      const marketByType = await db.select({
+        businessType: serviceProviderForms.businessType,
+        providerCount: sql<number>`count(*)::int`,
+        countries: sql<number>`count(distinct ${serviceProviderForms.country})::int`,
+      })
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.status, "approved"))
+      .groupBy(serviceProviderForms.businessType)
+      .orderBy(sql`count(*) desc`);
+
+      // Top performing services
+      const topServices = await db.select({
+        serviceName: providerServices.serviceName,
+        bookings: providerServices.bookingsCount,
+        revenue: providerServices.totalRevenue,
+        rating: providerServices.averageRating,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.status, "active"))
+      .orderBy(desc(providerServices.bookingsCount))
+      .limit(20);
+
+      res.json({
+        reportType: "provider_market",
+        generatedAt: new Date().toISOString(),
+        marketByType,
+        topServices,
+      });
+    } catch (err) {
+      console.error("Provider market report error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Geographic Insights Report (sell to countries/tourism boards)
+  app.get("/api/admin/reports/geographic-insights", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Travelers by origin
+      const travelerOrigins = await db.select({
+        country: trips.destination,
+        tripCount: sql<number>`count(*)::int`,
+        avgBudget: sql<number>`avg(cast(${trips.budget} as numeric))::numeric(10,2)`,
+        avgTravelers: sql<number>`avg(${trips.numberOfTravelers})::numeric(10,1)`,
+      })
+      .from(trips)
+      .groupBy(trips.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      // Expert coverage by region
+      const expertCoverage = await db.select({
+        country: localExpertForms.country,
+        city: localExpertForms.city,
+        expertCount: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.status, "approved"))
+      .groupBy(localExpertForms.country, localExpertForms.city)
+      .orderBy(sql`count(*) desc`)
+      .limit(30);
+
+      res.json({
+        reportType: "geographic_insights",
+        generatedAt: new Date().toISOString(),
+        travelerOrigins,
+        expertCoverage,
+        insights: {
+          topDestinations: travelerOrigins.slice(0, 5).map(t => t.country),
+          underservedMarkets: expertCoverage.filter(e => e.expertCount < 3).map(e => `${e.city}, ${e.country}`),
+        }
+      });
+    } catch (err) {
+      console.error("Geographic insights error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
+  // Conversion Funnel Report
+  app.get("/api/admin/reports/conversion-funnel", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { bookingFunnelAnalytics } = await import("@shared/schema");
+      
+      const funnelData = await db.select({
+        stage: bookingFunnelAnalytics.funnelStage,
+        count: sql<number>`count(*)::int`,
+        uniqueUsers: sql<number>`count(distinct ${bookingFunnelAnalytics.userId})::int`,
+        avgPrice: sql<number>`avg(${bookingFunnelAnalytics.price})::numeric(10,2)`,
+      })
+      .from(bookingFunnelAnalytics)
+      .groupBy(bookingFunnelAnalytics.funnelStage);
+
+      const stages = ["search", "view", "cart", "checkout", "payment", "complete"];
+      const orderedFunnel = stages.map(stage => {
+        const data = funnelData.find(f => f.stage === stage);
+        return {
+          stage,
+          count: data?.count || 0,
+          uniqueUsers: data?.uniqueUsers || 0,
+          avgPrice: data?.avgPrice || 0,
+        };
+      });
+
+      res.json({
+        reportType: "conversion_funnel",
+        generatedAt: new Date().toISOString(),
+        funnel: orderedFunnel,
+        conversionRates: {
+          searchToView: orderedFunnel[0].count > 0 ? ((orderedFunnel[1].count / orderedFunnel[0].count) * 100).toFixed(1) + "%" : "0%",
+          viewToCart: orderedFunnel[1].count > 0 ? ((orderedFunnel[2].count / orderedFunnel[1].count) * 100).toFixed(1) + "%" : "0%",
+          cartToComplete: orderedFunnel[2].count > 0 ? ((orderedFunnel[5].count / orderedFunnel[2].count) * 100).toFixed(1) + "%" : "0%",
+        }
+      });
+    } catch (err) {
+      console.error("Conversion funnel error:", err);
+      res.status(500).json({ message: "Failed to generate report" });
+    }
+  });
+
