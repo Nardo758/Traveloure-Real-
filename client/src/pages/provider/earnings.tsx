@@ -16,6 +16,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
+import { StripeConnectCard } from "@/components/stripe-connect-card";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
@@ -119,6 +120,8 @@ export default function ProviderEarnings() {
   return (
     <ProviderLayout title="Earnings">
       <div className="p-6 space-y-6">
+        <StripeConnectCard />
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {statsData.map((stat) => (
             <Card key={stat.label} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>

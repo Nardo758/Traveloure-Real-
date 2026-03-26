@@ -416,7 +416,11 @@ export interface IStorage {
   getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]>;
   updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout>;
   updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
-  
+
+  // Stripe Connect
+  updateUserStripeAccount(userId: string, stripeAccountId: string, status: string): Promise<void>;
+  getUserStripeAccount(userId: string): Promise<{ stripeAccountId: string | null; stripeAccountStatus: string | null; canReceivePayments: boolean | null }>;
+
   // Platform Revenue
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
   getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]>;
@@ -2600,6 +2604,24 @@ export class DatabaseStorage implements IStorage {
     if (payoutReference) updates.payoutReference = payoutReference;
     const [updated] = await db.update(providerPayouts).set(updates).where(eq(providerPayouts.id, id)).returning();
     return updated;
+  }
+
+  // Stripe Connect
+  async updateUserStripeAccount(userId: string, stripeAccountId: string, status: string): Promise<void> {
+    await db.update(users).set({
+      stripeAccountId,
+      stripeAccountStatus: status,
+      canReceivePayments: status === 'active',
+    } as any).where(eq(users.id, userId));
+  }
+
+  async getUserStripeAccount(userId: string): Promise<{ stripeAccountId: string | null; stripeAccountStatus: string | null; canReceivePayments: boolean | null }> {
+    const [user] = await db.select({
+      stripeAccountId: users.stripeAccountId,
+      stripeAccountStatus: users.stripeAccountStatus,
+      canReceivePayments: users.canReceivePayments,
+    }).from(users).where(eq(users.id, userId));
+    return user || { stripeAccountId: null, stripeAccountStatus: null, canReceivePayments: null };
   }
 
   // === Platform Revenue ===

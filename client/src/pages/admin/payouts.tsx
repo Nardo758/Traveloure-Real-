@@ -431,7 +431,7 @@ export default function AdminPayouts() {
               {actionDialog.action === "reject" &&
                 "This will reject the payout request. Please provide a reason."}
               {actionDialog.action === "execute" &&
-                "This will mark the payout as completed. Confirm that funds have been transferred."}
+                "This will execute a Stripe transfer to the recipient's connected account and mark the payout as completed."}
             </DialogDescription>
           </DialogHeader>
 
