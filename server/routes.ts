@@ -10712,12 +10712,12 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Provider earnings endpoints
   app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const earnings = await storage.getProviderEarnings(user.claims.metadata.id);
+      const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider earnings", error: error.message });
@@ -10726,12 +10726,12 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const summary = await storage.getProviderEarningsSummary(user.claims.metadata.id);
+      const summary = await storage.getProviderEarningsSummary(userId);
       res.json(summary);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider earnings summary", error: error.message });
@@ -10740,13 +10740,13 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
-      const details = await revenueTrackingService.getProviderRevenueDetails(user.claims.metadata.id);
+      const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider earnings details", error: error.message });
@@ -10756,12 +10756,12 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Provider payout requests
   app.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
-      const payouts = await storage.getProviderPayouts(user.claims.metadata.id);
+      const payouts = await storage.getProviderPayouts(userId);
       res.json(payouts);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get provider payouts", error: error.message });
@@ -10770,8 +10770,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
       
@@ -10780,13 +10780,13 @@ export async function registerDiscoveryRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid payout amount" });
       }
 
-      const summary = await storage.getProviderEarningsSummary(user.claims.metadata.id);
+      const summary = await storage.getProviderEarningsSummary(userId);
       if (amount > summary.available) {
         return res.status(400).json({ error: "Insufficient available balance" });
       }
 
       const payout = await storage.createProviderPayout({
-        providerId: user.claims.metadata.id,
+        providerId: userId,
         amount: String(amount),
         payoutMethod: payoutMethod || 'bank_transfer',
         status: 'pending',
@@ -10801,13 +10801,13 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Expert earnings details endpoint
   app.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (!user?.claims?.metadata?.id) {
+      const userId = (req.user as any)?.claims?.sub;
+      if (!userId) {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
-      const details = await revenueTrackingService.getExpertRevenueDetails(user.claims.metadata.id);
+      const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get expert earnings details", error: error.message });

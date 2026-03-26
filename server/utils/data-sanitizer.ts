@@ -88,17 +88,18 @@ export function sanitizeUserForRole<T extends Record<string, any>>(
   requesterRole: string,
   isOwnProfile: boolean = false
 ): Partial<T> {
-  // Users can see their own full profile
+  const { password, ...withoutPassword } = userData;
+  const safeData = withoutPassword as T;
+
   if (isOwnProfile) {
-    return userData;
+    return safeData;
   }
 
   const role = (requesterRole || 'user') as UserRole;
   const permissions = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.user;
 
-  // Admins and EAs see everything
   if (permissions.canSeeFull) {
-    return userData;
+    return safeData;
   }
 
   // Build sanitized response
