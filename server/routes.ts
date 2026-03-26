@@ -153,6 +153,47 @@ export async function registerRoutes(
   app.get("/api/status", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
+
+  // Contact form endpoint
+  const contactSchema = z.object({
+    name: z.string().min(1, "Name is required").max(100),
+    email: z.string().email("Invalid email"),
+    phone: z.string().optional(),
+    subject: z.string().min(1, "Subject is required").max(200),
+    message: z.string().min(10, "Message must be at least 10 characters").max(2000),
+    preferredContactMethod: z.enum(["email", "phone"]).optional(),
+  });
+
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const input = contactSchema.parse(req.body);
+      
+      // Log contact form submission (in production, send email or save to DB)
+      console.log("Contact form submission:", {
+        name: input.name,
+        email: input.email,
+        subject: input.subject,
+        timestamp: new Date().toISOString(),
+      });
+
+      // TODO: Implement email sending (e.g., SendGrid, Resend, etc.)
+      // For now, just acknowledge receipt
+      
+      res.status(200).json({ 
+        success: true, 
+        message: "Thank you for your message. We'll get back to you soon!" 
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: err.errors.map(e => ({ field: e.path.join('.'), message: e.message }))
+        });
+      }
+      console.error("Contact form error:", err);
+      res.status(500).json({ message: "Failed to submit contact form" });
+    }
+  });
   
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);
