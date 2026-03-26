@@ -1817,8 +1817,9 @@ export class DatabaseStorage implements IStorage {
 
   // Get experts with full profile (experience types, services, specializations)
   async getExpertsWithProfiles(experienceTypeId?: string): Promise<any[]> {
-    // Get all users with expert role
-    const experts = await db.select().from(users).where(eq(users.role, "expert"));
+    // Get all users with any expert-like role
+    const expertRoles = ["expert", "travel_expert", "local_expert", "event_planner", "executive_assistant"];
+    const experts = await db.select().from(users).where(inArray(users.role, expertRoles));
     
     const expertsWithProfiles = await Promise.all(experts.map(async (expert) => {
       // Get expert's experience types

@@ -108,6 +108,29 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Simple XSS sanitization - strips HTML tags and dangerous characters
+function sanitizeInput(input: string): string {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/[<>'"]/g, (char) => {
+      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
+      return entities[char] || char;
+    })
+    .trim();
+}
+
+// Sanitize object string fields recursively
+function sanitizeObject<T extends Record<string, any>>(obj: T): T {
+  const result = { ...obj };
+  for (const key of Object.keys(result)) {
+    if (typeof result[key] === 'string') {
+      result[key] = sanitizeInput(result[key]);
+    }
+  }
+  return result;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -122,6 +145,14 @@ export async function registerRoutes(
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
   }
+
+  // Health check aliases (main health is at /health via health router)
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+  app.get("/api/status", (_req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
   
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);
@@ -211,8 +242,10 @@ export async function registerRoutes(
   app.post(api.trips.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.trips.create.input.parse(req.body);
+      // Sanitize string inputs to prevent XSS
+      const sanitizedInput = sanitizeObject(input);
       const userId = (req.user as any).claims.sub;
-      const trip = await storage.createTrip({ ...input, userId });
+      const trip = await storage.createTrip({ ...sanitizedInput, userId });
       res.status(201).json(trip);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -225,13 +258,15 @@ export async function registerRoutes(
   app.patch(api.trips.update.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.trips.update.input.parse(req.body);
+      // Sanitize string inputs to prevent XSS
+      const sanitizedInput = sanitizeObject(input);
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
       
       const userId = (req.user as any).claims.sub;
       if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const updatedTrip = await storage.updateTrip(req.params.id, input);
+      const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
       res.json(updatedTrip);
     } catch (err) {
       if (err instanceof z.ZodError) {
