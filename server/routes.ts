@@ -13624,7 +13624,6 @@ export async function registerDiscoveryRoutes(app: Express) {
       next(); // Fall through to SPA on error
     }
   });
-}
 
   // ============================================
   // DATA TRACKING & MONETIZATION APIs
@@ -14462,3 +14461,4 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+}

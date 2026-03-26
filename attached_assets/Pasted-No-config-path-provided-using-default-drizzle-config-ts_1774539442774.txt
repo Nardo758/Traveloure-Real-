@@ -1,0 +1,82 @@
+No config path provided, using default 'drizzle.config.ts'
+Reading config file '/home/runner/workspace/drizzle.config.ts'
+Using 'pg' driver for database querying
+[✓] Pulling schema from database...
++ activity_booking_analytics table will be created
++ activity_demand_trends table will be created
++ booking_funnel_analytics table will be created
++ demand_signals table will be created
++ destination_benchmarks table will be created
++ market_intelligence table will be created
++ page_view_analytics table will be created
++ pricing_intelligence table will be created
++ provider_performance_metrics table will be created
++ search_analytics table will be created
++ trip_analytics_enhanced table will be created
+--- all table conflicts resolved ---
+
+
++ adults column will be created
+
++ kids column will be created
+--- all columns conflicts in trips table resolved ---
+
+
+· You're about to add user_and_expert_chats_tracking_number_unique unique constraint to the table, which contains 1 items. If this statement fails, you will receive an error from the database. Do you want to truncate user_and_expert_chats table?
+
+· You're about to add provider_services_tracking_number_unique unique constraint to the table, which contains 61 items. If this statement fails, you will receive an error from the database. Do you want to truncate provider_services table?
+
+· You're about to add service_bookings_tracking_number_unique unique constraint to the table, which contains 4 items. If this statement fails, you will receive an error from the database. Do you want to truncate service_bookings table?
+
+· You're about to add content_registry_tracking_number_unique unique constraint to the table, which contains 6 items. If this statement fails, you will receive an error from the database. Do you want to truncate content_registry table?
+
+· You're about to add local_expert_forms_referral_code_unique unique constraint to the table, which contains 12 items. If this statement fails, you will receive an error from the database. Do you want to truncate local_expert_forms table?
+
+· You're about to add trips_tracking_number_unique unique constraint to the table, which contains 13 items. If this statement fails, you will receive an error from the database. Do you want to truncate trips table?
+
+· You're about to add shared_itineraries_share_token_unique unique constraint to the table, which contains 1 items. If this statement fails, you will receive an error from the database. Do you want to truncate shared_itineraries table?
+
+ Warning  Found data-loss statements:
+· You're about to delete bookings table with 160 items
+· You're about to delete platform_fees table with 5 items
+· You're about to delete payment_intents table with 2 items
+· You're about to delete expert_requests table with 1 items
+· You're about to delete expert_city_queues table with 10 items
+· You're about to delete saved_trips table with 1 items
+· You're about to delete can_book_on_behalf column in local_expert_forms table with 12 items
+· You're about to delete is_personal_assistant column in local_expert_forms table with 12 items
+· You're about to delete pa_access_granted_at column in local_expert_forms table with 12 items
+· You're about to delete pa_access_granted_by column in local_expert_forms table with 12 items
+· You're about to delete booking_fee_type column in local_expert_forms table with 12 items
+· You're about to delete booking_fee_percentage column in local_expert_forms table with 12 items
+· You're about to delete booking_fee_fixed column in local_expert_forms table with 12 items
+· You're about to delete booking_fee_hourly column in local_expert_forms table with 12 items
+· You're about to delete min_booking_fee column in local_expert_forms table with 12 items
+· You're about to delete stripe_account_id column in local_expert_forms table with 12 items
+· You're about to delete stripe_account_status column in local_expert_forms table with 12 items
+· You're about to delete can_receive_payments column in local_expert_forms table with 12 items
+· You're about to delete total_earnings column in local_expert_forms table with 12 items
+· You're about to delete pending_payout column in local_expert_forms table with 12 items
+· You're about to delete total_handoffs column in local_expert_forms table with 12 items
+· You're about to delete completed_handoffs column in local_expert_forms table with 12 items
+· You're about to delete total_bookings_assisted column in local_expert_forms table with 12 items
+· You're about to delete handoff_response_time_hours column in local_expert_forms table with 12 items
+· You're about to delete max_concurrent_handoffs column in local_expert_forms table with 12 items
+· You're about to delete accepts_new_handoffs column in local_expert_forms table with 12 items
+· You're about to delete fee_settings column in local_expert_forms table with 12 items
+· You're about to delete payout_schedule column in local_expert_forms table with 12 items
+· You're about to delete experience_type column in trips table with 13 items
+· You're about to delete travelers column in trips table with 13 items
+· You're about to delete special_requests column in trips table with 13 items
+· You're about to delete expert_id column in trips table with 13 items
+· You're about to delete expert_notes column in trips table with 13 items
+· You're about to delete expert_modified_at column in trips table with 13 items
+· You're about to delete booking_reference column in trips table with 13 items
+· You're about to delete is_public column in trips table with 13 items
+· You're about to delete share_token column in trips table with 13 items
+
+THIS ACTION WILL CAUSE DATA LOSS AND CANNOT BE REVERTED
+
+Do you still want to push changes?
+[x] All changes were aborted
+~/workspace$ 
