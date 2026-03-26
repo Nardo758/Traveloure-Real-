@@ -869,6 +869,54 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  app.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const status = req.query.status as string | undefined;
+      const allBookings = await storage.getServiceBookings(status ? { status } : {});
+      const enrichedBookings = await Promise.all(allBookings.map(async (booking) => {
+        const traveler = await storage.getUser(booking.travelerId);
+        const provider = await storage.getUser(booking.providerId);
+        const service = await storage.getProviderServiceById(booking.serviceId);
+        return {
+          ...booking,
+          traveler: traveler ? { id: traveler.id, firstName: traveler.firstName, lastName: traveler.lastName, email: traveler.email } : null,
+          provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, email: provider.email } : null,
+          service: service ? { id: service.id, serviceName: service.serviceName } : null,
+        };
+      }));
+      res.json(enrichedBookings);
+    } catch (err) {
+      console.error("Admin bookings error:", err);
+      res.status(500).json({ message: "Failed to fetch bookings" });
+    }
+  });
+
+  app.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const allBookings = await storage.getServiceBookings({});
+      const completedBookings = allBookings.filter(b => b.status === "completed");
+      const totalRevenue = completedBookings.reduce((sum, b) => sum + parseFloat(b.platformFee || "0"), 0);
+      const totalGross = completedBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount || "0"), 0);
+      res.json({
+        totalRevenue,
+        totalGross,
+        totalBookings: allBookings.length,
+        completedBookings: completedBookings.length,
+      });
+    } catch (err) {
+      console.error("Admin revenue error:", err);
+      res.status(500).json({ message: "Failed to fetch revenue" });
+    }
+  });
+
   // Admin: Get all expert applications
   app.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
@@ -3351,6 +3399,82 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     res.json(enrichedBookings);
   });
 
+  app.get("/api/service-bookings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const status = req.query.status as string | undefined;
+      const bookings = await storage.getServiceBookings({ travelerId: userId, status });
+      const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
+        const service = await storage.getProviderServiceById(booking.serviceId);
+        const provider = await storage.getUser(booking.providerId);
+        return {
+          ...booking,
+          service,
+          provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
+        };
+      }));
+      res.json(enrichedBookings);
+    } catch (err) {
+      console.error("Service bookings error:", err);
+      res.status(500).json({ message: "Failed to fetch service bookings" });
+    }
+  });
+
+  app.get("/api/bookings/user", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const status = req.query.status as string | undefined;
+      const bookings = await storage.getServiceBookings({ travelerId: userId, status });
+      const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
+        const reviews = await storage.getReviewsByBookingId(booking.id);
+        return { ...booking, hasReview: reviews.length > 0 };
+      }));
+      res.json(enrichedBookings);
+    } catch (err) {
+      console.error("User bookings error:", err);
+      res.status(500).json({ message: "Failed to fetch bookings" });
+    }
+  });
+
+  app.post("/api/cart/items", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
+      if (!serviceId && !customVenueId) {
+        return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
+      }
+      if (serviceId) {
+        const service = await storage.getProviderServiceById(serviceId);
+        if (!service) {
+          return res.status(404).json({ message: "Service not found" });
+        }
+      }
+      if (customVenueId) {
+        const venue = await storage.getCustomVenue(customVenueId);
+        if (!venue) {
+          return res.status(404).json({ message: "Custom venue not found" });
+        }
+        if (venue.userId !== userId) {
+          return res.status(403).json({ message: "Unauthorized" });
+        }
+      }
+      const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
+      const item = await storage.addToCart(userId, {
+        serviceId: serviceId || undefined,
+        customVenueId: customVenueId || undefined,
+        quantity: quantity || 1,
+        tripId,
+        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+        notes,
+        experienceSlug,
+      });
+      res.status(201).json(item);
+    } catch (error: any) {
+      console.error("Failed to add to cart:", error);
+      res.status(500).json({ message: "Failed to add to cart" });
+    }
+  });
+
   // Get single booking
   // NOTE: If requester is provider, traveler info is sanitized
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
@@ -3638,6 +3762,46 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       pendingBookings,
       completedBookings,
     });
+  });
+
+  app.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const services = await storage.getProviderServicesByStatus(userId);
+      const bookings = await storage.getServiceBookings({ providerId: userId });
+      const earnings = await storage.getExpertEarnings(userId);
+      const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
+      const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+      const completedBookings = bookings.filter(b => b.status === "completed");
+      const pendingBookings = bookings.filter(b => b.status === "pending");
+      res.json({
+        summary: { totalRevenue, totalBookings, completedBookings: completedBookings.length, pendingBookings: pendingBookings.length },
+        services: services.map(s => ({ id: s.id, serviceName: s.serviceName, status: s.status, bookingsCount: s.bookingsCount, totalRevenue: s.totalRevenue })),
+        recentEarnings: earnings.slice(0, 10),
+      });
+    } catch (err) {
+      console.error("Expert dashboard error:", err);
+      res.status(500).json({ message: "Failed to fetch dashboard" });
+    }
+  });
+
+  app.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const services = await storage.getProviderServicesByStatus(userId);
+      const bookings = await storage.getServiceBookings({ providerId: userId });
+      const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
+      const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
+      const completedBookings = bookings.filter(b => b.status === "completed");
+      const pendingBookings = bookings.filter(b => b.status === "pending");
+      res.json({
+        summary: { totalRevenue, totalBookings, completedBookings: completedBookings.length, pendingBookings: pendingBookings.length },
+        services: services.map(s => ({ id: s.id, serviceName: s.serviceName, status: s.status, bookingsCount: s.bookingsCount, totalRevenue: s.totalRevenue })),
+      });
+    } catch (err) {
+      console.error("Provider dashboard error:", err);
+      res.status(500).json({ message: "Failed to fetch dashboard" });
+    }
   });
 
   // Get comprehensive expert analytics dashboard data
