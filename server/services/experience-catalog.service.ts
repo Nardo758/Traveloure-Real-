@@ -550,19 +550,20 @@ class ExperienceCatalogService {
   }
 
   async getDestinations(): Promise<string[]> {
+    const minLen = 3;
     const activities = await db.selectDistinct({ destination: activityCache.destination })
       .from(activityCache)
-      .where(sql`${activityCache.destination} IS NOT NULL`)
+      .where(sql`${activityCache.destination} IS NOT NULL AND length(${activityCache.destination}) >= ${minLen}`)
       .limit(100);
 
     const events = await db.selectDistinct({ city: feverEventCache.city })
       .from(feverEventCache)
-      .where(sql`${feverEventCache.city} IS NOT NULL`)
+      .where(sql`${feverEventCache.city} IS NOT NULL AND length(${feverEventCache.city}) >= ${minLen}`)
       .limit(100);
 
     const hotels = await db.selectDistinct({ city: hotelCache.city })
       .from(hotelCache)
-      .where(sql`${hotelCache.city} IS NOT NULL`)
+      .where(sql`${hotelCache.city} IS NOT NULL AND length(${hotelCache.city}) >= ${minLen}`)
       .limit(100);
 
     const allDestinations = [
@@ -571,8 +572,34 @@ class ExperienceCatalogService {
       ...hotels.map(h => h.city),
     ].filter((d): d is string => d !== null);
 
-    const uniqueDestinations = Array.from(new Set(allDestinations));
-    return uniqueDestinations.sort();
+    const isValidDestination = (name: string) => {
+      const trimmed = name.trim();
+      if (trimmed.length < 3) return false;
+      if (/^[a-z\s]+$/.test(trimmed) && !trimmed.includes(' ') && trimmed.length < 5) return false;
+      const known = ['amsterdam','barcelona','berlin','bogotá','buenos aires','cartagena','delhi',
+        'dublin','edinburgh','goa','hong kong','jaipur','kyoto','lisbon','london','los angeles',
+        'madrid','mexico city','milan','mumbai','new york','paris','porto','rome','seoul',
+        'singapore','sydney','são paulo','tokyo','thailand','california'];
+      const lower = trimmed.toLowerCase().replace(/[,;].*$/, '').trim();
+      if (known.includes(lower)) return true;
+      if (/\b(france|italy|japan|spain|usa|uk)\b/i.test(trimmed) && trimmed.includes(',')) return true;
+      const words = trimmed.split(/\s+/);
+      if (words.length === 1 && trimmed.length < 5 && !/^[A-Z]/.test(trimmed)) return false;
+      if (/^[A-Z]/.test(trimmed) && trimmed.length >= 3) return true;
+      return false;
+    };
+
+    const seen = new Map<string, string>();
+    for (const d of allDestinations) {
+      if (!isValidDestination(d)) continue;
+      const trimmed = d.trim();
+      const key = trimmed.toLowerCase();
+      if (!seen.has(key) || /^[A-Z]/.test(trimmed)) {
+        const normalized = trimmed.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        seen.set(key, normalized);
+      }
+    }
+    return Array.from(seen.values()).sort();
   }
 
   async searchWithSerpFallback(params: CatalogSearchParams & {
