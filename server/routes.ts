@@ -11763,6 +11763,172 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Expert Analytics - detailed breakdown
+  app.get("/api/admin/analytics/experts", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Experts by country
+      const byCountry = await db.select({
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+      })
+      .from(localExpertForms)
+      .groupBy(localExpertForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Experts by city
+      const byCity = await db.select({
+        city: localExpertForms.city,
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.status, "approved"))
+      .groupBy(localExpertForms.city, localExpertForms.country)
+      .orderBy(sql`count(*) desc`)
+      .limit(15);
+
+      // Expert application status summary
+      const statusSummary = await db.select({
+        status: localExpertForms.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .groupBy(localExpertForms.status);
+
+      // Experts by experience level
+      const byExperience = await db.select({
+        years: localExpertForms.yearsOfExperience,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.status, "approved"))
+      .groupBy(localExpertForms.yearsOfExperience)
+      .orderBy(sql`count(*) desc`);
+
+      res.json({
+        byCountry: byCountry.map(c => ({
+          country: c.country || "Unknown",
+          total: c.count,
+          approved: c.approved || 0,
+        })),
+        byCity: byCity.map(c => ({
+          city: c.city || "Unknown",
+          country: c.country || "",
+          count: c.count,
+        })),
+        statusSummary: {
+          total: statusSummary.reduce((sum, s) => sum + s.count, 0),
+          pending: statusSummary.find(s => s.status === "pending")?.count || 0,
+          approved: statusSummary.find(s => s.status === "approved")?.count || 0,
+          rejected: statusSummary.find(s => s.status === "rejected")?.count || 0,
+        },
+        byExperience: byExperience.map(e => ({
+          years: e.years || "Unknown",
+          count: e.count,
+        })),
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Expert analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch expert analytics" });
+    }
+  });
+
+  // Provider Analytics - detailed breakdown
+  app.get("/api/admin/analytics/providers", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { serviceProviderForms, providerServices, serviceBookings } = await import("@shared/schema");
+
+      // Providers by business type
+      const byBusinessType = await db.select({
+        businessType: serviceProviderForms.businessType,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.businessType)
+      .orderBy(sql`count(*) desc`);
+
+      // Providers by country
+      const byCountry = await db.select({
+        country: serviceProviderForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Provider application status summary
+      const statusSummary = await db.select({
+        status: serviceProviderForms.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.status);
+
+      // Active services count
+      const activeServices = await db.select({
+        count: sql<number>`count(*)::int`,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.status, "active"));
+
+      // Top providers by bookings
+      const topProviders = await db.select({
+        userId: providerServices.userId,
+        serviceName: providerServices.serviceName,
+        bookingsCount: providerServices.bookingsCount,
+        totalRevenue: providerServices.totalRevenue,
+        averageRating: providerServices.averageRating,
+      })
+      .from(providerServices)
+      .orderBy(desc(providerServices.bookingsCount))
+      .limit(10);
+
+      res.json({
+        byBusinessType: byBusinessType.map(b => ({
+          type: b.businessType || "Unknown",
+          total: b.count,
+          approved: b.approved || 0,
+        })),
+        byCountry: byCountry.map(c => ({
+          country: c.country || "Unknown",
+          total: c.count,
+          approved: c.approved || 0,
+        })),
+        statusSummary: {
+          total: statusSummary.reduce((sum, s) => sum + s.count, 0),
+          pending: statusSummary.find(s => s.status === "pending")?.count || 0,
+          approved: statusSummary.find(s => s.status === "approved")?.count || 0,
+          rejected: statusSummary.find(s => s.status === "rejected")?.count || 0,
+        },
+        activeServicesCount: activeServices[0]?.count || 0,
+        topProviders: topProviders.map(p => ({
+          serviceName: p.serviceName,
+          bookings: p.bookingsCount || 0,
+          revenue: `$${Number(p.totalRevenue || 0).toLocaleString()}`,
+          rating: Number(p.averageRating || 0).toFixed(1),
+        })),
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Provider analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch provider analytics" });
+    }
+  });
+
   // === Admin System Health ===
   app.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     try {
