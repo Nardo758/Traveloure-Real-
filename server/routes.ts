@@ -11687,6 +11687,82 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Country/Region Analytics
+  app.get("/api/admin/analytics/by-country", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      // Get experts by country
+      const expertsByCountry = await db.select({
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+        pending: sql<number>`sum(case when status = 'pending' then 1 else 0 end)::int`,
+      })
+      .from(localExpertForms)
+      .groupBy(localExpertForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Get providers by country (from serviceProviderForms)
+      const { serviceProviderForms } = await import("@shared/schema");
+      const providersByCountry = await db.select({
+        country: serviceProviderForms.country,
+        count: sql<number>`count(*)::int`,
+        approved: sql<number>`sum(case when status = 'approved' then 1 else 0 end)::int`,
+        pending: sql<number>`sum(case when status = 'pending' then 1 else 0 end)::int`,
+      })
+      .from(serviceProviderForms)
+      .groupBy(serviceProviderForms.country)
+      .orderBy(sql`count(*) desc`);
+
+      // Get trips by destination country (extract country from destination string)
+      const tripsByDestination = await db.select({
+        destination: trips.destination,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(trips)
+      .groupBy(trips.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(20);
+
+      // Get bookings summary
+      const allBookings = await storage.getServiceBookings({});
+      const bookingsByStatus = {
+        total: allBookings.length,
+        completed: allBookings.filter(b => b.status === "completed").length,
+        pending: allBookings.filter(b => b.status === "pending").length,
+        cancelled: allBookings.filter(b => b.status === "cancelled").length,
+      };
+
+      res.json({
+        expertsByCountry: expertsByCountry.map(e => ({
+          country: e.country || "Unknown",
+          total: e.count,
+          approved: e.approved || 0,
+          pending: e.pending || 0,
+        })),
+        providersByCountry: providersByCountry.map(p => ({
+          country: p.country || "Unknown",
+          total: p.count,
+          approved: p.approved || 0,
+          pending: p.pending || 0,
+        })),
+        tripsByDestination: tripsByDestination.map(t => ({
+          destination: t.destination || "Unknown",
+          count: t.count,
+        })),
+        bookingsSummary: bookingsByStatus,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Country analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch country analytics" });
+    }
+  });
+
   // === Admin System Health ===
   app.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     try {
