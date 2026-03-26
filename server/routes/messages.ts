@@ -24,60 +24,68 @@ const sendMessageSchema = z.object({
 });
 
 router.get("/", isAuthenticated, async (req, res) => {
-  const userId = (req as any).user?.claims?.sub;
-
-  const allMessages = await db
-    .select()
-    .from(userAndExpertChats)
-    .where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)))
-    .orderBy(desc(userAndExpertChats.createdAt));
-
-  const conversationMap = new Map<string, any>();
-  for (const msg of allMessages) {
-    const otherId = msg.senderId === userId ? msg.receiverId : msg.senderId;
-    if (!otherId) continue;
-    const convId = getConversationId(userId, otherId);
-    if (!conversationMap.has(convId)) {
-      conversationMap.set(convId, {
-        conversationId: convId,
-        otherUserId: otherId,
-        lastMessage: msg.message,
-        lastMessageAt: msg.createdAt,
-        isFromMe: msg.senderId === userId,
-        unreadCount: 0,
-      });
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
     }
-    if (msg.receiverId === userId && !msg.readAt) {
-      const conv = conversationMap.get(convId);
-      conv.unreadCount++;
-    }
-  }
 
-  const conversations = Array.from(conversationMap.values());
-  const userIds = [...new Set(conversations.map((c: any) => c.otherUserId))];
+    const allMessages = await db
+      .select()
+      .from(userAndExpertChats)
+      .where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)))
+      .orderBy(desc(userAndExpertChats.createdAt));
 
-  if (userIds.length > 0) {
-    const otherUsers = await db
-      .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, role: users.role })
-      .from(users)
-      .where(sql`${users.id} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
-
-    const userMap = new Map(otherUsers.map(u => [u.id, u]));
-    for (const conv of conversations) {
-      const user = userMap.get(conv.otherUserId);
-      if (user) {
-        conv.otherUser = {
-          id: user.id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          profileImageUrl: user.profileImageUrl,
-          role: user.role,
-        };
+    const conversationMap = new Map<string, any>();
+    for (const msg of allMessages) {
+      const otherId = msg.senderId === userId ? msg.receiverId : msg.senderId;
+      if (!otherId) continue;
+      const convId = getConversationId(userId, otherId);
+      if (!conversationMap.has(convId)) {
+        conversationMap.set(convId, {
+          conversationId: convId,
+          otherUserId: otherId,
+          lastMessage: msg.message,
+          lastMessageAt: msg.createdAt,
+          isFromMe: msg.senderId === userId,
+          unreadCount: 0,
+        });
+      }
+      if (msg.receiverId === userId && !(msg as any).readAt) {
+        const conv = conversationMap.get(convId);
+        conv.unreadCount++;
       }
     }
-  }
 
-  res.json(conversations);
+    const conversations = Array.from(conversationMap.values());
+    const userIds = [...new Set(conversations.map((c: any) => c.otherUserId))];
+
+    if (userIds.length > 0) {
+      const otherUsers = await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl, role: users.role })
+        .from(users)
+        .where(sql`${users.id} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
+
+      const userMap = new Map(otherUsers.map(u => [u.id, u]));
+      for (const conv of conversations) {
+        const user = userMap.get(conv.otherUserId);
+        if (user) {
+          conv.otherUser = {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profileImageUrl: user.profileImageUrl,
+            role: user.role,
+          };
+        }
+      }
+    }
+
+    res.json(conversations);
+  } catch (error) {
+    console.error("Error loading messages:", error);
+    res.status(500).json({ message: "Failed to load messages" });
+  }
 });
 
 router.get("/conversations", isAuthenticated, async (req, res) => {
