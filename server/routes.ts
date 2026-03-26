@@ -2933,6 +2933,170 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Tourism Analytics Event Tracking (Fire-and-forget) ===
+  
+  // Track destination search events
+  const searchEventSchema = z.object({
+    destination: z.string(),
+    origin: z.string().optional(),
+    startDate: z.string().optional(),
+    endDate: z.string().optional(),
+    travelers: z.number().optional(),
+    experienceType: z.string().optional(),
+    searchContext: z.string().optional(), // "discover" | "experience-template" | "quick-start"
+  });
+
+  app.post("/api/analytics/search-event", async (req, res) => {
+    // Fire-and-forget - respond immediately, process async
+    res.status(202).json({ received: true });
+    
+    try {
+      const validation = searchEventSchema.safeParse(req.body);
+      if (!validation.success) {
+        console.warn("[Analytics] Invalid search-event payload:", validation.error.flatten());
+        return;
+      }
+      
+      const data = validation.data;
+      const userId = (req.user as any)?.claims?.sub;
+      
+      // Log to destination search patterns for trend analysis
+      await storage.createDestinationSearchPattern({
+        destination: data.destination,
+        city: data.destination.split(",")[0]?.trim(),
+        searchQuery: data.destination,
+        searchType: data.searchContext || "search",
+        userId: userId || undefined,
+        resultsViewed: 0,
+        date: new Date().toISOString().split("T")[0],
+        hour: new Date().getHours(),
+      }).catch(err => console.error("[Analytics] Failed to track search event:", err));
+      
+      console.log("[Analytics] Search event tracked:", {
+        destination: data.destination,
+        context: data.searchContext,
+        userId: userId?.substring(0, 8),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[Analytics] Error processing search event:", err);
+    }
+  });
+
+  // Track itinerary generation events
+  const itineraryGeneratedSchema = z.object({
+    tripId: z.string().optional(),
+    destination: z.string(),
+    activities: z.array(z.string()).optional(),
+    duration: z.number().optional(), // days
+    travelers: z.number().optional(),
+    budget: z.number().optional(),
+    variationType: z.string().optional(), // "user_plan" | "weather_optimized" | "best_value"
+    experienceType: z.string().optional(),
+  });
+
+  app.post("/api/analytics/itinerary-generated", async (req, res) => {
+    // Fire-and-forget - respond immediately
+    res.status(202).json({ received: true });
+    
+    try {
+      const validation = itineraryGeneratedSchema.safeParse(req.body);
+      if (!validation.success) {
+        console.warn("[Analytics] Invalid itinerary-generated payload:", validation.error.flatten());
+        return;
+      }
+      
+      const data = validation.data;
+      const userId = (req.user as any)?.claims?.sub;
+      
+      // Track as AI interaction for analytics
+      await db.insert(aiInteractions).values({
+        userId: userId || null,
+        interactionType: "itinerary_generation",
+        model: "claude-sonnet",
+        inputTokens: 0,
+        outputTokens: 0,
+        responseTimeMs: 0,
+        success: true,
+        metadata: {
+          destination: data.destination,
+          tripId: data.tripId,
+          duration: data.duration,
+          travelers: data.travelers,
+          budget: data.budget,
+          variationType: data.variationType,
+          experienceType: data.experienceType,
+          activitiesCount: data.activities?.length || 0,
+        },
+      }).catch(err => console.error("[Analytics] Failed to track itinerary generation:", err));
+      
+      console.log("[Analytics] Itinerary generated event tracked:", {
+        destination: data.destination,
+        duration: data.duration,
+        variationType: data.variationType,
+        userId: userId?.substring(0, 8),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[Analytics] Error processing itinerary-generated event:", err);
+    }
+  });
+
+  // Track booking events
+  const bookingEventSchema = z.object({
+    type: z.string(), // "hotel" | "activity" | "flight" | "service" | "transport"
+    destination: z.string().optional(),
+    price: z.number().optional(),
+    travelers: z.number().optional(),
+    tripId: z.string().optional(),
+    itemId: z.string().optional(),
+    provider: z.string().optional(), // "amadeus" | "viator" | "platform" | "external"
+    bookingStatus: z.string().optional(), // "initiated" | "confirmed" | "pending"
+  });
+
+  app.post("/api/analytics/booking", async (req, res) => {
+    // Fire-and-forget - respond immediately
+    res.status(202).json({ received: true });
+    
+    try {
+      const validation = bookingEventSchema.safeParse(req.body);
+      if (!validation.success) {
+        console.warn("[Analytics] Invalid booking payload:", validation.error.flatten());
+        return;
+      }
+      
+      const data = validation.data;
+      const userId = (req.user as any)?.claims?.sub;
+      
+      // Track booking event
+      console.log("[Analytics] Booking event tracked:", {
+        type: data.type,
+        destination: data.destination,
+        price: data.price,
+        provider: data.provider,
+        status: data.bookingStatus,
+        userId: userId?.substring(0, 8),
+        timestamp: new Date().toISOString(),
+      });
+      
+      // Also log to destination search patterns if destination provided (to track conversion)
+      if (data.destination) {
+        await storage.createDestinationSearchPattern({
+          destination: data.destination,
+          city: data.destination.split(",")[0]?.trim(),
+          searchQuery: `booking:${data.type}`,
+          searchType: "booking",
+          userId: userId || undefined,
+          resultsViewed: 1,
+          date: new Date().toISOString().split("T")[0],
+          hour: new Date().getHours(),
+        }).catch(err => console.error("[Analytics] Failed to track booking destination:", err));
+      }
+    } catch (err) {
+      console.error("[Analytics] Error processing booking event:", err);
+    }
+  });
+
   // AI-Powered Service Recommendations
   app.post("/api/discover/recommendations", isAuthenticated, async (req, res) => {
     try {
@@ -11926,6 +12090,208 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("Provider analytics error:", err);
       res.status(500).json({ message: "Failed to fetch provider analytics" });
+    }
+  });
+
+  // === Tourism Analytics Dashboard ===
+  app.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { serviceBookings, providerServices, localExpertForms, serviceProviderForms } = await import("@shared/schema");
+
+      // 1. Destination Demand - Most searched/booked destinations
+      const destinationDemand = await db.select({
+        destination: trips.destination,
+        searchCount: sql<number>`count(*)::int`,
+        totalBudget: sql<number>`sum(COALESCE(budget::numeric, 0))::numeric`,
+        avgBudget: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
+      })
+      .from(trips)
+      .groupBy(trips.destination)
+      .orderBy(sql`count(*) desc`)
+      .limit(15);
+
+      // 2. Booking Trends Over Time (last 12 months)
+      const bookingTrends = await db.select({
+        month: sql<string>`to_char(created_at, 'YYYY-MM')`,
+        count: sql<number>`count(*)::int`,
+        revenue: sql<number>`sum(COALESCE(total_amount::numeric, 0))::numeric`,
+      })
+      .from(serviceBookings)
+      .where(sql`created_at >= now() - interval '12 months'`)
+      .groupBy(sql`to_char(created_at, 'YYYY-MM')`)
+      .orderBy(sql`to_char(created_at, 'YYYY-MM')`);
+
+      // 3. Source Markets - Where travelers come from (experts/providers by country as proxy)
+      const sourceMarkets = await db.select({
+        country: localExpertForms.country,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(localExpertForms)
+      .where(isNotNull(localExpertForms.country))
+      .groupBy(localExpertForms.country)
+      .orderBy(sql`count(*) desc`)
+      .limit(10);
+
+      // Also get user sign-up trends by month as additional source market data
+      const usersByMonth = await db.select({
+        month: sql<string>`to_char(created_at, 'YYYY-MM')`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(users)
+      .where(sql`created_at >= now() - interval '12 months'`)
+      .groupBy(sql`to_char(created_at, 'YYYY-MM')`)
+      .orderBy(sql`to_char(created_at, 'YYYY-MM')`);
+
+      // 4. Spending Patterns by Destination
+      const spendingPatterns = await db.select({
+        destination: trips.destination,
+        avgSpend: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
+        minSpend: sql<number>`min(COALESCE(budget::numeric, 0))::numeric`,
+        maxSpend: sql<number>`max(COALESCE(budget::numeric, 0))::numeric`,
+        tripCount: sql<number>`count(*)::int`,
+      })
+      .from(trips)
+      .where(sql`budget > 0`)
+      .groupBy(trips.destination)
+      .orderBy(sql`avg(COALESCE(budget::numeric, 0)) desc`)
+      .limit(10);
+
+      // 5. Party Composition (based on adults, kids, numberOfTravelers)
+      const allTrips = await db.select({
+        adults: trips.adults,
+        kids: trips.kids,
+        numberOfTravelers: trips.numberOfTravelers,
+      }).from(trips);
+
+      const partyComposition = {
+        solo: 0,
+        couples: 0,
+        families: 0,
+        groups: 0,
+      };
+
+      allTrips.forEach(trip => {
+        const adults = trip.adults || 1;
+        const kids = trip.kids || 0;
+        const total = trip.numberOfTravelers || adults + kids;
+
+        if (total === 1) {
+          partyComposition.solo++;
+        } else if (total === 2 && kids === 0) {
+          partyComposition.couples++;
+        } else if (kids > 0) {
+          partyComposition.families++;
+        } else if (total > 2) {
+          partyComposition.groups++;
+        } else {
+          partyComposition.couples++;
+        }
+      });
+
+      // 6. Seasonality - Bookings by month (using trip start dates)
+      const seasonality = await db.select({
+        month: sql<number>`EXTRACT(MONTH FROM start_date)::int`,
+        count: sql<number>`count(*)::int`,
+        avgBudget: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
+      })
+      .from(trips)
+      .where(isNotNull(trips.startDate))
+      .groupBy(sql`EXTRACT(MONTH FROM start_date)`)
+      .orderBy(sql`EXTRACT(MONTH FROM start_date)`);
+
+      // 7. Event Types breakdown
+      const eventTypes = await db.select({
+        eventType: trips.eventType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(trips)
+      .groupBy(trips.eventType)
+      .orderBy(sql`count(*) desc`);
+
+      // 8. Summary metrics
+      const totalTrips = allTrips.length;
+      const totalBookings = await db.select({ count: sql<number>`count(*)::int` }).from(serviceBookings);
+      const completedBookings = await db.select({ 
+        count: sql<number>`count(*)::int`,
+        revenue: sql<number>`sum(COALESCE(total_amount::numeric, 0))::numeric` 
+      })
+      .from(serviceBookings)
+      .where(eq(serviceBookings.status, "completed"));
+
+      const avgTripDuration = await db.select({
+        avgDays: sql<number>`avg(EXTRACT(DAY FROM (end_date - start_date)))::numeric`,
+      })
+      .from(trips)
+      .where(sql`start_date IS NOT NULL AND end_date IS NOT NULL`);
+
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      res.json({
+        destinationDemand: destinationDemand.map(d => ({
+          destination: d.destination || "Unknown",
+          searches: d.searchCount,
+          totalBudget: Math.round(Number(d.totalBudget || 0)),
+          avgBudget: Math.round(Number(d.avgBudget || 0)),
+        })),
+        bookingTrends: bookingTrends.map(b => ({
+          month: b.month,
+          bookings: b.count,
+          revenue: Math.round(Number(b.revenue || 0)),
+        })),
+        sourceMarkets: sourceMarkets.map(s => ({
+          country: s.country || "Unknown",
+          travelers: s.count,
+        })),
+        userGrowth: usersByMonth.map(u => ({
+          month: u.month,
+          users: u.count,
+        })),
+        spendingPatterns: spendingPatterns.map(s => ({
+          destination: s.destination || "Unknown",
+          avgSpend: Math.round(Number(s.avgSpend || 0)),
+          minSpend: Math.round(Number(s.minSpend || 0)),
+          maxSpend: Math.round(Number(s.maxSpend || 0)),
+          trips: s.tripCount,
+        })),
+        partyComposition: [
+          { type: "Solo", count: partyComposition.solo, color: "#8884d8" },
+          { type: "Couples", count: partyComposition.couples, color: "#82ca9d" },
+          { type: "Families", count: partyComposition.families, color: "#ffc658" },
+          { type: "Groups", count: partyComposition.groups, color: "#ff7c43" },
+        ],
+        seasonality: monthNames.map((name, i) => {
+          const monthData = seasonality.find(s => s.month === i + 1);
+          return {
+            month: name,
+            monthNum: i + 1,
+            bookings: monthData?.count || 0,
+            avgBudget: Math.round(Number(monthData?.avgBudget || 0)),
+          };
+        }),
+        eventTypes: eventTypes.map(e => ({
+          type: e.eventType || "vacation",
+          count: e.count,
+        })),
+        summary: {
+          totalTrips,
+          totalBookings: totalBookings[0]?.count || 0,
+          completedBookings: completedBookings[0]?.count || 0,
+          totalRevenue: Math.round(Number(completedBookings[0]?.revenue || 0)),
+          avgTripDuration: Math.round(Number(avgTripDuration[0]?.avgDays || 0)),
+          avgPartySize: totalTrips > 0 
+            ? Math.round(allTrips.reduce((sum, t) => sum + (t.numberOfTravelers || t.adults || 1) + (t.kids || 0), 0) / totalTrips * 10) / 10
+            : 0,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Tourism analytics error:", err);
+      res.status(500).json({ message: "Failed to fetch tourism analytics" });
     }
   });
 

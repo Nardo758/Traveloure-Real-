@@ -18,7 +18,8 @@ import {
   Database,
   Link2,
   FileText,
-  Cpu
+  Cpu,
+  MapPin
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,6 +36,7 @@ const navItems = [
   { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
   { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },
   { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
+  { icon: MapPin, label: "Tourism", href: "/admin/tourism-analytics" },
   { icon: Cpu, label: "AI Costs", href: "/admin/ai-costs" },
   { icon: Database, label: "Data", href: "/admin/data" },
   { icon: Search, label: "Search", href: "/admin/search" },
