@@ -118,10 +118,20 @@ export default function TravelExpertsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialAuthConnected, setSocialAuthConnected] = useState(false);
   
-  // Check for influencer and auth query parameters
+  // Check for influencer, auth, and expert type query parameters
   const urlParams = new URLSearchParams(window.location.search);
   const influencerFromUrl = urlParams.get('influencer') === 'true';
   const authFromUrl = urlParams.get('auth');
+  const expertTypeFromUrl = urlParams.get('type') || 'travel_expert';
+  
+  // Map expert type to display title
+  const expertTypeTitles: Record<string, string> = {
+    travel_expert: "Travel Expert",
+    local_expert: "Local Expert",
+    event_planner: "Event Planner",
+    executive_assistant: "Executive Assistant",
+  };
+  const expertTypeTitle = expertTypeTitles[expertTypeFromUrl] || "Travel Expert";
   
   const [formData, setFormData] = useState({
     firstName: "",
@@ -143,6 +153,7 @@ export default function TravelExpertsPage() {
     availability: "",
     responseTime: "",
     hourlyRate: "",
+    expertType: expertTypeFromUrl,
     agreeToTerms: false,
     // Influencer fields
     isInfluencer: influencerFromUrl,
@@ -289,6 +300,7 @@ export default function TravelExpertsPage() {
       } : {};
 
       const applicationData = {
+        expertType: formData.expertType,
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -352,7 +364,7 @@ export default function TravelExpertsPage() {
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
-            <span className="font-semibold text-[#111827]">Travel Expert Application</span>
+            <span className="font-semibold text-[#111827]">{expertTypeTitle} Application</span>
             <div className="w-20" />
           </div>
         </div>

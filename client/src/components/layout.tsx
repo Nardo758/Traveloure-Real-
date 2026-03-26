@@ -119,12 +119,12 @@ const navItems = [
       {
         title: "BECOME A PARTNER",
         items: [
-          { name: "Travel Expert", href: "/become-expert", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/become-expert", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/become-expert", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/become-expert", icon: Briefcase, description: "Manage high-end clients" },
+          { name: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane, description: "Share your destination expertise" },
+          { name: "Local Expert", href: "/become-expert?type=local_expert", icon: Globe, description: "Guide travelers in your city" },
+          { name: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar, description: "Plan weddings & celebrations" },
+          { name: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase, description: "Manage high-end clients" },
           { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
-          { name: "Influencer Program", href: "/become-expert?influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
+          { name: "Influencer Program", href: "/become-expert?type=travel_expert&influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
         ],
       },
     ],

@@ -253,9 +253,14 @@ export const affiliatePlatforms = pgTable("affiliate_platforms", {
 
 // === Local Expert & Service Provider Applications ===
 
+// Expert type enum for application forms
+export const expertTypeEnum = ["travel_expert", "local_expert", "event_planner", "executive_assistant"] as const;
+
 export const localExpertForms = pgTable("local_expert_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Expert Type (travel_expert, local_expert, event_planner, executive_assistant)
+  expertType: varchar("expert_type", { length: 30 }).default("travel_expert"),
   // Basic Info
   firstName: varchar("first_name", { length: 100 }),
   lastName: varchar("last_name", { length: 100 }),
