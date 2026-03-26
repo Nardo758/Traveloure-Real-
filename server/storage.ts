@@ -480,9 +480,13 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // Trips
-  async getTrips(userId?: string): Promise<Trip[]> {
+  async getTrips(userId?: string, status?: string): Promise<Trip[]> {
     if (!userId) return [];
-    return await db.select().from(trips).where(eq(trips.userId, userId));
+    const conditions = [eq(trips.userId, userId)];
+    if (status) {
+      conditions.push(eq(trips.status, status));
+    }
+    return await db.select().from(trips).where(and(...conditions));
   }
 
   async getTrip(id: string): Promise<Trip | undefined> {
