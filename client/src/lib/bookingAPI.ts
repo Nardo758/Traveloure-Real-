@@ -3,6 +3,8 @@
  * Handles all booking-related API calls
  */
 
+import { trackBookingEvent } from './analytics';
+
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export interface CartItem {
@@ -53,7 +55,27 @@ export const bookingAPI = {
       throw new Error(error.error || 'Failed to process cart');
     }
 
-    return response.json();
+    const result = await response.json();
+    
+    // Track booking events for tourism analytics (fire-and-forget)
+    for (const item of cartItems) {
+      const bookingType = item.itemType?.toLowerCase() || 'service';
+      trackBookingEvent({
+        type: bookingType === 'hotel' ? 'hotel' 
+            : bookingType === 'flight' ? 'flight'
+            : bookingType === 'activity' ? 'activity'
+            : bookingType === 'transport' ? 'transport'
+            : 'service',
+        destination: item.location || undefined,
+        price: item.price || undefined,
+        tripId: item.tripId || undefined,
+        itemId: item.id,
+        provider: item.bookingType === 'external' ? 'external' : 'platform',
+        bookingStatus: item.bookingType === 'instant' ? 'confirmed' : 'pending',
+      });
+    }
+    
+    return result;
   },
 
   /**

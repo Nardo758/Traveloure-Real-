@@ -80,6 +80,7 @@ import { GlobalCalendar } from "@/components/travelpulse/GlobalCalendar";
 import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
+import { trackSearchEvent } from "@/lib/analytics";
 
 type ServiceCategory = {
   id: string;
@@ -794,6 +795,17 @@ export default function DiscoverPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Track search events for tourism analytics
+  useEffect(() => {
+    // Only track when there's a meaningful search (destination/location filter)
+    if (locationFilter && locationFilter.length >= 2) {
+      trackSearchEvent({
+        destination: locationFilter,
+        searchContext: 'discover',
+      });
+    }
+  }, [locationFilter]);
 
   // Data queries
   const { data: categories } = useQuery<ServiceCategory[]>({
