@@ -814,8 +814,8 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   // Admin: Get platform stats
   app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
-    const user = req.user as any;
-    if (user.claims.role !== "admin") {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     
@@ -7625,11 +7625,12 @@ Respond with this exact JSON structure:
   const { travelPulseScheduler } = await import("./services/travelpulse-scheduler.service");
 
   // Middleware to check admin role for AI endpoints
-  const requireAdmin = (req: any, res: any, next: any) => {
+  const requireAdmin = async (req: any, res: any, next: any) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    if (req.user?.role !== "admin") {
+    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
     next();
@@ -10710,45 +10711,37 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   // Provider earnings endpoints
+  // Uses same auth pattern as /api/provider/services, /api/provider/bookings
   app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
+      const userId = (req.user as any).claims.sub;
       const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
+      console.error("Provider earnings error:", error);
       res.status(500).json({ message: "Failed to get provider earnings", error: error.message });
     }
   });
 
   app.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
+      const userId = (req.user as any).claims.sub;
       const summary = await storage.getProviderEarningsSummary(userId);
       res.json(summary);
     } catch (error: any) {
+      console.error("Provider earnings summary error:", error);
       res.status(500).json({ message: "Failed to get provider earnings summary", error: error.message });
     }
   });
 
   app.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
+      const userId = (req.user as any).claims.sub;
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
       const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
     } catch (error: any) {
+      console.error("Provider earnings details error:", error);
       res.status(500).json({ message: "Failed to get provider earnings details", error: error.message });
     }
   });
@@ -10756,25 +10749,18 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Provider payout requests
   app.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
+      const userId = (req.user as any).claims.sub;
       const payouts = await storage.getProviderPayouts(userId);
       res.json(payouts);
     } catch (error: any) {
+      console.error("Provider payouts error:", error);
       res.status(500).json({ message: "Failed to get provider payouts", error: error.message });
     }
   });
 
   app.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-      
+      const userId = (req.user as any).claims.sub;
       const { amount, payoutMethod } = req.body;
       if (!amount || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
@@ -10799,17 +10785,15 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   // Expert earnings details endpoint
+  // Uses same auth pattern as /api/provider/services, /api/provider/bookings
   app.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
+      const userId = (req.user as any).claims.sub;
       const { revenueTrackingService } = await import('./services/revenue-tracking.service');
       const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
     } catch (error: any) {
+      console.error("Expert earnings details error:", error);
       res.status(500).json({ message: "Failed to get expert earnings details", error: error.message });
     }
   });
