@@ -13900,3 +13900,199 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+
+  // === AUTO-INFER ANALYTICS FROM USER BEHAVIOR ===
+  
+  // Middleware/helper to infer trip analytics from itinerary data
+  async function inferTripAnalytics(tripId: string, userId: string) {
+    try {
+      const { tripAnalyticsEnhanced } = await import("@shared/schema");
+      
+      // Get trip data
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return;
+
+      // Get itinerary items for this trip
+      const itineraryData = await db.select().from(generatedItineraries).where(eq(generatedItineraries.tripId, tripId)).then(r => r[0]);
+      const items = itineraryData?.itineraryData as any;
+
+      // Infer party composition from travelers + event type
+      let partyComposition = "group";
+      const travelers = trip.numberOfTravelers || 1;
+      const eventType = trip.eventType || "vacation";
+      
+      if (travelers === 1) partyComposition = "solo";
+      else if (travelers === 2 && ["honeymoon", "anniversary", "proposal", "romantic"].includes(eventType)) partyComposition = "couple";
+      else if (travelers <= 4 && eventType === "vacation") partyComposition = "family";
+      else partyComposition = "group";
+
+      // Infer if has children from activities (look for kid-friendly keywords)
+      let hasChildren = false;
+      if (items?.dailyItinerary) {
+        const allActivities = JSON.stringify(items.dailyItinerary).toLowerCase();
+        hasChildren = allActivities.includes("kid") || allActivities.includes("child") || 
+                     allActivities.includes("family") || allActivities.includes("playground") ||
+                     allActivities.includes("zoo") || allActivities.includes("aquarium");
+      }
+
+      // Calculate length of stay
+      const startDate = trip.startDate ? new Date(trip.startDate) : null;
+      const endDate = trip.endDate ? new Date(trip.endDate) : null;
+      const lengthOfStay = startDate && endDate ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+
+      // Determine season
+      let season = null;
+      if (startDate) {
+        const month = startDate.getMonth();
+        if (month >= 2 && month <= 4) season = "spring";
+        else if (month >= 5 && month <= 7) season = "summer";
+        else if (month >= 8 && month <= 10) season = "fall";
+        else season = "winter";
+      }
+
+      // Infer destination details
+      const destination = trip.destination || "";
+      // Try to extract country from destination string
+      const destinationParts = destination.split(",").map(s => s.trim());
+      const destinationCity = destinationParts[0] || destination;
+      const destinationCountry = destinationParts.length > 1 ? destinationParts[destinationParts.length - 1] : null;
+
+      // Infer price segment from budget
+      let priceSegment = "mid-range";
+      const budget = parseFloat(trip.budget || "0");
+      const dailyBudget = lengthOfStay && lengthOfStay > 0 ? budget / lengthOfStay : budget;
+      if (dailyBudget < 100) priceSegment = "budget";
+      else if (dailyBudget < 300) priceSegment = "mid-range";
+      else if (dailyBudget < 500) priceSegment = "luxury";
+      else priceSegment = "ultra-luxury";
+
+      // Infer primary activity from itinerary
+      let primaryActivity = null;
+      if (items?.dailyItinerary) {
+        const activityCounts: Record<string, number> = {};
+        for (const day of items.dailyItinerary) {
+          for (const activity of day.activities || []) {
+            const type = activity.type || activity.category || "sightseeing";
+            activityCounts[type] = (activityCounts[type] || 0) + 1;
+          }
+        }
+        primaryActivity = Object.entries(activityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+      }
+
+      // Upsert analytics record
+      await db.insert(tripAnalyticsEnhanced).values({
+        tripId,
+        userId,
+        destinationCity,
+        destinationCountry,
+        tripStartDate: startDate,
+        tripEndDate: endDate,
+        lengthOfStay,
+        season,
+        partySize: travelers,
+        partyComposition,
+        hasChildren,
+        tripPurpose: eventType,
+        totalBudget: trip.budget,
+        priceSegment,
+        primaryActivity,
+      }).onConflictDoUpdate({
+        target: [tripAnalyticsEnhanced.tripId],
+        set: {
+          partyComposition,
+          hasChildren,
+          lengthOfStay,
+          season,
+          priceSegment,
+          primaryActivity,
+        }
+      });
+
+      return true;
+    } catch (err) {
+      console.error("Error inferring trip analytics:", err);
+      return false;
+    }
+  }
+
+  // Hook into itinerary generation to auto-capture analytics
+  app.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const tripId = req.params.tripId;
+      
+      // Verify ownership
+      const trip = await storage.getTrip(tripId);
+      if (!trip || trip.userId !== userId) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      await inferTripAnalytics(tripId, userId);
+      res.json({ success: true, message: "Analytics captured" });
+    } catch (err) {
+      console.error("Infer analytics error:", err);
+      res.status(500).json({ message: "Failed to capture analytics" });
+    }
+  });
+
+  // Track searches automatically (what destinations were considered)
+  app.post("/api/track/destination-search", async (req, res) => {
+    try {
+      const { searchAnalytics } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
+      
+      // Track this search
+      await db.insert(searchAnalytics).values({
+        sessionId,
+        userId,
+        searchType: "destination",
+        destination: req.body.destination,
+        query: req.body.query,
+        ipCountry: req.headers["cf-ipcountry"] as string,
+        deviceType: req.body.deviceType,
+      });
+
+      // If user has a draft trip, track this as a "considered" destination
+      if (userId && req.body.tripId) {
+        const { tripAnalyticsEnhanced } = await import("@shared/schema");
+        const existing = await db.select().from(tripAnalyticsEnhanced).where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId)).then(r => r[0]);
+        
+        if (existing) {
+          const considered = (existing.otherDestinationsConsidered as string[] || []);
+          if (!considered.includes(req.body.destination) && req.body.destination !== existing.destinationCity) {
+            considered.push(req.body.destination);
+            await db.update(tripAnalyticsEnhanced)
+              .set({ otherDestinationsConsidered: considered.slice(-10) }) // Keep last 10
+              .where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId));
+          }
+        }
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
+  // Auto-capture accommodation preference from hotel searches/bookings
+  app.post("/api/track/accommodation-preference", async (req, res) => {
+    try {
+      const { tripAnalyticsEnhanced } = await import("@shared/schema");
+      const userId = (req.user as any)?.claims?.sub;
+      
+      if (userId && req.body.tripId) {
+        await db.update(tripAnalyticsEnhanced)
+          .set({ 
+            accommodationType: req.body.accommodationType,
+            starRating: req.body.starRating,
+          })
+          .where(eq(tripAnalyticsEnhanced.tripId, req.body.tripId));
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false });
+    }
+  });
+
