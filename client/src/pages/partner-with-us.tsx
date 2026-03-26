@@ -50,7 +50,7 @@ const partnerTypes = [
       "Responsive within 24 hours",
     ],
     cta: "Apply as Travel Expert",
-    href: "/become-expert",
+    href: "/become-expert?type=travel_expert",
     popular: true,
   },
   {
@@ -70,7 +70,7 @@ const partnerTypes = [
       "Language proficiency",
     ],
     cta: "Apply as Local Expert",
-    href: "/become-expert",
+    href: "/become-expert?type=local_expert",
     popular: false,
   },
   {
@@ -90,7 +90,7 @@ const partnerTypes = [
       "Portfolio of past events",
     ],
     cta: "Apply as Event Planner",
-    href: "/become-expert",
+    href: "/become-expert?type=event_planner",
     popular: false,
   },
   {
@@ -130,7 +130,7 @@ const partnerTypes = [
       "Multi-tasking ability",
     ],
     cta: "Apply as EA",
-    href: "/become-expert",
+    href: "/become-expert?type=executive_assistant",
     popular: false,
   },
 ];
