@@ -1,0 +1,43 @@
+
+· You're about to add user_and_expert_chats_tracking_number_unique unique constraint to the table, which contains 1 items. If this statement fails, you will receive an error from the database. Do you want to truncate user_and_expert_chats table?
+
+· You're about to add provider_services_tracking_number_unique unique constraint to the table, which contains 61 items. If this statement fails, you will receive an error from the database. Do you want to truncate provider_services table?
+
+· You're about to add service_bookings_tracking_number_unique unique constraint to the table, which contains 4 items. If this statement fails, you will receive an error from the database. Do you want to truncate service_bookings table?
+
+· You're about to add content_registry_tracking_number_unique unique constraint to the table, which contains 6 items. If this statement fails, you will receive an error from the database. Do you want to truncate content_registry table?
+
+· You're about to add local_expert_forms_referral_code_unique unique constraint to the table, which contains 12 items. If this statement fails, you will receive an error from the database. Do you want to truncate local_expert_forms table?
+
+· You're about to add trips_tracking_number_unique unique constraint to the table, which contains 13 items. If this statement fails, you will receive an error from the database. Do you want to truncate trips table?
+
+· You're about to add shared_itineraries_share_token_unique unique constraint to the table, which contains 1 items. If this statement fails, you will receive an error from the database. Do you want to truncate shared_itineraries table?
+
+error: cannot drop constraint content_registry_tracking_number_key on table content_registry because other objects depend on it
+    at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async Object.query (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:80622:26)
+    at async pgPush (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:84432:13)
+    at async Object.handler (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:93871:9)
+    at async run (/home/runner/workspace/node_modules/drizzle-kit/bin.cjs:93117:7) {
+  length: 762,
+  severity: 'ERROR',
+  code: '2BP01',
+  detail: 'constraint content_invoices_tracking_number_fkey on table content_invoices depends on index content_registry_tracking_number_key\n' +
+    'constraint content_versions_tracking_number_fkey on table content_versions depends on index content_registry_tracking_number_key\n' +
+    'constraint content_flags_tracking_number_fkey on table content_flags depends on index content_registry_tracking_number_key\n' +
+    'constraint content_analytics_tracking_number_fkey on table content_analytics depends on index content_registry_tracking_number_key',
+  hint: 'Use DROP ... CASCADE to drop the dependent objects too.',
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'dependency.c',
+  line: '1210',
+  routine: 'reportDependentObjects'
+}
