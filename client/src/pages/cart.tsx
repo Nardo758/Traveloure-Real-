@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { 
   ShoppingCart, 
@@ -24,6 +26,7 @@ import {
   Clock,
   DollarSign,
   CheckCircle,
+  Check,
   Loader2,
   AlertTriangle
 } from "lucide-react";
@@ -136,6 +139,10 @@ export default function CartPage() {
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
   const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
+  
+  // Optimization modal state
+  const [optimizationModalOpen, setOptimizationModalOpen] = useState(false);
+  const [optimizationData, setOptimizationData] = useState<{ comparisonId: string; variants: any[] } | null>(null);
 
   // Load experience context from sessionStorage on mount
   useEffect(() => {
@@ -403,7 +410,42 @@ export default function CartPage() {
       });
       
       const comparison = await response.json();
-      setLocation(`/itinerary-comparison/${comparison.id}`);
+      
+      // Show optimization modal instead of navigating
+      setOptimizationData({ comparisonId: comparison.id, variants: [] });
+      setOptimizationModalOpen(true);
+      
+      // Poll for variants (AI generation takes time)
+      const pollForVariants = async () => {
+        let attempts = 0;
+        const maxAttempts = 30;
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          try {
+            const pollRes = await fetch(`/api/itinerary-comparisons/${comparison.id}`, {
+              credentials: "include"
+            });
+            if (pollRes.ok) {
+              const data = await pollRes.json();
+              if (data.variants && data.variants.length > 0) {
+                setOptimizationData({ comparisonId: comparison.id, variants: data.variants });
+                break;
+              }
+              if (data.comparison?.status === "failed") {
+                toast({ variant: "destructive", title: "Optimization failed", description: "Please try again" });
+                setOptimizationModalOpen(false);
+                break;
+              }
+            }
+          } catch (e) {
+            console.error("Poll error:", e);
+          }
+          attempts++;
+        }
+      };
+      
+      pollForVariants();
     } catch (error: any) {
       console.error("Failed to create comparison:", error);
       toast({ 
@@ -1146,6 +1188,110 @@ export default function CartPage() {
           </>
         )}
       </div>
+
+      {/* AI Optimization Modal */}
+      <Dialog open={optimizationModalOpen} onOpenChange={setOptimizationModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-[#FF385C]" />
+              AI Optimized Itinerary
+            </DialogTitle>
+            <DialogDescription>
+              Choose an optimized plan for your trip
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            {!optimizationData?.variants?.length ? (
+              <div className="text-center py-12">
+                <Loader2 className="h-12 w-12 mx-auto mb-4 animate-spin text-[#FF385C]" />
+                <h3 className="text-lg font-semibold mb-2">Optimizing Your Itinerary...</h3>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  Our AI is finding the best combinations of activities, timing, and savings for your trip.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {optimizationData.variants.map((variant: any, idx: number) => (
+                  <Card key={variant.id || idx} className={`border-2 cursor-pointer hover:border-[#FF385C]/50 transition-colors ${idx === 0 ? "border-[#FF385C]" : ""}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className={idx === 0 ? "bg-[#FF385C]" : "bg-muted"}>
+                            {variant.source === "user" ? "Your Selection" : `AI Option ${idx}`}
+                          </Badge>
+                          {variant.totalSavings > 0 && (
+                            <Badge variant="outline" className="text-green-600 border-green-600">
+                              Save ${variant.totalSavings}
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-xl font-bold">${variant.totalCost || combinedTotal}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mb-3">
+                        {variant.items?.length || 0} activities • {variant.description || "Optimized for your preferences"}
+                      </div>
+                      <ScrollArea className="h-32">
+                        <div className="space-y-1">
+                          {(variant.items || []).slice(0, 5).map((item: any, i: number) => (
+                            <div key={i} className="flex items-center justify-between text-sm py-1 border-b last:border-0">
+                              <span className="truncate flex-1">{item.name}</span>
+                              <span className="text-muted-foreground ml-2">${item.price}</span>
+                            </div>
+                          ))}
+                          {(variant.items?.length || 0) > 5 && (
+                            <p className="text-xs text-muted-foreground text-center py-1">
+                              +{variant.items.length - 5} more...
+                            </p>
+                          )}
+                        </div>
+                      </ScrollArea>
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          className="flex-1 bg-[#FF385C]"
+                          onClick={async () => {
+                            try {
+                              await apiRequest("POST", `/api/itinerary-comparisons/${optimizationData.comparisonId}/select`, {
+                                variantId: variant.id
+                              });
+                              toast({ title: "Itinerary saved!", description: "Your optimized plan has been saved" });
+                              setOptimizationModalOpen(false);
+                              setLocation("/dashboard");
+                            } catch (e) {
+                              toast({ variant: "destructive", title: "Failed to save", description: "Please try again" });
+                            }
+                          }}
+                        >
+                          <Check className="w-4 h-4 mr-2" />
+                          Save This Plan
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setOptimizationModalOpen(false);
+                            setLocation(`/itinerary-comparison/${optimizationData.comparisonId}`);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+                
+                <div className="text-center pt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => setOptimizationModalOpen(false)}
+                  >
+                    Keep My Original Selection
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
