@@ -206,10 +206,10 @@ export default function ExpertsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center mb-8"
           >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 drop-shadow-lg [text-shadow:_0_2px_10px_rgb(0_0_0_/_60%)]">
               Find Your Perfect Travel Expert
             </h1>
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto">
+            <p className="text-lg text-gray-300 max-w-2xl mx-auto drop-shadow-md [text-shadow:_0_1px_4px_rgb(0_0_0_/_50%)]">
               Connect with verified local experts who know their destinations inside out.
               Get personalized recommendations and insider access.
             </p>
