@@ -215,7 +215,6 @@ router.get('/saved-trips', isAuthenticated, async (req, res) => {
         st.status,
         iv.name as variant_name,
         iv.total_cost as variant_cost,
-        iv.highlights as variant_highlights,
         ic.destination,
         ic.start_date,
         ic.end_date,
