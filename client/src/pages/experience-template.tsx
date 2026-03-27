@@ -3437,18 +3437,16 @@ export default function ExperienceTemplatePage() {
                                 await apiRequest("POST", `/api/itinerary-comparisons/${optimizationData.comparisonId}/select`, {
                                   variantId: variant.id
                                 });
-                                await apiRequest("POST", `/api/itinerary-comparisons/${optimizationData.comparisonId}/apply-to-cart`);
-                                queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-                                toast({ title: "Itinerary applied!", description: "Your optimized plan has been added to cart" });
+                                toast({ title: "Itinerary saved!", description: "Your optimized plan has been saved" });
                                 setOptimizationModalOpen(false);
-                                setLocation("/cart");
+                                setLocation("/dashboard");
                               } catch (e) {
-                                toast({ variant: "destructive", title: "Failed to apply", description: "Please try again" });
+                                toast({ variant: "destructive", title: "Failed to save", description: "Please try again" });
                               }
                             }}
                           >
                             <Check className="w-4 h-4 mr-2" />
-                            Use This Plan
+                            Save This Plan
                           </Button>
                           <Button
                             variant="outline"
