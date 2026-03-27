@@ -18,8 +18,19 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2023-10-16",
+  apiVersion: "2024-12-18.acacia" as any,
 });
+
+export function getBaseUrl(): string {
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  if (replitDomains) {
+    return `https://${replitDomains.split(",")[0].trim()}`;
+  }
+  if (process.env.CLIENT_URL) {
+    return process.env.CLIENT_URL;
+  }
+  return "http://localhost:5173";
+}
 
 export interface BookingCheckoutSession {
   sessionId: string;
@@ -100,8 +111,8 @@ export async function createTransportBookingCheckout(
       },
     ],
     mode: "payment",
-    success_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/itinerary/${tripId}?booking=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.CLIENT_URL || "http://localhost:5173"}/itinerary/${tripId}?booking=cancelled`,
+    success_url: `${getBaseUrl()}/itinerary/${tripId}?booking=success&session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${getBaseUrl()}/itinerary/${tripId}?booking=cancelled`,
     customer_email: userEmail,
     metadata: {
       type: "transport_booking", // For webhook routing

@@ -1578,6 +1578,73 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // Purchase credits via Stripe Checkout
+  const CREDIT_PACKAGES = [
+    { id: 1, credits: 50, price: 49 },
+    { id: 2, credits: 100, price: 89 },
+    { id: 3, credits: 250, price: 199 },
+    { id: 4, credits: 500, price: 349 },
+  ];
+
+  app.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { packageId } = req.body;
+
+      const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
+      if (!pkg) {
+        return res.status(400).json({ message: "Invalid package" });
+      }
+
+      const { credits, price } = pkg;
+
+      const userRecord = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      const userEmail = userRecord?.email || undefined;
+
+      const { getBaseUrl } = await import("./services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      const baseUrl = getBaseUrl();
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `${credits} Credits`,
+                description: `Traveloure credit package - ${credits} credits`,
+              },
+              unit_amount: Math.round(price * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          type: 'credit_purchase',
+          userId,
+          credits: credits.toString(),
+          packageId: packageId?.toString() || '',
+        },
+        success_url: `${baseUrl}/credits-billing?purchase=success&credits=${credits}`,
+        cancel_url: `${baseUrl}/credits-billing?purchase=cancelled`,
+      });
+
+      res.json({
+        sessionId: session.id,
+        url: session.url,
+      });
+    } catch (err: any) {
+      console.error("Credit purchase error:", err);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
   // === Service Templates Routes (Admin manages, Experts browse) ===
   
   // Get all active service templates
@@ -4524,12 +4591,22 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       
       // Clear cart after successful checkout
       await storage.clearCart(userId);
+
+      // Create Stripe payment intent for the total
+      const { stripePaymentService } = await import("./services/stripe-payment.service");
+      const paymentIntent = await stripePaymentService.createPaymentIntent(
+        userId,
+        bookings.map((b: any) => b.booking),
+        total,
+        false
+      );
       
       res.status(201).json({
         success: true,
         bookings,
         total: total.toFixed(2),
-        message: "Booking created successfully. Proceed to payment.",
+        paymentIntent,
+        message: "Booking created successfully. Complete payment.",
       });
     } catch (err) {
       console.error("Checkout error:", err);
