@@ -189,6 +189,49 @@ router.post('/saved-trips', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * GET /api/saved-trips
+ * Get user's saved trips with variant/comparison details
+ */
+router.get('/saved-trips', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    const result = await db.execute(sql`
+      SELECT 
+        st.id,
+        st.variant_id,
+        st.comparison_id,
+        st.notes,
+        st.saved_at,
+        st.expires_at,
+        st.price_snapshot,
+        st.status,
+        iv.name as variant_name,
+        iv.total_cost as variant_cost,
+        iv.highlights as variant_highlights,
+        ic.destination,
+        ic.start_date,
+        ic.end_date,
+        ic.travelers
+      FROM saved_trips st
+      LEFT JOIN itinerary_variants iv ON iv.id = st.variant_id
+      LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
+      WHERE st.user_id = ${userId}
+        AND st.status = 'active'
+      ORDER BY st.saved_at DESC
+    `);
+
+    res.json(result.rows || []);
+  } catch (error: any) {
+    console.error('Get saved trips error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /api/shared-trips
  * Generate shareable link
  */

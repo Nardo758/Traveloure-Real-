@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import {
   Plus, Loader2, MessageSquare, CreditCard, Bot, Calendar, Bookmark, Clock,
-  ChevronRight
+  ChevronRight, MapPin, DollarSign
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
@@ -42,6 +42,9 @@ export default function Dashboard() {
   const { data: walletData } = useQuery<{ credits: number }>({ queryKey: ["/api/wallet"] });
   const { data: tripScores } = useQuery<TripScore[]>({
     queryKey: ["/api/dashboard/trip-scores"],
+  });
+  const { data: savedTrips } = useQuery<any[]>({
+    queryKey: ["/api/saved-trips"],
   });
 
   if (isLoading) {
@@ -85,7 +88,7 @@ export default function Dashboard() {
     { label: "Active Plans", value: activeTrips.length + upcomingTrips.filter(t => t.status === "planning").length, icon: Calendar, color: "bg-[#FFE3E8] text-[#FF385C]" },
     { label: "Upcoming Events", value: upcomingTrips.length, icon: Clock, color: "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" },
     { label: "Credits Balance", value: walletData?.credits ?? 0, icon: CreditCard, color: "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400" },
-    { label: "Saved Items", value: 0, icon: Bookmark, color: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" },
+    { label: "Saved Items", value: savedTrips?.length ?? 0, icon: Bookmark, color: "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400" },
   ];
 
   const scoreMap = new Map(tripScores?.map(s => [s.tripId, s]) ?? []);
@@ -175,6 +178,73 @@ export default function Dashboard() {
             </Card>
           )}
         </section>
+
+        {/* Saved Trips */}
+        {savedTrips && savedTrips.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-[#111827] dark:text-white">
+                <Bookmark className="w-5 h-5 inline mr-2 text-purple-500" />
+                Saved Trips
+              </h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+              {savedTrips.map((saved: any, i: number) => (
+                <motion.div
+                  key={saved.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                >
+                  <Link href={`/itinerary-comparison/${saved.comparison_id}`}>
+                    <Card className="border border-[#E5E7EB] hover:shadow-md transition-shadow cursor-pointer" data-testid={`card-saved-trip-${saved.id}`}>
+                      <CardContent className="p-5">
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="font-semibold text-[#111827] dark:text-white text-lg">
+                            {saved.variant_name || saved.destination || 'Saved Itinerary'}
+                          </h3>
+                          <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-2 py-1 rounded-full">
+                            Saved
+                          </span>
+                        </div>
+                        {saved.destination && (
+                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
+                            <MapPin className="w-4 h-4" />
+                            {saved.destination}
+                          </div>
+                        )}
+                        {(saved.start_date || saved.end_date) && (
+                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
+                            <Calendar className="w-4 h-4" />
+                            {saved.start_date && new Date(saved.start_date).toLocaleDateString()}
+                            {saved.end_date && ` – ${new Date(saved.end_date).toLocaleDateString()}`}
+                          </div>
+                        )}
+                        {(saved.price_snapshot || saved.variant_cost) && (
+                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
+                            <DollarSign className="w-4 h-4" />
+                            ${Number(saved.price_snapshot || saved.variant_cost).toLocaleString()}
+                          </div>
+                        )}
+                        {saved.notes && (
+                          <p className="text-sm text-[#9CA3AF] mt-2 line-clamp-2">{saved.notes}</p>
+                        )}
+                        <div className="mt-3 pt-3 border-t border-[#E5E7EB] flex items-center justify-between">
+                          <span className="text-xs text-[#9CA3AF]">
+                            Saved {new Date(saved.saved_at).toLocaleDateString()}
+                          </span>
+                          <Button variant="ghost" size="sm" className="text-[#FF385C] hover:text-[#E23350] h-auto p-0">
+                            View Details <ChevronRight className="w-4 h-4 ml-1" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Create New Plan Card */}
         <Card className="bg-gradient-to-r from-[#FF385C] to-[#E23350] text-white border-0">
