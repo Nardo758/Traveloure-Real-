@@ -220,6 +220,13 @@ export default function CartPage() {
     }
   }, [searchString, toast]);
 
+  const [checkoutPaymentIntent, setCheckoutPaymentIntent] = useState<{
+    clientSecret: string;
+    paymentIntentId: string;
+    amount: number;
+  } | null>(null);
+  const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
+
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
     queryFn: async () => {
@@ -232,15 +239,16 @@ export default function CartPage() {
   });
 
   // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
+  // But skip this check if we already have a payment intent (post-checkout state)
   useEffect(() => {
-    if (flowStep === "payment" && !isLoading && (cart?.items?.length || 0) === 0) {
+    if (flowStep === "payment" && !isLoading && (cart?.items?.length || 0) === 0 && !checkoutPaymentIntent) {
       setFlowStep("cart");
       toast({
         title: "External bookings only",
         description: "Complete external bookings on their provider websites. Platform checkout requires at least one platform service."
       });
     }
-  }, [flowStep, cart?.items?.length, isLoading, toast]);
+  }, [flowStep, cart?.items?.length, isLoading, toast, checkoutPaymentIntent]);
 
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
@@ -266,13 +274,6 @@ export default function CartPage() {
       toast({ variant: "destructive", title: "Failed to remove item" });
     },
   });
-
-  const [checkoutPaymentIntent, setCheckoutPaymentIntent] = useState<{
-    clientSecret: string;
-    paymentIntentId: string;
-    amount: number;
-  } | null>(null);
-  const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
@@ -628,7 +629,7 @@ export default function CartPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 ? (
+        ) : (cart?.items?.length || 0) === 0 && externalItems.length === 0 && flowStep === "cart" && !optimizationResult ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
