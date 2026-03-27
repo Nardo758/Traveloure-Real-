@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { useAuth } from "@/hooks/use-auth";
 
 const creditPackages = [
   {
@@ -126,6 +127,16 @@ const featureComparison = [
 
 export default function PricingPage() {
   const { openSignInModal } = useSignInModal();
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const handlePricingAction = () => {
+    if (user) {
+      setLocation("/credits");
+    } else {
+      openSignInModal();
+    }
+  };
   
   return (
     <div className="min-h-screen bg-background">
@@ -196,7 +207,7 @@ export default function PricingPage() {
                     <Button 
                       variant={plan.variant} 
                       className="w-full mt-6"
-                      onClick={() => openSignInModal()}
+                      onClick={handlePricingAction}
                       data-testid={`button-plan-${plan.name.toLowerCase()}`}
                     >
                       {plan.cta}
@@ -369,7 +380,7 @@ export default function PricingPage() {
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
               Get 5 free credits when you sign up. No credit card required.
             </p>
-            <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-get-started-free">
+            <Button size="lg" variant="secondary" onClick={handlePricingAction} data-testid="button-get-started-free">
               Get Started Free <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
           </motion.div>
