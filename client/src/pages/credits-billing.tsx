@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,8 +21,10 @@ import {
   Calendar,
   Receipt,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
+import { useToast } from "@/hooks/use-toast";
 
 const creditPackages = [
   { id: 1, credits: 50, price: 49, popular: false },
@@ -101,6 +105,26 @@ export default function CreditsBillingPage() {
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
   const currentBalance = 150;
   const monthlySpent = 50;
+  const { toast } = useToast();
+
+  const purchaseMutation = useMutation({
+    mutationFn: async (pkg: typeof creditPackages[0]) => {
+      const res = await apiRequest("POST", "/api/credits/purchase", {
+        packageId: pkg.id,
+        credits: pkg.credits,
+        price: pkg.price,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Purchase failed", description: error?.message || "Please try again" });
+    },
+  });
 
   return (
     <DashboardLayout>
@@ -210,6 +234,10 @@ export default function CreditsBillingPage() {
                           ? "bg-[#FF385C] hover:bg-[#E23350]"
                           : "bg-gray-900 hover:bg-gray-800 dark:bg-gray-700"
                       }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPackage(pkg.id);
+                      }}
                       data-testid={`button-select-${pkg.credits}`}
                     >
                       {selectedPackage === pkg.id ? "Selected" : "Select"}
@@ -220,9 +248,20 @@ export default function CreditsBillingPage() {
             </div>
             {selectedPackage && (
               <div className="mt-6 flex justify-end">
-                <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-checkout">
-                  Proceed to Checkout
-                  <ArrowUpRight className="w-4 h-4 ml-2" />
+                <Button
+                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  onClick={() => {
+                    const pkg = creditPackages.find(p => p.id === selectedPackage);
+                    if (pkg) purchaseMutation.mutate(pkg);
+                  }}
+                  disabled={purchaseMutation.isPending}
+                  data-testid="button-checkout"
+                >
+                  {purchaseMutation.isPending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
+                  ) : (
+                    <>Proceed to Checkout <ArrowUpRight className="w-4 h-4 ml-2" /></>
+                  )}
                 </Button>
               </div>
             )}

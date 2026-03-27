@@ -7,6 +7,7 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (March 2026)
+- **Stripe Checkout Flow Fixes**: Standardized all Stripe API versions to `2024-12-18.acacia`. Cart checkout now creates a Stripe PaymentIntent and renders the StripeCheckout component for in-page payment. Credit purchase flow wired up with server-side package validation (prices enforced server-side, not client-trusted) via `/api/credits/purchase` endpoint creating Stripe Checkout Sessions. Pricing page auth check fixed: logged-in users navigate to `/credits`, unauthenticated users see sign-in modal. `getBaseUrl()` helper in stripe.service.ts reads REPLIT_DOMAINS for dynamic URL resolution.
 - **QA Endpoint Fixes**: Added missing API routes: `GET /api/bookings/user`, `GET /api/service-bookings`, `POST /api/cart/items`, `GET /api/expert/dashboard`, `GET /api/provider/dashboard`, `GET /api/admin/bookings`, `GET /api/admin/revenue`. These complement existing routes (`/api/my-bookings`, `POST /api/cart`, `/api/expert/analytics/dashboard`, `/api/provider/analytics/dashboard`, `/api/admin/revenue/dashboard`).
 - **POST /api/auth/logout**: Added logout endpoint that destroys session and clears cookie.
 - **Viator Activity Coordinate Fix**: Enriched Viator freetext search results with product details and destination center coordinates. Activities now have lat/lng for maps, transport legs, and exports. Stale cache entries (missing coordinates) are auto-refreshed.

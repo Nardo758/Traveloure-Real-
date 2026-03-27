@@ -1,30 +1,42 @@
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { CreditCard, Zap, Gift, Clock, Check, Star } from "lucide-react";
+import { CreditCard, Zap, Gift, Clock, Check, Star, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 const creditPackages = [
   { 
     id: 1, 
     credits: 50, 
-    price: 9.99, 
+    price: 49, 
     popular: false,
     features: ["50 AI queries", "Basic expert access", "Email support"]
   },
   { 
     id: 2, 
-    credits: 150, 
-    price: 24.99, 
+    credits: 100, 
+    price: 89, 
     popular: true, 
-    savings: "Save 17%",
-    features: ["150 AI queries", "Priority expert access", "Chat support", "Itinerary exports"]
+    savings: "Save 11%",
+    features: ["100 AI queries", "Priority expert access", "Chat support", "Itinerary exports"]
   },
   { 
     id: 3, 
+    credits: 250, 
+    price: 199, 
+    popular: false, 
+    savings: "Save 20%",
+    features: ["250 AI queries", "VIP expert access", "Priority support", "Unlimited exports"]
+  },
+  { 
+    id: 4, 
     credits: 500, 
-    price: 69.99, 
+    price: 349, 
     popular: false, 
     savings: "Save 30%",
     features: ["500 AI queries", "VIP expert access", "Priority support", "Unlimited exports", "Early access to features"]
@@ -40,6 +52,30 @@ const transactions = [
 
 export default function Credits() {
   const currentBalance = 150;
+  const { toast } = useToast();
+  const [purchasingId, setPurchasingId] = useState<number | null>(null);
+
+  const purchaseMutation = useMutation({
+    mutationFn: async (pkg: typeof creditPackages[0]) => {
+      setPurchasingId(pkg.id);
+      const res = await apiRequest("POST", "/api/credits/purchase", {
+        packageId: pkg.id,
+        credits: pkg.credits,
+        price: pkg.price,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.url) {
+        window.location.href = data.url;
+      }
+      setPurchasingId(null);
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Purchase failed", description: error?.message || "Please try again" });
+      setPurchasingId(null);
+    },
+  });
 
   return (
     <DashboardLayout>
@@ -112,9 +148,15 @@ export default function Credits() {
                     <Button 
                       className={`w-full ${pkg.popular ? 'bg-[#FF385C] hover:bg-[#E23350] text-white' : ''}`}
                       variant={pkg.popular ? "default" : "outline"}
+                      onClick={() => purchaseMutation.mutate(pkg)}
+                      disabled={purchaseMutation.isPending}
                       data-testid={`button-buy-${pkg.id}`}
                     >
-                      Buy Now
+                      {purchasingId === pkg.id ? (
+                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Processing...</>
+                      ) : (
+                        "Buy Now"
+                      )}
                     </Button>
                   </CardContent>
                 </Card>

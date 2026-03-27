@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import StripeCheckout from "@/components/booking/StripeCheckout";
 
 interface CartItem {
   id: string;
@@ -273,18 +274,32 @@ export default function CartPage() {
     },
   });
 
+  const [checkoutPaymentIntent, setCheckoutPaymentIntent] = useState<{
+    clientSecret: string;
+    paymentIntentId: string;
+    amount: number;
+  } | null>(null);
+  const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
+
   const checkoutMutation = useMutation({
     mutationFn: async () => {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
       }
-      return apiRequest("POST", "/api/checkout", {});
+      const res = await apiRequest("POST", "/api/checkout", {});
+      return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-      toast({ title: "Booking created!", description: "Your services have been booked." });
-      setLocation("/bookings");
+      if (data.paymentIntent) {
+        setCheckoutPaymentIntent(data.paymentIntent);
+        setCheckoutBookingIds(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []);
+        setFlowStep("payment");
+      } else {
+        toast({ title: "Booking created!", description: "Your services have been booked." });
+        setLocation("/bookings");
+      }
     },
     onError: (error: any) => {
       if (error?.message === "No platform items to checkout") {
@@ -1075,24 +1090,47 @@ export default function CartPage() {
             {flowStep === "payment" && (
               <div className="grid gap-6 lg:grid-cols-3">
                 <div className="lg:col-span-2 space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Payment Method</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="border rounded-lg p-4 flex items-center gap-4 bg-muted/30">
-                        <CreditCard className="w-8 h-8 text-muted-foreground" />
-                        <div className="flex-1">
-                          <div className="font-medium">Credit / Debit Card</div>
-                          <div className="text-sm text-muted-foreground">Secure payment via Stripe</div>
+                  {checkoutPaymentIntent ? (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Secure Payment</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <StripeCheckout
+                          paymentIntent={checkoutPaymentIntent}
+                          bookingIds={checkoutBookingIds}
+                          onSuccess={(paymentIntentId) => {
+                            queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+                            toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
+                            setLocation("/bookings");
+                          }}
+                          onError={(error) => {
+                            toast({ variant: "destructive", title: "Payment failed", description: error });
+                          }}
+                          onCancel={() => setFlowStep("itinerary")}
+                        />
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Payment Method</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="border rounded-lg p-4 flex items-center gap-4 bg-muted/30">
+                          <CreditCard className="w-8 h-8 text-muted-foreground" />
+                          <div className="flex-1">
+                            <div className="font-medium">Credit / Debit Card</div>
+                            <div className="text-sm text-muted-foreground">Secure payment via Stripe</div>
+                          </div>
+                          <Badge variant="secondary">Selected</Badge>
                         </div>
-                        <Badge variant="secondary">Selected</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Your payment information is processed securely. We do not store your card details.
-                      </p>
-                    </CardContent>
-                  </Card>
+                        <p className="text-sm text-muted-foreground">
+                          Your payment information is processed securely. We do not store your card details.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
 
                   <Card>
                     <CardHeader>
@@ -1164,7 +1202,7 @@ export default function CartPage() {
                           </div>
                         </div>
                       )}
-                      {(cart?.items?.length || 0) > 0 ? (
+                      {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
@@ -1172,14 +1210,23 @@ export default function CartPage() {
                           disabled={checkoutMutation.isPending}
                           data-testid="button-complete-booking"
                         >
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          {checkoutMutation.isPending ? "Processing..." : "Complete Booking"}
+                          {checkoutMutation.isPending ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Complete Booking
+                            </>
+                          )}
                         </Button>
-                      ) : (
+                      ) : !checkoutPaymentIntent ? (
                         <div className="w-full text-center text-muted-foreground text-sm">
                           External bookings must be completed on provider websites
                         </div>
-                      )}
+                      ) : null}
                     </CardFooter>
                   </Card>
                 </div>
