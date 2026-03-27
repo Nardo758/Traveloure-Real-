@@ -4,7 +4,8 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
@@ -20,8 +21,29 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [showChanges, setShowChanges] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
+  const { toast } = useToast();
 
   const templateConfig = getTemplateConfig(trip.eventType);
+
+  // Open destination in maps (phone-agnostic)
+  const openInMaps = () => {
+    if (!trip.destination) return;
+    
+    const query = encodeURIComponent(trip.destination);
+    // Use generic geo: URI which works on both iOS and Android
+    // Falls back to Google Maps web if geo: not supported
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    if (isIOS) {
+      // iOS: Apple Maps
+      window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
+    } else {
+      // Android/Desktop: Google Maps
+      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+    }
+    
+    toast({ title: "Opening Maps", description: trip.destination });
+  };
 
   const { data: plancardData } = useQuery<PlanCardData>({
     queryKey: [`/api/trips/${trip.id}/plancard`],
@@ -191,15 +213,26 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
           />
         )}
 
-        <div className="px-5 pb-5 pt-2">
-          <Link href={`/itinerary/${trip.id}`}>
+        <div className="px-5 pb-5 pt-2 flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-shrink-0"
+            onClick={openInMaps}
+            data-testid={`button-open-maps-${trip.id}`}
+          >
+            <MapPin className="w-3.5 h-3.5 mr-1" />
+            Maps
+          </Button>
+          <Link href={`/itinerary/${trip.id}`} className="flex-1">
             <Button
+              size="sm"
               className="w-full text-xs font-semibold"
               data-testid={`button-view-itinerary-${trip.id}`}
             >
-              <Calendar className="w-3.5 h-3.5 mr-1.5" />
-              View Full Itinerary
-              <ChevronRight className="w-3.5 h-3.5 ml-1" />
+              <Calendar className="w-3.5 h-3.5 mr-1" />
+              View Itinerary
+              <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
             </Button>
           </Link>
         </div>
