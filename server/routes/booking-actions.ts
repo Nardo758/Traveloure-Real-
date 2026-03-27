@@ -132,9 +132,13 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const { userId, variantId, comparisonId, notes } = req.body;
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const { variantId, comparisonId, notes } = req.body;
 
-    if (!userId || !variantId || !comparisonId) {
+    if (!variantId || !comparisonId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
