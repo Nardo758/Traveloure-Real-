@@ -848,6 +848,7 @@ export default function ExperienceTemplatePage() {
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
+  const [showMobileMap, setShowMobileMap] = useState(false);
   
   // Template-based filters (for experience types with database-driven tabs)
   const templateFilters = useTemplateFilters();
@@ -2818,7 +2819,28 @@ export default function ExperienceTemplatePage() {
               className="absolute inset-0 bg-cover bg-center"
               style={{ backgroundImage: `url('${config.heroImage}')` }}
             />
-            <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-end gap-2 z-10">
+            <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-3 py-2 flex items-center justify-between z-10">
+              {/* Mobile Map/Form Toggle */}
+              <Button
+                variant={showMobileMap ? "default" : "outline"}
+                size="sm"
+                className={cn("gap-1 text-xs", showMobileMap && "bg-[#FF385C]")}
+                onClick={() => setShowMobileMap(!showMobileMap)}
+                data-testid="button-toggle-view-mobile"
+              >
+                {showMobileMap ? (
+                  <>
+                    <SlidersHorizontal className="w-3 h-3" />
+                    Form
+                  </>
+                ) : (
+                  <>
+                    <MapPin className="w-3 h-3" />
+                    Map
+                  </>
+                )}
+              </Button>
+              <div className="flex items-center gap-2">
               <Link href="/credits">
                 <Button variant="outline" size="sm" className="gap-1 text-xs">
                   <Coins className="w-3 h-3 text-amber-500" />
@@ -2872,11 +2894,56 @@ export default function ExperienceTemplatePage() {
                 )}
                 {creatingComparison ? "..." : "Generate"}
               </Button>
+              </div>
             </div>
           </div>
 
-          {/* Mobile Trip Details Card */}
-          <Card className="bg-white dark:bg-gray-800 rounded-xl shadow-md border p-4 w-full max-w-md mx-auto mt-[-80px] z-20 relative">
+          {/* Mobile Map View (Full Screen when toggle active) */}
+          {showMobileMap && (
+            <div className="flex-1 relative" style={{ height: 'calc(100vh - 48px)' }}>
+              <ExperienceMap
+                destination={destination}
+                cart={cart.map(item => ({
+                  id: item.id,
+                  name: item.name,
+                  type: item.type,
+                  price: item.price,
+                  quantity: 1,
+                  provider: "Platform Provider"
+                }))}
+                onRemoveFromCart={removeFromCart}
+                height="100%"
+                activityLocations={activityLocations}
+                hotelLocation={hotelLocation}
+                transitRoutes={transitRoutes}
+                highlightedActivityId={highlightedActivityId}
+              />
+              {/* Cart summary floating on map */}
+              {cart.length > 0 && (
+                <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-lg p-3 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium">{cart.length} items</span>
+                    <span className="text-lg font-bold ml-2">${cartTotal}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={createComparison}
+                    disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
+                    className="bg-[#FF385C]"
+                  >
+                    {creatingComparison ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+                    Generate
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mobile Trip Details Card - Hidden when map is shown */}
+          <Card className={cn(
+            "bg-white dark:bg-gray-800 rounded-xl shadow-md border p-4 w-full max-w-md mx-auto mt-[-80px] z-20 relative",
+            showMobileMap && "hidden"
+          )}>
             <CardContent className="p-0">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold">{experienceType.name} Details</h2>
@@ -2930,7 +2997,7 @@ export default function ExperienceTemplatePage() {
           </Card>
 
           {/* Mobile Mode Toggle for Wedding */}
-          {slug === "wedding" && config.modes && (
+          {slug === "wedding" && config.modes && !showMobileMap && (
             <div className="flex items-center justify-center gap-2 py-2 border-b bg-white dark:bg-gray-800">
               <Button
                 variant={weddingMode === "planning" ? "default" : "outline"}
@@ -2958,7 +3025,10 @@ export default function ExperienceTemplatePage() {
           )}
 
           {/* Mobile Tabs */}
-          <div className="bg-white dark:bg-gray-800 border-b mt-4 px-2 overflow-x-auto">
+          <div className={cn(
+            "bg-white dark:bg-gray-800 border-b mt-4 px-2 overflow-x-auto",
+            showMobileMap && "hidden"
+          )}>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="h-auto bg-transparent p-0 gap-0 flex-nowrap">
                 {effectiveTabs.map((tab) => (
@@ -2975,7 +3045,7 @@ export default function ExperienceTemplatePage() {
           </div>
 
           {/* Mobile Content */}
-          <div className="flex-1 p-4 pb-20">
+          <div className={cn("flex-1 p-4 pb-20", showMobileMap && "hidden")}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {servicesLoading ? (
                   [1, 2, 3, 4].map((i) => (
@@ -3019,8 +3089,8 @@ export default function ExperienceTemplatePage() {
           </div>
         </div>
 
-        {/* Mobile Map Collapsible */}
-        <div className="lg:hidden">
+        {/* Mobile Map Collapsible - hidden when full map is shown */}
+        <div className={cn("lg:hidden", showMobileMap && "hidden")}>
           <Collapsible>
             <div className="sticky bottom-0 bg-white dark:bg-gray-800 border-t shadow-lg z-40">
               <CollapsibleTrigger asChild>

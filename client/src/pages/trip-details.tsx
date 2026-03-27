@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
 import { useParams, Link } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package } from "lucide-react";
@@ -71,6 +72,7 @@ export default function TripDetails() {
   const generateItinerary = useGenerateItinerary();
   const { toast } = useToast();
   const { user } = useAuth();
+  const [showFullItinerary, setShowFullItinerary] = useState(false);
 
   const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
     queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
@@ -217,7 +219,7 @@ export default function TripDetails() {
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
                   {/* Sample Itinerary Timeline */}
                   <div className="space-y-8">
-                    {sampleItinerary.slice(0, Math.min(duration, 3)).map((day, dayIndex) => (
+                    {sampleItinerary.slice(0, showFullItinerary ? duration : Math.min(duration, 3)).map((day, dayIndex) => (
                       <motion.div
                         key={day.day}
                         initial={{ opacity: 0, y: 20 }}
@@ -256,13 +258,28 @@ export default function TripDetails() {
                     ))}
                   </div>
 
-                  {duration > 3 && (
+                  {duration > 3 && !showFullItinerary && (
                     <div className="text-center py-6 border-t border-border">
                       <p className="text-muted-foreground mb-4">
                         + {duration - 3} more days of activities
                       </p>
-                      <Button variant="outline" data-testid="button-view-full">
+                      <Button 
+                        variant="outline" 
+                        data-testid="button-view-full"
+                        onClick={() => setShowFullItinerary(true)}
+                      >
                         View Full Itinerary
+                      </Button>
+                    </div>
+                  )}
+                  {showFullItinerary && duration > 3 && (
+                    <div className="text-center py-6 border-t border-border">
+                      <Button 
+                        variant="ghost" 
+                        data-testid="button-collapse"
+                        onClick={() => setShowFullItinerary(false)}
+                      >
+                        Show Less
                       </Button>
                     </div>
                   )}
