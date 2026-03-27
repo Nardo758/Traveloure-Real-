@@ -7,6 +7,8 @@ import React, { useState } from 'react';
 import { CreditCard, UserCheck, Bookmark, Share2, Clock, DollarSign, Eye, CheckCircle, Star, MoreVertical, ArrowLeft } from 'lucide-react';
 import StripeCheckout from './StripeCheckout';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { queryClient } from '@/lib/queryClient';
 import {
   Dialog,
   DialogContent,
@@ -189,6 +191,8 @@ export default function VariantActionButtons({
     setExpertServiceType('review');
   };
 
+  const { toast } = useToast();
+
   // Handle Save for Later
   const handleSave = async () => {
     setIsSaving(true);
@@ -196,8 +200,8 @@ export default function VariantActionButtons({
       const response = await fetch('/api/saved-trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          userId,
           variantId: variant.id,
           comparisonId: comparison.id,
           notes: saveNotes,
@@ -206,12 +210,20 @@ export default function VariantActionButtons({
 
       if (!response.ok) throw new Error('Failed to save trip');
 
-      alert('Trip saved! Check your dashboard to view saved trips.');
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-trips"] });
+      toast({
+        title: "Trip saved!",
+        description: "View your saved trips on your dashboard.",
+      });
       setShowSaveModal(false);
       setSaveNotes('');
     } catch (error) {
       console.error('Save error:', error);
-      alert('Failed to save trip. Please try again.');
+      toast({
+        variant: "destructive",
+        title: "Failed to save trip",
+        description: "Please try again.",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -548,6 +560,7 @@ export default function VariantActionButtons({
 
 // Separate component for the 3-dot options menu (to be placed in card header)
 export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptionsMenuProps) {
+  const { toast } = useToast();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -562,8 +575,8 @@ export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptio
       const response = await fetch('/api/saved-trips', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
-          userId,
           variantId: variant.id,
           comparisonId: comparison.id,
           notes: saveNotes,
@@ -572,12 +585,20 @@ export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptio
 
       if (!response.ok) throw new Error('Failed to save trip');
 
-      alert('Trip saved! Check your dashboard to view saved trips.');
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-trips"] });
+      toast({
+        title: "Trip saved!",
+        description: "View your saved trips on your dashboard.",
+      });
       setShowSaveModal(false);
       setSaveNotes('');
     } catch (error) {
       console.error('Save error:', error);
-      alert('Failed to save trip. Please try again.');
+      toast({
+        variant: "destructive",
+        title: "Failed to save trip",
+        description: "Please try again.",
+      });
     } finally {
       setIsSaving(false);
     }
