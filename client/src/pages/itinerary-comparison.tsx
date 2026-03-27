@@ -304,6 +304,72 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
   );
 }
 
+function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destination?: string }) {
+  const { toast } = useToast();
+
+  const openInMaps = () => {
+    // Collect unique locations from items, filtering out empty ones
+    const locations = items
+      .map(item => item.location)
+      .filter((loc): loc is string => !!loc && loc.trim() !== "")
+      .filter((loc, index, self) => self.indexOf(loc) === index); // unique
+
+    if (locations.length === 0) {
+      toast({ 
+        title: "No locations found", 
+        description: "This itinerary doesn't have specific locations to show on the map.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    
+    if (locations.length === 1) {
+      // Single location - simple search
+      const query = encodeURIComponent(locations[0]);
+      if (isIOS) {
+        window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
+      } else {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+      }
+    } else {
+      // Multiple locations - create directions with waypoints
+      // Google Maps format: origin -> waypoints -> destination
+      const origin = encodeURIComponent(locations[0]);
+      const dest = encodeURIComponent(locations[locations.length - 1]);
+      const waypoints = locations.slice(1, -1).map(loc => encodeURIComponent(loc)).join("|");
+      
+      if (isIOS) {
+        // Apple Maps doesn't support multiple waypoints well, use Google Maps URL
+        const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
+        window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
+      } else {
+        const waypointParam = waypoints ? `&waypoints=${waypoints}` : "";
+        window.open(`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}${waypointParam}&travelmode=driving`, "_blank");
+      }
+    }
+    
+    toast({ 
+      title: "Opening Maps", 
+      description: `Showing ${locations.length} location${locations.length > 1 ? 's' : ''}`
+    });
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={(e) => { e.stopPropagation(); openInMaps(); }}
+      className="flex-1 gap-2 text-muted-foreground hover:text-foreground"
+      data-testid="button-open-in-maps"
+    >
+      <MapPin className="h-4 w-4" />
+      Open in Maps
+    </Button>
+  );
+}
+
 export default function ItineraryComparisonPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isLoading: authLoading } = useAuth();
@@ -925,7 +991,10 @@ export default function ItineraryComparisonPage() {
                       userId={userId}
                       userEmail={userEmail}
                     />
-                    <ShareVariantButton variantId={userVariant.id} />
+                    <div className="flex w-full gap-2">
+                      <ShareVariantButton variantId={userVariant.id} />
+                      <OpenInMapsButton items={userVariant.items} destination={data.comparison.destination} />
+                    </div>
                   </CardFooter>
                 </Card>
               )}
@@ -1171,7 +1240,10 @@ export default function ItineraryComparisonPage() {
                       userId={userId}
                       userEmail={userEmail}
                     />
-                    <ShareVariantButton variantId={variant.id} />
+                    <div className="flex w-full gap-2">
+                      <ShareVariantButton variantId={variant.id} />
+                      <OpenInMapsButton items={variant.items} destination={data.comparison.destination} />
+                    </div>
                   </CardFooter>
                 </Card>
               ))}

@@ -79,6 +79,22 @@ export default function TripDetails() {
     enabled: !!trip?.destination,
   });
 
+  // Open destination in maps
+  const openInMaps = () => {
+    if (!trip?.destination) return;
+    
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const query = encodeURIComponent(trip.destination);
+    
+    if (isIOS) {
+      window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
+    } else {
+      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
+    }
+    
+    toast({ title: "Opening Maps", description: `Showing ${trip.destination}` });
+  };
+
   const handleAddToCart = (serviceId: string) => {
     if (!user) {
       toast({ 
@@ -151,6 +167,19 @@ export default function TripDetails() {
           </Link>
         </div>
 
+        {/* Open in Maps Button (top right) */}
+        <div className="absolute top-4 right-4">
+          <Button 
+            variant="outline" 
+            className="bg-white/10 backdrop-blur-md border-white/20 text-white hover:bg-white/20"
+            onClick={openInMaps}
+            data-testid="button-open-maps-mobile"
+          >
+            <MapPin className="w-4 h-4 md:mr-2" />
+            <span className="hidden md:inline">Open in Maps</span>
+          </Button>
+        </div>
+
         {/* Trip Info */}
         <div className="absolute bottom-0 left-0 right-0 container mx-auto px-4 pb-8">
           <div className="max-w-4xl">
@@ -199,19 +228,28 @@ export default function TripDetails() {
                     </TabsTrigger>
                   </TabsList>
 
-                  <Button 
-                    onClick={() => generateItinerary.mutate(trip.id)}
-                    disabled={generateItinerary.isPending}
-                    className="hidden md:flex"
-                    data-testid="button-regenerate"
-                  >
-                    {generateItinerary.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Sparkles className="w-4 h-4 mr-2" />
-                    )}
-                    Regenerate Plan
-                  </Button>
+                  <div className="hidden md:flex gap-2">
+                    <Button 
+                      variant="outline"
+                      onClick={openInMaps}
+                      data-testid="button-open-maps"
+                    >
+                      <MapPin className="w-4 h-4 mr-2" />
+                      Open in Maps
+                    </Button>
+                    <Button 
+                      onClick={() => generateItinerary.mutate(trip.id)}
+                      disabled={generateItinerary.isPending}
+                      data-testid="button-regenerate"
+                    >
+                      {generateItinerary.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 mr-2" />
+                      )}
+                      Regenerate Plan
+                    </Button>
+                  </div>
                 </div>
               </div>
 
