@@ -46,6 +46,7 @@ import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
 import { TransportSection } from "@/components/plancard/TransportSection";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { TripLogisticsDashboard } from "@/components/logistics";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
