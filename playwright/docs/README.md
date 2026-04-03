@@ -1,6 +1,6 @@
 # Traveloure E2E Test Suite
 
-Complete end-to-end testing framework for the Traveloure travel marketplace platform covering all 45 test accounts across 8 testing phases.
+Complete end-to-end testing framework for the Traveloure travel marketplace platform covering all 57 test accounts across 8 testing phases.
 
 ## Quick Start
 
@@ -46,7 +46,7 @@ BASE_URL=http://your-url.com npm run test:e2e
 ```
 playwright/
 ├── fixtures/
-│   └── test-accounts.ts          # All 45+ test account credentials
+│   └── test-accounts.ts          # All 57 test account credentials
 ├── utils/
 │   ├── auth.ts                   # Login/logout helpers
 │   ├── navigation.ts             # Route navigation helpers
