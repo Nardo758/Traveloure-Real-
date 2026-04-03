@@ -259,7 +259,7 @@ export default function EnhancedPlanningModal({
               Tell us about your trip and we'll create personalized itineraries
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition" data-testid="button-close-planning-modal">
             <X className="w-6 h-6" />
           </button>
         </div>
@@ -301,10 +301,12 @@ export default function EnhancedPlanningModal({
                   onKeyPress={(e) => e.key === 'Enter' && handleAddDestination()}
                   placeholder="City, Country (e.g., Paris, France)"
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  data-testid="input-destination"
                 />
                 <button
                   onClick={handleAddDestination}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                  data-testid="button-add-destination"
                 >
                   Add
                 </button>
@@ -329,6 +331,7 @@ export default function EnhancedPlanningModal({
                 onChange={(e) => setStartDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                data-testid="input-start-date"
               />
               {errors.startDate && (
                 <p className="text-red-500 text-sm mt-1">{errors.startDate}</p>
@@ -346,6 +349,7 @@ export default function EnhancedPlanningModal({
                 onChange={(e) => setEndDate(e.target.value)}
                 min={startDate || new Date().toISOString().split('T')[0]}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                data-testid="input-end-date"
               />
               {errors.endDate && (
                 <p className="text-red-500 text-sm mt-1">{errors.endDate}</p>
@@ -376,6 +380,7 @@ export default function EnhancedPlanningModal({
                       ? 'border-purple-600 bg-purple-50 text-purple-900'
                       : 'border-gray-200 hover:border-purple-300'
                   }`}
+                  data-testid={`button-experience-${type.value}`}
                 >
                   <div className="text-2xl mb-1">{type.emoji}</div>
                   <div className="font-semibold text-sm">{type.label}</div>
@@ -395,13 +400,15 @@ export default function EnhancedPlanningModal({
               <button
                 onClick={() => setTravelers(Math.max(1, travelers - 1))}
                 className="w-10 h-10 rounded-full border-2 border-gray-300 hover:border-purple-600 transition flex items-center justify-center text-xl font-bold"
+                data-testid="button-travelers-decrease"
               >
                 −
               </button>
-              <span className="text-2xl font-semibold w-12 text-center">{travelers}</span>
+              <span className="text-2xl font-semibold w-12 text-center" data-testid="text-travelers-count">{travelers}</span>
               <button
                 onClick={() => setTravelers(Math.min(50, travelers + 1))}
                 className="w-10 h-10 rounded-full border-2 border-gray-300 hover:border-purple-600 transition flex items-center justify-center text-xl font-bold"
+                data-testid="button-travelers-increase"
               >
                 +
               </button>
@@ -413,6 +420,7 @@ export default function EnhancedPlanningModal({
             <button
               onClick={() => setShowPreferences(!showPreferences)}
               className="flex items-center justify-between w-full text-left group"
+              data-testid="button-toggle-preferences"
             >
               <div className="flex items-center gap-2">
                 <Settings className="w-5 h-5 text-gray-600" />
@@ -443,6 +451,7 @@ export default function EnhancedPlanningModal({
                             ? 'border-purple-600 bg-purple-50'
                             : 'border-gray-200 hover:border-purple-300'
                         }`}
+                        data-testid={`button-pace-${pace.value}`}
                       >
                         <span className="text-2xl">{pace.emoji}</span>
                         <div className="flex-1">
@@ -466,6 +475,7 @@ export default function EnhancedPlanningModal({
                     onChange={(e) => setMustSeeAttractions(e.target.value)}
                     placeholder="e.g., Eiffel Tower, Louvre, Notre-Dame"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    data-testid="input-must-see"
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Separate multiple attractions with commas
@@ -477,6 +487,7 @@ export default function EnhancedPlanningModal({
                   <button
                     onClick={() => setShowInterests(!showInterests)}
                     className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2 hover:text-purple-600 transition"
+                    data-testid="button-toggle-interests"
                   >
                     <Heart className="w-4 h-4" />
                     Interests & Activities
@@ -498,6 +509,7 @@ export default function EnhancedPlanningModal({
                               ? 'border-purple-600 bg-purple-50 text-purple-900'
                               : 'border-gray-200 hover:border-purple-300'
                           }`}
+                          data-testid={`button-interest-${interest.value}`}
                         >
                           <span>{interest.emoji}</span>
                           <span>{interest.label}</span>
@@ -512,6 +524,7 @@ export default function EnhancedPlanningModal({
                   <button
                     onClick={() => setShowBudget(!showBudget)}
                     className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2 hover:text-purple-600 transition"
+                    data-testid="button-toggle-budget"
                   >
                     <DollarSign className="w-4 h-4" />
                     Budget Preference
@@ -533,6 +546,7 @@ export default function EnhancedPlanningModal({
                               ? 'border-purple-600 bg-purple-50'
                               : 'border-gray-200 hover:border-purple-300'
                           }`}
+                          data-testid={`button-budget-${tier.value}`}
                         >
                           <div className="flex items-center justify-between">
                             <div>
@@ -552,6 +566,7 @@ export default function EnhancedPlanningModal({
                   <button
                     onClick={() => setShowDietary(!showDietary)}
                     className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2 hover:text-purple-600 transition"
+                    data-testid="button-toggle-dietary"
                   >
                     <Utensils className="w-4 h-4" />
                     Dietary Restrictions
@@ -573,6 +588,7 @@ export default function EnhancedPlanningModal({
                               ? 'border-purple-600 bg-purple-50 text-purple-900'
                               : 'border-gray-200 hover:border-purple-300'
                           }`}
+                          data-testid={`button-dietary-${option.value}`}
                         >
                           {option.label}
                         </button>
@@ -586,6 +602,7 @@ export default function EnhancedPlanningModal({
                   <button
                     onClick={() => setShowMobility(!showMobility)}
                     className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-2 hover:text-purple-600 transition"
+                    data-testid="button-toggle-mobility"
                   >
                     <Accessibility className="w-4 h-4" />
                     Accessibility Needs
@@ -607,6 +624,7 @@ export default function EnhancedPlanningModal({
                               ? 'border-purple-600 bg-purple-50 text-purple-900'
                               : 'border-gray-200 hover:border-purple-300'
                           }`}
+                          data-testid={`button-mobility-${option.value}`}
                         >
                           {option.label}
                         </button>
@@ -630,6 +648,7 @@ export default function EnhancedPlanningModal({
               maxLength={500}
               rows={3}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+              data-testid="textarea-special-requests"
             />
             <p className="text-xs text-gray-500 mt-1">{specialRequests.length}/500 characters</p>
           </div>
@@ -668,6 +687,7 @@ export default function EnhancedPlanningModal({
             onClick={onClose}
             className="px-6 py-2 text-gray-700 hover:text-gray-900 transition font-medium"
             disabled={isLoading}
+            data-testid="button-cancel-planning"
           >
             Cancel
           </button>
@@ -680,6 +700,7 @@ export default function EnhancedPlanningModal({
                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                 : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
             }`}
+            data-testid="button-generate-itinerary"
           >
             {isLoading ? (
               <>
