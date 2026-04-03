@@ -156,6 +156,7 @@ export function SignInModal({
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     required
+                    data-testid="input-first-name"
                   />
                 </div>
               </div>
@@ -170,6 +171,7 @@ export function SignInModal({
                     value={formData.lastName}
                     onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                     required
+                    data-testid="input-last-name"
                   />
                 </div>
               </div>
@@ -188,6 +190,7 @@ export function SignInModal({
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
+                data-testid="input-email"
               />
             </div>
           </div>
@@ -224,6 +227,7 @@ export function SignInModal({
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
                   minLength={mode === "signup" ? 8 : 1}
+                  data-testid="input-password"
                 />
               </div>
               {mode === "signin" && (
