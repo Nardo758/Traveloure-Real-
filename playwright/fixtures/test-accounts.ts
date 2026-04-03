@@ -417,7 +417,87 @@ export const testAccounts = {
   ] as TestAccount[],
 
   // ======================
-  // 5 TEST TRAVELER ACCOUNTS
+  // NEW YORK MARKET (10 ACCOUNTS)
+  // ======================
+  newyork: [
+    // Local Experts
+    {
+      email: 'nyc-art@traveloure.test',
+      password: PASSWORD,
+      role: 'expert',
+      market: 'newyork',
+      name: 'Marcus Chen',
+      specialty: 'Art & Gallery',
+    },
+    {
+      email: 'nyc-food@traveloure.test',
+      password: PASSWORD,
+      role: 'expert',
+      market: 'newyork',
+      name: 'Sofia Ricci',
+      specialty: 'Food & Culinary',
+    },
+    {
+      email: 'nyc-nightlife@traveloure.test',
+      password: PASSWORD,
+      role: 'expert',
+      market: 'newyork',
+      name: 'Jordan Williams',
+      specialty: 'Nightlife & Entertainment',
+    },
+    {
+      email: 'nyc-architecture@traveloure.test',
+      password: PASSWORD,
+      role: 'expert',
+      market: 'newyork',
+      name: 'Emma Goldstein',
+      specialty: 'Architecture & History',
+    },
+    {
+      email: 'nyc-fashion@traveloure.test',
+      password: PASSWORD,
+      role: 'expert',
+      market: 'newyork',
+      name: 'Aisha Johnson',
+      specialty: 'Fashion & Shopping',
+    },
+    // Service Providers
+    {
+      email: 'nyc-transport@traveloure.test',
+      password: PASSWORD,
+      role: 'provider',
+      market: 'newyork',
+      name: 'Tony Russo',
+      specialty: 'Transport',
+    },
+    {
+      email: 'nyc-photography@traveloure.test',
+      password: PASSWORD,
+      role: 'provider',
+      market: 'newyork',
+      name: 'David Kim',
+      specialty: 'Photography',
+    },
+    {
+      email: 'nyc-stays@traveloure.test',
+      password: PASSWORD,
+      role: 'provider',
+      market: 'newyork',
+      name: 'Sarah Miller',
+      specialty: 'Stays',
+    },
+    {
+      email: 'nyc-concierge@traveloure.test',
+      password: PASSWORD,
+      role: 'provider',
+      market: 'newyork',
+      name: 'Michael Torres',
+      specialty: 'Luxury Concierge',
+    },
+  ] as TestAccount[],
+
+  // ======================
+  // 6 TEST TRAVELER ACCOUNTS
   // ======================
   travelers: [
     {
@@ -455,6 +535,13 @@ export const testAccounts = {
       market: 'porto',
       name: 'Porto Traveler',
     },
+    {
+      email: 'test-traveler-nyc@traveloure.test',
+      password: PASSWORD,
+      role: 'traveler',
+      market: 'newyork',
+      name: 'NYC Traveler',
+    },
   ] as TestAccount[],
 };
 
@@ -469,6 +556,7 @@ export function getAllTestAccounts(): TestAccount[] {
     ...testAccounts.cartagena,
     ...testAccounts.jaipur,
     ...testAccounts.porto,
+    ...testAccounts.newyork,
     ...testAccounts.travelers,
   ];
 }

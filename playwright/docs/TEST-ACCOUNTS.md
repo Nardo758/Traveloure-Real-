@@ -130,7 +130,30 @@ Complete list of all 45+ test accounts for E2E testing.
 
 ---
 
-## Test Traveler Accounts (5)
+## NEW YORK Market (10 accounts)
+
+### New York Local Experts (5)
+
+| Email | Name | Specialty | Bio Focus | Services | Rate | Languages |
+|---|---|---|---|---|---|---|
+| `nyc-art@traveloure.test` | Marcus Chen | Art & Gallery | Contemporary art curator, Chelsea galleries, MoMA access | Chelsea Gallery Tour (3hr, $250), MoMA After-Hours (2hr, $400) | $75/hr | English, Mandarin |
+| `nyc-food@traveloure.test` | Sofia Ricci | Food & Culinary | James Beard winner, Brooklyn food scene, pizza expert | Brooklyn Pizza & Brewery (5hr, $175), Chinatown Walk (4hr, $150) | $65/hr | English, Italian, Spanish |
+| `nyc-nightlife@traveloure.test` | Jordan Williams | Nightlife & Entertainment | Former talent booker, VIP access, speakeasy expert | Speakeasy Secret Tour (4hr, $200), Rooftop & Nightclubs (6hr, $350) | $80/hr | English |
+| `nyc-architecture@traveloure.test` | Emma Goldstein | Architecture & History | Columbia PhD, Art Deco specialist, historic preservation | Art Deco Skyscrapers (3hr, $195), Brooklyn Bridge & DUMBO (3hr, $175) | $70/hr | English, German |
+| `nyc-fashion@traveloure.test` | Aisha Johnson | Fashion & Shopping | Former Vogue editor, celebrity stylist, sample sales | SoHo Personal Shopping (4hr, $400), Fifth Avenue Luxury (3hr, $500) | $100/hr | English, French |
+
+### New York Service Providers (4)
+
+| Email | Name | Specialty | Business | Services |
+|---|---|---|---|---|
+| `nyc-transport@traveloure.test` | Tony Russo | Transport | NYC Premier Transfers | Airport Transfer ($150), Hourly Chauffeur ($95/hr) |
+| `nyc-photography@traveloure.test` | David Kim | Photography | Manhattan Moments Photography | Central Park Portrait ($350/2hr), Skyline Engagement ($450) |
+| `nyc-stays@traveloure.test` | Sarah Miller | Stays | Urban Oasis Stays | Midtown Luxury Apartment ($350/night), SoHo Designer Loft ($425/night) |
+| `nyc-concierge@traveloure.test` | Michael Torres | Concierge | NYC Elite Concierge | Dining Reservations ($200), Broadway Package ($500) |
+
+---
+
+## Test Traveler Accounts (6)
 
 | Email | Market | Name | Trip Type |
 |---|---|---|---|
@@ -139,16 +162,17 @@ Complete list of all 45+ test accounts for E2E testing.
 | `test-traveler-cartagena@traveloure.test` | Cartagena | Cartagena Traveler | Proposal Trip (Sept 1-7, 2 guests, $5,000) |
 | `test-traveler-jaipur@traveloure.test` | Jaipur | Jaipur Traveler | Family Trip (Oct 10-17, 5 guests, ₹200,000) |
 | `test-traveler-porto@traveloure.test` | Porto | Porto Traveler | Digital Nomad (Nov 1-14, 1 guest, €2,000) |
+| `test-traveler-nyc@traveloure.test` | New York | NYC Traveler | Weekend Getaway (May 15-18, 2 guests, $3,500) |
 
 ---
 
 ## Account Totals
 
-- **Local Experts:** 21 accounts (5+4+4+4+4 across 5 markets)
-- **Service Providers:** 16 accounts (3+3+5+4+4 across 5 markets)
-- **Test Travelers:** 5 accounts (1 per market)
+- **Local Experts:** 26 accounts (5+4+4+4+4+5 across 6 markets)
+- **Service Providers:** 20 accounts (3+3+5+4+4+4 across 6 markets)
+- **Test Travelers:** 6 accounts (1 per market)
 - **Original/Special:** 5 accounts (Travel Expert, Local Expert, Event Planner, Provider, EA)
-- **Total:** 47 test accounts
+- **Total:** 57 test accounts
 
 ---
 
@@ -196,6 +220,7 @@ const totalCount = allAccounts.length; // 47
 | Cartagena | USD ($) | $20-50/hr for experts, services $25-$450 |
 | Jaipur | INR (₹) | ₹900-1200/hr for experts, services ₹1800-₹15000 |
 | Porto | EUR (€) | €22-28/hr for experts, services €25-€150 |
+| New York | USD ($) | $65-100/hr for experts, services $150-$500 |
 
 ---
 
