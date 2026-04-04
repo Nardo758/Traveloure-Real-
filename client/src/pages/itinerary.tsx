@@ -128,6 +128,7 @@ export default function ItineraryPage() {
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showChanges, setShowChanges] = useState(false);
+  const [synthLocalModes, setSynthLocalModes] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   interface TripTransportLeg {
@@ -767,89 +768,153 @@ export default function ItineraryPage() {
 
         {/* ===== TRANSPORT SECTION ===== */}
         <div className="pb-12 space-y-8">
-            {/* Editable legs section — shown only when legs have been generated */}
+            {/* Editable legs section */}
             {legsLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />
                 ))}
               </div>
-            ) : legsData?.legs?.length ? (
-              <div>
-                <div className="flex items-center gap-3 mb-5">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Transport Legs</h3>
-                  <Badge variant="secondary">{legsData.legs.length} leg{legsData.legs.length !== 1 ? "s" : ""}</Badge>
-                </div>
+            ) : (() => {
+              // DB-backed legs (real, saveable)
+              const hasRealLegs = (legsData?.legs?.length ?? 0) > 0;
 
-                {/* Summary row */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                  {[
-                    { label: "Legs", value: legsData.legs.length },
-                    { label: "Travel Time", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0) / 60)}h` },
-                    { label: "Est. Cost", value: `$${legsData.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0).toFixed(0)}` },
-                    { label: "Distance", value: `${Math.round(legsData.legs.reduce((s, l) => s + (l.distanceMeters || 0), 0) / 1000)} km` },
-                  ].map(stat => (
-                    <Card key={stat.label} className="bg-white dark:bg-gray-800">
-                      <CardContent className="p-3 flex flex-col items-center">
-                        <span className="text-xl font-bold text-[#FF385C]">{stat.value}</span>
-                        <span className="text-xs text-gray-500 mt-0.5">{stat.label}</span>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+              // Synthesized legs from itinerary data (preview only)
+              const synthLegsByDay: { dayNum: number; legs: ReturnType<typeof synthesizeTransportLegs> }[] = [];
+              if (!hasRealLegs && itinerary?.days?.length) {
+                itinerary.days.forEach((day: any, idx: number) => {
+                  const dayLegs = synthesizeTransportLegs(day.activities || []);
+                  if (dayLegs.length > 0) synthLegsByDay.push({ dayNum: idx + 1, legs: dayLegs });
+                });
+              }
 
-                {/* Legs grouped by day */}
-                {(() => {
-                  const byDay: Record<number, typeof legsData.legs> = {};
-                  legsData.legs.forEach(leg => {
-                    const day = (leg as any).dayNumber ?? 0;
-                    if (!byDay[day]) byDay[day] = [];
-                    byDay[day].push(leg);
-                  });
-                  return Object.keys(byDay).map(Number).sort((a, b) => a - b).map(dayNum => (
+              const hasSynthLegs = synthLegsByDay.length > 0;
+
+              if (!hasRealLegs && !hasSynthLegs) return null;
+
+              if (hasRealLegs) {
+                const byDay: Record<number, typeof legsData.legs> = {};
+                legsData!.legs.forEach(leg => {
+                  const day = (leg as any).dayNumber ?? 0;
+                  if (!byDay[day]) byDay[day] = [];
+                  byDay[day].push(leg);
+                });
+                return (
+                  <div>
+                    <div className="flex items-center gap-3 mb-5">
+                      <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Transport Legs</h3>
+                      <Badge variant="secondary">{legsData!.legs.length} leg{legsData!.legs.length !== 1 ? "s" : ""}</Badge>
+                    </div>
+
+                    {/* Summary row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                      {[
+                        { label: "Legs", value: legsData!.legs.length },
+                        { label: "Travel Time", value: `${Math.round(legsData!.legs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0) / 60)}h` },
+                        { label: "Est. Cost", value: `$${legsData!.legs.reduce((s, l) => s + (l.estimatedCostUsd || 0), 0).toFixed(0)}` },
+                        { label: "Distance", value: `${Math.round(legsData!.legs.reduce((s, l) => s + (l.distanceMeters || 0), 0) / 1000)} km` },
+                      ].map(stat => (
+                        <Card key={stat.label} className="bg-white dark:bg-gray-800">
+                          <CardContent className="p-3 flex flex-col items-center">
+                            <span className="text-xl font-bold text-[#FF385C]">{stat.value}</span>
+                            <span className="text-xs text-gray-500 mt-0.5">{stat.label}</span>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+
+                    {/* Legs grouped by day */}
+                    {Object.keys(byDay).map(Number).sort((a, b) => a - b).map(dayNum => (
+                      <div key={dayNum} className="mb-6">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="flex items-center justify-center w-7 h-7 rounded-full bg-[#FF385C] text-white text-xs font-bold flex-shrink-0">
+                            {dayNum === 0 ? "?" : dayNum}
+                          </div>
+                          <span className="text-sm font-semibold text-[#111827] dark:text-white">
+                            {dayNum === 0 ? "Unassigned" : `Day ${dayNum}`}
+                            {itinerary?.days?.[dayNum - 1]?.title ? ` — ${itinerary.days[dayNum - 1].title}` : ""}
+                          </span>
+                          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+                          <Badge variant="outline" className="text-xs">{byDay[dayNum].length} leg{byDay[dayNum].length !== 1 ? "s" : ""}</Badge>
+                        </div>
+                        <div className="space-y-3">
+                          {byDay[dayNum].map(leg => (
+                            <TransportLeg
+                              key={leg.id}
+                              leg={{
+                                id: leg.id,
+                                legOrder: leg.legOrder,
+                                fromName: leg.fromName,
+                                fromLat: leg.fromLat,
+                                fromLng: leg.fromLng,
+                                toName: leg.toName,
+                                toLat: leg.toLat,
+                                toLng: leg.toLng,
+                                distanceMeters: leg.distanceMeters,
+                                distanceDisplay: leg.distanceDisplay,
+                                recommendedMode: leg.recommendedMode,
+                                userSelectedMode: leg.userSelectedMode,
+                                estimatedDurationMinutes: leg.estimatedDurationMinutes,
+                                estimatedCostUsd: leg.estimatedCostUsd,
+                                alternativeModes: leg.alternativeModes ?? [],
+                              }}
+                              readOnly={false}
+                              onModeChangeSuccess={() => {}}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              }
+
+              // Synthesized preview legs
+              return (
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Transport Legs</h3>
+                    <Badge variant="outline" className="text-xs border-amber-400 text-amber-700 dark:text-amber-400">Preview</Badge>
+                  </div>
+
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-4 py-3 mb-5 text-sm text-amber-800 dark:text-amber-300">
+                    <span className="mt-0.5 text-base leading-none">🔍</span>
+                    <span>These are estimated legs based on your activities. Mode changes are saved locally for this session — generate a full transport plan to save preferences permanently.</span>
+                  </div>
+
+                  {synthLegsByDay.map(({ dayNum, legs }) => (
                     <div key={dayNum} className="mb-6">
                       <div className="flex items-center gap-3 mb-3">
                         <div className="flex items-center justify-center w-7 h-7 rounded-full bg-[#FF385C] text-white text-xs font-bold flex-shrink-0">
-                          {dayNum === 0 ? "?" : dayNum}
+                          {dayNum}
                         </div>
                         <span className="text-sm font-semibold text-[#111827] dark:text-white">
-                          {dayNum === 0 ? "Unassigned" : `Day ${dayNum}`}
+                          Day {dayNum}
                           {itinerary?.days?.[dayNum - 1]?.title ? ` — ${itinerary.days[dayNum - 1].title}` : ""}
                         </span>
                         <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-                        <Badge variant="outline" className="text-xs">{byDay[dayNum].length} leg{byDay[dayNum].length !== 1 ? "s" : ""}</Badge>
+                        <Badge variant="outline" className="text-xs">{legs.length} leg{legs.length !== 1 ? "s" : ""}</Badge>
                       </div>
                       <div className="space-y-3">
-                        {byDay[dayNum].map(leg => (
+                        {legs.map(leg => (
                           <TransportLeg
                             key={leg.id}
                             leg={{
-                              id: leg.id,
-                              legOrder: leg.legOrder,
-                              fromName: leg.fromName,
-                              fromLat: leg.fromLat,
-                              fromLng: leg.fromLng,
-                              toName: leg.toName,
-                              toLat: leg.toLat,
-                              toLng: leg.toLng,
-                              distanceMeters: leg.distanceMeters,
-                              distanceDisplay: leg.distanceDisplay,
-                              recommendedMode: leg.recommendedMode,
-                              userSelectedMode: leg.userSelectedMode,
-                              estimatedDurationMinutes: leg.estimatedDurationMinutes,
-                              estimatedCostUsd: leg.estimatedCostUsd,
-                              alternativeModes: leg.alternativeModes ?? [],
+                              ...leg,
+                              userSelectedMode: synthLocalModes[leg.id] ?? leg.userSelectedMode,
                             }}
-                            readOnly={false}
-                            onModeChangeSuccess={() => {}}
+                            previewOnly={true}
+                            onPreviewModeChange={(legId, mode) =>
+                              setSynthLocalModes(prev => ({ ...prev, [legId]: mode }))
+                            }
                           />
                         ))}
                       </div>
                     </div>
-                  ));
-                })()}
-              </div>
-            ) : null}
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Transport Hub — booking options (always visible, handles its own empty/loading state) */}
             <div>
