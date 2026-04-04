@@ -12,7 +12,10 @@ function getConversationId(userId1: string, userId2: string): string {
 }
 
 function parseConversationId(conversationId: string): { userId1: string; userId2: string } {
-  const [userId1, userId2] = conversationId.split("_");
+  const separatorIndex = conversationId.indexOf("_");
+  if (separatorIndex === -1) return { userId1: conversationId, userId2: "" };
+  const userId1 = conversationId.substring(0, separatorIndex);
+  const userId2 = conversationId.substring(separatorIndex + 1);
   return { userId1, userId2 };
 }
 
