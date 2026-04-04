@@ -8,8 +8,10 @@
  * - Per-day summary rows (no per-leg editing — that lives in each day's Transport tab)
  */
 
+import { useState } from "react";
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -24,10 +26,39 @@ import {
   Bike,
   Plane,
   ArrowRight,
+  MapPin,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
 import { TransportBookingCard } from "./TransportBookingCard";
-import { MultiDayPassCard } from "./MultiDayPassCard";
+import { MultiDayPassCard, type MultiDayPass } from "./MultiDayPassCard";
+
+const TRANSPORT_MODE_ICONS: Record<string, string> = {
+  walking: "🚶", walk: "🚶",
+  train: "🚆", rail: "🚆",
+  bus: "🚌",
+  ferry: "⛴️", boat: "⛴️",
+  taxi: "🚕",
+  rideshare: "🚗", car: "🚗", drive: "🚗",
+  flight: "✈️", plane: "✈️",
+  subway: "🚇", metro: "🚇",
+  transit: "🚌",
+  bicycle: "🚲", bike: "🚲",
+};
+
+const TRANSPORT_MODE_LABELS: Record<string, string> = {
+  walking: "Walk", walk: "Walk",
+  train: "Train", rail: "Train",
+  bus: "Bus",
+  ferry: "Ferry", boat: "Ferry",
+  taxi: "Taxi",
+  rideshare: "Rideshare", car: "Drive", drive: "Drive",
+  flight: "Flight", plane: "Flight",
+  subway: "Subway", metro: "Metro",
+  transit: "Transit",
+  bicycle: "Bicycle", bike: "Bicycle",
+};
 
 interface TransportHubProps {
   tripId: string;
@@ -107,7 +138,7 @@ interface TransportHubData {
   multiDayPasses: MultiDayPass[];
 }
 
-export function TransportHub({ tripId, destination = "", readOnly = false }: TransportHubProps) {
+export function TransportHub({ tripId, destination = "", readOnly = false, onNavigateToDay }: TransportHubProps) {
   const [activeDay, setActiveDay] = useState<number | null>(null);
 
   // Fetch transport hub data
@@ -270,6 +301,13 @@ export function TransportHub({ tripId, destination = "", readOnly = false }: Tra
   const { summary, days, multiDayPasses } = data;
   const activeDayData = days.find(d => d.dayNumber === activeDay);
 
+  const { low, high } = summary.estimatedCostRange;
+  const costDisplay = low === high ? `$${low}` : `$${low}–$${high}`;
+  const totalMins = summary.totalTravelMinutes;
+  const travelTimeDisplay = totalMins >= 60
+    ? `${Math.floor(totalMins / 60)}h ${totalMins % 60}m`
+    : `${totalMins}m`;
+
   return (
     <div className="space-y-6">
       {/* ── Summary stat bar ── */}
@@ -417,7 +455,7 @@ function SummaryCard({
   description,
   color,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: string;
   description?: string;

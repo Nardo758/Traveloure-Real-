@@ -3,8 +3,8 @@ import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from "@vis.gl/re
 import { Polyline } from "@/components/ui/map-polyline";
 import { cn } from "@/lib/utils";
 import { MapPin } from "lucide-react";
-import type { ItineraryActivity, ItineraryDay, ActivityDiff } from "./ItineraryCard";
-import type { InlineTransportLegData, TransportDiff } from "./InlineTransportSelector";
+import type { ItineraryActivity, ItineraryDay, ActivityDiff, TransportDiff } from "./ItineraryCard";
+import type { InlineTransportLegData } from "./InlineTransportSelector";
 
 const CATEGORY_COLORS: Record<string, string> = {
   food: "#F97316",
