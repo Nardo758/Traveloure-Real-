@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useTrip, useGenerateItinerary } from "@/hooks/use-trips";
+import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useParams, Link } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
@@ -15,40 +15,18 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const sampleItinerary = [
-  {
-    day: 1,
-    title: "Arrival & Exploration",
-    activities: [
-      { time: "10:00 AM", activity: "Arrive and check into hotel", icon: Plane, type: "travel" },
-      { time: "12:00 PM", activity: "Lunch at local restaurant", icon: Utensils, type: "food" },
-      { time: "2:00 PM", activity: "Explore the city center", icon: Camera, type: "sightseeing" },
-      { time: "7:00 PM", activity: "Dinner and rest", icon: Bed, type: "rest" },
-    ]
-  },
-  {
-    day: 2,
-    title: "Cultural Discovery",
-    activities: [
-      { time: "8:00 AM", activity: "Breakfast at hotel", icon: Coffee, type: "food" },
-      { time: "10:00 AM", activity: "Visit historical sites", icon: Camera, type: "sightseeing" },
-      { time: "1:00 PM", activity: "Traditional lunch experience", icon: Utensils, type: "food" },
-      { time: "3:00 PM", activity: "Museum tour", icon: Camera, type: "sightseeing" },
-      { time: "7:00 PM", activity: "Evening entertainment", icon: Coffee, type: "entertainment" },
-    ]
-  },
-  {
-    day: 3,
-    title: "Adventure Day",
-    activities: [
-      { time: "7:00 AM", activity: "Early breakfast", icon: Coffee, type: "food" },
-      { time: "9:00 AM", activity: "Outdoor adventure activity", icon: Camera, type: "adventure" },
-      { time: "1:00 PM", activity: "Scenic lunch spot", icon: Utensils, type: "food" },
-      { time: "4:00 PM", activity: "Shopping and souvenirs", icon: Coffee, type: "shopping" },
-      { time: "8:00 PM", activity: "Farewell dinner", icon: Utensils, type: "food" },
-    ]
+function getActivityIcon(type: string) {
+  switch (type?.toLowerCase()) {
+    case "food": return Utensils;
+    case "travel": return Plane;
+    case "rest": return Bed;
+    case "adventure": return Camera;
+    case "shopping": return ShoppingCart;
+    case "culture":
+    case "sightseeing": return Camera;
+    default: return Coffee;
   }
-];
+}
 
 interface ProviderService {
   id: string;
@@ -70,6 +48,7 @@ export default function TripDetails() {
   const { id } = useParams();
   const { data: trip, isLoading } = useTrip(id || "");
   const generateItinerary = useGenerateItinerary();
+  const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
   const { user } = useAuth();
   const [showFullItinerary, setShowFullItinerary] = useState(false);
@@ -255,71 +234,130 @@ export default function TripDetails() {
 
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
-                  {/* Sample Itinerary Timeline */}
-                  <div className="space-y-8">
-                    {sampleItinerary.slice(0, showFullItinerary ? duration : Math.min(duration, 3)).map((day, dayIndex) => (
-                      <motion.div
-                        key={day.day}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: dayIndex * 0.1 }}
-                      >
-                        <div className="flex items-center gap-4 mb-4">
-                          <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center font-bold">
-                            {day.day}
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-lg text-slate-900 dark:text-white">Day {day.day}</h3>
-                            <p className="text-muted-foreground">{day.title}</p>
-                          </div>
-                        </div>
-
-                        <div className="ml-6 pl-6 border-l-2 border-border space-y-4">
-                          {day.activities.map((activity, actIndex) => (
-                            <div 
-                              key={actIndex}
-                              className="relative flex items-start gap-4 p-4 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="absolute -left-[33px] w-4 h-4 rounded-full bg-primary border-4 border-background" />
-                              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                                <activity.icon className="w-5 h-5 text-primary" />
-                              </div>
-                              <div className="flex-1">
-                                <div className="text-xs text-muted-foreground mb-1">{activity.time}</div>
-                                <p className="font-medium text-slate-900 dark:text-white">{activity.activity}</p>
-                              </div>
-                              <ChevronRight className="w-5 h-5 text-muted-foreground" />
+                  {/* Itinerary Timeline */}
+                  {(itineraryLoading || generateItinerary.isPending) ? (
+                    <div className="space-y-6">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="space-y-3">
+                          <div className="flex items-center gap-4">
+                            <Skeleton className="w-12 h-12 rounded-full" />
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-24" />
+                              <Skeleton className="h-3 w-36" />
                             </div>
-                          ))}
+                          </div>
+                          <div className="ml-6 pl-6 border-l-2 border-border space-y-3">
+                            {[1, 2, 3].map((j) => (
+                              <Skeleton key={j} className="h-16 rounded-xl" />
+                            ))}
+                          </div>
                         </div>
-                      </motion.div>
-                    ))}
-                  </div>
-
-                  {duration > 3 && !showFullItinerary && (
-                    <div className="text-center py-6 border-t border-border">
-                      <p className="text-muted-foreground mb-4">
-                        + {duration - 3} more days of activities
+                      ))}
+                    </div>
+                  ) : !generatedItinerary ? (
+                    <div className="text-center py-16">
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Sparkles className="w-8 h-8 text-primary" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Itinerary Yet</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        Generate a personalized day-by-day plan for {trip.destination} using AI.
                       </p>
-                      <Button 
-                        variant="outline" 
-                        data-testid="button-view-full"
-                        onClick={() => setShowFullItinerary(true)}
+                      <Button
+                        onClick={() => generateItinerary.mutate(trip.id)}
+                        disabled={generateItinerary.isPending}
+                        data-testid="button-generate-itinerary"
                       >
-                        View Full Itinerary
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate My Itinerary
                       </Button>
                     </div>
-                  )}
-                  {showFullItinerary && duration > 3 && (
-                    <div className="text-center py-6 border-t border-border">
-                      <Button 
-                        variant="ghost" 
-                        data-testid="button-collapse"
-                        onClick={() => setShowFullItinerary(false)}
-                      >
-                        Show Less
-                      </Button>
-                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-8">
+                        {((generatedItinerary.itineraryData as any)?.days ?? [])
+                          .slice(0, showFullItinerary ? duration : Math.min(duration, 3))
+                          .map((day: any, dayIndex: number) => (
+                              <motion.div
+                                key={day.day}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: dayIndex * 0.1 }}
+                              >
+                                <div className="flex items-center gap-4 mb-4">
+                                  <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center font-bold">
+                                    {day.day}
+                                  </div>
+                                  <div>
+                                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">Day {day.day}</h3>
+                                    <p className="text-muted-foreground">{day.title}</p>
+                                  </div>
+                                </div>
+
+                                <div className="ml-6 pl-6 border-l-2 border-border space-y-4">
+                                  {(day.activities ?? []).map((activity: any, actIndex: number) => {
+                                    const ActivityIcon = getActivityIcon(activity.type);
+                                    return (
+                                      <div
+                                        key={actIndex}
+                                        className="relative flex items-start gap-4 p-4 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
+                                        data-testid={`activity-item-${day.day}-${actIndex}`}
+                                      >
+                                        <div className="absolute -left-[33px] w-4 h-4 rounded-full bg-primary border-4 border-background" />
+                                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                                          <ActivityIcon className="w-5 h-5 text-primary" />
+                                        </div>
+                                        <div className="flex-1">
+                                          <div className="text-xs text-muted-foreground mb-1">{activity.time}</div>
+                                          <p className="font-medium text-slate-900 dark:text-white">{activity.title}</p>
+                                          {activity.description && (
+                                            <p className="text-sm text-muted-foreground mt-1">{activity.description}</p>
+                                          )}
+                                          {activity.locationName && (
+                                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                              <MapPin className="w-3 h-3" />
+                                              {activity.locationName}
+                                            </div>
+                                          )}
+                                          {activity.estimatedCost != null && (
+                                            <div className="text-xs text-primary mt-1">~${activity.estimatedCost}</div>
+                                          )}
+                                        </div>
+                                        <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </motion.div>
+                          ))}
+                      </div>
+
+                      {duration > 3 && !showFullItinerary && (
+                        <div className="text-center py-6 border-t border-border">
+                          <p className="text-muted-foreground mb-4">
+                            + {duration - 3} more days of activities
+                          </p>
+                          <Button
+                            variant="outline"
+                            data-testid="button-view-full"
+                            onClick={() => setShowFullItinerary(true)}
+                          >
+                            View Full Itinerary
+                          </Button>
+                        </div>
+                      )}
+                      {showFullItinerary && duration > 3 && (
+                        <div className="text-center py-6 border-t border-border">
+                          <Button
+                            variant="ghost"
+                            data-testid="button-collapse"
+                            onClick={() => setShowFullItinerary(false)}
+                          >
+                            Show Less
+                          </Button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </TabsContent>
 
