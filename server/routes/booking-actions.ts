@@ -218,7 +218,8 @@ router.get('/saved-trips', isAuthenticated, async (req, res) => {
         ic.destination,
         ic.start_date,
         ic.end_date,
-        ic.travelers
+        ic.travelers,
+        ic.trip_id
       FROM saved_trips st
       LEFT JOIN itinerary_variants iv ON iv.id = st.variant_id
       LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
