@@ -719,9 +719,10 @@ export default function ItineraryPage() {
             </Card>
           </div>
           </div>
+        </div>
 
-          {/* ===== TRANSPORT SECTION ===== */}
-          <div className="pb-12 space-y-8">
+        {/* ===== TRANSPORT SECTION ===== */}
+        <div className="pb-12 space-y-8">
             {/* Editable legs section — shown only when legs have been generated */}
             {legsLoading ? (
               <div className="space-y-3">
@@ -815,7 +816,6 @@ export default function ItineraryPage() {
               ) : null}
               <TransportHub tripId={tripId} destination={itinerary?.destination} />
             </div>
-          </div>
         </div>
 
         {/* ===== LOGISTICS DASHBOARD ===== */}
