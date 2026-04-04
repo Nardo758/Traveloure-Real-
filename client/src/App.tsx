@@ -208,10 +208,10 @@ function Router() {
         <CartPage />
       </Route>
       <Route path="/itinerary-comparison/:id">
-        {() => <ProtectedRoute component={ItineraryComparisonPage} />}
+        {() => <DashboardLayout><ProtectedRoute component={ItineraryComparisonPage} /></DashboardLayout>}
       </Route>
       <Route path="/my-itinerary/:id">
-        {() => <ProtectedRoute component={MyItineraryPage} />}
+        {() => <DashboardLayout><ProtectedRoute component={MyItineraryPage} /></DashboardLayout>}
       </Route>
       <Route path="/itinerary-view/:token">
         <ItineraryViewPage />
@@ -333,7 +333,7 @@ function Router() {
         {() => <ProtectedRoute component={ProviderStatusPage} />}
       </Route>
       <Route path="/itinerary/:id">
-        <Layout><ItineraryPage /></Layout>
+        {() => <DashboardLayout><ProtectedRoute component={ItineraryPage} /></DashboardLayout>}
       </Route>
 
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
@@ -542,7 +542,7 @@ function Router() {
       </Route>
       
       <Route path="/trip/:id">
-        {() => <Layout><ProtectedRoute component={TripDetails} /></Layout>}
+        {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}
       </Route>
       <Route path="/chat">
         {() => <DashboardLayout><ProtectedRoute component={Chat} /></DashboardLayout>}
