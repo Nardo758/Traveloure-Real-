@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,18 +9,16 @@ import {
   Users, 
   Building2, 
   Wallet,
-  ShieldAlert,
-  Route,
   AlertTriangle,
   CheckCircle,
   Clock,
   DollarSign,
   UserCheck,
-  UserX,
   Utensils,
   Bell,
-  Calendar,
-  RefreshCw
+  RefreshCw,
+  X,
+  RotateCcw
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { TemporalAnchorManager } from "./temporal-anchor-manager";
@@ -90,6 +89,83 @@ interface AlertSummary {
   unacknowledged: number;
 }
 
+const ALL_CARDS = [
+  "participants",
+  "payments",
+  "contracts",
+  "alerts",
+  "budget",
+  "dietary",
+  "anchors",
+  "schedule",
+  "energy",
+] as const;
+type CardId = typeof ALL_CARDS[number];
+
+const CARD_LABELS: Record<CardId, string> = {
+  participants: "Participants",
+  payments: "Payment Collection",
+  contracts: "Vendor Contracts",
+  alerts: "Active Alerts",
+  budget: "Budget Overview",
+  dietary: "Dietary & Accessibility",
+  anchors: "Temporal Anchors",
+  schedule: "Schedule Validator",
+  energy: "Energy Budget",
+};
+
+function useDismissedCards(tripId: string) {
+  const key = `traveloure-dash-dismissed-${tripId}`;
+  const [dismissed, setDismissed] = useState<Set<CardId>>(() => {
+    try {
+      const saved = localStorage.getItem(key);
+      return saved ? new Set(JSON.parse(saved) as CardId[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const dismiss = (id: CardId) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem(key, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const restore = (id: CardId) => {
+    setDismissed(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      localStorage.setItem(key, JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const restoreAll = () => {
+    setDismissed(new Set());
+    localStorage.removeItem(key);
+  };
+
+  return { dismissed, dismiss, restore, restoreAll };
+}
+
+function DismissButton({ onClick, testId }: { onClick: () => void; testId: string }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0"
+      onClick={onClick}
+      data-testid={testId}
+      title="Hide this card"
+    >
+      <X className="w-3.5 h-3.5" />
+    </Button>
+  );
+}
+
 export function TripLogisticsDashboard({ 
   tripId, 
   tripName = "Trip",
@@ -97,6 +173,8 @@ export function TripLogisticsDashboard({
   destination = "destination"
 }: TripLogisticsDashboardProps) {
   
+  const { dismissed, dismiss, restore, restoreAll } = useDismissedCards(tripId);
+
   const { data: participantStats, isLoading: loadingParticipants } = useQuery<ParticipantStats>({
     queryKey: [`/api/trips/${tripId}/participants/stats`],
     enabled: !!tripId,
@@ -144,9 +222,13 @@ export function TripLogisticsDashboard({
 
   const isLoading = loadingParticipants || loadingPayments || loadingContracts || loadingBudget || loadingAlerts;
 
+  const visibleTopCards = ALL_CARDS.slice(0, 4).filter(id => !dismissed.has(id));
+  const visibleMidCards = (["budget", "dietary"] as CardId[]).filter(id => !dismissed.has(id));
+  const visibleBottomCards = (["anchors", "schedule", "energy"] as CardId[]).filter(id => !dismissed.has(id));
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold" data-testid="text-trip-logistics-title">
             Logistics Dashboard
@@ -155,294 +237,391 @@ export function TripLogisticsDashboard({
             Real-time planning intelligence for {tripName}
           </p>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={refreshAll}
-          disabled={isLoading}
-          data-testid="button-refresh-logistics"
-        >
-          <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card data-testid="card-participant-summary">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="w-4 h-4 text-blue-500" />
-              Participants
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingParticipants ? (
-              <Skeleton className="h-16 w-full" />
-            ) : participantStats ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold">{participantStats.total}</span>
-                  <div className="text-right text-sm">
-                    <div className="flex items-center gap-1 text-green-600">
-                      <UserCheck className="w-3 h-3" />
-                      {participantStats.confirmed} confirmed
-                    </div>
-                    <div className="flex items-center gap-1 text-amber-600">
-                      <Clock className="w-3 h-3" />
-                      {participantStats.pending} pending
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Response Rate</span>
-                    <span>{participantStats.responseRate}%</span>
-                  </div>
-                  <Progress value={participantStats.responseRate} className="h-2" />
-                </div>
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No participants yet</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-payment-collection">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-green-500" />
-              Payment Collection
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingPayments ? (
-              <Skeleton className="h-16 w-full" />
-            ) : paymentStats ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold">
-                    ${(paymentStats.totalPaid ?? 0).toLocaleString()}
-                  </span>
-                  <div className="text-right text-sm text-muted-foreground">
-                    of ${(paymentStats.totalOwed ?? 0).toLocaleString()}
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span>Collection Rate</span>
-                    <span>{paymentStats.collectionRate}%</span>
-                  </div>
-                  <Progress value={paymentStats.collectionRate} className="h-2" />
-                </div>
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No payments tracked</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-vendor-contracts">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-purple-500" />
-              Vendor Contracts
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingContracts ? (
-              <Skeleton className="h-16 w-full" />
-            ) : contractStats ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold">{contractStats.activeContracts ?? 0}</span>
-                  <div className="text-right text-sm">
-                    <div className="text-muted-foreground">
-                      ${(contractStats.totalValue ?? 0).toLocaleString()} total
-                    </div>
-                    <div className="text-green-600">
-                      ${(contractStats.totalPaid ?? 0).toLocaleString()} paid
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    {contractStats.pendingPayments ?? 0} pending
-                  </Badge>
-                  <Badge variant="outline" className="text-xs text-green-600">
-                    {contractStats.completedPayments ?? 0} complete
-                  </Badge>
-                </div>
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No contracts yet</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-active-alerts">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Bell className="w-4 h-4 text-amber-500" />
-              Active Alerts
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loadingAlerts ? (
-              <Skeleton className="h-16 w-full" />
-            ) : alertSummary && alertSummary.total > 0 ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-3xl font-bold">{alertSummary.total}</span>
-                  <div className="flex flex-col gap-1">
-                    {alertSummary.critical > 0 && (
-                      <Badge variant="destructive" className="text-xs">
-                        {alertSummary.critical} critical
-                      </Badge>
-                    )}
-                    {alertSummary.unacknowledged > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {alertSummary.unacknowledged} unread
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle className="w-4 h-4" />
-                <span className="text-sm">No active alerts</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card data-testid="card-budget-overview">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Wallet className="w-5 h-5 text-green-500" />
-              Budget Overview
-            </CardTitle>
-            <CardDescription>Track spending against your planned budget</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingBudget || loadingCategories ? (
-              <div className="space-y-4">
-                <Skeleton className="h-8 w-full" />
-                <Skeleton className="h-32 w-full" />
-              </div>
-            ) : budgetSummary ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-3xl font-bold">
-                      ${(budgetSummary.totalSpent ?? 0).toLocaleString()}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      of ${(budgetSummary.totalBudget ?? 0).toLocaleString()} budget
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-2xl font-bold ${(budgetSummary.remaining ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${Math.abs(budgetSummary.remaining ?? 0).toLocaleString()}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {(budgetSummary.remaining ?? 0) >= 0 ? 'remaining' : 'over budget'}
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>Budget Used</span>
-                    <span>{Math.round(budgetSummary.percentUsed)}%</span>
-                  </div>
-                  <Progress 
-                    value={Math.min(budgetSummary.percentUsed, 100)} 
-                    className={`h-3 ${budgetSummary.percentUsed > 100 ? '[&>div]:bg-red-500' : ''}`}
-                  />
-                </div>
-                {categoryBreakdown && categoryBreakdown.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Spending by Category</h4>
-                    {categoryBreakdown.slice(0, 5).map(cat => (
-                      <div key={cat.category} className="flex items-center justify-between text-sm">
-                        <span className="capitalize">{cat.category.replace('_', ' ')}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-muted-foreground">${(cat.amount ?? 0).toLocaleString()}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {cat.percentage}%
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No budget data available</div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card data-testid="card-dietary-accessibility">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Utensils className="w-5 h-5 text-orange-500" />
-              Dietary & Accessibility
-            </CardTitle>
-            <CardDescription>Special requirements for your group</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingDietary ? (
-              <Skeleton className="h-32 w-full" />
-            ) : dietaryReqs ? (
-              <div className="space-y-4">
-                {dietaryReqs.restrictions.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Dietary Restrictions</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {dietaryReqs.restrictions.map((restriction, idx) => (
-                        <Badge key={idx} variant="secondary">
-                          {restriction.name} ({restriction.count})
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {dietaryReqs.accessibilityNeeds.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Accessibility Needs</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {dietaryReqs.accessibilityNeeds.map((need, idx) => (
-                        <Badge key={idx} variant="outline" className="border-blue-500 text-blue-600">
-                          {need.name} ({need.count})
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {dietaryReqs.restrictions.length === 0 && dietaryReqs.accessibilityNeeds.length === 0 && (
-                  <div className="text-muted-foreground text-sm">
-                    No special requirements recorded
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-muted-foreground text-sm">No dietary data available</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Logistics: Temporal Anchors, Schedule Validation, Energy Budget */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <TemporalAnchorManager tripId={tripId} />
-        <div className="space-y-4">
-          <ScheduleValidator tripId={tripId} />
-          <EnergyBudgetDisplay tripId={tripId} />
+        <div className="flex items-center gap-2">
+          {dismissed.size > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={restoreAll}
+              className="text-muted-foreground text-xs gap-1.5"
+              data-testid="button-restore-all-cards"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              Restore {dismissed.size} hidden
+            </Button>
+          )}
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={refreshAll}
+            disabled={isLoading}
+            data-testid="button-refresh-logistics"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
       </div>
+
+      {/* Top 4 stat cards */}
+      {visibleTopCards.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {!dismissed.has("participants") && (
+            <Card data-testid="card-participant-summary">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-500" />
+                    Participants
+                  </CardTitle>
+                  <DismissButton onClick={() => dismiss("participants")} testId="button-dismiss-participants" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingParticipants ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : participantStats ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-3xl font-bold">{participantStats.total}</span>
+                      <div className="text-right text-sm">
+                        <div className="flex items-center gap-1 text-green-600">
+                          <UserCheck className="w-3 h-3" />
+                          {participantStats.confirmed} confirmed
+                        </div>
+                        <div className="flex items-center gap-1 text-amber-600">
+                          <Clock className="w-3 h-3" />
+                          {participantStats.pending} pending
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>Response Rate</span>
+                        <span>{participantStats.responseRate}%</span>
+                      </div>
+                      <Progress value={participantStats.responseRate} className="h-2" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground text-sm">No participants yet</div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!dismissed.has("payments") && (
+            <Card data-testid="card-payment-collection">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-green-500" />
+                    Payment Collection
+                  </CardTitle>
+                  <DismissButton onClick={() => dismiss("payments")} testId="button-dismiss-payments" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingPayments ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : paymentStats ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-3xl font-bold">
+                        ${(paymentStats.totalPaid ?? 0).toLocaleString()}
+                      </span>
+                      <div className="text-right text-sm text-muted-foreground">
+                        of ${(paymentStats.totalOwed ?? 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span>Collection Rate</span>
+                        <span>{paymentStats.collectionRate}%</span>
+                      </div>
+                      <Progress value={paymentStats.collectionRate} className="h-2" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground text-sm">No payments tracked</div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!dismissed.has("contracts") && (
+            <Card data-testid="card-vendor-contracts">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Building2 className="w-4 h-4 text-purple-500" />
+                    Vendor Contracts
+                  </CardTitle>
+                  <DismissButton onClick={() => dismiss("contracts")} testId="button-dismiss-contracts" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingContracts ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : contractStats ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-3xl font-bold">{contractStats.activeContracts ?? 0}</span>
+                      <div className="text-right text-sm">
+                        <div className="text-muted-foreground">
+                          ${(contractStats.totalValue ?? 0).toLocaleString()} total
+                        </div>
+                        <div className="text-green-600">
+                          ${(contractStats.totalPaid ?? 0).toLocaleString()} paid
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Badge variant="outline" className="text-xs">
+                        {contractStats.pendingPayments ?? 0} pending
+                      </Badge>
+                      <Badge variant="outline" className="text-xs text-green-600">
+                        {contractStats.completedPayments ?? 0} complete
+                      </Badge>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground text-sm">No contracts yet</div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!dismissed.has("alerts") && (
+            <Card data-testid="card-active-alerts">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-amber-500" />
+                    Active Alerts
+                  </CardTitle>
+                  <DismissButton onClick={() => dismiss("alerts")} testId="button-dismiss-alerts" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingAlerts ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : alertSummary && alertSummary.total > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-3xl font-bold">{alertSummary.total}</span>
+                      <div className="flex flex-col gap-1">
+                        {alertSummary.critical > 0 && (
+                          <Badge variant="destructive" className="text-xs">
+                            {alertSummary.critical} critical
+                          </Badge>
+                        )}
+                        {alertSummary.unacknowledged > 0 && (
+                          <Badge variant="secondary" className="text-xs">
+                            {alertSummary.unacknowledged} unread
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-green-600">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="text-sm">No active alerts</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Mid row: Budget + Dietary */}
+      {visibleMidCards.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {!dismissed.has("budget") && (
+            <Card data-testid="card-budget-overview">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Wallet className="w-5 h-5 text-green-500" />
+                      Budget Overview
+                    </CardTitle>
+                    <CardDescription>Track spending against your planned budget</CardDescription>
+                  </div>
+                  <DismissButton onClick={() => dismiss("budget")} testId="button-dismiss-budget" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingBudget || loadingCategories ? (
+                  <div className="space-y-4">
+                    <Skeleton className="h-8 w-full" />
+                    <Skeleton className="h-32 w-full" />
+                  </div>
+                ) : budgetSummary ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-3xl font-bold">
+                          ${(budgetSummary.totalSpent ?? 0).toLocaleString()}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          of ${(budgetSummary.totalBudget ?? 0).toLocaleString()} budget
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold ${(budgetSummary.remaining ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          ${Math.abs(budgetSummary.remaining ?? 0).toLocaleString()}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {(budgetSummary.remaining ?? 0) >= 0 ? 'remaining' : 'over budget'}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Budget Used</span>
+                        <span>{Math.round(budgetSummary.percentUsed)}%</span>
+                      </div>
+                      <Progress 
+                        value={Math.min(budgetSummary.percentUsed, 100)} 
+                        className={`h-3 ${budgetSummary.percentUsed > 100 ? '[&>div]:bg-red-500' : ''}`}
+                      />
+                    </div>
+                    {categoryBreakdown && categoryBreakdown.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-sm font-medium">Spending by Category</h4>
+                        {categoryBreakdown.slice(0, 5).map(cat => (
+                          <div key={cat.category} className="flex items-center justify-between text-sm">
+                            <span className="capitalize">{cat.category.replace('_', ' ')}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground">${(cat.amount ?? 0).toLocaleString()}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {cat.percentage}%
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground text-sm">No budget data available</div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {!dismissed.has("dietary") && (
+            <Card data-testid="card-dietary-accessibility">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Utensils className="w-5 h-5 text-orange-500" />
+                      Dietary & Accessibility
+                    </CardTitle>
+                    <CardDescription>Special requirements for your group</CardDescription>
+                  </div>
+                  <DismissButton onClick={() => dismiss("dietary")} testId="button-dismiss-dietary" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingDietary ? (
+                  <Skeleton className="h-32 w-full" />
+                ) : dietaryReqs ? (
+                  <div className="space-y-4">
+                    {dietaryReqs.restrictions.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Dietary Restrictions</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {dietaryReqs.restrictions.map((restriction, idx) => (
+                            <Badge key={idx} variant="secondary">
+                              {restriction.name} ({restriction.count})
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {dietaryReqs.accessibilityNeeds.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Accessibility Needs</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {dietaryReqs.accessibilityNeeds.map((need, idx) => (
+                            <Badge key={idx} variant="outline" className="border-blue-500 text-blue-600">
+                              {need.name} ({need.count})
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {dietaryReqs.restrictions.length === 0 && dietaryReqs.accessibilityNeeds.length === 0 && (
+                      <div className="text-muted-foreground text-sm">
+                        No special requirements recorded
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-muted-foreground text-sm">No dietary data available</div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Bottom row: Anchors, Schedule, Energy */}
+      {visibleBottomCards.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {!dismissed.has("anchors") && (
+            <div className="relative">
+              <div className="absolute top-3 right-3 z-10">
+                <DismissButton onClick={() => dismiss("anchors")} testId="button-dismiss-anchors" />
+              </div>
+              <TemporalAnchorManager tripId={tripId} />
+            </div>
+          )}
+          {(visibleBottomCards.includes("schedule") || visibleBottomCards.includes("energy")) && (
+            <div className="space-y-4">
+              {!dismissed.has("schedule") && (
+                <div className="relative">
+                  <div className="absolute top-3 right-3 z-10">
+                    <DismissButton onClick={() => dismiss("schedule")} testId="button-dismiss-schedule" />
+                  </div>
+                  <ScheduleValidator tripId={tripId} />
+                </div>
+              )}
+              {!dismissed.has("energy") && (
+                <div className="relative">
+                  <div className="absolute top-3 right-3 z-10">
+                    <DismissButton onClick={() => dismiss("energy")} testId="button-dismiss-energy" />
+                  </div>
+                  <EnergyBudgetDisplay tripId={tripId} />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Hidden cards restore chips */}
+      {dismissed.size > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1" data-testid="section-dismissed-cards">
+          <span className="text-xs text-muted-foreground self-center">Hidden:</span>
+          {[...dismissed].map(id => (
+            <button
+              key={id}
+              onClick={() => restore(id)}
+              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              data-testid={`button-restore-${id}`}
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              {CARD_LABELS[id]}
+            </button>
+          ))}
+        </div>
+      )}
 
       {alertSummary && alertSummary.critical > 0 && (
         <Card className="border-red-500 bg-red-50 dark:bg-red-900/20" data-testid="card-critical-alerts">
