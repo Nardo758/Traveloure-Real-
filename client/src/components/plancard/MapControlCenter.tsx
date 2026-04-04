@@ -176,14 +176,27 @@ function MapContent({
     return () => { cancelled = true; };
   }, [map, activities, destination]);
 
+  // Center on destination when no activities are geocoded yet
   useEffect(() => {
-    if (!map || geocodedActivities.length === 0) return;
-    const bounds = new google.maps.LatLngBounds();
-    geocodedActivities.forEach((a) => {
-      bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
-    });
-    map.fitBounds(bounds, 60);
-  }, [map, geocodedActivities]);
+    if (!map || typeof google === "undefined" || !google.maps) return;
+    if (geocodedActivities.length > 0) {
+      const bounds = new google.maps.LatLngBounds();
+      geocodedActivities.forEach((a) => {
+        bounds.extend({ lat: a.resolvedLat, lng: a.resolvedLng });
+      });
+      map.fitBounds(bounds, 60);
+    } else if (destination) {
+      // Fallback: geocode the destination itself so map centers on the city
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ address: destination }).then((result) => {
+        if (result.results[0]) {
+          const loc = result.results[0].geometry.location;
+          map.setCenter({ lat: loc.lat(), lng: loc.lng() });
+          map.setZoom(13);
+        }
+      }).catch(() => {});
+    }
+  }, [map, geocodedActivities, destination]);
 
   return (
     <>
