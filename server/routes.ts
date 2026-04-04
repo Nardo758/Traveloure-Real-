@@ -10002,7 +10002,34 @@ Respond with this exact JSON structure:
 }
 
 // Seed Database Function
+async function hashPassword(password: string): Promise<string> {
+  const crypto = await import("crypto");
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString("hex");
+    crypto.scrypt(password, salt, 64, (err: Error | null, derivedKey: Buffer) => {
+      if (err) reject(err);
+      resolve(salt + ":" + derivedKey.toString("hex"));
+    });
+  });
+}
+
 export async function seedDatabase() {
+  // Always ensure the platform admin account exists
+  const adminCheck = await db.select().from(users).where(eq(users.email, "admin@traveloure.test")).limit(1);
+  if (adminCheck.length === 0) {
+    const hashedPassword = await hashPassword("AdminPass123!");
+    await db.insert(users).values({
+      email: "admin@traveloure.test",
+      password: hashedPassword,
+      firstName: "Admin",
+      lastName: "Traveloure",
+      role: "admin",
+      emailVerified: new Date(),
+      authProvider: "email",
+    });
+    console.log("Admin account created: admin@traveloure.test");
+  }
+
   const existingTrips = await storage.getHelpGuideTrips();
   if (existingTrips.length === 0) {
     // Check if any user exists
