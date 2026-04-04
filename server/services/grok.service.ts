@@ -642,7 +642,7 @@ Create a detailed, actionable itinerary that incorporates the real-time destinat
 
       try {
         const anthropicResponse = await getAnthropicClient().messages.create({
-          model: "claude-3-5-sonnet-20241022",
+          model: "claude-sonnet-4-20250514",
           max_tokens: 8192,
           system: systemPrompt + "\n\nIMPORTANT: Respond with valid JSON only — no markdown, no explanation.",
           messages: [{ role: "user", content: userPrompt }],

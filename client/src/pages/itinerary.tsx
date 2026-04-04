@@ -22,7 +22,8 @@ import {
   MessageSquare,
   Sparkles,
 } from "lucide-react";
-import { type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportLeg, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Dialog,
   DialogContent,
@@ -49,7 +50,6 @@ import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
 import { TransportSection } from "@/components/plancard/TransportSection";
 import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TripLogisticsDashboard } from "@/components/logistics";
-import { TransportHub } from "@/components/itinerary/TransportHub";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
