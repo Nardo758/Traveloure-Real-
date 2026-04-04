@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import {
   Plus, Loader2, MessageSquare, CreditCard, Bot, Calendar, Bookmark, Clock,
-  ChevronRight, MapPin, DollarSign
+  ChevronRight, MapPin
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
@@ -12,6 +12,7 @@ import { DashboardLayout } from "@/components/dashboard-layout";
 import { UserTemplateRecommendations } from "@/components/user/template-recommendations";
 import { useQuery } from "@tanstack/react-query";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import { getDestinationPhotoUrl } from "@/components/plancard/plancard-types";
 
 function getRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -189,59 +190,75 @@ export default function Dashboard() {
               </h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-              {savedTrips.map((saved: any, i: number) => (
-                <motion.div
-                  key={saved.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.1 }}
-                >
-                  <Link href={`/itinerary-comparison/${saved.comparison_id}`}>
-                    <Card className="border border-[#E5E7EB] hover:shadow-md transition-shadow cursor-pointer" data-testid={`card-saved-trip-${saved.id}`}>
-                      <CardContent className="p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <h3 className="font-semibold text-[#111827] dark:text-white text-lg">
-                            {saved.variant_name || saved.destination || 'Saved Itinerary'}
+              {savedTrips.map((saved: any, i: number) => {
+                const photoUrl = getDestinationPhotoUrl(saved.destination || "");
+                const cost = saved.price_snapshot || saved.variant_cost;
+                const startFmt = saved.start_date ? new Date(saved.start_date).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+                const endFmt = saved.end_date ? new Date(saved.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : null;
+                return (
+                  <motion.div
+                    key={saved.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1 }}
+                  >
+                    <Card className="overflow-hidden border border-border hover:shadow-xl transition-all duration-300 group bg-card" data-testid={`card-saved-trip-${saved.id}`}>
+                      {/* Hero — same structure as PlanCard HeroSection */}
+                      <div className="relative h-52 overflow-hidden bg-gradient-to-br from-primary/30 via-orange-500/20 to-purple-500/30">
+                        <img
+                          src={photoUrl}
+                          alt={saved.destination}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                        <div className="absolute top-3 left-3">
+                          <span className="inline-flex items-center gap-1 bg-purple-500 text-white text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide">
+                            <Bookmark className="w-3 h-3" /> Saved
+                          </span>
+                        </div>
+                        <div className="absolute bottom-4 left-5 right-5">
+                          <h3 className="font-['DM_Serif_Display',serif] text-[22px] text-white leading-tight drop-shadow-sm">
+                            {saved.variant_name || saved.destination || "Saved Itinerary"}
                           </h3>
-                          <span className="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-2 py-1 rounded-full">
-                            Saved
-                          </span>
+                          <div className="flex flex-wrap gap-4 mt-2">
+                            {saved.destination && (
+                              <span className="text-[13px] text-white/85 flex items-center gap-1">
+                                <MapPin className="w-3.5 h-3.5" /> {saved.destination}
+                              </span>
+                            )}
+                            {(startFmt || endFmt) && (
+                              <span className="text-[13px] text-white/85 flex items-center gap-1">
+                                <Calendar className="w-3.5 h-3.5" />
+                                {startFmt}{endFmt && ` – ${endFmt}`}
+                              </span>
+                            )}
+                            {cost && (
+                              <span className="text-[13px] text-emerald-300 font-semibold">
+                                ${Number(cost).toLocaleString()}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        {saved.destination && (
-                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
-                            <MapPin className="w-4 h-4" />
-                            {saved.destination}
-                          </div>
-                        )}
-                        {(saved.start_date || saved.end_date) && (
-                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
-                            <Calendar className="w-4 h-4" />
-                            {saved.start_date && new Date(saved.start_date).toLocaleDateString()}
-                            {saved.end_date && ` – ${new Date(saved.end_date).toLocaleDateString()}`}
-                          </div>
-                        )}
-                        {(saved.price_snapshot || saved.variant_cost) && (
-                          <div className="flex items-center gap-1 text-sm text-[#6B7280] mb-2">
-                            <DollarSign className="w-4 h-4" />
-                            ${Number(saved.price_snapshot || saved.variant_cost).toLocaleString()}
-                          </div>
-                        )}
-                        {saved.notes && (
-                          <p className="text-sm text-[#9CA3AF] mt-2 line-clamp-2">{saved.notes}</p>
-                        )}
-                        <div className="mt-3 pt-3 border-t border-[#E5E7EB] flex items-center justify-between">
-                          <span className="text-xs text-[#9CA3AF]">
-                            Saved {new Date(saved.saved_at).toLocaleDateString()}
-                          </span>
-                          <Button variant="ghost" size="sm" className="text-[#FF385C] hover:text-[#E23350] h-auto p-0">
-                            View Details <ChevronRight className="w-4 h-4 ml-1" />
+                      </div>
+
+                      {/* Footer — same style as PlanCard bottom bar */}
+                      <div className="px-5 pb-5 pt-3 flex gap-2 items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          Saved {new Date(saved.saved_at).toLocaleDateString()}
+                        </span>
+                        <Link href={`/itinerary-comparison/${saved.comparison_id}`} className="flex-shrink-0">
+                          <Button size="sm" className="text-xs font-semibold" data-testid={`button-view-saved-${saved.id}`}>
+                            <Calendar className="w-3.5 h-3.5 mr-1" />
+                            View Details
+                            <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                           </Button>
-                        </div>
-                      </CardContent>
+                        </Link>
+                      </div>
                     </Card>
-                  </Link>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </div>
           </section>
         )}
