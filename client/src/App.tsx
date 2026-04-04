@@ -207,12 +207,7 @@ function Router() {
       <Route path="/cart">
         <CartPage />
       </Route>
-      <Route path="/itinerary-comparison/:id">
-        {() => <DashboardLayout><ProtectedRoute component={ItineraryComparisonPage} /></DashboardLayout>}
-      </Route>
-      <Route path="/my-itinerary/:id">
-        {() => <DashboardLayout><ProtectedRoute component={MyItineraryPage} /></DashboardLayout>}
-      </Route>
+
       <Route path="/itinerary-view/:token">
         <ItineraryViewPage />
       </Route>
@@ -307,6 +302,20 @@ function Router() {
         <LayoutMock />
       </Route>
 
+      {/* Trip/Itinerary detail pages — must be BEFORE catch-all routes */}
+      <Route path="/trip/:id">
+        {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}
+      </Route>
+      <Route path="/itinerary/:id">
+        {() => <DashboardLayout><ProtectedRoute component={ItineraryPage} /></DashboardLayout>}
+      </Route>
+      <Route path="/my-itinerary/:id">
+        {() => <DashboardLayout><ProtectedRoute component={MyItineraryPage} /></DashboardLayout>}
+      </Route>
+      <Route path="/itinerary-comparison/:id">
+        {() => <DashboardLayout><ProtectedRoute component={ItineraryComparisonPage} /></DashboardLayout>}
+      </Route>
+
       {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}
       <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
@@ -332,10 +341,6 @@ function Router() {
       <Route path="/provider-status">
         {() => <ProtectedRoute component={ProviderStatusPage} />}
       </Route>
-      <Route path="/itinerary/:id">
-        {() => <DashboardLayout><ProtectedRoute component={ItineraryPage} /></DashboardLayout>}
-      </Route>
-
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
       <Route path="/expert/dashboard">
         {() => <ProtectedRoute component={ExpertDashboard} requiredRole="expert" />}
@@ -541,9 +546,6 @@ function Router() {
         <Redirect to="/admin/dashboard" />
       </Route>
       
-      <Route path="/trip/:id">
-        {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}
-      </Route>
       <Route path="/chat">
         {() => <DashboardLayout><ProtectedRoute component={Chat} /></DashboardLayout>}
       </Route>
