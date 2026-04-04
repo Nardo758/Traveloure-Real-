@@ -1,0 +1,934 @@
+# TRAVELOURE — COMPLETE OPENCLAW TESTING SCRIPT
+## Browser-Based End-to-End Platform QA
+
+**Version:** 1.0  
+**Date:** April 4, 2026  
+**Tool:** OpenClaw (Browser Automation)  
+**Platform:** Traveloure — Travel Marketplace  
+**Stack:** TypeScript/React frontend, Express backend, PostgreSQL
+
+---
+
+## HOW TO USE THIS SCRIPT
+
+Run each phase as a **separate OpenClaw prompt**. Do not combine all 8 phases into one session — shorter, focused tasks produce more reliable results.
+
+After each phase, review the bug report before moving to the next phase. If a Phase 1 failure (e.g., login broken) blocks all downstream phases, fix that first.
+
+**Copy the GLOBAL INSTRUCTIONS block into every phase prompt, then append the specific phase below it.**
+
+---
+
+## GLOBAL INSTRUCTIONS (COPY INTO EVERY PROMPT)
+
+```
+Always use profile:"openclaw" (isolated browser) for all browser actions.
+
+## PLATFORM CONTEXT
+You are testing Traveloure, a three-party travel marketplace connecting
+Travelers, Local Experts, and Service Providers. It runs on React + Express
+with PostgreSQL. The UI uses Shadcn/UI components and Tailwind CSS.
+
+Brand colors: Primary #1E3A5F, Secondary #2E8B8B, Accent #E8B339.
+
+## BASE URL
+[REPLACE WITH YOUR REPLIT DEV URL, e.g. https://traveloure.your-username.replit.app]
+
+## TEST ACCOUNTS
+All accounts use password: TestPass123!
+
+TRAVELERS (use for Phases 1-5):
+  - kyoto-food@traveloure.test
+  - edinburgh-culture@traveloure.test
+  - cartagena-adventure@traveloure.test
+  - jaipur-photography@traveloure.test
+  - porto-nightlife@traveloure.test
+
+EXPERTS (use for Phase 6):
+  - kyoto-culture@traveloure.test
+  - edinburgh-food@traveloure.test
+  - cartagena-photography@traveloure.test
+  - jaipur-adventure@traveloure.test
+  - porto-food@traveloure.test
+
+PROVIDERS (use for Phase 7):
+  - kyoto-adventure@traveloure.test
+  - edinburgh-nightlife@traveloure.test
+  - cartagena-food@traveloure.test
+  - jaipur-culture@traveloure.test
+  - porto-adventure@traveloure.test
+
+## TESTING RULES
+1. DO NOT fix any code. Test, document, and report only.
+2. After EVERY interaction, take a snapshot to verify the result.
+3. Screenshot key states (page loads, form submissions, errors).
+4. If a page fails to load or a feature is missing, log it and move on.
+5. Use the P0-P3 severity system for all bugs found.
+
+## BUG SEVERITY DEFINITIONS
+- P0 BLOCKER: App crashes, data loss, cannot proceed at all
+- P1 CRITICAL: Core feature broken but workaround exists
+- P2 MAJOR: Feature partially works, degraded experience
+- P3 MINOR: Cosmetic issues, typos, UI polish
+
+## REPORT FORMAT FOR EVERY STEP
+For each step, report:
+  STEP: [step name]
+  ACTION: [what you did]
+  EXPECTED: [what should happen]
+  ACTUAL: [what actually happened]
+  STATUS: PASS | FAIL | BLOCKED | NOT IMPLEMENTED
+  SEVERITY: P0 | P1 | P2 | P3 (if FAIL)
+  SCREENSHOT: [yes/no]
+  NOTES: [additional context]
+
+## KNOWN BUGS TO VERIFY
+- KB-001: Sidebar/menu bar disappears on /trip/:id/itinerary route
+  (likely caused by itinerary route defined outside DashboardLayout wrapper)
+  → Confirm if this is still present. Report exact behavior.
+```
+
+---
+
+## PHASE 1: PUBLIC PAGES & AUTHENTICATION
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 1: PUBLIC PAGES & AUTHENTICATION
+Test all public-facing pages and the complete auth flow.
+Log in as: kyoto-food@traveloure.test / TestPass123!
+
+### Step 1.1: Homepage Load
+- Navigate to [BASE_URL]/
+- Snapshot the page
+- Report: Does the page render? What's visible?
+- Check for: Logo, navigation bar, hero section, CTAs ("Get Started",
+  "Start Planning", or similar), footer
+- Check: Do navigation links exist for Features, Partner, Pricing, About?
+- Screenshot the full homepage
+
+### Step 1.2: Navigation Links
+Test each public nav link. For each one, click it, snapshot, report
+whether it loads, then navigate back:
+- /how-it-works
+- /pricing
+- /about
+- /partner-with-us
+- /discover (TravelPulse city discovery)
+- /experts (Browse experts)
+- /providers (Browse providers)
+
+For /experts and /providers: Are there any listings? Or are the pages
+empty/showing placeholder content?
+
+### Step 1.3: Sign-Up Flow
+- Navigate to /signup
+- Snapshot the page
+- Report: What fields are available? (email, password, name, Google OAuth?)
+- DO NOT create a new account — just document the form
+
+### Step 1.4: Login Flow
+- Navigate to /login
+- Snapshot the page
+- Fill email: kyoto-food@traveloure.test
+- Fill password: TestPass123!
+- Click the login/submit button
+- Snapshot the result
+- Report: Did login succeed? Where did you land after login?
+- Check: Is there a session cookie or auth token set?
+- If login fails, try the sign-up flow with the same credentials
+- Screenshot the post-login landing page
+
+### Step 1.5: Post-Login Navigation Check
+After successful login:
+- Is there a sidebar or top navigation visible?
+- Do you see the user's name or avatar?
+- Is there a Credits balance shown?
+- Is there a Cart icon?
+- Can you find links to: Dashboard, Trips, Messages, Profile, Settings?
+- Snapshot and screenshot the navigation state
+
+### Step 1.6: Sign-In Modal Trigger Test
+- Log out (find logout button in profile dropdown or sidebar)
+- Navigate to a protected route like /dashboard or /trips
+- Report: Does a sign-in modal appear? Or does it redirect to /login?
+- If modal appears: Does it show benefit text (Save plans, Chat with
+  experts, AI recommendations, etc.)?
+- Screenshot the modal or redirect behavior
+
+### Step 1.7: Mobile Responsiveness Spot Check
+- Resize the viewport to 375x812 (iPhone size)
+- Navigate to homepage
+- Snapshot: Is there a hamburger menu? Does layout collapse properly?
+- Open the menu: Do all nav links appear?
+- Resize back to 1280x720 for remaining tests
+
+## PHASE 1 SUMMARY
+After completing all steps, provide:
+- Total steps tested: X
+- PASSED: X
+- FAILED: X (list each with severity)
+- NOT IMPLEMENTED: X (list each)
+- BLOCKED: X (list each with reason)
+- Screenshots taken: X
+```
+
+---
+
+## PHASE 2: TRAVELER PROFILE & DASHBOARD
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 2: TRAVELER PROFILE & DASHBOARD
+Test the traveler's authenticated experience. Must be logged in.
+Log in as: kyoto-food@traveloure.test / TestPass123!
+
+### Step 2.1: Dashboard Home
+- Navigate to /dashboard
+- Snapshot the page
+- Report: What widgets/cards are visible?
+- Expected elements: Welcome message, recent trips, upcoming trips,
+  recommended experts, quick actions (Create Trip, Find Expert, etc.)
+- Is the sidebar present with all expected links?
+  (Home, All Events, AI Planner, Messages, Experts, Credits, Profile, Notifications)
+- Screenshot the full dashboard
+
+### Step 2.2: All Trips Page
+- Navigate to /trips
+- Snapshot the page
+- Report: Is there a trip list? Empty state message? Create button?
+- If trips exist: Can you click one? Does /trip/:id load?
+- If no trips: Is there a clear CTA to create one?
+- Screenshot
+
+### Step 2.3: Profile Page
+- Navigate to /profile
+- Snapshot the page
+- Report: What profile fields are visible?
+- Expected: Name, email, avatar upload, bio, location, travel preferences
+- Try editing a field (e.g., bio) — does the form save?
+- Snapshot before and after edit attempt
+
+### Step 2.4: Credits & Billing
+- Navigate to /credits
+- Snapshot the page
+- Report: Is there a credit balance displayed?
+- Are there purchase options (credit packages)?
+- Expected packages: $10→10 credits, $25→27, $50→55, $100→120, etc.
+- Is Stripe checkout integrated? (Look for Stripe elements or buttons)
+- Screenshot
+
+### Step 2.5: Messages
+- Navigate to /messages
+- Snapshot the page
+- Report: Is there a message list? Empty state?
+- Try clicking into a conversation if any exist
+- Is there a compose/new message button?
+- Screenshot
+
+### Step 2.6: Notifications
+- Navigate to /notifications
+- Snapshot the page
+- Report: Is there a notification list? Empty state?
+- Are notifications actionable (clickable)?
+- Screenshot
+
+### Step 2.7: Settings
+- Navigate to /settings
+- Snapshot the page
+- Report: What settings are available?
+- Expected: Account settings, password change, 2FA, active sessions,
+  notification preferences, delete account
+- Screenshot
+
+## PHASE 2 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## PHASE 3: TRIP CREATION & EXPERIENCE BUILDER
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 3: TRIP CREATION & EXPERIENCE BUILDER
+Test creating a trip end-to-end. This is the core user flow.
+Log in as: kyoto-food@traveloure.test / TestPass123!
+
+### Step 3.1: Experience Type Selection
+- Navigate to /create
+- Snapshot the page
+- Report: What experience types are available?
+- Expected options: Travel, Wedding, Proposal, Date Night, Birthday,
+  Corporate, Custom
+- Are they clickable cards/buttons?
+- Screenshot
+
+### Step 3.2: Travel Template Builder
+- Click "Travel" (or navigate to /create/travel)
+- Snapshot the form
+- Report: What fields does the builder show?
+- Expected: Destination, dates (start/end), number of travelers,
+  budget, travel style/preferences
+- Fill in:
+  - Destination: Kyoto, Japan
+  - Start date: April 1, 2026
+  - End date: April 5, 2026
+  - Travelers: 2
+  - Budget: $3,000
+- Submit the form
+- Snapshot the result
+- Report: Did the trip get created? What page did you land on?
+  What's the URL? (should be /trip/:id or similar)
+- Screenshot the new trip page
+
+### Step 3.3: Trip Overview Page
+After trip creation (or navigate to /trip/:id):
+- Snapshot the page
+- Report: What sections are visible?
+- Expected: Trip header (destination, dates), itinerary section,
+  activity list, map, edit button, share button
+- Is there a way to add activities?
+- Screenshot
+
+### Step 3.4: Activity Search & Addition
+- Look for an "Add Activity" button or activity search
+- Try searching for activities in Kyoto
+- Report: Are there real activities listed? Or empty/mock data?
+- Try adding 3 activities (temples, food tours, any available)
+- After each add, snapshot to verify it appears in the itinerary
+- Do activities show: name, time, location, price, coordinates?
+- Screenshot the itinerary with activities added
+
+### Step 3.5: Trip Edit Page
+- Navigate to /trip/:id/edit
+- Snapshot the page
+- Report: Can you edit trip details (dates, budget, travelers)?
+- Try changing the budget to $4,000
+- Save changes
+- Verify the change persisted
+- Screenshot
+
+### Step 3.6: AI Optimization
+- Navigate to /trip/:id/optimize
+- Snapshot the page
+- Report: Is the AI optimizer accessible?
+- If functional: Does it produce variant plans?
+  (Expected: cost saver, time saver, balanced, etc.)
+- If it runs: Do variants show day-by-day sequenced activities?
+- Screenshot the optimization results (or the error/empty state)
+
+### Step 3.7: Itinerary View (KNOWN BUG CHECK)
+- Navigate to /trip/:id/itinerary
+- Snapshot the page IMMEDIATELY on load
+- CRITICAL CHECK — KB-001: Does the sidebar/menu bar disappear?
+  - If YES: Report exact behavior (sidebar gone? top nav gone? both?)
+  - Note the URL in the address bar
+  - Try navigating to /dashboard and back — does sidebar reappear?
+- Report: What does the itinerary view show?
+- Expected: Day-by-day activities, transport between activities,
+  "Open in Maps" links, share button
+- Are transport legs visible between activities?
+- Is there a toggle between Activities tab and Transport tab?
+- Screenshot (capture the sidebar state clearly)
+
+### Step 3.8: Cart & Checkout
+- Navigate to /cart
+- Snapshot the page
+- Report: Are there items in the cart from the trip?
+- If items exist: Do they show name, price, quantity?
+- Navigate to /checkout
+- Report: Is there a checkout form? Stripe integration visible?
+- DO NOT complete a real payment — just document the UI state
+- Screenshot
+
+### Step 3.9: Other Template Builders (Quick Check)
+For each template, just navigate and snapshot — no need to fill forms:
+- /create/wedding → Does the form load? What fields appear?
+- /create/proposal → Does the form load?
+- /create/date-night → Does the form load?
+- /create/birthday → Does the form load?
+- /create/corporate → Does the form load?
+- /create/custom → Does the form load?
+Report which templates are implemented vs showing 404/empty states.
+
+## PHASE 3 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## PHASE 4: EXPERT BROWSE & MESSAGING
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 4: EXPERT BROWSE & MESSAGING
+Test finding and interacting with experts from the traveler perspective.
+Log in as: edinburgh-culture@traveloure.test / TestPass123!
+
+### Step 4.1: Expert Browse Page
+- Navigate to /experts
+- Snapshot the page
+- Report: Are experts listed? How many?
+- Expected: Expert cards with photo, name, specialty, city, rating,
+  price range
+- Are there search/filter options? (by city, specialty, price, rating)
+- Try filtering by city: Kyoto
+- Screenshot the results
+
+### Step 4.2: Expert Profile View
+- Click on an expert profile (any available)
+- Snapshot the page
+- Report: What's on the profile?
+- Expected: Photo, bio, specialties, verified badge, reviews/ratings,
+  services offered, availability, "Message Expert" button,
+  "Book Expert" button
+- Is the profile content real or placeholder/lorem ipsum?
+- Screenshot
+
+### Step 4.3: Message an Expert
+- Click "Message Expert" (or similar CTA)
+- Report: Does a chat interface open?
+- Expected: /messages/:expertId route
+- Try typing and sending a test message: "Hi, I'm planning a trip
+  to your city. Can you help with food recommendations?"
+- Snapshot after sending
+- Report: Did the message appear in the chat? Is there a send
+  confirmation?
+- Screenshot the chat interface
+
+### Step 4.4: Provider Browse Page
+- Navigate to /providers
+- Snapshot the page
+- Report: Are providers listed? How many?
+- Expected: Provider cards with business name, service type, city,
+  rating, pricing
+- Are there search/filter options?
+- Screenshot
+
+### Step 4.5: Provider Profile View
+- Click on a provider profile (any available)
+- Snapshot the page
+- Report: What's on the profile?
+- Expected: Business name, description, services, pricing, photos,
+  reviews, availability calendar, "Book" button
+- Screenshot
+
+### Step 4.6: Destination Pages
+- Navigate to /destinations/kyoto (or /discover)
+- Snapshot the page
+- Report: Does the destination page load?
+- Expected: City overview, featured experts, top activities,
+  TravelPulse real-time intelligence signals
+- Try clicking through to an expert or activity from this page
+- Screenshot
+
+## PHASE 4 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## PHASE 5: ITINERARY CARD & SHARING
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 5: ITINERARY CARD, TRANSPORT & SHARING
+Test the PlanCard system and shareable itinerary features.
+Log in as: kyoto-food@traveloure.test / TestPass123!
+(Use a trip created in Phase 3, or create a new one if needed)
+
+### Step 5.1: Itinerary Card Layout
+- Navigate to /trip/:id/itinerary (use trip from Phase 3)
+- Snapshot the page
+- Report on the PlanCard structure:
+  - Is there a clear Activities section?
+  - Is there a Transport section (or tab)?
+  - Are activities listed day-by-day?
+  - Does each activity show: name, time, location, description?
+- VERIFY KB-001 AGAIN: Is sidebar present?
+- Screenshot the full card
+
+### Step 5.2: Transport Hub
+- Look for transport controls between activities
+- Report: Are there inline transport mode selectors (radio buttons)
+  between activity items?
+- Expected modes: Walk, Drive, Public Transit, Taxi/Rideshare
+- Is there a separate Transport tab that shows all legs as a
+  dashboard?
+- If transport tab exists: Does it show booking options? Platform
+  providers with Stripe checkout? Affiliate partner badges?
+- Screenshot transport section
+
+### Step 5.3: Map Integration
+- Look for map display on the itinerary page
+- Report: Is there a map showing activity locations as pins?
+- Are there "Open in Maps" links for each activity?
+  (Expected: Google Maps and/or Apple Maps URL links)
+- Click an "Open in Maps" link — does it open correctly?
+- Is there a route overlay on the map connecting activities?
+- Are activities and transport routes shown as toggleable layers?
+- Screenshot the map view
+
+### Step 5.4: Shareable Itinerary
+- Look for a "Share" button on the itinerary
+- Report: Does a share modal/sheet appear?
+- Expected: Shareable link generation, copy-to-clipboard,
+  email share, social share options
+- If a shareable link is generated:
+  - Copy the URL
+  - Log out
+  - Navigate to the shareable URL
+  - Report: Does the itinerary load for unauthenticated users?
+  - What's visible vs hidden for non-authenticated viewers?
+- Screenshot the share flow
+
+### Step 5.5: Role-Based Permissions on Itinerary
+- While logged in as the trip owner:
+  - Can you edit activities? (drag to reorder, delete, add)
+  - Can you edit transport selections?
+- Report what editing capabilities exist
+- Note: Friends should only be able to comment/suggest,
+  experts should be able to edit/fill transport
+- Screenshot any edit UI
+
+### Step 5.6: Itinerary Comparison View
+- Navigate to /trip/:id/optimize (if AI variants were generated)
+- Report: Is there a comparison view showing multiple itinerary variants?
+- Expected: Side-by-side or card-based comparison with totals
+  (transport time, total cost, energy budget)
+- Are there "Share" and "Send to Expert" buttons on variants?
+- Screenshot
+
+## PHASE 5 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## PHASE 6: EXPERT DASHBOARD & TOOLS
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 6: EXPERT DASHBOARD & TOOLS
+Test the entire expert-side experience. Switch to an Expert account.
+Log OUT of the traveler account first.
+Log in as: kyoto-culture@traveloure.test / TestPass123!
+
+NOTE: This account may need to be registered as an Expert role.
+If login succeeds but you land on a traveler dashboard, report this.
+
+### Step 6.1: Expert Dashboard Home
+- Navigate to /expert/dashboard
+- Snapshot the page
+- Report: Does the Expert Dashboard load? Or 404/403/redirect?
+- Expected: Today's bookings, pending messages, revenue this month,
+  quick actions (Message Client, View Calendar, Create Service)
+- Is there an Expert-specific sidebar?
+  Expected items: Dashboard, AI Assistant, Messages, Clients,
+  Bookings, Services, Earnings, Performance, Profile, Settings,
+  Learning, Help, Logout
+- Screenshot
+
+### Step 6.2: Expert Services Management
+- Navigate to /expert/services
+- Snapshot the page
+- Report: Is there a list of services? Empty state with "Create" button?
+- Navigate to /expert/services/new
+- Report: What fields does the service creation form have?
+- Expected: Service name, description, category, pricing (hourly/fixed),
+  availability, photos, included/excluded items
+- DO NOT submit — just document the form
+- Screenshot
+
+### Step 6.3: Expert Client Management
+- Navigate to /expert/clients
+- Snapshot the page
+- Report: Is there a client list? What info is shown per client?
+- Expected: Client name, trip type, dates, status, last message
+- Screenshot
+
+### Step 6.4: Expert Bookings
+- Navigate to /expert/bookings
+- Snapshot the page
+- Report: Booking list? Calendar view? Empty state?
+- Screenshot
+
+### Step 6.5: Expert Earnings Dashboard
+- Navigate to /expert/earnings
+- Snapshot the page
+- Report: Revenue summary? Payout history? Pending payouts?
+- Expected: Current balance, pending balance, total earned,
+  payout button, transaction history
+- Is Stripe Connect integration visible?
+- Screenshot
+
+### Step 6.6: Expert Analytics
+- Navigate to /expert/analytics
+- Snapshot the page
+- Report: What metrics are shown?
+- Expected: Views, bookings, conversion rate, rating trend,
+  response time, revenue chart
+- Screenshot
+
+### Step 6.7: Content Creator Studio
+- Navigate to /expert/content-studio
+- Snapshot the page
+- Report: What content types are available?
+- Expected: Travel Guides, Reviews, Top 10 Lists, Itineraries,
+  Food Guides
+- Click one content type — does the creation form load?
+- Is there AI-powered title/description generation?
+- Screenshot
+
+### Step 6.8: Expert AI Assistant
+- Navigate to /expert/ai-assistant
+- Snapshot the page
+- Report: What AI tools are available?
+- Expected: Quick delegate actions, suggested responses,
+  itinerary optimization tools, client analytics
+- Screenshot
+
+### Step 6.9: Expert Profile
+- Navigate to /expert/profile
+- Snapshot the page
+- Report: What profile fields exist for experts?
+- Expected: Bio, specialties, cities covered, photos/portfolio,
+  languages, verified status, pricing, response time
+- Screenshot
+
+### Step 6.10: Expert Leaderboard
+- Navigate to /expert/leaderboard
+- Snapshot the page
+- Report: Does a leaderboard load? What metrics are ranked?
+- Screenshot
+
+## PHASE 6 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## PHASE 7: SERVICE PROVIDER DASHBOARD
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 7: SERVICE PROVIDER DASHBOARD
+Test the provider-side experience.
+Log OUT of the expert account first.
+Log in as: kyoto-adventure@traveloure.test / TestPass123!
+
+NOTE: This account may need to be registered as a Provider role.
+If login succeeds but you land on a traveler dashboard, report this.
+
+### Step 7.1: Provider Dashboard Home
+- Navigate to /provider/dashboard
+- Snapshot the page
+- Report: Does the Provider Dashboard load? Or 404/403/redirect?
+- Expected: Today's bookings, availability status, revenue summary,
+  upcoming jobs
+- Screenshot
+
+### Step 7.2: Provider Services
+- Navigate to /provider/services
+- Snapshot the page
+- Report: Service list? Empty state?
+- Navigate to /provider/services/new
+- Report: What fields are in the service creation form?
+- Expected: Service type (Transportation, Tour Guide, Photography, etc.),
+  name, description, pricing, capacity, availability
+- Screenshot
+
+### Step 7.3: Provider Calendar
+- Navigate to /provider/calendar
+- Snapshot the page
+- Report: Is there an availability calendar?
+- Can the provider set available/unavailable dates?
+- Can they set working hours?
+- Screenshot
+
+### Step 7.4: Provider Bookings
+- Navigate to /provider/bookings
+- Snapshot the page
+- Report: Booking list? Accept/reject controls?
+- Expected: Booking details should show client name, expert who
+  referred, service requested, date/time, special instructions
+- Screenshot
+
+### Step 7.5: Provider Earnings
+- Navigate to /provider/earnings
+- Snapshot the page
+- Report: Earnings dashboard? Payout history?
+- Screenshot
+
+### Step 7.6: Provider Analytics
+- Navigate to /provider/analytics
+- Snapshot the page
+- Report: Performance metrics shown?
+- Screenshot
+
+### Step 7.7: Provider Profile
+- Navigate to /provider/profile
+- Snapshot the page
+- Report: Business profile fields?
+- Expected: Business name, type, description, photos, insurance docs,
+  verification status, contact info
+- Screenshot
+
+## PHASE 7 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## PHASE 8: CROSS-ROLE FLOW & ADMIN
+
+```
+[PASTE GLOBAL INSTRUCTIONS ABOVE THIS LINE]
+
+## PHASE 8: CROSS-ROLE INTERACTIONS & ADMIN
+Test the booking-to-payout chain and admin oversight.
+
+### Step 8.1: Booking Chain Test (Traveler → Expert → Provider)
+- Log in as traveler: cartagena-adventure@traveloure.test
+- Create a trip to Cartagena if none exists
+- Find and message an expert
+- Look for a way to book the expert's service
+- Report: Does the booking flow work end-to-end?
+  (Select service → confirm details → payment → confirmation)
+- Screenshot each step of the booking flow
+
+### Step 8.2: Expert Receives Booking
+- Log out of traveler
+- Log in as expert: cartagena-photography@traveloure.test
+- Navigate to /expert/bookings or /expert/dashboard
+- Report: Does the booking from Step 8.1 appear?
+- Can the expert accept/reject the booking?
+- Can the expert see the traveler's trip context?
+- Screenshot
+
+### Step 8.3: Three-Party Messaging Test
+- While logged in as the expert, find the messaging feature
+- Look for a conversation related to the booking
+- Report: Is there a three-party messaging thread
+  (traveler ↔ expert ↔ provider)?
+- Or is messaging only traveler ↔ expert?
+- Screenshot the messaging UI
+
+### Step 8.4: Executive Assistant Dashboard (If Implemented)
+- Log out
+- Log in with an EA test account if available, or try navigating to:
+  - /ea/dashboard
+  - /ea/clients
+  - /ea/events
+  - /ea/planning
+  - /ea/calendar
+  - /ea/ai-tools
+- Report: Which EA routes exist vs 404?
+- Screenshot any that load
+
+### Step 8.5: Admin Dashboard
+- Log out
+- If you have admin credentials, log in and test:
+  - /admin/dashboard → Platform overview
+  - /admin/users → User management list
+  - /admin/experts → Expert management
+  - /admin/experts/pending → Pending expert approvals
+  - /admin/providers → Provider management
+  - /admin/providers/pending → Pending provider approvals
+  - /admin/bookings → All bookings oversight
+  - /admin/revenue → Revenue tracking
+  - /admin/content → Content moderation
+  - /admin/analytics → Platform analytics
+  - /admin/settings → Platform settings
+- If no admin account: Just try navigating to /admin/dashboard
+  while logged in as a traveler — verify it returns 403 Forbidden
+  (not a 200 with data leak)
+- Screenshot
+
+### Step 8.6: Security Spot Checks
+While logged in as a TRAVELER account:
+- Try navigating to /expert/dashboard → Should get 403 or redirect
+- Try navigating to /provider/dashboard → Should get 403 or redirect
+- Try navigating to /admin/dashboard → Should get 403 or redirect
+- Try navigating to /expert/earnings → Should get 403 or redirect
+- Report: Are role-based access controls enforced?
+  Or can any logged-in user see any dashboard?
+- THIS IS A P0 if role boundaries are not enforced.
+- Screenshot any unauthorized access
+
+### Step 8.7: Logout & Session Cleanup
+- Log out from the current session
+- Try accessing /dashboard without logging in
+- Report: Does it redirect to /login or show the sign-in modal?
+- Try accessing the previously created trip URL directly
+- Report: Does it protect the data or show it to unauthenticated users?
+- Screenshot
+
+## PHASE 8 SUMMARY
+[Same format as Phase 1]
+```
+
+---
+
+## FINAL CONSOLIDATED REPORT
+
+```
+After completing all 8 phases, compile the final report:
+
+## FINAL REPORT
+
+### OVERALL RESULTS
+- Total phases tested: 8
+- Total steps tested: [sum all steps]
+- PASSED: [count]
+- FAILED: [count]
+- NOT IMPLEMENTED: [count]
+- BLOCKED: [count]
+
+### P0 BLOCKERS (Fix immediately)
+[List all P0 bugs with phase/step reference]
+
+### P1 CRITICAL (Fix before launch)
+[List all P1 bugs]
+
+### P2 MAJOR (Fix soon)
+[List all P2 bugs]
+
+### P3 MINOR (Fix when possible)
+[List all P3 bugs]
+
+### KNOWN BUG STATUS
+- KB-001 (Sidebar disappearing on /trip/:id/itinerary):
+  STATUS: [Still present / Fixed / Different behavior]
+  DETAILS: [exact behavior observed]
+
+### FEATURE IMPLEMENTATION STATUS
+For each major feature, mark:
+  ✅ IMPLEMENTED — Working as expected
+  ⚠️ PARTIAL — Exists but incomplete or buggy
+  ❌ MISSING — Route 404s or feature not built
+  🔒 UNTESTED — Could not access (permissions, blocked by other bug)
+
+PUBLIC PAGES:
+  - Homepage:
+  - How It Works:
+  - Pricing:
+  - About:
+  - Partner With Us:
+  - Discover/TravelPulse:
+  - Expert Browse:
+  - Provider Browse:
+  - Destination Pages:
+
+AUTHENTICATION:
+  - Sign Up:
+  - Login:
+  - Sign-In Modal:
+  - Logout:
+  - Session Protection:
+
+TRAVELER FEATURES:
+  - Dashboard:
+  - Trip Creation:
+  - Activity Search/Add:
+  - AI Optimization:
+  - Itinerary View:
+  - Itinerary Card (PlanCard):
+  - Transport Hub:
+  - Map Integration:
+  - Shareable Itinerary:
+  - Cart:
+  - Checkout:
+  - Messages:
+  - Credits & Billing:
+  - Profile:
+  - Notifications:
+  - Settings:
+
+EXPERT FEATURES:
+  - Expert Dashboard:
+  - Services Management:
+  - Client Management:
+  - Bookings:
+  - Earnings:
+  - Analytics:
+  - Content Studio:
+  - AI Assistant:
+  - Profile:
+  - Leaderboard:
+
+PROVIDER FEATURES:
+  - Provider Dashboard:
+  - Services:
+  - Calendar:
+  - Bookings:
+  - Earnings:
+  - Analytics:
+  - Profile:
+
+ADMIN FEATURES:
+  - Admin Dashboard:
+  - User Management:
+  - Expert Management:
+  - Provider Management:
+  - Bookings Oversight:
+  - Revenue Tracking:
+  - Content Moderation:
+  - Platform Analytics:
+
+EA FEATURES:
+  - EA Dashboard:
+  - Client Management:
+  - Multi-Client Planning:
+  - Calendar:
+  - AI Tools:
+
+CROSS-CUTTING:
+  - Role-Based Access Control:
+  - Three-Party Messaging:
+  - Booking Flow (end-to-end):
+  - Mobile Responsiveness:
+
+### RECOMMENDATIONS
+1. [Top priority fix]
+2. [Second priority]
+3. [Third priority]
+...
+```
+
+---
+
+## TIPS FOR BEST RESULTS
+
+1. **Run one phase per OpenClaw session.** Paste the GLOBAL INSTRUCTIONS
+   plus one phase block at a time.
+
+2. **If login fails in Phase 1**, stop and fix auth before running
+   other phases. Everything depends on working authentication.
+
+3. **Replace [BASE_URL]** with your actual Replit dev URL in the
+   GLOBAL INSTRUCTIONS before pasting.
+
+4. **Save screenshots.** Tell OpenClaw to save screenshots to a
+   specific directory if you want to review them later:
+   `Save all screenshots to ./traveloure-qa-screenshots/`
+
+5. **For the model setting**, use Claude or Gemini for best browser
+   automation results. Add this to your prompt:
+   `Always use profile:"openclaw" (isolated browser) for all browser actions`
+
+6. **If a route 404s**, that's useful data — mark it NOT IMPLEMENTED
+   and move on. Don't waste time trying to make a missing page work.
+
+7. **Admin credentials**: If you haven't set up a test admin account,
+   create one before running Phase 8:
+   `admin@traveloure.test / TestPass123!`
+   And ensure it has the admin role in the database.
