@@ -21,6 +21,8 @@ import {
   MapPin,
   MessageSquare,
   Sparkles,
+  LayoutDashboard,
+  CalendarDays,
 } from "lucide-react";
 import { TransportLeg, type TransportAlternative } from "@/components/itinerary/TransportLeg";
 import { TransportHub } from "@/components/itinerary/TransportHub";
@@ -115,6 +117,7 @@ export default function ItineraryPage() {
   const { data: tripData, isLoading: tripLoading } = useTrip(tripId);
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(tripId);
   const queryClient = useQueryClient();
+  const [mainTab, setMainTab] = useState<"itinerary" | "logistics">("itinerary");
   const [selectedDay, setSelectedDay] = useState(1);
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [isSaved, setIsSaved] = useState(false);
@@ -466,6 +469,47 @@ export default function ItineraryPage() {
             </Button>
           </div>
         </div>
+
+        {/* Main tab bar */}
+        <div className="flex border-b border-border mb-5" data-testid="tabs-itinerary-main">
+          <button
+            onClick={() => setMainTab("itinerary")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+              mainTab === "itinerary"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-main-itinerary"
+          >
+            <CalendarDays className="w-4 h-4" />
+            Itinerary
+          </button>
+          <button
+            onClick={() => setMainTab("logistics")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+              mainTab === "logistics"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-main-logistics"
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Logistics
+          </button>
+        </div>
+
+        {mainTab === "logistics" && (
+          <div className="pb-12">
+            <TripLogisticsDashboard
+              tripId={tripId}
+              tripName={tripData?.title || tripData?.destination || "Trip"}
+              budget={parseFloat(String(tripData?.budget || 0))}
+              destination={tripData?.destination || "destination"}
+            />
+          </div>
+        )}
+
+        {mainTab === "itinerary" && <>
         <div className="flex flex-col lg:flex-row gap-5 pb-12">
           <div className="flex-1 min-w-0 space-y-4">
             {shareData?.expertStatus === "review_sent" && (
@@ -817,16 +861,7 @@ export default function ItineraryPage() {
               <TransportHub tripId={tripId} destination={itinerary?.destination} />
             </div>
         </div>
-
-        {/* ===== LOGISTICS DASHBOARD ===== */}
-        <div className="pb-12">
-          <TripLogisticsDashboard
-            tripId={tripId}
-            tripName={tripData?.title || tripData?.destination || "Trip"}
-            budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
-            destination={tripData?.destination || "destination"}
-          />
-        </div>
+        </>}
       </div>
 
       <Dialog open={showExpertDialog} onOpenChange={setShowExpertDialog}>
