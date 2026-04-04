@@ -22,7 +22,8 @@ import {
   MessageSquare,
   Sparkles,
 } from "lucide-react";
-import { type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportLeg, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Dialog,
   DialogContent,
