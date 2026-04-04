@@ -5,8 +5,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking';
 import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
 import { useLocation, useParams } from "wouter";
-import { DashboardLayout } from "@/components/dashboard-layout";
-import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -533,16 +531,14 @@ export default function ItineraryComparisonPage() {
 
   if (authLoading) {
     return (
-      <Layout>
-        <div className="max-w-7xl mx-auto p-6">
-          <Skeleton className="h-8 w-64 mb-6" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-96" />
-            ))}
-          </div>
+      <div className="max-w-7xl mx-auto p-6">
+        <Skeleton className="h-8 w-64 mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-96" />
+          ))}
         </div>
-      </Layout>
+      </div>
     );
   }
 
@@ -610,8 +606,7 @@ export default function ItineraryComparisonPage() {
   };
 
   return (
-    <DashboardLayout>
-      <div className="max-w-7xl mx-auto p-6">
+    <div className="max-w-7xl mx-auto p-6">
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => window.history.back()} data-testid="button-back">
             <ArrowLeft className="h-5 w-5" />
@@ -1609,7 +1604,6 @@ export default function ItineraryComparisonPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }
