@@ -139,9 +139,10 @@ export function useGenerateItinerary() {
     },
     onSuccess: (_, tripId) => {
       queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", tripId] });
       toast({
-        title: "Itinerary Generating",
-        description: "Your custom plan is being created...",
+        title: "Itinerary Generated",
+        description: "Your personalized day-by-day plan is ready.",
       });
     },
   });
