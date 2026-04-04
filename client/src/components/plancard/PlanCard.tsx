@@ -4,8 +4,9 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useDeleteTrip } from "@/hooks/use-trips";
 import { getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
@@ -19,9 +20,20 @@ import { MapControlCenter } from "./MapControlCenter";
 export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
   const [selectedDay, setSelectedDay] = useState(0);
   const [section, setSection] = useState<"activities" | "transport">("activities");
-  const [showChanges, setShowChanges] = useState(false);
+  const [showChanges, setShowChanges] = useState(true);
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
+  const [confirming, setConfirming] = useState(false);
   const { toast } = useToast();
+  const deleteTrip = useDeleteTrip();
+
+  const handleDelete = () => {
+    if (!confirming) {
+      setConfirming(true);
+      setTimeout(() => setConfirming(false), 3000);
+      return;
+    }
+    deleteTrip.mutate(trip.id);
+  };
 
   const templateConfig = getTemplateConfig(trip.eventType);
 
@@ -99,7 +111,22 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08 }}
       data-testid={`card-plan-${trip.id}`}
+      className="relative"
     >
+      <button
+        onClick={handleDelete}
+        disabled={deleteTrip.isPending}
+        data-testid={`button-delete-plan-${trip.id}`}
+        title={confirming ? "Click again to confirm delete" : "Remove this plan"}
+        className={`absolute -top-2.5 -right-2.5 z-20 w-7 h-7 rounded-full flex items-center justify-center shadow-md border transition-all duration-200 text-xs font-bold
+          ${confirming
+            ? "bg-red-500 border-red-600 text-white scale-110"
+            : "bg-white dark:bg-gray-800 border-border text-muted-foreground hover:bg-red-50 hover:border-red-300 hover:text-red-500 dark:hover:bg-red-950"
+          }`}
+      >
+        {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+      </button>
+
       <Card className="overflow-hidden border border-border hover:shadow-xl transition-all duration-300 group bg-card">
         <HeroSection
           trip={trip}
