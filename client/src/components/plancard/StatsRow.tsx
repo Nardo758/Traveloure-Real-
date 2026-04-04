@@ -21,7 +21,7 @@ interface StatsRowProps {
 
 export function StatsRow({ trip, days, totalActivities, totalLegs, totalMinutes, templateConfig, extraStats }: StatsRowProps) {
   const coreItems = [
-    { label: templateConfig.statsLabels[0], value: days.length || differenceInDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, icon: STATS_ICONS[0] },
+    { label: templateConfig.statsLabels[0], value: days.length || differenceInDays(new Date(trip.endDate ?? Date.now()), new Date(trip.startDate ?? Date.now())) + 1, icon: STATS_ICONS[0] },
     { label: templateConfig.statsLabels[1], value: totalActivities, icon: STATS_ICONS[1] },
     { label: templateConfig.statsLabels[2], value: totalLegs, icon: STATS_ICONS[2] },
     { label: templateConfig.statsLabels[3], value: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-", icon: STATS_ICONS[3] },

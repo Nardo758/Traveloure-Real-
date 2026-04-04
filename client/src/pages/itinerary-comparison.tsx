@@ -6,6 +6,7 @@ import { BookThisTripButton } from '@/components/ItineraryComparisonWithBooking'
 import { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
 import { useLocation, useParams } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
