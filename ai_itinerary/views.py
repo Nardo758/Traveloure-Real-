@@ -55,9 +55,8 @@ class TripCreateView(APIView):
                 "engine": "google_maps",
                 "q": search_query,
                 "hl": "en",
-                "gl": "in",
                 "api_key": SERP_API_KEY,
-                "location": trip.destination
+
             }
 
             try:
@@ -143,9 +142,8 @@ class SaveSelectedPlacesView(APIView):
             "check_in_date": trip.start_date.strftime('%Y-%m-%d'),
             "check_out_date": trip.end_date.strftime('%Y-%m-%d'),
             "hl": "en",
-            "gl": "in",
             "api_key": SERP_API_KEY,
-            "location": trip.destination,
+
             "currency": "USD"
         }
 
@@ -234,9 +232,8 @@ class SaveSelectedHotelsView(APIView):
             "engine": "google_maps",
             "q": f"transport services in {trip.destination}",
             "hl": "en",
-            "gl": "in",
             "api_key": SERP_API_KEY,
-            "location": trip.destination
+
         }
 
         try:
@@ -1423,7 +1420,6 @@ class TripExploreView(APIView):
             "engine": "google_maps",
             "q": search_query,
             "hl": "en",
-            "gl": "in",
             "api_key": SERP_API_KEY,
             "location": destination
         }
@@ -1434,7 +1430,6 @@ class TripExploreView(APIView):
             "check_in_date": start_date,
             "check_out_date": end_date,
             "hl": "en",
-            "gl": "in",
             "api_key": SERP_API_KEY,
             "currency": "USD"
         }
@@ -1443,7 +1438,6 @@ class TripExploreView(APIView):
             "engine": "google_maps",
             "q": f"transport services in {destination}",
             "hl": "en",
-            "gl": "in",
             "api_key": SERP_API_KEY,
             "location": destination
         }
@@ -2039,7 +2033,6 @@ class AffiliateTripExploreAPIView(generics.CreateAPIView):
             "engine": "google_maps",
             "q": search_query,
             "hl": "en",
-            "gl": "in",
             "api_key": SERP_API_KEY,
             "location": destination
         }
@@ -2242,7 +2235,6 @@ class AffiliatePlatformExploreAPIView(APIView):
                 "engine": "google_maps",
                 "q": search_query,
                 "hl": "en",
-                "gl": "in",
                 "api_key": SERP_API_KEY,
                 "location": destination
             }
