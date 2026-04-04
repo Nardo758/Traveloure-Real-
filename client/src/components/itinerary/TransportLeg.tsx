@@ -50,6 +50,8 @@ export interface TransportLegData {
 interface TransportLegProps {
   leg: TransportLegData;
   readOnly?: boolean;
+  previewOnly?: boolean;
+  onPreviewModeChange?: (legId: string, mode: string) => void;
   shareToken?: string;
   dayNumber?: number;
   className?: string;
@@ -77,6 +79,8 @@ function getGoogleMode(mode: string): string {
 export function TransportLeg({
   leg,
   readOnly = false,
+  previewOnly = false,
+  onPreviewModeChange,
   shareToken,
   dayNumber,
   className,
@@ -93,6 +97,20 @@ export function TransportLeg({
   const origCost = useRef(leg.userSelectedMode ? null : leg.estimatedCostUsd);
 
   const isCustomized = currentMode !== leg.recommendedMode;
+
+  const applyMode = (selectedMode: string) => {
+    const alt = leg.alternativeModes?.find(a => a.mode === selectedMode);
+    setCurrentMode(selectedMode);
+    if (alt) {
+      setDisplayDuration(alt.durationMinutes);
+      setDisplayCost(alt.costUsd ?? null);
+    } else if (selectedMode === leg.recommendedMode) {
+      setDisplayDuration(leg.estimatedDurationMinutes);
+      setDisplayCost(leg.estimatedCostUsd);
+    }
+    setDropdownOpen(false);
+    onPreviewModeChange?.(leg.id, selectedMode);
+  };
 
   const updateModeMutation = useMutation({
     mutationFn: async (selectedMode: string) => {
@@ -128,7 +146,6 @@ export function TransportLeg({
         toast({ title: "Transport updated", description: `Switched to ${modeLabel}` });
       }
 
-      // Call parent callback to cascade timing updates
       if (onModeChangeSuccess && impact?.nextActivityStartTimeShift !== undefined) {
         onModeChangeSuccess(leg.id, impact.nextActivityStartTimeShift);
       }
@@ -138,11 +155,23 @@ export function TransportLeg({
     },
   });
 
+  const handleModeSelect = (selectedMode: string) => {
+    if (previewOnly) {
+      applyMode(selectedMode);
+    } else {
+      updateModeMutation.mutate(selectedMode);
+    }
+  };
+
   const handleReset = () => {
-    setCurrentMode(leg.recommendedMode);
-    if (origDuration.current !== null) setDisplayDuration(origDuration.current);
-    if (origCost.current !== undefined) setDisplayCost(origCost.current);
-    updateModeMutation.mutate(leg.recommendedMode);
+    if (previewOnly) {
+      applyMode(leg.recommendedMode);
+    } else {
+      setCurrentMode(leg.recommendedMode);
+      if (origDuration.current !== null) setDisplayDuration(origDuration.current);
+      if (origCost.current !== undefined) setDisplayCost(origCost.current);
+      updateModeMutation.mutate(leg.recommendedMode);
+    }
   };
 
   const handleOpenLegInMaps = () => {
@@ -210,7 +239,7 @@ export function TransportLeg({
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={updateModeMutation.isPending}
+                  disabled={!previewOnly && updateModeMutation.isPending}
                   className="h-6 px-2 text-xs gap-1"
                   data-testid={`button-transport-mode-dropdown-${leg.legOrder}`}
                 >
@@ -221,8 +250,8 @@ export function TransportLeg({
               <DropdownMenuContent align="start" className="w-56">
                 {/* Recommended mode first */}
                 <DropdownMenuItem
-                  onClick={() => updateModeMutation.mutate(leg.recommendedMode)}
-                  disabled={updateModeMutation.isPending}
+                  onClick={() => handleModeSelect(leg.recommendedMode)}
+                  disabled={!previewOnly && updateModeMutation.isPending}
                   className="cursor-pointer"
                   data-testid={`transport-mode-${leg.recommendedMode}`}
                 >
@@ -250,8 +279,8 @@ export function TransportLeg({
                 {alternatives.map((alt) => (
                   <DropdownMenuItem
                     key={alt.mode}
-                    onClick={() => updateModeMutation.mutate(alt.mode)}
-                    disabled={updateModeMutation.isPending}
+                    onClick={() => handleModeSelect(alt.mode)}
+                    disabled={!previewOnly && updateModeMutation.isPending}
                     className="cursor-pointer"
                     data-testid={`transport-mode-${alt.mode}`}
                   >

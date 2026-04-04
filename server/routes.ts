@@ -13385,7 +13385,7 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const { legId } = req.params;
       const { selectedMode, shareToken } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
       if (!userId && !shareToken) return res.status(401).json({ error: "Authentication or share token required" });
