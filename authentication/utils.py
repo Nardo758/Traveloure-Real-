@@ -44,24 +44,10 @@ def send_verification_mail(self=None, request=None, user=None,email=None,token=N
     }
     email_html_message = render_to_string(template, email_context)
     
-    # Add SMTP debugging
-    import smtplib
     import logging
     logger = logging.getLogger('travelDNA')
     
     try:
-        # Create SMTP connection with debugging
-        smtp = smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT)
-        smtp.set_debuglevel(1)  # Enable verbose debug output
-        smtp.ehlo()
-        if settings.EMAIL_USE_TLS:
-            smtp.starttls()
-        smtp.ehlo()
-        smtp.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
-        logger.info("SMTP login successful")
-        smtp.quit()
-        
-        # Continue with normal email sending
         email_obj = EmailMessage(
             subject=email_context['subject'],
             body=email_html_message,
@@ -74,7 +60,8 @@ def send_verification_mail(self=None, request=None, user=None,email=None,token=N
         return user
     except Exception as e:
         logger.error(f"Email sending failed: {str(e)}")
-        raise e
+        # Don't crash registration if email fails in dev
+        return user
 
 # def get_log_details(request):
 #     ip = request.META.get('HTTP_X_FORWARDED_FOR')

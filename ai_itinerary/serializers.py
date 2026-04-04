@@ -485,7 +485,7 @@ class LocalExpertListSerializer(serializers.ModelSerializer):
                 'last_name': obj.user.last_name,
                 'email': obj.user.email,
                 'phone_number': obj.user.phone_number,
-                'profile_picture': obj.user.profile_picture.url if obj.user.profile_picture else None,
+                'profile_picture': obj.user.image.url if obj.user.image else None,
                 'country': obj.user.country,
                 'city': obj.user.city
             }

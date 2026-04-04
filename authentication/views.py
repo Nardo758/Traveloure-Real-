@@ -169,7 +169,7 @@ class LogoutAPIView(LoggingMixin, generics.ListAPIView):
             return Response({"error": str(e)}, status=400)
 
 class TokenRefreshAPIView(LoggingMixin, generics.CreateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def create(self, request):
         refresh_token = request.data.get("refresh")
@@ -264,9 +264,11 @@ class UserProfileUpdateView(LoggingMixin,generics.UpdateAPIView):
     def get_object(self):
         return get_object_or_404(User, id=self.request.user.id)
     def update(self, request, *args, **kwargs):
+        # Verify the URL id matches the authenticated user
+        url_id = self.kwargs.get('id')
+        if url_id and str(request.user.id) != url_id:
+            return Response({"error": "You have no permission to update another user's profile", "status": False}, status=403)
         profile_instance = self.get_object()
-        if str(profile_instance.id) != self.request.auth.get('user_id'):
-            return Response({"error": "You have no permission to update another user's profile", "status": False}, status=400)
         old_cover_image = profile_instance.cover_image
         old_image = profile_instance.image
         serializer = self.get_serializer(profile_instance, data=request.data, partial=True)

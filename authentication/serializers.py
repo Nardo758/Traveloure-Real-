@@ -62,7 +62,7 @@ class UserRegistrationSerializer(serializers.Serializer):
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
             is_active=False,
-            phone_number=validated_data['phone_number']
+            phone_number=validated_data.get('phone_number', '')
         )
 
         # OLD SUBSCRIPTION SYSTEM - COMMENTED OUT FOR PAY-AS-YOU-GO WALLET SYSTEM
@@ -543,12 +543,17 @@ class AdminServiceProviderUpdateStatusSerializer(serializers.ModelSerializer):
             user.about_me = instance.description
             user.save()
 
-            # Generate a new password for the existing user
-            raw_password = generate_random_password(length=12)
-            user.set_password(raw_password)
-            user.save()
+            # Don't reset password for existing users — they already have one
+            # Only generate new password if user has no usable password
+            raw_password = None
+            if not user.has_usable_password():
+                raw_password = generate_random_password(length=12)
+                user.set_password(raw_password)
+                user.save(update_fields=['password'])
+
             subject = "Service Provider Application Approved"
-            message = f"""Hi {user.first_name},
+            if raw_password:
+                message = f"""Hi {user.first_name},
 
 Your request to become a Service Provider has been approved!
 
@@ -556,7 +561,17 @@ You can log in here: https://traveloure.com/ with these credentials:
 Email: {user.email}
 Password : {raw_password}
 
-Make sure to change your password after your first login. This password is system-generated and we do not store it.
+Make sure to change your password after your first login.
+
+Best regards,
+TravelDNA Team
+"""
+            else:
+                message = f"""Hi {user.first_name},
+
+Your request to become a Service Provider has been approved!
+
+You can log in at https://traveloure.com/ with your existing account credentials.
 
 Best regards,
 TravelDNA Team

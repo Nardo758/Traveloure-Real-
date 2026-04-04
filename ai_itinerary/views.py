@@ -45,9 +45,11 @@ class TripCreateView(APIView):
             
             # Step 2: Search places using SERP API
             search_query = f"best tourist and popular places to visit in {trip.destination}"
-            if trip.interests:
-                interests_str = " and ".join(trip.interests)
-                search_query = f"best {interests_str} places in {trip.destination}"
+            if trip.preferences:
+                prefs = trip.preferences if isinstance(trip.preferences, list) else []
+                if prefs:
+                    interests_str = " and ".join(prefs)
+                    search_query = f"best {interests_str} places in {trip.destination}"
 
             places_params = {
                 "engine": "google_maps",
@@ -440,7 +442,7 @@ class SaveSelectedServicesView(APIView):
             'destination': trip.destination,
             'start_date': trip.start_date.strftime('%Y-%m-%d'),
             'end_date': trip.end_date.strftime('%Y-%m-%d'),
-            'interests': getattr(trip, 'interests', []),
+            'interests': getattr(trip, 'preferences', []),
             'places': [
                 {
                     'name': p.name,
@@ -518,7 +520,7 @@ Create a complete and realistic {duration}-day itinerary using the trip data bel
   "end_point": "Ending location",
   "start_date": "{trip.start_date.strftime('%Y-%m-%d')}",
   "end_date": "{trip.end_date.strftime('%Y-%m-%d')}",
-  "interests": {json.dumps(trip.interests)},
+  "interests": {json.dumps(trip.preferences)},
   "itinerary": [
     {{
       "day_number": 1,
@@ -617,6 +619,29 @@ class ItineraryAssigningToExpertAPIView(APIView):
 
         try:
             with transaction.atomic():
+                # Check if there's a rejected advisor for this trip — clean up if so
+                rejected_advisors = TripExpertAdvisor.objects.filter(
+                    trip=itinerary_instance, status='rejected'
+                )
+                if rejected_advisors.exists():
+                    # Remove rejected advisor's itinerary entry to allow reassignment
+                    ExpertUpdatedItinerary.objects.filter(
+                        trip=itinerary_instance,
+                        created_by__in=rejected_advisors.values_list('local_expert', flat=True)
+                    ).delete()
+                    rejected_advisors.delete()
+
+                # Check if trip already has an active (pending/accepted) expert
+                active_advisor = TripExpertAdvisor.objects.filter(
+                    trip=itinerary_instance, status__in=['pending', 'accepted']
+                ).first()
+                if active_advisor:
+                    return Response({
+                        'error': 'This trip already has an assigned expert. Remove the current expert before assigning a new one.',
+                        'current_expert': str(active_advisor.local_expert.id),
+                        'status': False
+                    }, status=400)
+
                 # Create TripExpertAdvisor
                 TripExpertAdvisor.objects.create(
                     trip=itinerary_instance,
@@ -625,7 +650,8 @@ class ItineraryAssigningToExpertAPIView(APIView):
                     message=message or None
                 )
 
-                # Create ExpertUpdatedItinerary
+                # Create ExpertUpdatedItinerary (delete old one first if exists)
+                ExpertUpdatedItinerary.objects.filter(trip=itinerary_instance).delete()
                 ExpertUpdatedItinerary.objects.create(
                     trip=itinerary_instance,
                     created_by=expert_instance,
@@ -635,7 +661,7 @@ class ItineraryAssigningToExpertAPIView(APIView):
 
         except Exception as e:
             return Response({
-                'error': 'Assignment failed due to unique constraint violation or database error.',
+                'error': 'Assignment failed.',
                 'details': str(e),
                 'status': False
             }, status=400)
@@ -2608,4 +2634,14 @@ class ChatViewSet(viewsets.ModelViewSet):
             room,
             {"type": "chat_message", "payload": payload}
         )
+
+
+class LocalExpertListAPIView(generics.ListAPIView):
+    """List all approved local experts."""
+    serializer_class = LocalExpertListSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        from authentication.models import LocalExpertForm
+        return LocalExpertForm.objects.filter(status='approved').select_related('user')
 
