@@ -63,9 +63,9 @@ export function ActivitiesSection({ tripId, day, templateConfig }: ActivitiesSec
                     <MessageSquare className="w-3 h-3" /> {a.comments} comment{a.comments > 1 ? "s" : ""}
                   </span>
                 )}
-                {a.changes?.length > 0 && (
+                {(a.changes?.length ?? 0) > 0 && (
                   <span className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1" data-testid={`text-activity-change-${a.id}`}>
-                    <History className="w-3 h-3" /> {a.changes[0].who}: {a.changes[0].what}
+                    <History className="w-3 h-3" /> {a.changes![0].who}: {a.changes![0].what}
                   </span>
                 )}
               </div>

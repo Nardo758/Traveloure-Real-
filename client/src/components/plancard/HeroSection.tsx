@@ -17,7 +17,7 @@ interface HeroSectionProps {
 export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, budget }: HeroSectionProps) {
   const { toast } = useToast();
   const photoUrl = getDestinationPhotoUrl(trip.destination);
-  const daysUntil = differenceInDays(new Date(trip.startDate), new Date());
+  const daysUntil = differenceInDays(new Date(trip.startDate ?? Date.now()), new Date());
   const statusLabel = daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
     : "Planning";
@@ -96,7 +96,7 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
           </span>
           <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
             <Calendar className="w-3.5 h-3.5" />
-            {format(new Date(trip.startDate), "MMM d")} - {format(new Date(trip.endDate), "MMM d, yyyy")}
+            {format(new Date(trip.startDate ?? Date.now()), "MMM d")} - {format(new Date(trip.endDate ?? Date.now()), "MMM d, yyyy")}
           </span>
           {displayCost && (
             <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>

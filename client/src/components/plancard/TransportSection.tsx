@@ -42,7 +42,7 @@ export function TransportSection({ tripId, tripDestination, day }: TransportSect
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">
-            {[...new Set(day.transports.map((t) => t.mode))].map((mode) => {
+            {Array.from(new Set(day.transports.map((t) => t.mode))).map((mode) => {
               const mins = day.transports.filter((t) => t.mode === mode).reduce((s: number, t) => s + (t.duration || 0), 0);
               return (
                 <span

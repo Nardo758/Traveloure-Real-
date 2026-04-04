@@ -87,6 +87,7 @@ import {
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
+import type { User } from "@shared/models/auth";
 
 export interface IStorage {
   // Trips
