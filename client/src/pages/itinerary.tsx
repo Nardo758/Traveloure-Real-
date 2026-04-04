@@ -693,32 +693,24 @@ export default function ItineraryPage() {
                 </CardContent>
               </Card>
 
-            {/* Trip Logistics Dashboard */}
-            <TripLogisticsDashboard
-              tripId={tripId}
-              tripName={tripData?.title || tripData?.destination || "Trip"}
-              budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
-              destination={tripData?.destination || "destination"}
-            />
-
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-3 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
-                      <MessageSquare className="w-6 h-6 text-[#FF385C]" />
+                    <div className="p-2.5 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20">
+                      <MessageSquare className="w-5 h-5 text-[#FF385C]" />
                     </div>
                     <div>
-                      <h4 className="font-semibold text-[#111827] dark:text-white">Need help with your trip?</h4>
-                      <p className="text-sm text-[#6B7280]">Chat with our AI assistant or connect with an expert</p>
+                      <h4 className="font-semibold text-sm text-[#111827] dark:text-white">Need help?</h4>
+                      <p className="text-xs text-[#6B7280]">AI or expert support</p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" data-testid="button-ai-help">
-                      <Sparkles className="w-4 h-4 mr-2" />
+                  <div className="flex flex-col gap-2">
+                    <Button variant="outline" size="sm" className="w-full" data-testid="button-ai-help">
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
                       AI Assistant
                     </Button>
-                    <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
+                    <Button size="sm" className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-expert-help">
                       Talk to Expert
                     </Button>
                   </div>
@@ -824,6 +816,16 @@ export default function ItineraryPage() {
               <TransportHub tripId={tripId} destination={itinerary?.destination} />
             </div>
           </div>
+        </div>
+
+        {/* ===== LOGISTICS DASHBOARD ===== */}
+        <div className="pb-12">
+          <TripLogisticsDashboard
+            tripId={tripId}
+            tripName={tripData?.title || tripData?.destination || "Trip"}
+            budget={typeof tripData?.budget === 'number' ? tripData.budget : 0}
+            destination={tripData?.destination || "destination"}
+          />
         </div>
       </div>
 
