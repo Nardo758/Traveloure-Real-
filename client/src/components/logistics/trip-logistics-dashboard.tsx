@@ -20,6 +20,8 @@ import {
   RefreshCw,
   CalendarClock,
   Zap,
+  User,
+  Mail,
 } from "lucide-react";
 import { queryClient } from "@/lib/queryClient";
 import { TemporalAnchorManager } from "./temporal-anchor-manager";
@@ -90,6 +92,19 @@ interface AlertSummary {
   unacknowledged: number;
 }
 
+interface Participant {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  dietaryRestrictions: string[];
+  accessibilityNeeds: string[];
+  amountOwed: string | number;
+  amountPaid: string | number;
+  paymentStatus: string;
+}
+
 export function TripLogisticsDashboard({
   tripId,
   tripName = "Trip",
@@ -128,6 +143,11 @@ export function TripLogisticsDashboard({
 
   const { data: alertSummary, isLoading: loadingAlerts } = useQuery<AlertSummary>({
     queryKey: [`/api/trips/${tripId}/alerts/summary`],
+    enabled: !!tripId,
+  });
+
+  const { data: participantList, isLoading: loadingParticipantList } = useQuery<Participant[]>({
+    queryKey: [`/api/trips/${tripId}/participants`],
     enabled: !!tripId,
   });
 
@@ -392,6 +412,69 @@ export function TripLogisticsDashboard({
 
         {/* People tab */}
         <TabsContent value="people" className="mt-4">
+          <div className="space-y-4">
+          {/* Who's Going roster */}
+          <Card data-testid="card-whos-going">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <User className="w-4 h-4 text-primary" />
+                Who's Going
+              </CardTitle>
+              <CardDescription>Full participant roster</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingParticipantList ? (
+                <div className="space-y-2">
+                  {[1,2,3].map(i => <Skeleton key={i} className="h-10 w-full" />)}
+                </div>
+              ) : participantList && participantList.length > 0 ? (
+                <div className="divide-y divide-border">
+                  {participantList.map((p) => {
+                    const statusConfig: Record<string, { label: string; className: string }> = {
+                      confirmed: { label: "Confirmed", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+                      pending:   { label: "Pending",   className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+                      invited:   { label: "Invited",   className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+                      declined:  { label: "Declined",  className: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+                      maybe:     { label: "Maybe",     className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400" },
+                    };
+                    const sc = statusConfig[p.status] ?? { label: p.status, className: "bg-muted text-muted-foreground" };
+                    return (
+                      <div key={p.id} className="flex items-center justify-between py-3 gap-3" data-testid={`row-participant-${p.id}`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                            <span className="text-xs font-semibold text-primary">
+                              {(p.name || "?").charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm truncate" data-testid={`text-participant-name-${p.id}`}>{p.name}</div>
+                            {p.email && (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+                                <Mail className="w-3 h-3 shrink-0" />{p.email}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {p.dietaryRestrictions && p.dietaryRestrictions.length > 0 && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-orange-600 border-orange-300 hidden sm:flex">
+                              {p.dietaryRestrictions[0]}{p.dietaryRestrictions.length > 1 ? ` +${p.dietaryRestrictions.length - 1}` : ""}
+                            </Badge>
+                          )}
+                          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${sc.className}`}>
+                            {sc.label}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-muted-foreground text-sm py-6 text-center">No participants added yet</div>
+              )}
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Participant breakdown */}
             <Card data-testid="card-participant-detail">
@@ -481,6 +564,7 @@ export function TripLogisticsDashboard({
                 )}
               </CardContent>
             </Card>
+          </div>
           </div>
         </TabsContent>
 
