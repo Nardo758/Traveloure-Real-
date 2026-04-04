@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   ExternalLink,
   MapPin,
+  MessageSquare,
 } from "lucide-react";
 import { type TransportAlternative } from "@/components/itinerary/TransportLeg";
 import {
