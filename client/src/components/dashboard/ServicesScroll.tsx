@@ -40,6 +40,10 @@ export function ServicesScroll() {
   const { data: categories, isLoading } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
   });
+  const { data: providerCounts } = useQuery<Record<string, number>>({
+    queryKey: ["/api/service-categories/provider-counts"],
+    staleTime: 60000,
+  });
 
   if (isLoading) {
     return (
@@ -71,21 +75,24 @@ export function ServicesScroll() {
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" data-testid="services-scroll-track">
-        {active.map((cat) => (
-          <Link key={cat.id} href={`/discover?category=${cat.slug || cat.id}`}>
-            <div
-              className="flex-shrink-0 w-[110px] rounded-[10px] py-3 px-2.5 cursor-pointer text-center transition-colors hover:opacity-80"
-              style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
-              data-testid={`service-card-${cat.id}`}
-            >
-              <div className="text-[16px] mb-1">{getIcon(cat)}</div>
-              <div className="text-[12px] font-medium truncate" style={{ color: "#1A1A18" }}>{cat.name}</div>
-              {cat.description && (
-                <div className="text-[10px] mt-0.5 line-clamp-1" style={{ color: "#7A7A72" }}>{cat.description}</div>
-              )}
-            </div>
-          </Link>
-        ))}
+        {active.map((cat) => {
+          const count = providerCounts?.[cat.id] ?? 0;
+          return (
+            <Link key={cat.id} href={`/discover?category=${cat.slug || cat.id}`}>
+              <div
+                className="flex-shrink-0 w-[110px] rounded-[10px] py-3 px-2.5 cursor-pointer text-center transition-colors hover:opacity-80"
+                style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
+                data-testid={`service-card-${cat.id}`}
+              >
+                <div className="text-[16px] mb-1">{getIcon(cat)}</div>
+                <div className="text-[12px] font-medium truncate" style={{ color: "#1A1A18" }}>{cat.name}</div>
+                <div className="text-[10px] mt-0.5" style={{ color: "#7A7A72" }} data-testid={`service-provider-count-${cat.id}`}>
+                  {count > 0 ? `${count} provider${count !== 1 ? "s" : ""}` : "Coming soon"}
+                </div>
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
