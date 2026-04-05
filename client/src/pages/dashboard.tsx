@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import {
   Plus, Loader2, MessageSquare, CreditCard, Bot, Calendar, Bookmark, Clock,
-  ChevronRight, MapPin, Sparkles, Users, Bell
+  ChevronRight, MapPin, Sparkles, Users, Bell, HelpCircle
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
@@ -46,13 +46,13 @@ const QUICK_ACTIONS = [
     testId: "button-quick-message",
   },
   {
-    href: "/credits",
-    icon: CreditCard,
-    label: "Buy Credits",
-    description: "Top up your credit balance",
+    href: "/help",
+    icon: HelpCircle,
+    label: "Help Centre",
+    description: "Browse guides & support",
     color: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
     border: "border-emerald-100 dark:border-emerald-900",
-    testId: "button-quick-credits",
+    testId: "button-quick-help",
   },
   {
     href: "/ai-assistant",
