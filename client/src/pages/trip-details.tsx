@@ -173,6 +173,8 @@ export default function TripDetails() {
     expert_profile_image_url: string | null;
   }
 
+  const advisor = advisorData?.advisor ?? null;
+
   const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
     queryKey: [`/api/trips/${id}/suggestions`],
     enabled: !!id && !!advisor,
@@ -212,8 +214,6 @@ export default function TripDetails() {
       toast({ title: "Failed to assign expert", description: err.message, variant: "destructive" });
     },
   });
-
-  const advisor = advisorData?.advisor ?? null;
 
   // Open destination in maps
   const openInMaps = () => {
