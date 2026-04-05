@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useParams, Link } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check } from "lucide-react";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays } from "date-fns";
@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -46,6 +48,39 @@ interface ProviderService {
   bookingCount: number;
 }
 
+interface Expert {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  bio: string | null;
+  specialties: string[];
+  destinations: string[];
+  hourly_rate: string | null;
+  years_of_experience: string | null;
+  availability: string | null;
+  response_time: string | null;
+  profile_image_url: string | null;
+  avg_rating: string;
+  review_count: number;
+}
+
+interface ExpertAdvisor {
+  advisor_id: string;
+  status: "pending" | "accepted" | "rejected";
+  message: string | null;
+  assigned_at: string;
+  first_name: string;
+  last_name: string;
+  bio: string | null;
+  specialties: string[];
+  destinations: string[];
+  hourly_rate: string | null;
+  profile_image_url: string | null;
+  avg_rating: string;
+  review_count: number;
+}
+
 export default function TripDetails() {
   const { id } = useParams();
   const { data: trip, isLoading } = useTrip(id || "");
@@ -57,6 +92,9 @@ export default function TripDetails() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [expertPickerOpen, setExpertPickerOpen] = useState(false);
+  const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
+  const [expertMessage, setExpertMessage] = useState("");
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -86,6 +124,35 @@ export default function TripDetails() {
     queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
     enabled: !!trip?.destination,
   });
+
+  const { data: advisorData, isLoading: advisorLoading } = useQuery<{ advisor: ExpertAdvisor | null }>({
+    queryKey: [`/api/trips/${id}/expert-advisor`],
+    enabled: !!id,
+  });
+
+  const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
+    queryKey: [`/api/experts?destination=${encodeURIComponent(trip?.destination || "")}`],
+    enabled: expertPickerOpen && !!trip?.destination,
+  });
+
+  const assignExpertMutation = useMutation({
+    mutationFn: async ({ expertUserId, message }: { expertUserId: string; message: string }) => {
+      const res = await apiRequest("POST", `/api/trips/${id}/expert-advisor`, { expertUserId, message });
+      return res.json() as Promise<{ success: boolean; advisorId: string; status: string }>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/expert-advisor`] });
+      setExpertPickerOpen(false);
+      setSelectedExpert(null);
+      setExpertMessage("");
+      toast({ title: "Expert request sent!", description: "They will review and respond soon." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to assign expert", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const advisor = advisorData?.advisor ?? null;
 
   // Open destination in maps
   const openInMaps = () => {
@@ -420,29 +487,91 @@ export default function TripDetails() {
 
                 <TabsContent value="expert" className="mt-0">
                   <div className="space-y-8 py-4">
-                    <div className="grid md:grid-cols-2 gap-8 items-center">
-                      <div>
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
-                          Connect with a Local Expert
-                        </h3>
-                        <p className="text-muted-foreground mb-6">
-                          Get personalized advice, hidden gems, and real-time support from someone who lives in {trip.destination}.
-                        </p>
-                        <Link href="/chat">
-                          <Button className="gap-2" data-testid="button-find-expert">
-                            Chat with Expert <ArrowRight className="w-4 h-4" />
+                    {/* Assigned Expert Display */}
+                    {advisorLoading ? (
+                      <div className="flex items-center gap-4 p-4 rounded-xl border border-border">
+                        <Skeleton className="w-14 h-14 rounded-full" />
+                        <div className="flex-1 space-y-2">
+                          <Skeleton className="h-5 w-40" />
+                          <Skeleton className="h-4 w-64" />
+                        </div>
+                      </div>
+                    ) : advisor ? (
+                      <div
+                        className="flex items-start gap-4 p-4 rounded-xl border border-border bg-muted/20"
+                        data-testid="expert-advisor-card"
+                      >
+                        <Avatar className="w-14 h-14 flex-shrink-0">
+                          <AvatarImage src={advisor.profile_image_url ?? undefined} />
+                          <AvatarFallback className="text-lg font-medium">
+                            {advisor.first_name?.[0]}{advisor.last_name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <span className="font-semibold text-foreground" data-testid="advisor-name">
+                              {advisor.first_name} {advisor.last_name}
+                            </span>
+                            <Badge
+                              variant={advisor.status === "accepted" ? "default" : "secondary"}
+                              className="text-[11px]"
+                              data-testid="advisor-status"
+                            >
+                              {advisor.status === "accepted" ? "Expert assigned" : "Request pending"}
+                            </Badge>
+                          </div>
+                          {advisor.bio && (
+                            <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{advisor.bio}</p>
+                          )}
+                          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                            {parseFloat(advisor.avg_rating) > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Star className="w-3 h-3 fill-current text-amber-500" />
+                                {parseFloat(advisor.avg_rating).toFixed(1)} ({advisor.review_count} reviews)
+                              </span>
+                            )}
+                            {advisor.hourly_rate && (
+                              <span>${advisor.hourly_rate}/hr</span>
+                            )}
+                          </div>
+                          {advisor.status === "accepted" && (
+                            <Link href="/chat">
+                              <Button size="sm" className="mt-3 gap-1.5" data-testid="button-message-expert">
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                Message expert
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid md:grid-cols-2 gap-8 items-center">
+                        <div>
+                          <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+                            Connect with a Local Expert
+                          </h3>
+                          <p className="text-muted-foreground mb-6">
+                            Get personalized advice, hidden gems, and real-time support from someone who knows {trip.destination} well.
+                          </p>
+                          <Button
+                            className="gap-2"
+                            onClick={() => setExpertPickerOpen(true)}
+                            data-testid="button-add-expert"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            Add an expert
                           </Button>
-                        </Link>
+                        </div>
+                        <div className="relative">
+                          <img
+                            src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=600&auto=format&fit=crop"
+                            alt="Local Expert"
+                            className="rounded-2xl shadow-xl"
+                          />
+                        </div>
                       </div>
-                      <div className="relative">
-                        <img 
-                          src="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=600&auto=format&fit=crop"
-                          alt="Local Expert"
-                          className="rounded-2xl shadow-xl"
-                        />
-                      </div>
-                    </div>
-                    
+                    )}
+
                     <div className="border-t border-border pt-8">
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -563,6 +692,123 @@ export default function TripDetails() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Expert Picker Dialog */}
+      <Dialog open={expertPickerOpen} onOpenChange={(open) => {
+        setExpertPickerOpen(open);
+        if (!open) { setSelectedExpert(null); setExpertMessage(""); }
+      }}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-expert-picker">
+          <DialogHeader>
+            <DialogTitle>Choose an expert for {trip?.destination}</DialogTitle>
+            <DialogDescription>
+              Select an expert to help curate your trip. They'll review your plan and reach out.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedExpert ? (
+            <div className="space-y-4 mt-2">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
+                <Avatar className="w-10 h-10">
+                  <AvatarImage src={selectedExpert.profile_image_url ?? undefined} />
+                  <AvatarFallback>{selectedExpert.first_name?.[0]}{selectedExpert.last_name?.[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="font-medium">{selectedExpert.first_name} {selectedExpert.last_name}</div>
+                  {parseFloat(selectedExpert.avg_rating) > 0 && (
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Star className="w-3 h-3 fill-current text-amber-500" />
+                      {parseFloat(selectedExpert.avg_rating).toFixed(1)}
+                    </div>
+                  )}
+                </div>
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelectedExpert(null)}
+                  data-testid="button-change-expert">
+                  Change
+                </Button>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Message (optional)</label>
+                <Textarea
+                  placeholder="Tell the expert about your preferences, goals, or any specific requests..."
+                  value={expertMessage}
+                  onChange={(e) => setExpertMessage(e.target.value)}
+                  rows={3}
+                  data-testid="input-expert-message"
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => assignExpertMutation.mutate({ expertUserId: selectedExpert.user_id, message: expertMessage })}
+                disabled={assignExpertMutation.isPending}
+                data-testid="button-confirm-expert"
+              >
+                {assignExpertMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <UserPlus className="w-4 h-4 mr-2" />
+                )}
+                Send request to {selectedExpert.first_name}
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-2 space-y-3">
+              {expertsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg border border-border">
+                      <Skeleton className="w-10 h-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-3 w-48" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : expertsData && expertsData.length > 0 ? (
+                expertsData.map((expert) => (
+                  <button
+                    key={expert.id}
+                    className="w-full flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/60 hover:bg-muted/30 transition-colors text-left"
+                    onClick={() => setSelectedExpert(expert)}
+                    data-testid={`button-select-expert-${expert.id}`}
+                  >
+                    <Avatar className="w-10 h-10 flex-shrink-0">
+                      <AvatarImage src={expert.profile_image_url ?? undefined} />
+                      <AvatarFallback>{expert.first_name?.[0]}{expert.last_name?.[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground">
+                        {expert.first_name} {expert.last_name}
+                      </div>
+                      {expert.bio && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{expert.bio}</p>
+                      )}
+                      <div className="flex flex-wrap gap-2 mt-1.5 text-xs text-muted-foreground">
+                        {parseFloat(expert.avg_rating) > 0 && (
+                          <span className="flex items-center gap-0.5">
+                            <Star className="w-3 h-3 fill-current text-amber-500" />
+                            {parseFloat(expert.avg_rating).toFixed(1)}
+                          </span>
+                        )}
+                        {expert.hourly_rate && <span>${expert.hourly_rate}/hr</span>}
+                        {expert.response_time && <span>Responds {expert.response_time}</span>}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-1" />
+                  </button>
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <User className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-muted-foreground">No experts found for {trip?.destination}.</p>
+                  <p className="text-sm mt-1 text-muted-foreground">Check back soon or browse all experts.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Share Dialog */}
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
