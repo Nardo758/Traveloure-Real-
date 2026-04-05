@@ -424,7 +424,6 @@ export default function CreditsBillingPage() {
             </Card>
           </TabsContent>
         </Tabs>
-      </div>
     </div>
   );
 }
