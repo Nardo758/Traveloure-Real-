@@ -596,6 +596,7 @@ router.get('/experts', async (req, res) => {
 /**
  * GET /api/trips/:id/expert-advisor
  * Return the assigned expert advisor for a trip (or null).
+ * Ownership is enforced: only the trip's owner can read this.
  */
 router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
@@ -603,6 +604,14 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
+
+    // Ownership check — prevents IDOR leakage
+    const ownerCheck = await db.execute(sql`
+      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
+    `);
+    if (!ownerCheck.rows || ownerCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
 
     const result = await db.execute(sql`
       SELECT
@@ -689,14 +698,43 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Expert not found or not approved' });
     }
 
-    // Create trip_expert_advisors record
+    // Fetch trip details for expert_requests record
+    const tripInfo = await db.execute(sql`
+      SELECT destination FROM trips WHERE id = ${id}
+    `);
+    const destination = (tripInfo.rows[0] as any)?.destination || 'unknown';
+
+    // Get queue position for expert_requests
+    const queueResult = await db.execute(sql`
+      SELECT COALESCE(MAX(queue_position), 0) + 1 as next_position
+      FROM expert_requests
+      WHERE destination_city = ${destination.toLowerCase()}
+        AND status IN ('queued', 'assigned')
+    `);
+    const queuePosition = (queueResult.rows?.[0] as any)?.next_position || 1;
+
+    // Create expert_requests record (with trip_id; variant_id/comparison_id are now nullable)
+    const expertRequestId = crypto.randomUUID();
+    await db.execute(sql`
+      INSERT INTO expert_requests (
+        id, user_id, trip_id, destination_city, request_type,
+        status, queue_position, notes, assigned_expert_id, created_at
+      ) VALUES (
+        ${expertRequestId}, ${userId}, ${id},
+        ${destination.toLowerCase()}, 'review',
+        'queued', ${queuePosition}, ${message || null},
+        ${expertUserId}, NOW()
+      )
+    `);
+
+    // Create trip_expert_advisors record (pending)
     const advisorId = crypto.randomUUID();
     await db.execute(sql`
       INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
       VALUES (${advisorId}, ${id}, ${expertUserId}, 'pending', ${message || null}, NOW())
     `);
 
-    res.json({ success: true, advisorId, status: 'pending' });
+    res.json({ success: true, advisorId, expertRequestId, status: 'pending' });
   } catch (error: any) {
     console.error('Assign expert advisor error:', error);
     res.status(500).json({ success: false, error: error.message });

@@ -329,6 +329,9 @@ export function DashboardPlanCard({
                 </>
               )}
             </div>
+            {advisor.status === "accepted" && expertMsgText && (
+              <div className="text-[10px] text-muted-foreground truncate mt-0.5">{expertMsgText}</div>
+            )}
           </div>
           <div
             className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${advisor.status === "accepted" ? "bg-[#2E8B8B]" : "bg-amber-400"}`}
