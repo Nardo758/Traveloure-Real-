@@ -16,7 +16,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions,
+  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -1204,6 +1204,24 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/service-categories", async (req, res) => {
     const categories = await storage.getServiceCategories();
     res.json(categories);
+  });
+
+  app.get("/api/service-categories/provider-counts", async (_req, res) => {
+    try {
+      const counts = await db
+        .select({
+          categoryId: serviceProviderForms.categoryId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(serviceProviderForms)
+        .where(isNotNull(serviceProviderForms.categoryId))
+        .groupBy(serviceProviderForms.categoryId);
+      const map: Record<string, number> = {};
+      counts.forEach(c => { if (c.categoryId) map[c.categoryId] = c.count; });
+      res.json(map);
+    } catch (error) {
+      res.json({});
+    }
   });
 
   // Create category (admin)
