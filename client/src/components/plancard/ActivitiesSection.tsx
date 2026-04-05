@@ -72,6 +72,31 @@ function computeTemporalStates(
   return out;
 }
 
+const MODE_ALIASES: Record<string, TraveloureMode> = {
+  walking: "walk",
+  foot: "walk",
+  pedestrian: "walk",
+  cycling: "bicycle",
+  biking: "bicycle",
+  bike: "bicycle",
+  car: "drive",
+  auto: "drive",
+  automobile: "drive",
+  driving: "drive",
+  bus: "transit",
+  train: "transit",
+  subway: "transit",
+  metro: "transit",
+  cab: "taxi",
+  "ride-share": "rideshare",
+  lyft: "rideshare",
+  uber: "rideshare",
+};
+
+function canonicalMode(raw: string): TraveloureMode {
+  return (MODE_ALIASES[raw.toLowerCase()] as TraveloureMode) ?? (raw as TraveloureMode);
+}
+
 function hasValidCoords(lat?: number, lng?: number): boolean {
   return (
     lat != null &&
@@ -90,17 +115,17 @@ interface ConnectorProps {
 
 function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps) {
   const [open, setOpen] = useState(false);
-  const activeMode = modeOverride || leg.userSelectedMode || leg.recommendedMode;
+  const activeMode = canonicalMode(modeOverride || leg.userSelectedMode || leg.recommendedMode || "walk");
   const modeIcon = TRANSPORT_MODE_ICONS[activeMode] || "🚶";
   const modeLabel = TRANSPORT_MODE_LABELS[activeMode] || activeMode;
 
   const recommendedEntry = {
-    mode: leg.recommendedMode || leg.userSelectedMode || "walk",
+    mode: canonicalMode(leg.recommendedMode || leg.userSelectedMode || "walk"),
     durationMinutes: leg.estimatedDurationMinutes,
     costUsd: leg.estimatedCostUsd,
   };
   const altEntries = (leg.alternativeModes || []).map((m) => ({
-    mode: m.mode,
+    mode: canonicalMode(m.mode),
     durationMinutes: m.durationMinutes,
     costUsd: m.costUsd,
   }));
@@ -128,7 +153,7 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
         lng: leg.toLng ?? undefined,
         name: leg.toName,
       },
-      mode: mode as TraveloureMode,
+      mode: canonicalMode(mode),
     });
   };
 
@@ -259,10 +284,11 @@ export function ActivitiesSection({
 
   const upNextActivity = upNextIndex >= 0 ? day.activities[upNextIndex] : null;
   const upNextLeg = upNextIndex > 0 ? legs[upNextIndex - 1] : null;
-  const upNextMode: TraveloureMode =
-    (upNextLeg
-      ? (legModes[upNextLeg.id] || upNextLeg.userSelectedMode || upNextLeg.recommendedMode)
-      : "walk") as TraveloureMode;
+  const upNextMode: TraveloureMode = canonicalMode(
+    upNextLeg
+      ? (legModes[upNextLeg.id] || upNextLeg.userSelectedMode || upNextLeg.recommendedMode || "walk")
+      : "walk"
+  );
 
   const fabCanShow =
     isLiveDay &&

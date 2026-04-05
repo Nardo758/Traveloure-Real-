@@ -88,7 +88,7 @@ function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
       legOrder: i + 1,
       fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
       toName: to.location || to.title || to.name || `Stop ${i + 2}`,
-      recommendedMode: "walking",
+      recommendedMode: "walk",
       userSelectedMode: null,
       distanceDisplay: "~1 km",
       estimatedDurationMinutes: 15,
