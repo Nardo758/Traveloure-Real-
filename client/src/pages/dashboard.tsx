@@ -111,14 +111,16 @@ export default function Dashboard() {
   return (
     <DashboardLayout>
       <div className="p-6 max-w-3xl mx-auto">
-        <div
-          className="text-[22px] font-medium text-foreground pt-4 pb-1"
-          data-testid="text-welcome"
-        >
-          Welcome back, {user?.firstName || "Traveler"}
-        </div>
-        <div className="text-[14px] text-muted-foreground mb-4" data-testid="text-greeting-sub">
-          {greetingSub}
+        <div className="pt-4 mb-4">
+          <div
+            className="text-[22px] font-medium text-foreground pb-0.5"
+            data-testid="text-welcome"
+          >
+            Welcome back, {user?.firstName || "Traveler"}
+          </div>
+          <div className="text-[14px] text-muted-foreground" data-testid="text-greeting-sub">
+            {greetingSub}
+          </div>
         </div>
 
         <TravelPulseTicker />
