@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useSearch } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
@@ -84,11 +84,16 @@ interface ExpertAdvisor {
 
 export default function TripDetails() {
   const { id } = useParams();
+  const searchStr = useSearch();
+  const searchParams = new URLSearchParams(searchStr);
+  const initialTab = searchParams.get("tab") || "itinerary";
+  const deepSection = searchParams.get("section");
   const { data: trip, isLoading } = useTrip(id || "");
   const generateItinerary = useGenerateItinerary();
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -99,6 +104,17 @@ export default function TripDetails() {
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
+  const suggestionsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (initialTab === "expert" && deepSection === "suggestions") {
+      setActiveTab("expert");
+      const timer = setTimeout(() => {
+        suggestionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [initialTab, deepSection]);
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -166,10 +182,13 @@ export default function TripDetails() {
   const reviewSuggestionMutation = useMutation({
     mutationFn: async ({ suggestionId, status, rejectionNote }: { suggestionId: string; status: "approved" | "rejected"; rejectionNote?: string }) => {
       const res = await apiRequest("PATCH", `/api/trips/${id}/suggestions/${suggestionId}`, { status, rejectionNote });
-      return res.json();
+      return res.json() as Promise<{ suggestion: { status: string } }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/suggestions`] });
+      if (data?.suggestion?.status === "approved") {
+        queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", id] });
+      }
       toast({ title: "Suggestion reviewed", description: "Your response has been saved." });
     },
     onError: () => {
@@ -332,7 +351,7 @@ export default function TripDetails() {
       <div className="container mx-auto px-4 -mt-6 relative z-10">
         <Card className="shadow-xl border-0">
           <CardContent className="p-0">
-            <Tabs defaultValue="itinerary">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className="border-b border-border px-6 pt-4">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                   <TabsList className="bg-muted/50">
@@ -627,7 +646,7 @@ export default function TripDetails() {
 
                     {/* Expert Suggestions Panel */}
                     {advisor && (
-                      <div className="border-t border-border pt-6">
+                      <div ref={suggestionsRef} className="border-t border-border pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
                             <Lightbulb className="w-5 h-5 text-amber-500" />
