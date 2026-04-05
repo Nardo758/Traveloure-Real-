@@ -495,6 +495,16 @@ router.get('/trips/shared/:token', async (req, res) => {
       return res.status(404).json({ error: 'Shared trip not found or link has expired' });
     }
 
+    // Log view — insert into shared_trip_views with trip_id
+    const viewerIp = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
+      || req.socket?.remoteAddress
+      || null;
+
+    db.execute(sql`
+      INSERT INTO shared_trip_views (id, trip_id, viewer_ip, viewed_at)
+      VALUES (${crypto.randomUUID()}, ${tripResult.rows[0].id as string}, ${viewerIp}, NOW())
+    `).catch((err) => console.error('Failed to log shared trip view:', err));
+
     res.json({ success: true, trip: tripResult.rows[0] });
   } catch (error: any) {
     console.error('Get shared trip (trip-based) error:', error);
