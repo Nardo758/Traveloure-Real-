@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { ExpertConstraintDashboard, ExpertCoordinationHub } from "@/components/logistics";
+import { TravelPulseTicker } from "@/components/dashboard/TravelPulseTicker";
 
 interface AnalyticsDashboard {
   summary: {
@@ -139,6 +140,9 @@ export default function ExpertDashboard() {
             </Card>
           ))}
         </div>
+
+        {/* TravelPulse Ticker */}
+        <TravelPulseTicker />
 
         {/* Two-Panel Layout: Left 60%, Right 40% */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
