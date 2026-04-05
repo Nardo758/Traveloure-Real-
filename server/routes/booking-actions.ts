@@ -526,10 +526,11 @@ router.get('/trips/shared/:token', async (req, res) => {
 });
 
 /**
- * GET /api/experts?destination=X
+ * GET /api/trip-experts?destination=X
  * Return approved experts, optionally filtered by destination.
+ * Named /api/trip-experts to avoid shadowing the existing /api/experts endpoint.
  */
-router.get('/experts', async (req, res) => {
+router.get('/trip-experts', async (req, res) => {
   try {
     const { destination } = req.query as { destination?: string };
 

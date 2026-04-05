@@ -131,7 +131,7 @@ export default function TripDetails() {
   });
 
   const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
-    queryKey: [`/api/experts?destination=${encodeURIComponent(trip?.destination || "")}`],
+    queryKey: [`/api/trip-experts?destination=${encodeURIComponent(trip?.destination || "")}`],
     enabled: expertPickerOpen && !!trip?.destination,
   });
 
