@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { ExpertConstraintDashboard, ExpertCoordinationHub } from "@/components/logistics";
-import { TravelPulseTicker } from "@/components/dashboard/TravelPulseTicker";
+import { TravelPulseTicker } from "@/components/shared/travel-pulse-ticker";
 
 interface AnalyticsDashboard {
   summary: {
@@ -142,7 +142,13 @@ export default function ExpertDashboard() {
         </div>
 
         {/* TravelPulse Ticker */}
-        <TravelPulseTicker />
+        <TravelPulseTicker items={[
+          { city: "Kyoto", text: "Spring season: cultural tours booming", type: "up" },
+          { city: "Tokyo", text: "Tech tours trending +80% this month", type: "up" },
+          { city: "Pricing", text: "Your rates: premium tier ✓", type: "neutral" },
+          { city: "Demand", text: "Expert consultation: peak hours noon-3PM", type: "up" },
+          { city: "Trends", text: "AI itineraries: 45% of bookings", type: "up" },
+        ]} />
 
         {/* Two-Panel Layout: Left 60%, Right 40% */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -231,6 +237,38 @@ export default function ExpertDashboard() {
                 )) : (
                   <p className="text-gray-500 text-center py-4">No active clients yet</p>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Recent Bookings */}
+            <Card className="border border-gray-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Recent Bookings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  { service: "Full Expert Service", client: "Sarah Mitchell", amount: 499, date: "Mar 28", status: "confirmed" },
+                  { service: "AI + Expert Review", client: "David Chen", amount: 49.99, date: "Mar 22", status: "confirmed" },
+                  { service: "Full Expert Service", client: "Emma Laurent", amount: 399, date: "Mar 15", status: "confirmed" },
+                ].map((booking, idx) => (
+                  <div key={idx} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:pb-0 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-gray-900 text-sm">{booking.service}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">{booking.client}</p>
+                          <p className="text-xs text-gray-400 mt-1">{booking.date}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="text-sm font-bold text-emerald-700">${booking.amount}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${booking.status === "confirmed" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                        {booking.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
