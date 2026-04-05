@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { MapPin, Calendar, UserCheck, Clock, Car, Users, Briefcase } from "lucide-react";
+import { MapPin, Calendar, UserCheck, Clock, Car, Users, Briefcase, Lightbulb } from "lucide-react";
 
 interface Trip {
   id: string;
@@ -174,6 +174,13 @@ export function DashboardPlanCard({
     queryKey: ['/api/service-bookings'],
     staleTime: 60000,
   });
+
+  const { data: suggestionsData } = useQuery<{ suggestions: Array<{ id: string; status: string }> }>({
+    queryKey: [`/api/trips/${trip.id}/suggestions`],
+    enabled: !!advisor,
+    staleTime: 60000,
+  });
+  const pendingSuggestions = suggestionsData?.suggestions?.filter(s => s.status === "pending").length ?? 0;
 
   const matchedConvId = findMatchedConversationId(trip, conversations);
   const [, navigate] = useLocation();
@@ -364,49 +371,61 @@ export function DashboardPlanCard({
       </div>
 
       {advisor && (
-        <div
-          className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px]"
-          data-testid={`advisor-strip-${trip.id}`}
-        >
-          {advisor.profile_image_url ? (
-            <img
-              src={advisor.profile_image_url}
-              alt={advisor.first_name + ' ' + advisor.last_name}
-              className="w-7 h-7 rounded-full object-cover flex-shrink-0"
-            />
-          ) : (
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
-              style={{ background: avatarColor.bg, color: avatarColor.text }}
-            >
-              {getInitials(advisor.first_name + ' ' + advisor.last_name)}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-medium text-foreground">
-              {advisor.first_name} {advisor.last_name}
-            </div>
-            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-              {advisor.status === "accepted" ? (
-                <>
-                  <UserCheck className="w-2.5 h-2.5 text-[#2E8B8B]" />
-                  Expert assigned
-                </>
-              ) : (
-                <>
-                  <Clock className="w-2.5 h-2.5" />
-                  Request pending
-                </>
+        <Link href={`/itinerary/${trip.id}`}>
+          <div
+            className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px] cursor-pointer hover:bg-muted/30 transition-colors"
+            data-testid={`advisor-strip-${trip.id}`}
+          >
+            {advisor.profile_image_url ? (
+              <img
+                src={advisor.profile_image_url}
+                alt={advisor.first_name + ' ' + advisor.last_name}
+                className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+              />
+            ) : (
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+                style={{ background: avatarColor.bg, color: avatarColor.text }}
+              >
+                {getInitials(advisor.first_name + ' ' + advisor.last_name)}
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-medium text-foreground">
+                {advisor.first_name} {advisor.last_name}
+              </div>
+              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                {advisor.status === "accepted" ? (
+                  <>
+                    <UserCheck className="w-2.5 h-2.5 text-[#2E8B8B]" />
+                    Expert assigned
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-2.5 h-2.5" />
+                    Request pending
+                  </>
+                )}
+              </div>
+              {advisor.status === "accepted" && expertMsgText && (
+                <div className="text-[10px] text-muted-foreground truncate mt-0.5">{expertMsgText}</div>
               )}
             </div>
-            {advisor.status === "accepted" && expertMsgText && (
-              <div className="text-[10px] text-muted-foreground truncate mt-0.5">{expertMsgText}</div>
+            {pendingSuggestions > 0 ? (
+              <div
+                className="flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex-shrink-0"
+                data-testid={`badge-suggestions-${trip.id}`}
+              >
+                <Lightbulb className="w-2.5 h-2.5" />
+                {pendingSuggestions}
+              </div>
+            ) : (
+              <div
+                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${advisor.status === "accepted" ? "bg-[#2E8B8B]" : "bg-amber-400"}`}
+              />
             )}
           </div>
-          <div
-            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${advisor.status === "accepted" ? "bg-[#2E8B8B]" : "bg-amber-400"}`}
-          />
-        </div>
+        </Link>
       )}
 
       {!advisor && expertMsgText && initials && (
