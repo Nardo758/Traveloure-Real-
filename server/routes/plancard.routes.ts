@@ -10,6 +10,7 @@ import {
   itineraryVariants,
   itineraryVariantItems,
   itineraryVariantMetrics,
+  generatedItineraries,
   insertActivityCommentSchema,
   insertItineraryChangeSchema,
   trips,
@@ -142,6 +143,21 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       metricsMap[m.metricKey] = m.metricValue;
     }
 
+    // If no structured itinerary items, fall back to generated_itineraries activity count
+    let fallbackActivityCount = items.length;
+    let fallbackDays = days.length;
+    if (items.length === 0) {
+      const genItinerary = await db.query.generatedItineraries.findFirst({
+        where: eq(generatedItineraries.tripId, tripId),
+      });
+      if (genItinerary?.itineraryData) {
+        const data = genItinerary.itineraryData as { days?: Array<{ activities?: unknown[] }> };
+        const genDays = data.days ?? [];
+        fallbackDays = genDays.length || fallbackDays;
+        fallbackActivityCount = genDays.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
+      }
+    }
+
     res.json({
       trip: {
         id: trip.id,
@@ -165,8 +181,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       })),
       metrics: metricsMap,
       stats: {
-        totalDays: days.length,
-        totalActivities: items.length,
+        totalDays: fallbackDays || days.length,
+        totalActivities: fallbackActivityCount,
         totalLegs: variantLegs.length,
         totalTransitMinutes: variantLegs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0),
         confirmedActivities: items.filter(i => i.status === "confirmed" || i.status === "planned").length,
