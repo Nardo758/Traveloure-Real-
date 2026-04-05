@@ -819,29 +819,35 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
 
     const { id } = req.params;
 
-    // Verify user is either trip owner or an assigned expert
-    const authCheck = await db.execute(sql`
-      SELECT
-        t.user_id as owner_id,
-        tea.local_expert_id as expert_user_id
-      FROM trips t
-      LEFT JOIN trip_expert_advisors tea ON tea.trip_id = t.id AND tea.status IN ('pending', 'accepted')
-      WHERE t.id = ${id}
-      LIMIT 1
+    // Check if requester is trip owner
+    const ownerCheck = await db.execute(sql`
+      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
     `);
+    const isOwner = ownerCheck.rows && ownerCheck.rows.length > 0;
 
-    if (!authCheck.rows || authCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Trip not found' });
+    // If not owner, check if requester is an assigned expert for this trip
+    let isExpert = false;
+    if (!isOwner) {
+      const expertCheck = await db.execute(sql`
+        SELECT id FROM trip_expert_advisors
+        WHERE trip_id = ${id}
+          AND local_expert_id = ${userId}
+          AND status IN ('pending', 'accepted')
+        LIMIT 1
+      `);
+      isExpert = expertCheck.rows && expertCheck.rows.length > 0;
     }
 
-    const row = authCheck.rows[0] as { owner_id: string; expert_user_id: string | null };
-    const isOwner = row.owner_id === userId;
-    const isExpert = row.expert_user_id === userId;
-
     if (!isOwner && !isExpert) {
+      // Also verify the trip exists so we don't leak 403 vs 404 info
+      const tripExists = await db.execute(sql`SELECT id FROM trips WHERE id = ${id}`);
+      if (!tripExists.rows || tripExists.rows.length === 0) {
+        return res.status(404).json({ error: 'Trip not found' });
+      }
       return res.status(403).json({ error: 'Access denied' });
     }
 
+    // Owners see all suggestions; experts see only their own
     const result = await db.execute(sql`
       SELECT
         ts.id, ts.trip_id, ts.expert_id, ts.type, ts.day_number,
@@ -852,6 +858,7 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
       FROM trip_suggestions ts
       JOIN users u ON u.id = ts.expert_id
       WHERE ts.trip_id = ${id}
+        ${isExpert && !isOwner ? sql`AND ts.expert_id = ${userId}` : sql``}
       ORDER BY ts.created_at DESC
     `);
 
