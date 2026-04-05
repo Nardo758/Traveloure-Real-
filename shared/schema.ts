@@ -4954,6 +4954,7 @@ export const paymentIntents = pgTable("payment_intents", {
 export const expertRequests = pgTable("expert_requests", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: text("user_id"),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   variantId: text("variant_id"),
   comparisonId: text("comparison_id"),
   destinationCity: text("destination_city"),
