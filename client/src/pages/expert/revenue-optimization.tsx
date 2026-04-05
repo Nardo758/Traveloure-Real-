@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ExpertLayout } from "@/components/expert-layout";
+import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
