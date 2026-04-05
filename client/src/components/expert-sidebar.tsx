@@ -37,7 +37,7 @@ const menuItems = [
   { title: "Dashboard", href: "/expert/dashboard", icon: Home },
   { title: "Revenue Optimizer", href: "/expert/revenue-optimization", icon: TrendingUp },
   { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
-  { title: "Messages", href: "/expert/messages", icon: MessageSquare },
+  { title: "Messages", href: "/chat", icon: MessageSquare },
   { title: "Clients", href: "/expert/clients", icon: Users },
   { title: "Assigned Trips", href: "/expert/assigned-trips", icon: Lightbulb },
   { title: "Bookings", href: "/expert/bookings", icon: Calendar },

@@ -23,19 +23,49 @@ import {
   X,
   Save
 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ExpertProfile() {
   const { user } = useAuth();
-  const [specialties, setSpecialties] = useState([
-    "Tokyo Travel",
-    "Japanese Cuisine",
-    "Cultural Experiences",
-    "Proposal Planning",
-  ]);
-  const [languages, setLanguages] = useState(["English", "Japanese"]);
+  const { toast } = useToast();
   const [newSpecialty, setNewSpecialty] = useState("");
+  const [specialties, setSpecialties] = useState<string[]>([]);
+  const [languages, setLanguages] = useState<string[]>([]);
+
+  const { data: expertProfile, isLoading: profileLoading } = useQuery({
+    queryKey: ["/api/experts", user?.id],
+    enabled: !!user?.id,
+  });
+
+  const { data: selectedServices, isLoading: servicesLoading } = useQuery({
+    queryKey: ["/api/expert/selected-services"],
+  });
+
+  const { data: specializationData, isLoading: specializationsLoading } = useQuery({
+    queryKey: ["/api/expert/specializations"],
+  });
+
+  // Update specialties when data loads
+  React.useEffect(() => {
+    if (specializationData?.specializations) {
+      setSpecialties(specializationData.specializations);
+    } else {
+      setSpecialties([]);
+    }
+  }, [specializationData]);
+
+  // Update languages when data loads
+  React.useEffect(() => {
+    if (expertProfile?.languages) {
+      setLanguages(expertProfile.languages);
+    } else {
+      setLanguages([]);
+    }
+  }, [expertProfile]);
 
   const handleAddSpecialty = () => {
     if (newSpecialty.trim() && !specialties.includes(newSpecialty.trim())) {
@@ -123,33 +153,45 @@ export default function ExpertProfile() {
 
             <div className="space-y-2">
               <Label htmlFor="displayName">Display Name</Label>
-              <Input
-                id="displayName"
-                defaultValue="Yuki M."
-                placeholder="How clients will see your name"
-                data-testid="input-display-name"
-              />
+              {profileLoading ? (
+                <Skeleton className="h-10 rounded" />
+              ) : (
+                <Input
+                  id="displayName"
+                  defaultValue={expertProfile?.displayName || `${user?.firstName} ${user?.lastName}`.trim()}
+                  placeholder="How clients will see your name"
+                  data-testid="input-display-name"
+                />
+              )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="headline">Professional Headline</Label>
-              <Input
-                id="headline"
-                defaultValue="Tokyo Local Expert | Specializing in Authentic Japanese Experiences"
-                placeholder="A short tagline about your expertise"
-                data-testid="input-headline"
-              />
+              {profileLoading ? (
+                <Skeleton className="h-10 rounded" />
+              ) : (
+                <Input
+                  id="headline"
+                  defaultValue={expertProfile?.headline || ""}
+                  placeholder="A short tagline about your expertise"
+                  data-testid="input-headline"
+                />
+              )}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="bio">About Me</Label>
-              <Textarea
-                id="bio"
-                rows={4}
-                defaultValue="Born and raised in Tokyo, I've spent over 10 years helping travelers discover the authentic side of Japan. From hidden ramen shops to traditional tea ceremonies, I specialize in creating unique experiences that go beyond typical tourist attractions."
-                placeholder="Tell clients about yourself and your expertise"
-                data-testid="input-bio"
-              />
+              {profileLoading ? (
+                <Skeleton className="h-24 rounded" />
+              ) : (
+                <Textarea
+                  id="bio"
+                  rows={4}
+                  defaultValue={expertProfile?.bio || ""}
+                  placeholder="Tell clients about yourself and your expertise"
+                  data-testid="input-bio"
+                />
+              )}
             </div>
           </CardContent>
         </Card>
@@ -166,26 +208,34 @@ export default function ExpertProfile() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  defaultValue="Tokyo"
-                  data-testid="input-city"
-                />
+                {profileLoading ? (
+                  <Skeleton className="h-10 rounded" />
+                ) : (
+                  <Input
+                    id="city"
+                    defaultValue={expertProfile?.city || ""}
+                    data-testid="input-city"
+                  />
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="country">Country</Label>
-                <Select defaultValue="japan">
-                  <SelectTrigger data-testid="select-country">
-                    <SelectValue placeholder="Select country" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="japan">Japan</SelectItem>
-                    <SelectItem value="usa">United States</SelectItem>
-                    <SelectItem value="uk">United Kingdom</SelectItem>
-                    <SelectItem value="france">France</SelectItem>
-                    <SelectItem value="italy">Italy</SelectItem>
-                  </SelectContent>
-                </Select>
+                {profileLoading ? (
+                  <Skeleton className="h-10 rounded" />
+                ) : (
+                  <Select defaultValue={expertProfile?.country || ""}>
+                    <SelectTrigger data-testid="select-country">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="japan">Japan</SelectItem>
+                      <SelectItem value="usa">United States</SelectItem>
+                      <SelectItem value="uk">United Kingdom</SelectItem>
+                      <SelectItem value="france">France</SelectItem>
+                      <SelectItem value="italy">Italy</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </CardContent>
@@ -200,26 +250,38 @@ export default function ExpertProfile() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              {specialties.map((specialty) => (
-                <Badge
-                  key={specialty}
-                  variant="secondary"
-                  className="pl-3 pr-1 py-1.5 flex items-center gap-1"
-                >
-                  {specialty}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 "
-                    onClick={() => handleRemoveSpecialty(specialty)}
-                    data-testid={`button-remove-specialty-${specialty}`}
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
-                </Badge>
-              ))}
-            </div>
+            {specializationsLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-8 w-32 rounded-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {specialties.length > 0 ? (
+                  specialties.map((specialty) => (
+                    <Badge
+                      key={specialty}
+                      variant="secondary"
+                      className="pl-3 pr-1 py-1.5 flex items-center gap-1"
+                    >
+                      {specialty}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 "
+                        onClick={() => handleRemoveSpecialty(specialty)}
+                        data-testid={`button-remove-specialty-${specialty}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No specialties added yet</p>
+                )}
+              </div>
+            )}
             <div className="flex gap-2">
               <Input
                 placeholder="Add a specialty..."
@@ -244,13 +306,25 @@ export default function ExpertProfile() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {languages.map((language) => (
-                <Badge key={language} variant="outline" className="py-1.5">
-                  {language}
-                </Badge>
-              ))}
-            </div>
+            {profileLoading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <Skeleton key={i} className="h-8 w-24 rounded-full" />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {languages.length > 0 ? (
+                  languages.map((language) => (
+                    <Badge key={language} variant="outline" className="py-1.5">
+                      {language}
+                    </Badge>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No languages added</p>
+                )}
+              </div>
+            )}
             <Button variant="outline" size="sm" data-testid="button-add-language">
               <Plus className="w-4 h-4 mr-1" /> Add Language
             </Button>
