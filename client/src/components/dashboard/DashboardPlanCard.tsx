@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { MapPin, Calendar, UserCheck, Clock, Car, Users, Briefcase, Lightbulb } from "lucide-react";
+import { MapPin, Calendar, UserCheck, Clock, Car, Users, Briefcase, Lightbulb, X } from "lucide-react";
+import { useDeleteTrip } from "@/hooks/use-trips";
 
 interface Trip {
   id: string;
@@ -185,6 +187,19 @@ export function DashboardPlanCard({
 
   const matchedConvId = findMatchedConversationId(trip, conversations);
   const [, navigate] = useLocation();
+  const [confirming, setConfirming] = useState(false);
+  const deleteTrip = useDeleteTrip();
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirming) {
+      setConfirming(true);
+      setTimeout(() => setConfirming(false), 3000);
+      return;
+    }
+    deleteTrip.mutate(trip.id);
+  };
 
   const { data: convWithMessages } = useQuery<ConversationWithMessages>({
     queryKey: [`/api/conversations/${matchedConvId}`],
@@ -310,10 +325,19 @@ export function DashboardPlanCard({
           >
             {statusLabel}
           </span>
-          <div className="flex gap-2">
-            <button className="text-[11px] opacity-85 hover:opacity-100">Share</button>
-            <button className="text-[11px] opacity-85 hover:opacity-100">Export</button>
-          </div>
+          <button
+            onClick={handleDelete}
+            disabled={deleteTrip.isPending}
+            data-testid={`button-delete-plan-${trip.id}`}
+            title={confirming ? "Click again to confirm delete" : "Remove this plan"}
+            className={`w-6 h-6 flex items-center justify-center rounded-full transition-all ${
+              confirming
+                ? "bg-red-500 text-white scale-110"
+                : "bg-white/20 text-white hover:bg-white/35"
+            }`}
+          >
+            {confirming ? "?" : <X className="w-3.5 h-3.5" />}
+          </button>
         </div>
 
         {showCountdown && (
