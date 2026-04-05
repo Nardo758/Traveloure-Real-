@@ -500,10 +500,10 @@ router.get('/trips/shared/:token', async (req, res) => {
       || req.socket?.remoteAddress
       || null;
 
-    db.execute(sql`
+    await db.execute(sql`
       INSERT INTO shared_trip_views (id, trip_id, viewer_ip, viewed_at)
       VALUES (${crypto.randomUUID()}, ${tripResult.rows[0].id as string}, ${viewerIp}, NOW())
-    `).catch((err) => console.error('Failed to log shared trip view:', err));
+    `);
 
     res.json({ success: true, trip: tripResult.rows[0] });
   } catch (error: any) {
