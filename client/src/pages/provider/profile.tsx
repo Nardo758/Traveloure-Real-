@@ -3,63 +3,48 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { 
-  Building, 
-  MapPin, 
-  Phone, 
-  Mail, 
-  Globe, 
-  Star, 
-  Users, 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Building,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  Star,
+  Users,
   Calendar,
   Camera,
   Edit,
   CheckCircle
 } from "lucide-react";
-
-const businessInfo = {
-  name: "Grand Estate Venue",
-  type: "Wedding & Event Venue",
-  description: "Grand Estate Venue is a premier wedding and event destination featuring 10 acres of manicured gardens, a stunning 5,000 sq ft ballroom, and breathtaking outdoor ceremony spaces. Our historic estate has been hosting unforgettable celebrations since 1920.",
-  address: "1234 Estate Drive, Napa Valley, CA 94558",
-  phone: "+1 (707) 555-0123",
-  email: "events@grandestatevenue.com",
-  website: "www.grandestatevenue.com",
-  rating: 4.9,
-  totalReviews: 127,
-  totalEvents: 342,
-  memberSince: "March 2022",
-  verified: true,
-};
-
-const amenities = [
-  "Indoor & Outdoor Spaces",
-  "Full-Service Catering",
-  "Open Bar Available",
-  "On-site Parking (200+)",
-  "Bridal Suite",
-  "Groom's Quarters",
-  "Audio/Visual Equipment",
-  "Wheelchair Accessible",
-];
-
-const capacities = [
-  { space: "Main Ballroom", seated: 250, standing: 400 },
-  { space: "Garden Terrace", seated: 150, standing: 200 },
-  { space: "Private Dining Room", seated: 30, standing: 50 },
-  { space: "Ceremony Garden", seated: 200, standing: 300 },
-];
-
-const photos = [
-  { id: 1, label: "Main Ballroom" },
-  { id: 2, label: "Garden Terrace" },
-  { id: 3, label: "Ceremony Space" },
-  { id: 4, label: "Bridal Suite" },
-  { id: 5, label: "Dining Setup" },
-  { id: 6, label: "Night View" },
-];
+import { useAuth } from "@/hooks/use-auth";
 
 export default function ProviderProfile() {
+  const { user } = useAuth();
+
+  const businessInfo = {
+    name: user?.businessName || `${user?.firstName} ${user?.lastName}`.trim() || "Service Provider",
+    type: user?.businessType || "Service Provider",
+    description: user?.bio || "Welcome to our business profile",
+    address: user?.address || "",
+    phone: user?.phone || "",
+    email: user?.email || "",
+    website: user?.website || "",
+    rating: 4.9,
+    totalReviews: 127,
+    totalEvents: 342,
+    memberSince: "March 2022",
+    verified: true,
+  };
+
+  const amenities = user?.amenities || [
+    "Service Available",
+  ];
+
+  const capacities = user?.capacities || [];
+
+  const photos = user?.photos || [];
+
   return (
     <ProviderLayout title="Business Profile">
       <div className="p-6 space-y-6">

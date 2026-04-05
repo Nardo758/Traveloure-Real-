@@ -2,57 +2,49 @@ import { ExpertLayout } from "@/components/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { 
-  TrendingUp, 
-  Star, 
-  Users, 
-  Clock, 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  TrendingUp,
+  Star,
+  Users,
+  Clock,
   MessageSquare,
   CheckCircle,
   Target,
   Award
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+
+interface AnalyticsDashboard {
+  summary?: {
+    avgRating: number;
+    totalReviews: number;
+    responseRate: number;
+    avgResponseTime: string;
+    completionRate: number;
+    repeatClients: number;
+  };
+  monthlyMetrics?: Array<{ month: string; clients: number; revenue: number; rating: number }>;
+  recentReviews?: Array<{ id: string; client: string; rating: number; text: string; date: string }>;
+}
 
 export default function ExpertPerformance() {
-  const overallStats = {
-    rating: 4.9,
-    totalReviews: 156,
-    responseRate: 98,
-    avgResponseTime: "15 min",
-    completionRate: 99,
-    repeatClients: 45,
+  const { data: analytics, isLoading } = useQuery<AnalyticsDashboard>({
+    queryKey: ["/api/expert/analytics/dashboard"],
+  });
+
+  const overallStats = analytics?.summary || {
+    avgRating: 0,
+    totalReviews: 0,
+    responseRate: 0,
+    avgResponseTime: "--",
+    completionRate: 0,
+    repeatClients: 0,
   };
 
-  const monthlyMetrics = [
-    { month: "December", clients: 12, revenue: 4850, rating: 4.9 },
-    { month: "November", clients: 10, revenue: 3200, rating: 4.8 },
-    { month: "October", clients: 14, revenue: 5100, rating: 4.9 },
-    { month: "September", clients: 8, revenue: 2800, rating: 5.0 },
-  ];
+  const monthlyMetrics = analytics?.monthlyMetrics || [];
 
-  const recentReviews = [
-    {
-      id: 1,
-      client: "Sarah & Mike",
-      rating: 5,
-      text: "Yuki was absolutely amazing! She helped us discover hidden gems in Tokyo that we never would have found on our own.",
-      date: "Dec 28, 2025",
-    },
-    {
-      id: 2,
-      client: "Jennifer",
-      rating: 5,
-      text: "The proposal planning was perfect. Every detail was taken care of. Highly recommend!",
-      date: "Dec 20, 2025",
-    },
-    {
-      id: 3,
-      client: "David & Emma",
-      rating: 5,
-      text: "Our anniversary dinner was unforgettable. Thank you for all the special touches!",
-      date: "Dec 15, 2025",
-    },
-  ];
+  const recentReviews = analytics?.recentReviews || [];
 
   const achievements = [
     { title: "Top Rated Expert", description: "Maintained 4.9+ rating for 6 months", icon: Star, earned: true },
@@ -71,45 +63,55 @@ export default function ExpertPerformance() {
 
         {/* Overall Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <Card className="border border-gray-200" data-testid="card-stat-rating">
-            <CardContent className="p-4 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <Star className="w-5 h-5 text-yellow-500" />
-                <p className="text-2xl font-bold text-gray-900">{overallStats.rating}</p>
-              </div>
-              <p className="text-xs text-gray-600">Overall Rating</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200" data-testid="card-stat-reviews">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{overallStats.totalReviews}</p>
-              <p className="text-xs text-gray-600">Total Reviews</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200" data-testid="card-stat-response-rate">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{overallStats.responseRate}%</p>
-              <p className="text-xs text-gray-600">Response Rate</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200" data-testid="card-stat-response-time">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{overallStats.avgResponseTime}</p>
-              <p className="text-xs text-gray-600">Avg Response</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200" data-testid="card-stat-completion">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-green-600">{overallStats.completionRate}%</p>
-              <p className="text-xs text-gray-600">Completion Rate</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200" data-testid="card-stat-repeat">
-            <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-gray-900">{overallStats.repeatClients}%</p>
-              <p className="text-xs text-gray-600">Repeat Clients</p>
-            </CardContent>
-          </Card>
+          {isLoading ? (
+            <>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-24 rounded-lg" />
+              ))}
+            </>
+          ) : (
+            <>
+              <Card className="border border-gray-200" data-testid="card-stat-rating">
+                <CardContent className="p-4 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Star className="w-5 h-5 text-yellow-500" />
+                    <p className="text-2xl font-bold text-gray-900">{overallStats.avgRating || "--"}</p>
+                  </div>
+                  <p className="text-xs text-gray-600">Overall Rating</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200" data-testid="card-stat-reviews">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{overallStats.totalReviews || 0}</p>
+                  <p className="text-xs text-gray-600">Total Reviews</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200" data-testid="card-stat-response-rate">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-green-600">{overallStats.responseRate || 0}%</p>
+                  <p className="text-xs text-gray-600">Response Rate</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200" data-testid="card-stat-response-time">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{overallStats.avgResponseTime || "--"}</p>
+                  <p className="text-xs text-gray-600">Avg Response</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200" data-testid="card-stat-completion">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-green-600">{overallStats.completionRate || 0}%</p>
+                  <p className="text-xs text-gray-600">Completion Rate</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200" data-testid="card-stat-repeat">
+                <CardContent className="p-4 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{overallStats.repeatClients || 0}%</p>
+                  <p className="text-xs text-gray-600">Repeat Clients</p>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -123,27 +125,37 @@ export default function ExpertPerformance() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {monthlyMetrics.map((month, index) => (
-                    <div 
-                      key={index} 
-                      className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover-elevate"
-                      data-testid={`month-metric-${index}`}
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">{month.month}</p>
-                        <p className="text-sm text-gray-500">{month.clients} clients</p>
+                {isLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2, 3, 4].map((i) => (
+                      <Skeleton key={i} className="h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : monthlyMetrics.length > 0 ? (
+                  <div className="space-y-4">
+                    {monthlyMetrics.map((month, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-3 rounded-lg border border-gray-100 hover-elevate"
+                        data-testid={`month-metric-${index}`}
+                      >
+                        <div>
+                          <p className="font-medium text-gray-900">{month.month}</p>
+                          <p className="text-sm text-gray-500">{month.clients} clients</p>
+                        </div>
+                        <div className="flex items-center gap-6 text-sm">
+                          <span className="font-medium text-green-600">${month.revenue.toLocaleString()}</span>
+                          <span className="flex items-center gap-1">
+                            <Star className="w-4 h-4 text-yellow-500" />
+                            {month.rating}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-6 text-sm">
-                        <span className="font-medium text-green-600">${month.revenue.toLocaleString()}</span>
-                        <span className="flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-500" />
-                          {month.rating}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">No monthly data available</p>
+                )}
               </CardContent>
             </Card>
 
@@ -156,24 +168,34 @@ export default function ExpertPerformance() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {recentReviews.map((review) => (
-                  <div 
-                    key={review.id} 
-                    className="p-4 rounded-lg border border-gray-200"
-                    data-testid={`review-${review.id}`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-medium text-gray-900">{review.client}</p>
-                      <div className="flex items-center gap-1">
-                        {[...Array(review.rating)].map((_, i) => (
-                          <Star key={i} className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                        ))}
+                {isLoading ? (
+                  <>
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-20 rounded-lg" />
+                    ))}
+                  </>
+                ) : recentReviews.length > 0 ? (
+                  recentReviews.map((review) => (
+                    <div
+                      key={review.id}
+                      className="p-4 rounded-lg border border-gray-200"
+                      data-testid={`review-${review.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-medium text-gray-900">{review.client}</p>
+                        <div className="flex items-center gap-1">
+                          {[...Array(review.rating)].map((_, i) => (
+                            <Star key={i} className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                          ))}
+                        </div>
                       </div>
+                      <p className="text-sm text-gray-600">{review.text}</p>
+                      <p className="text-xs text-gray-400 mt-2">{review.date}</p>
                     </div>
-                    <p className="text-sm text-gray-600">{review.text}</p>
-                    <p className="text-xs text-gray-400 mt-2">{review.date}</p>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 text-center py-4">No reviews yet</p>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -11,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
+import {
   Search,
   MessageSquare,
   Calendar,
@@ -25,7 +26,8 @@ import {
   AlertCircle,
   Clock
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 const eventTypeIcons: Record<string, any> = {
   travel: Plane,
@@ -35,85 +37,50 @@ const eventTypeIcons: Record<string, any> = {
   corporate: Briefcase,
 };
 
+interface Trip {
+  id: string;
+  destination?: string;
+  userId?: string;
+  travelerName?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  [key: string]: any;
+}
+
 export default function ExpertClients() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const clients = [
-    {
-      id: 1,
-      name: "Sarah & Mike",
-      event: "Tokyo Trip",
-      eventType: "travel",
-      status: "traveling",
-      statusLabel: "Currently traveling",
-      statusDetail: "Day 3 of 10",
-      lastContact: "2 hours ago",
-      action: "Restaurant reservation needed",
-      actionPriority: "urgent",
-      progress: 30,
-      startDate: "2026-01-01",
-      endDate: "2026-01-10",
-    },
-    {
-      id: 2,
-      name: "Jennifer",
-      event: "Proposal Planning",
-      eventType: "proposal",
-      status: "planning",
-      statusLabel: "Planning phase",
-      statusDetail: "60% complete",
-      eventDate: "April 28",
-      daysAway: 29,
-      action: "Review venue options",
-      actionPriority: "high",
-      progress: 60,
-      startDate: "2026-04-28",
-      endDate: "2026-04-28",
-    },
-    {
-      id: 3,
-      name: "David & Emma",
-      event: "Anniversary Dinner",
-      eventType: "anniversary",
-      status: "planning",
-      statusLabel: "Final preparations",
-      statusDetail: "85% complete",
-      eventDate: "January 15",
-      daysAway: 14,
-      action: "Menu selection due tomorrow",
-      actionPriority: "medium",
-      progress: 85,
-      startDate: "2026-01-15",
-      endDate: "2026-01-15",
-    },
-    {
-      id: 4,
-      name: "Corporate Tech Inc",
-      event: "Team Retreat",
-      eventType: "corporate",
-      status: "completed",
-      statusLabel: "Completed",
-      statusDetail: "Ended Dec 20",
-      progress: 100,
-      startDate: "2025-12-18",
-      endDate: "2025-12-20",
-    },
-    {
-      id: 5,
-      name: "Amanda",
-      event: "Birthday Celebration",
-      eventType: "birthday",
-      status: "planning",
-      statusLabel: "Early planning",
-      statusDetail: "25% complete",
-      eventDate: "March 5",
-      daysAway: 63,
-      progress: 25,
-      startDate: "2026-03-05",
-      endDate: "2026-03-05",
-    },
-  ];
+  const { data: trips, isLoading } = useQuery<Trip[]>({
+    queryKey: ["/api/expert/assigned-trips"],
+  });
+
+  // Group trips by traveler to build client list
+  const clients = useMemo(() => {
+    if (!trips) return [];
+    const grouped = new Map<string, any>();
+    for (const trip of trips) {
+      const key = trip.userId || trip.travelerName || "unknown";
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          id: key,
+          name: trip.travelerName || "Traveler",
+          eventType: "travel",
+          trips: [],
+          status: trip.status || "planning",
+          statusLabel: trip.status === "active" ? "Currently traveling" : "Planning phase",
+          progress: 50,
+        });
+      }
+      grouped.get(key).trips.push(trip);
+    }
+    return Array.from(grouped.values()).map((client) => ({
+      ...client,
+      event: client.trips[0]?.destination || "Trip",
+      statusDetail: `${client.trips.length} trip${client.trips.length > 1 ? "s" : ""}`,
+    }));
+  }, [trips]);
 
   const filteredClients = clients.filter((client) => {
     if (statusFilter !== "all" && client.status !== statusFilter) return false;
@@ -182,28 +149,44 @@ export default function ExpertClients() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card className="border border-gray-200 bg-gray-50" data-testid="card-active-clients-stat">
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.status !== "completed").length}</p>
-              <p className="text-sm text-gray-600">Active Clients</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200 bg-gray-50" data-testid="card-traveling-stat">
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.status === "traveling").length}</p>
-              <p className="text-sm text-gray-600">Currently Traveling</p>
-            </CardContent>
-          </Card>
-          <Card className="border border-gray-200 bg-gray-50" data-testid="card-attention-stat">
-            <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.action).length}</p>
-              <p className="text-sm text-gray-600">Need Attention</p>
-            </CardContent>
-          </Card>
+          {isLoading ? (
+            <>
+              <Skeleton className="h-20 rounded-lg" />
+              <Skeleton className="h-20 rounded-lg" />
+              <Skeleton className="h-20 rounded-lg" />
+            </>
+          ) : (
+            <>
+              <Card className="border border-gray-200 bg-gray-50" data-testid="card-active-clients-stat">
+                <CardContent className="p-4 text-center">
+                  <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.status !== "completed").length}</p>
+                  <p className="text-sm text-gray-600">Active Clients</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200 bg-gray-50" data-testid="card-traveling-stat">
+                <CardContent className="p-4 text-center">
+                  <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.status === "traveling").length}</p>
+                  <p className="text-sm text-gray-600">Currently Traveling</p>
+                </CardContent>
+              </Card>
+              <Card className="border border-gray-200 bg-gray-50" data-testid="card-attention-stat">
+                <CardContent className="p-4 text-center">
+                  <p className="text-3xl font-bold text-gray-900">{clients.filter(c => c.action).length}</p>
+                  <p className="text-sm text-gray-600">Need Attention</p>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
         <div className="space-y-4">
-          {filteredClients.length === 0 ? (
+          {isLoading ? (
+            <>
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-32 rounded-lg" />
+              ))}
+            </>
+          ) : filteredClients.length === 0 ? (
             <Card className="border border-gray-200">
               <CardContent className="p-8 text-center">
                 <p className="text-gray-500">No clients found matching your criteria</p>
@@ -229,7 +212,7 @@ export default function ExpertClients() {
                             {client.statusLabel}
                           </Badge>
                         </div>
-                        
+
                         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
                           <span>{client.statusDetail}</span>
                           {client.lastContact && (
