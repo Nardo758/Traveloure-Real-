@@ -15270,19 +15270,51 @@ export async function registerDiscoveryRoutes(app: Express) {
       }
 
       const updates = req.body as Record<string, string>;
-      if (!updates || typeof updates !== "object") {
+      if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
         return res.status(400).json({ message: "Invalid settings payload" });
       }
 
+      const BOOLEAN_KEYS = new Set([
+        "ai_recommendations_enabled", "new_registrations_enabled",
+        "travelpulse_enabled", "credit_system_enabled", "affiliate_bookings_enabled",
+      ]);
+      const COMMISSION_KEYS = new Set([
+        "expert_commission_min", "expert_commission_max",
+        "provider_commission_min", "provider_commission_max",
+      ]);
+      const ALLOWED_KEYS = new Set([
+        ...Object.keys(DEFAULT_SETTINGS),
+      ]);
+
+      const errors: string[] = [];
       for (const [key, value] of Object.entries(updates)) {
-        if (typeof value !== "string" && typeof value !== "boolean" && typeof value !== "number") continue;
+        if (!ALLOWED_KEYS.has(key)) {
+          errors.push(`Unknown setting key: ${key}`);
+          continue;
+        }
         const strValue = String(value);
+        if (BOOLEAN_KEYS.has(key)) {
+          if (strValue !== "true" && strValue !== "false") {
+            errors.push(`Setting '${key}' must be 'true' or 'false'`);
+            continue;
+          }
+        } else if (COMMISSION_KEYS.has(key)) {
+          const num = parseFloat(strValue);
+          if (!Number.isFinite(num) || num < 0 || num > 100) {
+            errors.push(`Setting '${key}' must be a number between 0 and 100`);
+            continue;
+          }
+        }
         await db.insert(platformSettings)
           .values({ key, value: strValue, updatedAt: new Date() })
           .onConflictDoUpdate({
             target: platformSettings.key,
             set: { value: strValue, updatedAt: new Date() },
           });
+      }
+
+      if (errors.length > 0) {
+        return res.status(400).json({ message: "Validation errors", errors });
       }
 
       res.json({ success: true, message: "Settings saved successfully" });
