@@ -5147,3 +5147,13 @@ export const reminderEmails = pgTable("reminder_emails", {
   reminderType: text("reminder_type").notNull(),
   status: text("status").notNull().default("sent"),
 });
+
+export const platformSettings = pgTable("platform_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type PlatformSetting = typeof platformSettings.$inferSelect;
+export const insertPlatformSettingSchema = createInsertSchema(platformSettings);
+export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
