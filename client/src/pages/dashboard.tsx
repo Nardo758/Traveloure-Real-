@@ -6,13 +6,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { TravelPulseTicker } from "@/components/dashboard/TravelPulseTicker";
 import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
-import { ActiveExpertsList } from "@/components/dashboard/ActiveExpertsList";
-import { ServicesScroll } from "@/components/dashboard/ServicesScroll";
-import { ExpertsScroll } from "@/components/dashboard/ExpertsScroll";
-import { PastExperiencesScroll } from "@/components/dashboard/PastExperiencesScroll";
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
+import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
+import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
+import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
+import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
+import { CreditsPanel } from "@/components/dashboard/CreditsPanel";
+import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
 
 interface Notification {
   id: string | number;
@@ -40,17 +41,17 @@ const CTA_CARDS = [
     testId: "cta-new-experience",
   },
   {
-    icon: "✦",
-    label: "AI planner",
-    sub: "Get a plan in minutes",
-    href: "/ai-assistant",
-    testId: "cta-ai-planner",
+    icon: "◆",
+    label: "Credits",
+    sub: "", // Will be dynamically set
+    href: "/credits",
+    testId: "cta-credits",
   },
   {
-    icon: "◎",
+    icon: "🔍",
     label: "Find experts",
     sub: "In your destinations",
-    href: "/chat",
+    href: "/experts",
     testId: "cta-find-experts",
   },
 ];
@@ -63,6 +64,10 @@ export default function Dashboard() {
   });
   const { data: conversations, isLoading: convsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
+  });
+  const { data: creditsData } = useQuery<{ balance: number }>({
+    queryKey: ["/api/credits/balance"],
+    retry: false,
   });
 
   if (isLoading) {
@@ -111,95 +116,158 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="mb-1">
-        <div
-          className="text-[20px] font-medium mb-[3px]"
-          style={{ color: "#1A1A18" }}
-          data-testid="text-welcome"
-        >
-          Welcome back, {user?.firstName || "Traveler"}
+      <div className="p-6" data-testid="dashboard-content">
+        {/* Greeting — full width above panels */}
+        <div className="pt-4 mb-4">
+          <div
+            className="text-[22px] font-medium pb-0.5"
+            style={{ color: "#1A1A18" }}
+            data-testid="text-welcome"
+          >
+            Welcome back, {user?.firstName || "Traveler"}
+          </div>
+          <div
+            className="text-[14px]"
+            style={{ color: "#7A7A72" }}
+            data-testid="text-greeting-sub"
+          >
+            {greetingSub}
+          </div>
         </div>
-        <div className="text-[13px] mb-[14px]" style={{ color: "#7A7A72" }} data-testid="text-greeting-sub">
-          {greetingSub}
-        </div>
-      </div>
 
-      <TravelPulseTicker />
+        {/* Two-panel layout */}
+        <div className="flex gap-5">
+          {/* LEFT: Main content */}
+          <div className="flex-1 min-w-0">
+            {/* CTA Row */}
+            <div className="flex gap-2.5 mb-[18px]">
+              {CTA_CARDS.map((card) => {
+                const sub =
+                  card.testId === "cta-credits"
+                    ? `${creditsData?.balance ?? 0} credits remaining`
+                    : card.sub;
+                return (
+                  <Link
+                    key={card.testId}
+                    href={card.href}
+                    className="flex-1"
+                  >
+                    <div
+                      className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
+                      style={{ background: "#F3F3EE" }}
+                      data-testid={card.testId}
+                    >
+                      <div className="text-[18px] mb-1">{card.icon}</div>
+                      <div
+                        className="text-[13px] font-medium"
+                        style={{ color: "#1A1A18" }}
+                      >
+                        {card.label}
+                      </div>
+                      <div
+                        className="text-[11px] mt-0.5"
+                        style={{ color: "#7A7A72" }}
+                      >
+                        {sub}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
 
-      <div className="flex gap-2 mb-4">
-        {CTA_CARDS.map(card => (
-          <Link key={card.testId} href={card.href} className="flex-1">
+            <SavedTripsSection />
+
+            {/* Active Plans */}
             <div
-              className="rounded-[10px] px-2.5 py-3.5 cursor-pointer text-center transition-colors hover:opacity-80"
-              style={{ background: "#F3F3EE" }}
-              data-testid={card.testId}
+              className="text-sm font-medium mb-3 flex items-center justify-between"
+              style={{ color: "#1A1A18" }}
             >
-              <div className="text-[16px] mb-1">{card.icon}</div>
-              <div className="text-[12px] font-medium" style={{ color: "#1A1A18" }}>{card.label}</div>
-              <div className="text-[10px] mt-0.5" style={{ color: "#7A7A72" }}>{card.sub}</div>
+              <span>Your active plans</span>
+              {activePlans.length > 0 && (
+                <Link href="/my-trips">
+                  <span
+                    className="text-[12px] cursor-pointer hover:underline"
+                    style={{ color: "#2E8B8B" }}
+                    data-testid="link-view-all-plans"
+                  >
+                    View all
+                  </span>
+                </Link>
+              )}
             </div>
-          </Link>
-        ))}
-      </div>
 
-      <SavedTripsSection />
+            {activePlans.length > 0 ? (
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
+                data-testid="active-plans-grid"
+              >
+                {activePlans.slice(0, 6).map((trip, i) => (
+                  <DashboardPlanCard
+                    key={trip.id}
+                    trip={trip}
+                    index={i}
+                    conversations={convList}
+                    notifications={notifications}
+                  />
+                ))}
+              </div>
+            ) : (
+              <Card
+                className="border-2 border-dashed mb-6"
+                style={{ borderColor: "#E8E8E2" }}
+              >
+                <CardContent className="p-8 text-center">
+                  <div
+                    className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+                    style={{ background: "#FFE3E8" }}
+                  >
+                    <Calendar
+                      className="w-8 h-8"
+                      style={{ color: "#E85D55" }}
+                    />
+                  </div>
+                  <h3
+                    className="text-lg font-semibold mb-2"
+                    style={{ color: "#1A1A18" }}
+                  >
+                    No active plans
+                  </h3>
+                  <p className="mb-4" style={{ color: "#7A7A72" }}>
+                    Start planning your next adventure!
+                  </p>
+                  <Link href="/experiences">
+                    <Button
+                      className="text-white"
+                      style={{ background: "#E85D55" }}
+                      data-testid="button-first-plan"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Your First Plan
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
 
-      <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
-        <span>Your active plans</span>
-        {activePlans.length > 0 && (
-          <Link href="/my-trips">
-            <span
-              className="text-[11px] cursor-pointer hover:underline"
-              style={{ color: "#2E8B8B" }}
-              data-testid="link-view-all-plans"
-            >
-              View all
-            </span>
-          </Link>
-        )}
-      </div>
+            <RecommendedServices destinations={destinations} />
+          </div>
 
-      {activePlans.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-[22px]" data-testid="active-plans-grid">
-          {activePlans.slice(0, 6).map((trip, i) => (
-            <DashboardPlanCard
-              key={trip.id}
-              trip={trip}
-              index={i}
-              conversations={convList}
-              notifications={notifications}
-            />
-          ))}
+          {/* RIGHT: Intelligence panel */}
+          <div className="w-[260px] flex-shrink-0 hidden lg:block">
+            <div className="sticky top-16 space-y-3">
+              <TravelPulsePanel />
+              <ActionItemsPanel notifications={notifications} />
+              <ActiveExpertsPanel
+                conversations={convList}
+                trips={activePlans}
+              />
+              <TopExpertsPanel destinations={destinations} />
+              <CreditsPanel />
+            </div>
+          </div>
         </div>
-      ) : (
-        <Card className="border-2 border-dashed mb-6" style={{ borderColor: "#E8E8E2" }}>
-          <CardContent className="p-8 text-center">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#FFE3E8" }}>
-              <Calendar className="w-8 h-8" style={{ color: "#E85D55" }} />
-            </div>
-            <h3 className="text-lg font-semibold mb-2" style={{ color: "#1A1A18" }}>No active plans</h3>
-            <p className="mb-4" style={{ color: "#7A7A72" }}>Start planning your next adventure!</p>
-            <Link href="/experiences">
-              <Button className="text-white" style={{ background: "#E85D55" }} data-testid="button-first-plan">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Plan
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
-
-      <ActiveExpertsList
-        conversations={convList}
-        trips={activePlans}
-        isLoading={convsLoading}
-      />
-
-      <ServicesScroll />
-
-      <ExpertsScroll destinations={destinations} />
-
-      <PastExperiencesScroll />
+      </div>
     </DashboardLayout>
   );
 }
