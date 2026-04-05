@@ -376,7 +376,7 @@ router.post('/shared-trips', isAuthenticated, async (req, res) => {
 
 /**
  * GET /api/shared-trips/:token
- * View shared trip (public)
+ * View shared trip (public) — itinerary-variant-based sharing
  */
 router.get('/shared-trips/:token', async (req, res) => {
   try {
@@ -403,9 +403,6 @@ router.get('/shared-trips/:token', async (req, res) => {
       WHERE share_token = ${token}
     `);
 
-    // TODO: Get variant items
-    // TODO: Format response for public viewing
-
     res.json({
       success: true,
       shared: shared.rows[0],
@@ -416,6 +413,92 @@ router.get('/shared-trips/:token', async (req, res) => {
       success: false,
       error: error.message,
     });
+  }
+});
+
+/**
+ * POST /api/trips/:id/share
+ * Generate (or retrieve) a share token for a trip plan.
+ * Stores the token in trips.share_token and marks trips.is_public = true.
+ */
+router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+
+    // Validate UUID format
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(id)) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    // Fetch trip, verify ownership
+    const tripResult = await db.execute(sql`
+      SELECT id, user_id, share_token, title, destination, start_date, end_date, status
+      FROM trips
+      WHERE id = ${id}
+        AND user_id = ${userId}
+    `);
+
+    if (!tripResult.rows || tripResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Trip not found or not owned by you' });
+    }
+
+    interface TripRow {
+      id: string;
+      share_token: string | null;
+    }
+    const trip = tripResult.rows[0] as TripRow;
+
+    // Re-use existing token if already generated
+    const shareToken = trip.share_token || generateToken();
+
+    if (!trip.share_token) {
+      await db.execute(sql`
+        UPDATE trips
+        SET share_token = ${shareToken}, is_public = true, updated_at = NOW()
+        WHERE id = ${id}
+      `);
+    }
+
+    res.json({ success: true, shareToken });
+  } catch (error: any) {
+    console.error('Trip share error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/trips/shared/:token
+ * Public endpoint — fetch trip plan by share token, log the view.
+ * No auth required.
+ */
+router.get('/trips/shared/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const tripResult = await db.execute(sql`
+      SELECT
+        t.id, t.title, t.destination, t.start_date, t.end_date,
+        t.number_of_travelers, t.status, t.share_token,
+        gi.itinerary_data
+      FROM trips t
+      LEFT JOIN generated_itineraries gi ON gi.trip_id = t.id AND gi.status = 'generated'
+      WHERE t.share_token = ${token}
+        AND t.is_public = true
+      LIMIT 1
+    `);
+
+    if (!tripResult.rows || tripResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Shared trip not found or link has expired' });
+    }
+
+    res.json({ success: true, trip: tripResult.rows[0] });
+  } catch (error: any) {
+    console.error('Get shared trip (trip-based) error:', error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
