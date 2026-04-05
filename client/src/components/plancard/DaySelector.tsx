@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { getEnergyProfile, ENERGY_COLORS, type PlanCardDay } from "./plancard-types";
 
 interface DaySelectorProps {
@@ -9,10 +10,20 @@ interface DaySelectorProps {
 }
 
 export function DaySelector({ tripId, days, selectedDay, onSelectDay, showActivityCounts }: DaySelectorProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    const btn = buttonRefs.current[selectedDay];
+    if (btn && scrollRef.current) {
+      btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
+  }, [selectedDay]);
+
   if (days.length === 0) return null;
 
   return (
-    <div className="flex gap-1 px-4 pt-3 overflow-x-auto" data-testid={`day-selector-${tripId}`}>
+    <div ref={scrollRef} className="flex gap-1 px-4 pt-3 overflow-x-auto" data-testid={`day-selector-${tripId}`}>
       {days.map((d, i) => {
         const energy = getEnergyProfile(d);
         const ec = ENERGY_COLORS[energy];
@@ -20,6 +31,7 @@ export function DaySelector({ tripId, days, selectedDay, onSelectDay, showActivi
         return (
           <button
             key={i}
+            ref={(el) => { buttonRefs.current[i] = el; }}
             onClick={() => onSelectDay(i)}
             className={`px-4 py-2.5 rounded-t-xl border-b-2 cursor-pointer whitespace-nowrap transition-all text-sm font-medium flex flex-col items-center gap-0.5 ${
               selectedDay === i

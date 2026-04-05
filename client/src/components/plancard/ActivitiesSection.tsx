@@ -193,7 +193,7 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
               data-testid={`button-connector-maps-${leg.id}`}
             >
               <Map className="w-3 h-3" />
-              <span>Maps</span>
+              <span>Open in Maps</span>
             </button>
           )}
         </div>
@@ -540,7 +540,7 @@ export function ActivitiesSection({
             data-testid="button-navigate-fab"
           >
             <Navigation2 className="w-4 h-4" />
-            Navigate
+            Navigate ↗
           </button>
         </div>
       )}
