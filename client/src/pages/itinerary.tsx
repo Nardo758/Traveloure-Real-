@@ -25,7 +25,6 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { TransportLeg, type TransportAlternative } from "@/components/itinerary/TransportLeg";
-import { TransportHub } from "@/components/itinerary/TransportHub";
 import {
   Dialog,
   DialogContent,
@@ -917,15 +916,6 @@ export default function ItineraryPage() {
               );
             })()}
 
-            {/* Transport Hub — booking options (always visible, handles its own empty/loading state) */}
-            <div>
-              {legsData?.legs?.length ? (
-                <div className="flex items-center gap-3 mb-5">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Book Transport</h3>
-                </div>
-              ) : null}
-              <TransportHub tripId={tripId} destination={itinerary?.destination} />
-            </div>
         </div>
         </>}
       </div>
