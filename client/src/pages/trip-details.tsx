@@ -79,6 +79,7 @@ interface ExpertAdvisor {
   profile_image_url: string | null;
   avg_rating: string;
   review_count: number;
+  expertFirstMessage: string | null;
 }
 
 export default function TripDetails() {
@@ -534,6 +535,17 @@ export default function TripDetails() {
                               <span>${advisor.hourly_rate}/hr</span>
                             )}
                           </div>
+                          {advisor.status === "accepted" && advisor.expertFirstMessage && (
+                            <div className="mt-3 p-3 rounded-lg bg-muted/40 border border-border text-sm text-muted-foreground italic" data-testid="advisor-first-message">
+                              <span className="not-italic font-medium text-foreground">{advisor.first_name}: </span>
+                              {advisor.expertFirstMessage}
+                            </div>
+                          )}
+                          {advisor.status === "accepted" && !advisor.expertFirstMessage && (
+                            <p className="mt-2 text-xs text-muted-foreground" data-testid="advisor-awaiting-message">
+                              Your expert will reach out with their first message soon.
+                            </p>
+                          )}
                           {advisor.status === "accepted" && (
                             <Link href="/chat">
                               <Button size="sm" className="mt-3 gap-1.5" data-testid="button-message-expert">
@@ -783,6 +795,15 @@ export default function TripDetails() {
                       </div>
                       {expert.bio && (
                         <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{expert.bio}</p>
+                      )}
+                      {Array.isArray(expert.specialties) && expert.specialties.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {(expert.specialties as string[]).slice(0, 3).map((s, si) => (
+                            <span key={si} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
                       )}
                       <div className="flex flex-wrap gap-2 mt-1.5 text-xs text-muted-foreground">
                         {parseFloat(expert.avg_rating) > 0 && (
