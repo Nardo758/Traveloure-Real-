@@ -193,6 +193,79 @@ router.post('/saved-trips', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * POST /api/saved-trips/:id/convert
+ * Convert a saved trip into an active Trip record (status: planning)
+ */
+router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+
+    // Validate UUID format — non-UUID strings cause a PostgreSQL cast error
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(id)) {
+      return res.status(404).json({ error: 'Saved trip not found or already converted' });
+    }
+
+    // Fetch the saved trip owned by this user
+    const savedResult = await db.execute(sql`
+      SELECT st.*, ic.destination, ic.start_date, ic.end_date, ic.travelers, ic.budget
+      FROM saved_trips st
+      LEFT JOIN itinerary_comparisons ic ON ic.id = st.comparison_id
+      WHERE st.id = ${id}
+        AND st.user_id = ${userId}
+        AND st.status = 'active'
+    `);
+
+    if (!savedResult.rows || savedResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Saved trip not found or already converted' });
+    }
+
+    const saved = savedResult.rows[0] as any;
+    const destination = saved.destination || 'My Destination';
+    const startDate = saved.start_date || new Date().toISOString().split('T')[0];
+    const endDate = saved.end_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const travelers = saved.travelers || 1;
+    const budget = saved.budget || null;
+
+    // Create a Trip record in planning status
+    const tripId = crypto.randomUUID();
+    await db.execute(sql`
+      INSERT INTO trips (
+        id, user_id, title, destination, start_date, end_date,
+        number_of_travelers, budget, status, created_at, updated_at
+      ) VALUES (
+        ${tripId},
+        ${userId},
+        ${`Trip to ${destination}`},
+        ${destination},
+        ${startDate},
+        ${endDate},
+        ${travelers},
+        ${budget},
+        'planning',
+        NOW(),
+        NOW()
+      )
+    `);
+
+    // Mark saved trip as converted
+    await db.execute(sql`
+      UPDATE saved_trips
+      SET status = 'converted'
+      WHERE id = ${id}
+    `);
+
+    res.json({ success: true, tripId });
+  } catch (error: any) {
+    console.error('Convert saved trip error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/saved-trips
  * Get user's saved trips with variant/comparison details
  */

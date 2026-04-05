@@ -12,6 +12,7 @@ import { ActiveExpertsList } from "@/components/dashboard/ActiveExpertsList";
 import { ServicesScroll } from "@/components/dashboard/ServicesScroll";
 import { ExpertsScroll } from "@/components/dashboard/ExpertsScroll";
 import { PastExperiencesScroll } from "@/components/dashboard/PastExperiencesScroll";
+import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 
 interface Notification {
   id: string | number;
@@ -139,6 +140,8 @@ export default function Dashboard() {
             </Link>
           ))}
         </div>
+
+        <SavedTripsSection />
 
         <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
           <span>Your active plans</span>
