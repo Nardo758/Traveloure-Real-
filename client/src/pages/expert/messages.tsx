@@ -1,13 +1,13 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation } from "wouter";
 
 export default function ExpertMessages() {
-  const navigate = useNavigate();
+  const [, setLocation] = useLocation();
 
   useEffect(() => {
     // Redirect to /chat to consolidate messaging interface
-    navigate("/chat", { replace: true });
-  }, [navigate]);
+    setLocation("/chat");
+  }, [setLocation]);
 
   return null;
 }
