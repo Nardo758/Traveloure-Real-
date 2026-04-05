@@ -1,5 +1,5 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { ExpertSidebar } from "@/components/expert-sidebar";
+import { ExpertSidebar } from "@/components/expert/expert-sidebar";
 import { Bell, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
