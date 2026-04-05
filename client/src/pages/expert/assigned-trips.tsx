@@ -49,6 +49,14 @@ interface TripSuggestion {
   created_at: string;
 }
 
+interface SuggestionPayload {
+  type: string;
+  dayNumber?: number;
+  title: string;
+  description?: string;
+  estimatedCost?: number;
+}
+
 const SUGGESTION_TYPES = [
   { value: "activity", label: "Activity" },
   { value: "food", label: "Food / Restaurant" },
@@ -84,7 +92,7 @@ export default function ExpertAssignedTrips() {
   });
 
   const submitSuggestionMutation = useMutation({
-    mutationFn: async ({ tripId, payload }: { tripId: string; payload: any }) => {
+    mutationFn: async ({ tripId, payload }: { tripId: string; payload: SuggestionPayload }) => {
       const res = await apiRequest("POST", `/api/trips/${tripId}/suggestions`, payload);
       return res.json();
     },
@@ -101,16 +109,14 @@ export default function ExpertAssignedTrips() {
 
   const handleSubmit = () => {
     if (!selectedTripId || !form.title.trim()) return;
-    submitSuggestionMutation.mutate({
-      tripId: selectedTripId,
-      payload: {
-        type: form.type,
-        dayNumber: form.dayNumber ? parseInt(form.dayNumber) : undefined,
-        title: form.title.trim(),
-        description: form.description.trim() || undefined,
-        estimatedCost: form.estimatedCost ? parseFloat(form.estimatedCost) : undefined,
-      },
-    });
+    const payload: SuggestionPayload = {
+      type: form.type,
+      title: form.title.trim(),
+    };
+    if (form.dayNumber) payload.dayNumber = parseInt(form.dayNumber, 10);
+    if (form.description.trim()) payload.description = form.description.trim();
+    if (form.estimatedCost) payload.estimatedCost = parseFloat(form.estimatedCost);
+    submitSuggestionMutation.mutate({ tripId: selectedTripId, payload });
   };
 
   const openDialog = (trip: AssignedTrip) => {
