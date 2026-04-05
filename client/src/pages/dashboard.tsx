@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { UserTemplateRecommendations } from "@/components/user/template-recommendations";
+import { SmartServiceRecommendations } from "@/components/SmartServiceRecommendations";
 import { useQuery } from "@tanstack/react-query";
 import { PlanCard } from "@/components/plancard/PlanCard";
 
@@ -177,6 +178,13 @@ export default function Dashboard() {
             </motion.div>
           ))}
         </div>
+
+        {/* Smart Service Recommendations */}
+        <SmartServiceRecommendations
+          trips={trips}
+          credits={walletData?.credits}
+          user={user}
+        />
 
         {/* Your Active Plans */}
         <section>
