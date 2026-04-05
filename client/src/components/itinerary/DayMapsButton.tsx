@@ -2,7 +2,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Map, ChevronDown } from "lucide-react";
-import { openInMaps, detectMapsPlatform } from "@/lib/maps-platform";
+import { detectedPlatform } from "@/lib/navigate";
+
+function openUrl(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
 interface DayMapsButtonProps {
   dayNumber: number;
@@ -18,11 +22,10 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
   if (!hasUrls) return null;
 
   const handleSmartOpen = () => {
-    const platform = detectMapsPlatform();
-    if (platform === "apple" && (appleUrl || appleWebUrl)) {
-      openInMaps(appleUrl || appleWebUrl!);
+    if (detectedPlatform === "ios" && (appleUrl || appleWebUrl)) {
+      openUrl(appleUrl || appleWebUrl!);
     } else if (googleUrl) {
-      openInMaps(googleUrl);
+      openUrl(googleUrl);
     }
   };
 
@@ -44,7 +47,7 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
         <DropdownMenuContent align="start">
           {googleUrl && (
             <DropdownMenuItem
-              onClick={() => openInMaps(googleUrl)}
+              onClick={() => openUrl(googleUrl)}
               data-testid={`button-google-maps-day-${dayNumber}`}
             >
               🗺️ Google Maps
@@ -52,7 +55,7 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
           )}
           {(appleUrl || appleWebUrl) && (
             <DropdownMenuItem
-              onClick={() => openInMaps(appleUrl || appleWebUrl!)}
+              onClick={() => openUrl(appleUrl || appleWebUrl!)}
               data-testid={`button-apple-maps-day-${dayNumber}`}
             >
               🍎 Apple Maps

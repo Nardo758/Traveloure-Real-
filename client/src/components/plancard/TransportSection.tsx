@@ -1,7 +1,7 @@
 import { Clock, Route } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
-import { detectMapsPlatform, openInMaps } from "@/lib/maps-platform";
+import { openInMaps } from "@/lib/navigate";
 import { MODE_COLORS, STATUS_STYLES, ModeIcon, type PlanCardDay } from "./plancard-types";
 
 interface TransportSectionProps {
@@ -14,15 +14,27 @@ export function TransportSection({ tripId, tripDestination, day }: TransportSect
   if (!day) return null;
 
   function handleGoogleMaps() {
-    const dest = day?.activities?.[0]?.location || tripDestination;
-    openInMaps(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dest)}`);
+    const act = day?.activities?.[0];
+    openInMaps({
+      destination: {
+        lat: act?.lat ?? undefined,
+        lng: act?.lng ?? undefined,
+        name: act?.location || act?.name || tripDestination,
+      },
+      app: "google",
+    });
   }
 
   function handleAppleMaps() {
-    const dest = day?.activities?.[0]?.location || tripDestination;
-    const platform = detectMapsPlatform();
-    const query = encodeURIComponent(dest);
-    openInMaps(platform === "apple" ? `maps://?q=${query}` : `https://maps.apple.com/?q=${query}`);
+    const act = day?.activities?.[0];
+    openInMaps({
+      destination: {
+        lat: act?.lat ?? undefined,
+        lng: act?.lng ?? undefined,
+        name: act?.location || act?.name || tripDestination,
+      },
+      app: "apple",
+    });
   }
 
   return (
