@@ -517,7 +517,13 @@ function Router() {
       <Route path="/admin/experts">
         {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/experts/pending">
+        {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
+      </Route>
       <Route path="/admin/providers">
+        {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/providers/pending">
         {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
       </Route>
       <Route path="/admin/bookings">
