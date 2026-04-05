@@ -225,16 +225,20 @@ export function DashboardPlanCard({
     .map(b => `${b.service?.serviceName}${b.provider?.businessName ? ` (${b.provider.businessName})` : ''}`)
     .join(', ');
 
-  // Transport mode breakdown
+  // Transport legs breakdown
   const transportModes = days.flatMap(d => d.transports ?? []);
-  const privateTransports = transportModes.filter(t => 
-    t.mode && (t.mode.includes('car') || t.mode.includes('private') || t.mode.includes('taxi') || t.mode.includes('rideshare'))
-  );
-  const privateTransportCount = privateTransports.length;
+  const transportLegCount = transportModes.length;
+  // Also count from stats if days are empty (plancard may only return stats)
+  const effectiveTransportCount = transportLegCount || (plancardData?.stats?.totalLegs ?? 0);
 
-  // Private transport details for tooltip
-  const transportTooltip = privateTransports
-    .map(t => `${t.details?.provider || t.mode}${t.details?.driver ? ` (${t.details.driver})` : ''}`)
+  // Build tooltip: mode breakdown summary
+  const modeCounts: Record<string, number> = {};
+  for (const t of transportModes) {
+    const m = t.mode || 'walk';
+    modeCounts[m] = (modeCounts[m] || 0) + 1;
+  }
+  const transportTooltip = Object.entries(modeCounts)
+    .map(([mode, cnt]) => `${cnt}× ${mode}`)
     .join(', ');
 
   const daysTil = daysUntil(trip.startDate);
@@ -346,28 +350,30 @@ export function DashboardPlanCard({
           ))}
         </div>
         
-        {(serviceBookingsCount > 0 || privateTransportCount > 0 || advisor) && (
-          <div className="flex items-center gap-2 mt-2">
+        {(serviceBookingsCount > 0 || effectiveTransportCount > 0 || advisor) && (
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
             {serviceBookingsCount > 0 && (
               <button
                 type="button"
                 onClick={handleServicesClick}
-                className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+                className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
                 title={serviceTooltip || undefined}
+                data-testid={`pill-services-${trip.id}`}
               >
                 <Briefcase className="w-3 h-3" />
                 {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
               </button>
             )}
-            {privateTransportCount > 0 && (
+            {effectiveTransportCount > 0 && (
               <button
                 type="button"
                 onClick={handleTransportClick}
-                className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                title={transportTooltip || undefined}
+                className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+                title={transportTooltip || `${effectiveTransportCount} transport legs`}
+                data-testid={`pill-transport-${trip.id}`}
               >
                 <Car className="w-3 h-3" />
-                Private x{privateTransportCount}
+                {effectiveTransportCount} leg{effectiveTransportCount !== 1 ? 's' : ''}
               </button>
             )}
             {advisor && (
