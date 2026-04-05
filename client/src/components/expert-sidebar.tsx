@@ -32,6 +32,8 @@ import {
   FileText,
   Camera,
   Lightbulb,
+  Palette,
+  Settings,
 } from "lucide-react";
 
 const menuGroups = [
@@ -41,14 +43,14 @@ const menuGroups = [
       { title: "Dashboard", href: "/expert/dashboard", icon: Home },
       { title: "Bookings", href: "/expert/bookings", icon: Calendar },
       { title: "Clients", href: "/expert/clients", icon: Users },
-      { title: "Messages", href: "/chat", icon: MessageSquare },
+      { title: "Messages", href: "/expert/messages", icon: MessageSquare },
     ],
   },
   {
     label: "BUSINESS",
     items: [
       { title: "Services", href: "/expert/services", icon: Briefcase },
-      { title: "Templates", href: "/expert/templates", icon: FileText },
+      { title: "Content Studio", href: "/expert/content-studio", icon: Palette },
       { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
       { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
     ],
@@ -58,7 +60,7 @@ const menuGroups = [
     items: [
       { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
       { title: "Profile", href: "/expert/profile", icon: User },
-      { title: "Settings", href: "/expert/settings", icon: User },
+      { title: "Settings", href: "/expert/settings", icon: Settings },
     ],
   },
 ];

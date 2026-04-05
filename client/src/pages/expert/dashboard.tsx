@@ -266,7 +266,7 @@ export default function ExpertDashboard() {
           </div>
 
           {/* Right Panel - 40% width */}
-          <div className="space-y-6">
+          <div className="space-y-6 hidden lg:block">
             {/* Earnings Snapshot */}
             <Card className="border border-gray-200 bg-gradient-to-br from-green-50 to-white">
               <CardHeader className="pb-3">
