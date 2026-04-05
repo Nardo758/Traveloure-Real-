@@ -108,7 +108,7 @@ function buildGoogleUrl(params: NavigateParams): string {
   if (params.waypoints && params.waypoints.length === 1) {
     sp.set("destination", locStr(params.waypoints[0].lat, params.waypoints[0].lng, params.waypoints[0].name));
   } else if (params.waypoints && params.waypoints.length > 1) {
-    const stops = params.waypoints.slice(0, 10);
+    const stops = params.waypoints.slice(0, 11);
     sp.set("origin", locStr(stops[0].lat, stops[0].lng, stops[0].name));
     sp.set("destination", locStr(stops[stops.length - 1].lat, stops[stops.length - 1].lng, stops[stops.length - 1].name));
     if (stops.length > 2) {
@@ -142,9 +142,13 @@ function buildAppleUrl(params: NavigateParams): string {
     sp.set("daddr", locStr(params.destination.lat, params.destination.lng, params.destination.name));
   } else if (params.destination) {
     sp.set("daddr", locStr(params.destination.lat, params.destination.lng, params.destination.name));
-  } else if (params.waypoints && params.waypoints.length > 0) {
+  } else if (params.waypoints && params.waypoints.length >= 2) {
+    const first = params.waypoints[0];
     const last = params.waypoints[params.waypoints.length - 1];
+    sp.set("saddr", locStr(first.lat, first.lng, first.name));
     sp.set("daddr", locStr(last.lat, last.lng, last.name));
+  } else if (params.waypoints && params.waypoints.length === 1) {
+    sp.set("daddr", locStr(params.waypoints[0].lat, params.waypoints[0].lng, params.waypoints[0].name));
   }
 
   return `https://maps.apple.com/?${sp.toString()}`;
@@ -185,6 +189,10 @@ export function openInMaps(params: NavigateParams): void {
       break;
   }
 
+  if (url) window.open(url, "_blank", "noopener,noreferrer");
+}
+
+export function openRawUrl(url: string): void {
   if (url) window.open(url, "_blank", "noopener,noreferrer");
 }
 
