@@ -1,0 +1,176 @@
+I just pulled new code from GitHub that implements Expert and Service Provider dashboard consoles. I need you to verify everything was implemented correctly and report any discrepancies. DO NOT modify any code — only read, verify, and report.
+
+## WHAT WAS IMPLEMENTED
+
+39 new files across 3 categories:
+- 18 Expert dashboard files (sidebar, layout, 16 page components)
+- 12 Provider dashboard files (sidebar, layout, 10 page components)
+- 9 Shared components used by both dashboards
+
+## VERIFICATION TASKS
+
+### Task 1: Check all files exist
+
+Verify these files exist. For each one, report ✅ if it exists or ❌ if missing:
+
+**Shared components:**
+- components/shared/travel-pulse-ticker.tsx
+- components/shared/stats-row.tsx
+- components/shared/earnings-card.tsx
+- components/shared/action-items-list.tsx
+- components/shared/status-pill.tsx
+- components/shared/service-card.tsx
+- components/shared/booking-row.tsx
+- components/shared/transaction-table.tsx
+- components/shared/dynamic-pricing-editor.tsx
+
+**Expert files:**
+- components/expert/expert-sidebar.tsx
+- components/expert/expert-layout.tsx
+- pages/expert/dashboard.tsx
+- pages/expert/clients.tsx
+- pages/expert/client-detail.tsx
+- pages/expert/messages.tsx
+- pages/expert/bookings.tsx
+- pages/expert/services.tsx
+- pages/expert/service-form.tsx
+- pages/expert/earnings.tsx
+- pages/expert/content-studio.tsx
+- pages/expert/content-create.tsx
+- pages/expert/analytics.tsx
+- pages/expert/ai-assistant.tsx
+- pages/expert/profile.tsx
+- pages/expert/settings.tsx
+
+**Provider files:**
+- components/provider/provider-sidebar.tsx
+- components/provider/provider-layout.tsx
+- pages/provider/dashboard.tsx
+- pages/provider/calendar.tsx
+- pages/provider/bookings.tsx
+- pages/provider/services.tsx
+- pages/provider/service-form.tsx
+- pages/provider/earnings.tsx
+- pages/provider/analytics.tsx
+- pages/provider/profile.tsx
+- pages/provider/settings.tsx
+
+NOTE: The file paths above may vary slightly. Claude Code may have placed them under `client/src/pages/` or `src/pages/` depending on the existing project structure. Check for the files wherever the existing page components live. If the paths differ, tell me where they actually ended up.
+
+### Task 2: Verify route registration
+
+Open the main route configuration file (likely App.tsx or routes.tsx) and verify ALL of these routes are registered:
+
+**Expert routes (16):**
+/expert/dashboard, /expert/clients, /expert/clients/:id, /expert/messages, /expert/messages/:clientId, /expert/bookings, /expert/services, /expert/services/new, /expert/services/:id/edit, /expert/earnings, /expert/content-studio, /expert/content-studio/:contentType, /expert/analytics, /expert/ai-assistant, /expert/profile, /expert/settings
+
+**Provider routes (10):**
+/provider/dashboard, /provider/calendar, /provider/bookings, /provider/services, /provider/services/new, /provider/services/:id/edit, /provider/earnings, /provider/analytics, /provider/profile, /provider/settings
+
+For each route, confirm:
+- ✅ Route exists and points to the correct page component
+- ✅ Route is wrapped in the correct layout (ExpertLayout or ProviderLayout)
+- ❌ Route is missing or misconfigured (explain what's wrong)
+
+### Task 3: Verify sidebar navigation
+
+Open expert-sidebar.tsx and verify:
+- Has 3 groups (Work, Business, Account) with visual separators
+- Work group has: Dashboard, Clients, Messages, Bookings
+- Business group has: Services, Earnings, Content Studio, Analytics
+- Account group has: AI Assistant, Profile, Settings
+- Each item links to the correct route
+- Active state logic handles nested routes (e.g., /expert/services/* highlights Services)
+
+Open provider-sidebar.tsx and verify:
+- Has 3 groups (Work, Business, Account) with visual separators
+- Work group has: Dashboard, Calendar, Bookings
+- Business group has: Services, Earnings, Analytics
+- Account group has: Profile, Settings
+- Each item links to the correct route
+
+### Task 4: Verify dashboard layout structure
+
+Open pages/expert/dashboard.tsx and verify:
+- Two-panel layout: left column (~62%) + right panel (~35%)
+- Left column has: CTA row (4 cards), My Clients section, Recent Bookings section
+- Right panel has: Earnings card, Action Items, Market Insights, Performance
+- TravelPulse ticker at the top
+- Stats row with 4 stat cards below the ticker
+- Right panel has `hidden lg:block` for mobile responsiveness
+
+Open pages/provider/dashboard.tsx and verify the same pattern:
+- Left column has: CTA row (4 cards), Today's Bookings section, My Services section
+- Right panel has: Earnings card, Action Items, Upcoming 5 Days, Expert Partners, Performance
+- Today's Bookings cards show "via {ExpertName}" attribution
+
+### Task 5: Verify Provider Calendar page
+
+Open pages/provider/calendar.tsx and verify:
+- Week/Month view toggle exists
+- "Edit Schedule" button exists (opens regular hours editor)
+- "Block Dates" button exists (opens blackout date picker)
+- Calendar grid shows time slots with Booked/Available/Blocked states
+- Regular schedule editor has 7 rows (Mon-Sun) with start time, end time, active toggle
+
+### Task 6: Verify Service Form
+
+Open expert/service-form.tsx (or provider/service-form.tsx) and verify:
+- Works in both create mode (/services/new) and edit mode (/services/:id/edit)
+- Has these field sections: Service Name, Category, Description, Photos, Base Price, Price Type, Duration
+- Provider version additionally has: Dynamic Pricing Rules section (early morning, late night, weekend, peak season, off-peak, last-minute, gap-fill adjustments), Max Group Size, Service Area, Pickup details
+
+### Task 7: Verify no existing files were modified (CRITICAL)
+
+Check that NONE of these existing files were changed:
+- The traveler dashboard page (likely pages/dashboard.tsx or similar)
+- The traveler sidebar component
+- The traveler DashboardLayout component
+- Any files in the marketing/landing page routes
+
+Run: git diff --name-only HEAD~1
+Report any files that were MODIFIED (not added) that look like they belong to the traveler dashboard or marketing pages.
+
+### Task 8: Check for build errors
+
+Run the dev server and report:
+- Any TypeScript compilation errors
+- Any missing import errors
+- Any missing dependency errors
+- Any runtime console errors when navigating to /expert/dashboard and /provider/dashboard
+
+## OUTPUT FORMAT
+
+Give me a single report with this structure:
+
+### FILE CHECK
+[list of all 39 files with ✅ or ❌]
+Missing files: [count]
+
+### ROUTE CHECK
+[list of all 26 routes with ✅ or ❌]
+Missing routes: [count]
+
+### SIDEBAR CHECK
+Expert sidebar: ✅ correct / ❌ [describe issue]
+Provider sidebar: ✅ correct / ❌ [describe issue]
+
+### DASHBOARD CHECK
+Expert dashboard layout: ✅ correct / ❌ [describe issue]
+Provider dashboard layout: ✅ correct / ❌ [describe issue]
+
+### CALENDAR CHECK
+Provider calendar: ✅ correct / ❌ [describe issue]
+
+### SERVICE FORM CHECK
+Expert service form: ✅ correct / ❌ [describe issue]
+Provider service form: ✅ correct / ❌ [describe issue]
+
+### EXISTING FILES CHECK
+Files that should NOT have been modified: [list any unexpected changes]
+
+### BUILD ERRORS
+[list any errors, or "None"]
+
+### DISCREPANCIES SUMMARY
+[numbered list of everything that needs attention, ranked by severity: P0 = blocks functionality, P1 = wrong behavior, P2 = cosmetic/minor]

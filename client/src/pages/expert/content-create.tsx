@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useRoute } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExpertLayout } from "@/components/expert-layout";
+import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
