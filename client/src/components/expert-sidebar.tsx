@@ -30,6 +30,7 @@ import {
   Award,
   FileText,
   Camera,
+  Lightbulb,
 } from "lucide-react";
 
 const menuItems = [
@@ -38,6 +39,7 @@ const menuItems = [
   { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
   { title: "Messages", href: "/expert/messages", icon: MessageSquare },
   { title: "Clients", href: "/expert/clients", icon: Users },
+  { title: "Assigned Trips", href: "/expert/assigned-trips", icon: Lightbulb },
   { title: "Bookings", href: "/expert/bookings", icon: Calendar },
   { title: "Services", href: "/expert/services", icon: Briefcase },
   { title: "Custom Services", href: "/expert/custom-services", icon: PlusSquare },
