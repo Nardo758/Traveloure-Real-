@@ -13,6 +13,23 @@ import { ServicesScroll } from "@/components/dashboard/ServicesScroll";
 import { ExpertsScroll } from "@/components/dashboard/ExpertsScroll";
 import { PastExperiencesScroll } from "@/components/dashboard/PastExperiencesScroll";
 
+interface Notification {
+  id: string | number;
+  title?: string;
+  message?: string;
+  type?: string;
+  createdAt?: string;
+  tripId?: string | null;
+  read?: boolean;
+}
+
+interface Conversation {
+  id: number;
+  title: string;
+  userId?: string | null;
+  createdAt: string;
+}
+
 const CTA_CARDS = [
   {
     icon: "+",
@@ -40,8 +57,12 @@ const CTA_CARDS = [
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
-  const { data: notificationsData } = useQuery<any[]>({ queryKey: ["/api/notifications"] });
-  const { data: conversations } = useQuery<any[]>({ queryKey: ["/api/conversations"] });
+  const { data: notificationsData, isLoading: notifLoading } = useQuery<Notification[]>({
+    queryKey: ["/api/notifications"],
+  });
+  const { data: conversations, isLoading: convsLoading } = useQuery<Conversation[]>({
+    queryKey: ["/api/conversations"],
+  });
 
   if (isLoading) {
     return (
@@ -65,23 +86,27 @@ export default function Dashboard() {
   }
 
   const now = new Date();
-  const allPlans = trips || [];
-  const activePlans = allPlans.filter(t => {
-    const start = new Date(t.startDate);
-    const end = new Date(t.endDate);
-    return end >= now;
-  });
-  const pastTrips = allPlans.filter(t => new Date(t.endDate) < now);
+  const allPlans = trips ?? [];
+  const activePlans = allPlans.filter(t => new Date(t.endDate) >= now);
 
-  const actionsNeeded = (notificationsData ?? []).filter(n => !n.read && (n.type === "urgent" || n.type === "action")).length;
+  const notifications = notificationsData ?? [];
+  const actionsNeeded = notifications.filter(
+    n => !n.read && (n.type === "urgent" || n.type === "action")
+  ).length;
 
-  const greetingSub = activePlans.length > 0
-    ? `${activePlans.length} active plan${activePlans.length !== 1 ? "s" : ""}${actionsNeeded > 0 ? ` · ${actionsNeeded} action${actionsNeeded !== 1 ? "s" : ""} needed today` : ""}`
-    : pastTrips.length > 0
-    ? "Ready for your next adventure?"
-    : "Start planning your first experience";
+  const greetingSub =
+    activePlans.length > 0
+      ? `${activePlans.length} active plan${activePlans.length !== 1 ? "s" : ""}${
+          actionsNeeded > 0
+            ? ` · ${actionsNeeded} action${actionsNeeded !== 1 ? "s" : ""} needed today`
+            : ""
+        }`
+      : allPlans.length > 0
+      ? "Ready for your next adventure?"
+      : "Start planning your first experience";
 
   const destinations = activePlans.map(t => t.destination).filter(Boolean);
+  const convList = conversations ?? [];
 
   return (
     <DashboardLayout>
@@ -117,7 +142,10 @@ export default function Dashboard() {
           <span>Your active plans</span>
           {activePlans.length > 0 && (
             <Link href="/my-trips">
-              <span className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline" data-testid="link-view-all-plans">
+              <span
+                className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline"
+                data-testid="link-view-all-plans"
+              >
                 View all
               </span>
             </Link>
@@ -131,8 +159,8 @@ export default function Dashboard() {
                 key={trip.id}
                 trip={trip}
                 index={i}
-                conversations={conversations}
-                notifications={notificationsData}
+                conversations={convList}
+                notifications={notifications}
               />
             ))}
           </div>
@@ -154,7 +182,11 @@ export default function Dashboard() {
           </Card>
         )}
 
-        <ActiveExpertsList />
+        <ActiveExpertsList
+          conversations={convList}
+          trips={activePlans}
+          isLoading={convsLoading}
+        />
 
         <ServicesScroll />
 

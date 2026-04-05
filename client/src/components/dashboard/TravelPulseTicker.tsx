@@ -3,11 +3,11 @@ import { Link } from "wouter";
 import { useTrips } from "@/hooks/use-trips";
 
 interface HappeningNowEvent {
-  id?: string;
+  id?: string | number;
   city?: string;
   title?: string;
   description?: string;
-  indicator?: string;
+  indicator?: "up" | "down" | "normal" | string;
   type?: string;
 }
 

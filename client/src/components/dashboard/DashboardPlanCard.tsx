@@ -12,16 +12,38 @@ interface Trip {
   experienceType?: string | null;
   eventType?: string | null;
   numberOfTravelers?: number;
-  itineraryData?: any;
 }
 
 interface PlanCardData {
-  days?: any[];
-  stats?: {
-    totalActivities?: number;
-    totalLegs?: number;
-    totalTransitMinutes?: number;
+  days: DayData[];
+  stats: {
+    totalActivities: number;
+    totalLegs: number;
+    totalTransitMinutes: number;
+    confirmedActivities?: number;
+    pendingExpertChanges?: number;
   };
+}
+
+interface DayData {
+  activities?: Array<{ status?: string }>;
+  transports?: Array<{ duration?: number }>;
+}
+
+interface ConversationMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+interface ConversationWithMessages {
+  id: number;
+  title: string;
+  userId?: string | null;
+  createdAt: string;
+  messages: ConversationMessage[];
 }
 
 interface Notification {
@@ -31,6 +53,7 @@ interface Notification {
   type?: string;
   createdAt?: string;
   tripId?: string | null;
+  read?: boolean;
 }
 
 function daysUntil(dateStr: string): number {
@@ -60,39 +83,38 @@ function openInMaps(destination: string) {
   }
 }
 
-function getStatusGradient(status: string, startDate: string) {
-  const days = daysUntil(startDate);
-  if (status === "active" || (days <= 0 && days >= -30)) {
-    return "linear-gradient(135deg,#16A34A,#4ADE80)";
-  }
-  if (days > 0 && days <= 30) {
+function getStatusGradient(trip: Trip): string {
+  const daysTil = daysUntil(trip.startDate);
+  if (daysTil > 0 && daysTil <= 90) {
     return "linear-gradient(135deg,#D85A30,#F0997B)";
   }
   return "linear-gradient(135deg,#E85D55,#F4A29C)";
 }
 
-function getStatusLabel(status: string, startDate: string, endDate: string) {
+function getStatusLabel(trip: Trip): string {
   const now = new Date();
-  const start = new Date(startDate);
-  const end = new Date(endDate);
+  const start = new Date(trip.startDate);
+  const end = new Date(trip.endDate);
   if (now >= start && now <= end) return "Active";
   if (now < start) {
-    const days = daysUntil(startDate);
+    const days = daysUntil(trip.startDate);
     return days <= 7 ? "Soon" : "Upcoming";
   }
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  if (trip.status) return trip.status.charAt(0).toUpperCase() + trip.status.slice(1);
+  return "Planning";
 }
 
 function getInitials(name: string): string {
   return name
     .split(" ")
+    .filter(Boolean)
     .map(p => p[0])
     .join("")
     .toUpperCase()
     .slice(0, 2);
 }
 
-const AVATAR_COLORS = [
+const AVATAR_COLORS: Array<{ bg: string; text: string }> = [
   { bg: "#E8B339", text: "#412402" },
   { bg: "#B5D4F4", text: "#0C447C" },
   { bg: "#CECBF6", text: "#3C3489" },
@@ -100,52 +122,117 @@ const AVATAR_COLORS = [
   { bg: "#F4C0D1", text: "#72243E" },
 ];
 
-export function DashboardPlanCard({ trip, index, conversations, notifications }: {
+function findMatchedConversationId(
+  trip: Trip,
+  conversations: Array<{ id: number; title: string }>
+): number | null {
+  const destKey = trip.destination?.split(",")[0]?.toLowerCase().trim();
+  const titleKey = trip.title?.toLowerCase().trim();
+  if (!conversations.length) return null;
+
+  const match = conversations.find(c => {
+    const cTitle = c.title.toLowerCase();
+    return (
+      (destKey && cTitle.includes(destKey)) ||
+      (titleKey && cTitle.includes(titleKey))
+    );
+  });
+  return match?.id ?? conversations[0].id;
+}
+
+export function DashboardPlanCard({
+  trip,
+  index,
+  conversations,
+  notifications,
+}: {
   trip: Trip;
   index: number;
-  conversations?: any[];
-  notifications?: Notification[];
+  conversations: Array<{ id: number; title: string }>;
+  notifications: Notification[];
 }) {
   const { data: plancardData } = useQuery<PlanCardData>({
     queryKey: [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
   });
 
-  const days = plancardData?.days || [];
-  const totalActivities = plancardData?.stats?.totalActivities
-    ?? days.reduce((s: number, d: any) => s + (d.activities?.length || 0), 0);
-  const totalLegs = plancardData?.stats?.totalLegs
-    ?? days.reduce((s: number, d: any) => s + (d.transports?.length || 0), 0);
-  const totalMinutes = plancardData?.stats?.totalTransitMinutes
-    ?? days.reduce((s: number, d: any) => s + (d.transports || []).reduce((t: number, tr: any) => t + (tr.duration || 0), 0), 0);
-  const numDays = days.length || Math.max(1, Math.round((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / 86400000));
+  const matchedConvId = findMatchedConversationId(trip, conversations);
+
+  const { data: convWithMessages } = useQuery<ConversationWithMessages>({
+    queryKey: [`/api/conversations/${matchedConvId}`],
+    enabled: matchedConvId !== null,
+    staleTime: 60000,
+  });
+
+  const days: DayData[] = plancardData?.days ?? [];
+  const totalActivities =
+    plancardData?.stats?.totalActivities ??
+    days.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
+  const totalLegs =
+    plancardData?.stats?.totalLegs ??
+    days.reduce((s, d) => s + (d.transports?.length ?? 0), 0);
+  const totalMinutes =
+    plancardData?.stats?.totalTransitMinutes ??
+    days.reduce(
+      (s, d) =>
+        s + (d.transports ?? []).reduce((t, tr) => t + (tr.duration ?? 0), 0),
+      0
+    );
+  const numDays =
+    days.length ||
+    Math.max(
+      1,
+      Math.round(
+        (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) /
+          86400000
+      )
+    );
 
   const daysTil = daysUntil(trip.startDate);
-  const statusLabel = getStatusLabel(trip.status, trip.startDate, trip.endDate);
-  const gradient = getStatusGradient(trip.status, trip.startDate);
+  const statusLabel = getStatusLabel(trip);
+  const gradient = getStatusGradient(trip);
   const showCountdown = daysTil > 0;
 
   const tripTitle = trip.title || trip.destination;
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const formatDate = (d: string) =>
+    new Date(d).toLocaleDateString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
 
-  const lastConversation = (conversations ?? []).find((c: any) => {
-    const title = (c.title || "").toLowerCase();
-    return title.includes(trip.destination?.split(",")[0]?.toLowerCase() || "");
-  }) || (conversations ?? [])[0];
+  const lastAssistantMsg = convWithMessages?.messages
+    ? [...convWithMessages.messages]
+        .filter(m => m.role === "assistant")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : null;
 
-  const expertMsg = lastConversation?.title || null;
-  const expertInitials = expertMsg ? getInitials(expertMsg.replace(/chat with /i, "").replace(/conversation/i, "C")) : null;
+  const expertMsgText = lastAssistantMsg
+    ? lastAssistantMsg.content.slice(0, 120) + (lastAssistantMsg.content.length > 120 ? "…" : "")
+    : null;
+
+  const expertName = convWithMessages
+    ? convWithMessages.title
+        .replace(/chat with /i, "")
+        .replace(/conversation with /i, "")
+        .trim()
+    : null;
+
+  const initials = expertName ? getInitials(expertName) : null;
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
 
-  const actionItems = (notifications ?? [])
+  const actionItems = notifications
     .filter(n => !n.tripId || n.tripId === trip.id)
+    .sort((a, b) =>
+      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+    )
     .slice(0, 2);
 
   return (
     <div
-      className="rounded-[14px] overflow-hidden border border-border bg-card"
-      style={{ borderWidth: "0.5px" }}
+      className="rounded-[14px] overflow-hidden bg-card"
+      style={{ border: "0.5px solid hsl(var(--border))" }}
       data-testid={`dashboard-plan-card-${trip.id}`}
     >
       <div className="relative p-3.5 pb-3 text-white" style={{ background: gradient }}>
@@ -158,8 +245,8 @@ export function DashboardPlanCard({ trip, index, conversations, notifications }:
             {statusLabel}
           </span>
           <div className="flex gap-2">
-            <button className="text-[11px] opacity-85 cursor-pointer" data-testid={`btn-share-${trip.id}`}>Share</button>
-            <button className="text-[11px] opacity-85 cursor-pointer" data-testid={`btn-export-${trip.id}`}>Export</button>
+            <button className="text-[11px] opacity-85">Share</button>
+            <button className="text-[11px] opacity-85">Export</button>
           </div>
         </div>
 
@@ -179,13 +266,19 @@ export function DashboardPlanCard({ trip, index, conversations, notifications }:
 
       <div className="px-4 py-3">
         <div className="flex text-center mb-2.5">
-          {[
-            { label: "Days", value: numDays },
-            { label: "Activities", value: totalActivities },
-            { label: "Transit legs", value: totalLegs },
-            { label: "Transit time", value: formatMinutes(totalMinutes) },
-          ].map((s, i) => (
-            <div key={i} className={`flex-1 py-1.5 ${i > 0 ? "border-l border-border" : ""}`} style={{ borderWidth: "0.5px" }}>
+          {(
+            [
+              { label: "Days", value: numDays },
+              { label: "Activities", value: totalActivities },
+              { label: "Transit legs", value: totalLegs },
+              { label: "Transit time", value: formatMinutes(totalMinutes) },
+            ] as const
+          ).map((s, i) => (
+            <div
+              key={i}
+              className={`flex-1 py-1.5 ${i > 0 ? "border-l" : ""}`}
+              style={i > 0 ? { borderColor: "hsl(var(--border))", borderLeftWidth: "0.5px" } : {}}
+            >
               <div className="text-[10px] text-muted-foreground mb-0.5">{s.label}</div>
               <div className="text-[15px] font-medium text-foreground">{s.value}</div>
             </div>
@@ -193,20 +286,23 @@ export function DashboardPlanCard({ trip, index, conversations, notifications }:
         </div>
       </div>
 
-      {expertMsg && (
+      {expertMsgText && initials && (
         <div
-          className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border"
-          style={{ borderTopWidth: "0.5px" }}
+          className="flex items-center gap-2.5 px-4 py-2.5 border-t"
+          style={{ borderTopWidth: "0.5px", borderColor: "hsl(var(--border))" }}
           data-testid={`expert-msg-${trip.id}`}
         >
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
             style={{ background: avatarColor.bg, color: avatarColor.text }}
           >
-            {expertInitials}
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-medium text-foreground truncate">{expertMsg}</div>
+            {expertName && (
+              <div className="text-[11px] font-medium text-foreground">{expertName}</div>
+            )}
+            <div className="text-[11px] text-muted-foreground truncate">{expertMsgText}</div>
           </div>
           <div className="w-1.5 h-1.5 rounded-full bg-[#2E8B8B] flex-shrink-0" />
         </div>
@@ -223,7 +319,12 @@ export function DashboardPlanCard({ trip, index, conversations, notifications }:
               />
               <span className="text-[11px] text-foreground flex-1">{n.title || n.message}</span>
               <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                {n.createdAt ? new Date(n.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "New"}
+                {n.createdAt
+                  ? new Date(n.createdAt).toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "short",
+                    })
+                  : "New"}
               </span>
             </div>
           ))}
@@ -233,8 +334,8 @@ export function DashboardPlanCard({ trip, index, conversations, notifications }:
       <div className="flex gap-2 px-4 pb-3 pt-1">
         <button
           onClick={() => openInMaps(trip.destination)}
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium border border-border bg-card text-foreground hover:bg-muted transition-colors"
-          style={{ borderWidth: "0.5px" }}
+          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium bg-card text-foreground hover:bg-muted transition-colors"
+          style={{ border: "0.5px solid hsl(var(--border))" }}
           data-testid={`btn-maps-${trip.id}`}
         >
           <MapPin className="w-3.5 h-3.5" />
@@ -243,7 +344,7 @@ export function DashboardPlanCard({ trip, index, conversations, notifications }:
         <Link href={`/itinerary/${trip.id}`} className="flex-1">
           <button
             className="w-full flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium text-white transition-colors"
-            style={{ background: "#E85D55", borderColor: "#E85D55" }}
+            style={{ background: "#E85D55" }}
             data-testid={`btn-itinerary-${trip.id}`}
           >
             <Calendar className="w-3.5 h-3.5" />
