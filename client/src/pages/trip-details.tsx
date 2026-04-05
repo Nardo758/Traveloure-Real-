@@ -96,6 +96,9 @@ export default function TripDetails() {
   const [expertPickerOpen, setExpertPickerOpen] = useState(false);
   const [selectedExpert, setSelectedExpert] = useState<Expert | null>(null);
   const [expertMessage, setExpertMessage] = useState("");
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
+  const [rejectionNote, setRejectionNote] = useState("");
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -715,13 +718,17 @@ export default function TripDetails() {
                                       data-testid={`button-approve-suggestion-${suggestion.id}`}
                                     >
                                       <CheckCircle className="w-3.5 h-3.5" />
-                                      Approve
+                                      Approve &amp; add to itinerary
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="outline"
                                       className="flex-1 gap-1.5 border-red-300 text-red-700 hover:bg-red-50"
-                                      onClick={() => reviewSuggestionMutation.mutate({ suggestionId: suggestion.id, status: "rejected" })}
+                                      onClick={() => {
+                                        setRejectTargetId(suggestion.id);
+                                        setRejectionNote("");
+                                        setRejectDialogOpen(true);
+                                      }}
                                       disabled={reviewSuggestionMutation.isPending}
                                       data-testid={`button-reject-suggestion-${suggestion.id}`}
                                     >
@@ -987,6 +994,56 @@ export default function TripDetails() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Suggestion Dialog */}
+      <Dialog open={rejectDialogOpen} onOpenChange={(open) => { setRejectDialogOpen(open); if (!open) setRejectTargetId(null); }}>
+        <DialogContent className="sm:max-w-sm" data-testid="dialog-reject-suggestion">
+          <DialogHeader>
+            <DialogTitle>Decline suggestion</DialogTitle>
+            <DialogDescription>
+              Let the expert know why you're passing on this idea (optional).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-2">
+            <Textarea
+              placeholder="e.g. Budget doesn't fit, already have plans for this day…"
+              value={rejectionNote}
+              onChange={(e) => setRejectionNote(e.target.value)}
+              rows={3}
+              data-testid="input-rejection-note"
+            />
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setRejectDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={() => {
+                  if (rejectTargetId) {
+                    reviewSuggestionMutation.mutate({ suggestionId: rejectTargetId, status: "rejected", rejectionNote: rejectionNote || undefined });
+                  }
+                  setRejectDialogOpen(false);
+                  setRejectTargetId(null);
+                }}
+                disabled={reviewSuggestionMutation.isPending}
+                data-testid="button-confirm-reject"
+              >
+                {reviewSuggestionMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4 mr-2" />
+                )}
+                Decline suggestion
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -765,6 +765,50 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * GET /api/expert/assigned-trips
+ * Return all trips where the current user is an assigned expert.
+ */
+router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const result = await db.execute(sql`
+      SELECT
+        t.id as trip_id,
+        t.title as trip_title,
+        t.destination,
+        t.start_date,
+        t.end_date,
+        tea.status,
+        tea.assigned_at,
+        u.first_name as traveler_first_name,
+        u.last_name as traveler_last_name,
+        COALESCE(
+          (SELECT COUNT(*) FROM trip_suggestions ts WHERE ts.trip_id = t.id AND ts.expert_id = ${userId}),
+          0
+        )::int as suggestion_count
+      FROM trip_expert_advisors tea
+      JOIN trips t ON t.id = tea.trip_id
+      JOIN users u ON u.id = t.user_id
+      WHERE tea.local_expert_id = ${userId}
+        AND tea.status IN ('pending', 'accepted')
+      ORDER BY tea.assigned_at DESC
+    `);
+
+    const trips = (result.rows || []).map((row: any) => ({
+      ...row,
+      traveler_name: [row.traveler_first_name, row.traveler_last_name].filter(Boolean).join(' ') || 'Traveler',
+    }));
+
+    res.json(trips);
+  } catch (error: any) {
+    console.error('Get expert assigned trips error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * GET /api/trips/:id/suggestions
  * Return all expert suggestions for a trip. Trip owner sees all; expert sees their own.
  */
@@ -863,6 +907,7 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
 /**
  * PATCH /api/trips/:id/suggestions/:suggestionId
  * Trip owner approves or rejects a suggestion.
+ * On approval, the suggestion is appended to the generated itinerary for that day.
  */
 router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req, res) => {
   try {
@@ -884,20 +929,90 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const updateResult = await db.execute(sql`
+    // Fetch the suggestion details before updating
+    const suggestionResult = await db.execute(sql`
+      SELECT id, type, day_number, title, description, estimated_cost
+      FROM trip_suggestions
+      WHERE id = ${suggestionId} AND trip_id = ${id} AND status = 'pending'
+    `);
+
+    if (!suggestionResult.rows || suggestionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
+    }
+
+    const suggestion = suggestionResult.rows[0] as {
+      id: string;
+      type: string;
+      day_number: number | null;
+      title: string;
+      description: string | null;
+      estimated_cost: string | null;
+    };
+
+    // Update suggestion status
+    await db.execute(sql`
       UPDATE trip_suggestions
       SET status = ${status},
           rejection_note = ${rejectionNote ?? null},
           reviewed_at = NOW()
-      WHERE id = ${suggestionId} AND trip_id = ${id} AND status = 'pending'
-      RETURNING id, status
+      WHERE id = ${suggestionId} AND trip_id = ${id}
     `);
 
-    if (!updateResult.rows || updateResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
+    // If approved, apply the suggestion to the generated itinerary
+    if (status === 'approved') {
+      const itineraryResult = await db.execute(sql`
+        SELECT id, itinerary_data
+        FROM generated_itineraries
+        WHERE trip_id = ${id} AND status = 'generated'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `);
+
+      if (itineraryResult.rows && itineraryResult.rows.length > 0) {
+        const itineraryRow = itineraryResult.rows[0] as { id: string; itinerary_data: any };
+        const itineraryData = itineraryRow.itinerary_data || {};
+        const days: any[] = Array.isArray(itineraryData.days) ? itineraryData.days : [];
+
+        // Build the new activity entry from the suggestion
+        const newActivity = {
+          type: suggestion.type || 'activity',
+          title: suggestion.title,
+          description: suggestion.description || '',
+          estimatedCost: suggestion.estimated_cost ? parseFloat(suggestion.estimated_cost) : undefined,
+          time: '',
+          expertCurated: true,
+        };
+
+        // Find the target day (default to day 1)
+        const targetDay = suggestion.day_number ?? 1;
+        const dayEntry = days.find((d: any) => d.day === targetDay);
+
+        if (dayEntry) {
+          if (!Array.isArray(dayEntry.activities)) dayEntry.activities = [];
+          dayEntry.activities.push(newActivity);
+        } else {
+          // Day not found — append to the last day or create a new entry
+          if (days.length > 0) {
+            const lastDay = days[days.length - 1];
+            if (!Array.isArray(lastDay.activities)) lastDay.activities = [];
+            lastDay.activities.push(newActivity);
+          } else {
+            days.push({ day: targetDay, title: `Day ${targetDay}`, activities: [newActivity] });
+          }
+        }
+
+        const updatedItineraryData = { ...itineraryData, days };
+
+        await db.execute(sql`
+          UPDATE generated_itineraries
+          SET itinerary_data = ${JSON.stringify(updatedItineraryData)}::jsonb,
+              updated_at = NOW()
+          WHERE id = ${itineraryRow.id}
+        `);
+      }
     }
 
-    res.json({ success: true, suggestion: updateResult.rows[0] });
+    res.json({ success: true, suggestion: { id: suggestionId, status } });
   } catch (error: any) {
     console.error('Review trip suggestion error:', error);
     res.status(500).json({ success: false, error: error.message });
