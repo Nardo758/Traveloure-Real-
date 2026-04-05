@@ -2,14 +2,33 @@ import { ProviderLayout } from "@/components/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Calendar as CalendarIcon, 
-  Clock, 
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar as CalendarIcon,
+  Calendar,
+  Clock,
   Users,
   MapPin,
-  Loader2
+  Loader2,
+  Edit2,
+  Trash2
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -17,10 +36,40 @@ import type { ServiceBooking, ProviderService } from "@shared/schema";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
+interface ScheduleRule {
+  day: string;
+  startTime: string;
+  endTime: string;
+  active: boolean;
+}
+
+interface BlackoutDate {
+  id: string;
+  startDate: string;
+  endDate: string;
+  reason: "Personal" | "Vehicle Maintenance" | "Family" | "Holiday" | "Other";
+}
+
 export default function ProviderCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<number | null>(null);
-  
+  const [viewMode, setViewMode] = useState<"month" | "week">("month");
+  const [scheduleRules, setScheduleRules] = useState<ScheduleRule[]>([
+    { day: "Monday", startTime: "06:00", endTime: "22:00", active: true },
+    { day: "Tuesday", startTime: "06:00", endTime: "22:00", active: true },
+    { day: "Wednesday", startTime: "06:00", endTime: "22:00", active: true },
+    { day: "Thursday", startTime: "06:00", endTime: "22:00", active: true },
+    { day: "Friday", startTime: "06:00", endTime: "22:00", active: true },
+    { day: "Saturday", startTime: "08:00", endTime: "20:00", active: true },
+    { day: "Sunday", startTime: "08:00", endTime: "20:00", active: false },
+  ]);
+  const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([
+    { id: "1", startDate: "2024-04-15", endDate: "2024-04-17", reason: "Holiday" },
+  ]);
+  const [newBlackoutStart, setNewBlackoutStart] = useState("");
+  const [newBlackoutEnd, setNewBlackoutEnd] = useState("");
+  const [newBlackoutReason, setNewBlackoutReason] = useState<"Personal" | "Vehicle Maintenance" | "Family" | "Holiday" | "Other">("Personal");
+
   const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
     queryKey: ["/api/provider/bookings"],
   });
@@ -57,6 +106,29 @@ export default function ProviderCalendar() {
   const navigateMonth = (direction: number) => {
     setCurrentDate(new Date(year, month + direction, 1));
     setSelectedDate(null);
+  };
+
+  const updateScheduleRule = (dayIndex: number, field: keyof ScheduleRule, value: any) => {
+    const updated = [...scheduleRules];
+    updated[dayIndex] = { ...updated[dayIndex], [field]: value };
+    setScheduleRules(updated);
+  };
+
+  const addBlackoutDate = () => {
+    if (newBlackoutStart && newBlackoutEnd) {
+      const newId = (Math.max(...blackoutDates.map(b => parseInt(b.id)), 0) + 1).toString();
+      setBlackoutDates([
+        ...blackoutDates,
+        { id: newId, startDate: newBlackoutStart, endDate: newBlackoutEnd, reason: newBlackoutReason }
+      ]);
+      setNewBlackoutStart("");
+      setNewBlackoutEnd("");
+      setNewBlackoutReason("Personal");
+    }
+  };
+
+  const deleteBlackoutDate = (id: string) => {
+    setBlackoutDates(blackoutDates.filter(b => b.id !== id));
   };
 
   const getStatusColor = (status: string) => {
@@ -105,8 +177,214 @@ export default function ProviderCalendar() {
             <h2 className="text-xl font-semibold text-gray-900">Availability Calendar</h2>
             <p className="text-gray-600">View and manage your upcoming bookings</p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+              <Button
+                size="sm"
+                variant={viewMode === "month" ? "default" : "ghost"}
+                onClick={() => setViewMode("month")}
+                className="text-sm"
+              >
+                Month
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "week" ? "default" : "ghost"}
+                onClick={() => setViewMode("week")}
+                className="text-sm"
+              >
+                Week
+              </Button>
+            </div>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="text-sm">
+                  <Edit2 className="w-4 h-4 mr-2" /> Edit Schedule
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Edit Weekly Schedule</SheetTitle>
+                </SheetHeader>
+                <div className="space-y-4 mt-6">
+                  {scheduleRules.map((rule, idx) => (
+                    <div key={rule.day} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="font-medium">{rule.day}</Label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={rule.active}
+                            onChange={(e) => updateScheduleRule(idx, "active", e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300"
+                          />
+                          <span className="text-sm text-gray-600">Active</span>
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <Label className="text-xs text-gray-600">Start</Label>
+                          <Input
+                            type="time"
+                            value={rule.startTime}
+                            onChange={(e) => updateScheduleRule(idx, "startTime", e.target.value)}
+                            disabled={!rule.active}
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <Label className="text-xs text-gray-600">End</Label>
+                          <Input
+                            type="time"
+                            value={rule.endTime}
+                            onChange={(e) => updateScheduleRule(idx, "endTime", e.target.value)}
+                            disabled={!rule.active}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90 mt-6">
+                    Save Schedule
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="sm" className="text-sm">
+                  <Calendar className="w-4 h-4 mr-2" /> Block Dates
+                </Button>
+              </SheetTrigger>
+              <SheetContent>
+                <SheetHeader>
+                  <SheetTitle>Block Dates</SheetTitle>
+                </SheetHeader>
+                <div className="space-y-4 mt-6">
+                  <div>
+                    <Label htmlFor="block-start">Start Date</Label>
+                    <Input
+                      id="block-start"
+                      type="date"
+                      value={newBlackoutStart}
+                      onChange={(e) => setNewBlackoutStart(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="block-end">End Date</Label>
+                    <Input
+                      id="block-end"
+                      type="date"
+                      value={newBlackoutEnd}
+                      onChange={(e) => setNewBlackoutEnd(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="block-reason">Reason</Label>
+                    <Select value={newBlackoutReason} onValueChange={(val: any) => setNewBlackoutReason(val)}>
+                      <SelectTrigger id="block-reason" className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Personal">Personal</SelectItem>
+                        <SelectItem value="Vehicle Maintenance">Vehicle Maintenance</SelectItem>
+                        <SelectItem value="Family">Family</SelectItem>
+                        <SelectItem value="Holiday">Holiday</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={addBlackoutDate} className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90">
+                    Add Blocked Period
+                  </Button>
+                  <div className="space-y-2 mt-6">
+                    <Label className="font-semibold">Current Blackouts</Label>
+                    {blackoutDates.map((blackout) => (
+                      <div key={blackout.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+                        <div className="text-sm">
+                          <p className="font-medium text-gray-900">{blackout.startDate} to {blackout.endDate}</p>
+                          <p className="text-xs text-gray-600">{blackout.reason}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteBlackoutDate(blackout.id)}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-600" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
         </div>
 
+        {viewMode === "week" && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigateMonth(-1)}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </Button>
+              <CardTitle>Week of {currentDate.toLocaleDateString('default', { month: 'long', day: 'numeric', year: 'numeric' })}</CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigateMonth(1)}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <div className="grid grid-cols-7 gap-1">
+                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day, dayIdx) => (
+                    <div key={day} className="min-w-max">
+                      <div className="text-center text-sm font-semibold text-gray-900 py-2 px-2 border-b border-gray-200">
+                        {day.slice(0, 3)}
+                      </div>
+                      <div className="space-y-1">
+                        {Array.from({ length: 17 }, (_, i) => {
+                          const hour = 6 + i;
+                          const hourStr = hour.toString().padStart(2, "0");
+                          const activeRule = scheduleRules.find((r, idx) => dayIdx === idx);
+                          const isActive = activeRule?.active ?? true;
+                          const isAvailable =
+                            isActive &&
+                            hourStr >= (activeRule?.startTime.split(":")[0] || "06") &&
+                            hourStr < (activeRule?.endTime.split(":")[0] || "22");
+
+                          return (
+                            <div
+                              key={`${day}-${hourStr}`}
+                              className={`h-8 px-1 text-xs flex items-center justify-center rounded border ${
+                                isAvailable
+                                  ? "bg-green-50 border-green-200 text-green-700 font-medium"
+                                  : "bg-gray-100 border-gray-200 text-gray-600"
+                              }`}
+                            >
+                              {hourStr}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {viewMode === "month" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -262,6 +540,7 @@ export default function ProviderCalendar() {
             </CardContent>
           </Card>
         </div>
+        )}
 
         <Card>
           <CardHeader>
