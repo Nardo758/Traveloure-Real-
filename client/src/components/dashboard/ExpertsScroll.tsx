@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Star } from "lucide-react";
 
 interface Expert {
   id: string;
