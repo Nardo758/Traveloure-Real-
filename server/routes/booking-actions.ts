@@ -443,16 +443,8 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Trip not found or not owned by you' });
     }
 
-    // Reuse existing shared_trips record if already created for this trip
-    const existing = await db.execute(sql`
-      SELECT share_token FROM shared_trips WHERE trip_id = ${id} LIMIT 1
-    `);
-
-    if (existing.rows && existing.rows.length > 0) {
-      return res.json({ success: true, shareToken: existing.rows[0].share_token });
-    }
-
-    // Create new shared_trips record for this trip
+    // Atomic upsert: INSERT ... ON CONFLICT (trip_id) DO NOTHING, then SELECT
+    // The UNIQUE constraint on shared_trips.trip_id prevents race-condition duplicates.
     const shareToken = generateToken();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 90);
@@ -461,9 +453,15 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
     await db.execute(sql`
       INSERT INTO shared_trips (id, trip_id, shared_by, share_token, expires_at, views, bookings, created_at)
       VALUES (${sharedTripId}, ${id}, ${userId}, ${shareToken}, ${expiresAt.toISOString()}, 0, 0, NOW())
+      ON CONFLICT (trip_id) DO NOTHING
     `);
 
-    res.json({ success: true, shareToken });
+    // Always read back the canonical token (covers both insert and conflict case)
+    const canonical = await db.execute(sql`
+      SELECT share_token FROM shared_trips WHERE trip_id = ${id} LIMIT 1
+    `);
+
+    res.json({ success: true, shareToken: canonical.rows[0].share_token });
   } catch (error: any) {
     console.error('Trip share error:', error);
     res.status(500).json({ success: false, error: error.message });
