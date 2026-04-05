@@ -318,13 +318,16 @@ export function DashboardPlanCard({
       data-testid={`dashboard-plan-card-${trip.id}`}
     >
       <div className="relative p-3.5 pb-3 text-white" style={{ background: gradient }}>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center mb-2">
           <span
             className="text-[10px] font-medium px-2.5 py-0.5 rounded-full uppercase tracking-[0.5px] bg-white/25"
             data-testid={`status-pill-${trip.id}`}
           >
             {statusLabel}
           </span>
+        </div>
+
+        <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
           <button
             onClick={handleDelete}
             disabled={deleteTrip.isPending}
@@ -338,14 +341,13 @@ export function DashboardPlanCard({
           >
             {confirming ? "?" : <X className="w-3.5 h-3.5" />}
           </button>
+          {showCountdown && (
+            <div className="text-right leading-none">
+              <div className="text-[24px] font-medium leading-none">{daysTil}</div>
+              <div className="text-[10px] opacity-70">days</div>
+            </div>
+          )}
         </div>
-
-        {showCountdown && (
-          <div className="absolute top-3.5 right-4 text-right">
-            <div className="text-[24px] font-medium leading-none">{daysTil}</div>
-            <div className="text-[10px] opacity-70">days</div>
-          </div>
-        )}
 
         <div className="text-[16px] font-medium mb-0.5 pr-16">{tripTitle}</div>
         <div className="text-[12px] opacity-85 flex items-center gap-1">
