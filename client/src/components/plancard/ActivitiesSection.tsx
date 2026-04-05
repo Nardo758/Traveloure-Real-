@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   MapPin, History, MessageSquare, Activity,
-  CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp,
+  CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map,
 } from "lucide-react";
 import {
   TYPE_COLORS, STATUS_STYLES,
@@ -72,6 +72,16 @@ function computeTemporalStates(
   return out;
 }
 
+function hasValidCoords(lat?: number, lng?: number): boolean {
+  return (
+    lat != null &&
+    lng != null &&
+    isFinite(lat) &&
+    isFinite(lng) &&
+    !(lat === 0 && lng === 0)
+  );
+}
+
 interface ConnectorProps {
   leg: InlineTransportLegData;
   modeOverride?: string;
@@ -91,32 +101,66 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
       .map((m) => ({ mode: m.mode, durationMinutes: m.durationMinutes, costUsd: m.costUsd })),
   ];
 
+  const canNavigate =
+    hasValidCoords(leg.fromLat ?? undefined, leg.fromLng ?? undefined) &&
+    hasValidCoords(leg.toLat ?? undefined, leg.toLng ?? undefined);
+
+  const handleOpenMaps = () => {
+    openInMaps({
+      origin: {
+        lat: leg.fromLat ?? undefined,
+        lng: leg.fromLng ?? undefined,
+        name: leg.fromName,
+      },
+      destination: {
+        lat: leg.toLat ?? undefined,
+        lng: leg.toLng ?? undefined,
+        name: leg.toName,
+      },
+      mode: activeMode as TraveloureMode,
+    });
+  };
+
   return (
     <div className="flex gap-3.5 py-0.5" data-testid={`transport-connector-${leg.id}`}>
       <div className="flex flex-col items-center w-12 flex-shrink-0 pt-1.5">
         <div className="w-px h-full bg-border/40" style={{ minHeight: 16 }} />
       </div>
       <div className="flex-1 min-w-0 py-1.5">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors w-full text-left group"
-          data-testid={`button-connector-toggle-${leg.id}`}
-        >
-          <span className="text-sm leading-none">{modeIcon}</span>
-          <span className="font-medium">{modeLabel}</span>
-          {leg.estimatedDurationMinutes > 0 && (
-            <span className="text-muted-foreground/60">{leg.estimatedDurationMinutes}m</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors text-left group flex-1 min-w-0"
+            data-testid={`button-connector-toggle-${leg.id}`}
+          >
+            <span className="text-sm leading-none flex-shrink-0">{modeIcon}</span>
+            <span className="font-medium">{modeLabel}</span>
+            {leg.estimatedDurationMinutes > 0 && (
+              <span className="text-muted-foreground/60">{leg.estimatedDurationMinutes}m</span>
+            )}
+            {leg.estimatedCostUsd != null && leg.estimatedCostUsd > 0 && (
+              <span className="text-green-600 dark:text-green-400">${leg.estimatedCostUsd}</span>
+            )}
+            {leg.distanceDisplay && (
+              <span className="text-muted-foreground/50 text-[11px]">{leg.distanceDisplay}</span>
+            )}
+            <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+              {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </span>
+          </button>
+
+          {canNavigate && (
+            <button
+              onClick={handleOpenMaps}
+              className="flex items-center gap-1 text-[11px] text-primary/70 hover:text-primary transition-colors flex-shrink-0 px-1.5 py-0.5 rounded hover:bg-primary/10"
+              title={`Open route in Maps (${modeLabel})`}
+              data-testid={`button-connector-maps-${leg.id}`}
+            >
+              <Map className="w-3 h-3" />
+              <span>Maps</span>
+            </button>
           )}
-          {leg.estimatedCostUsd != null && leg.estimatedCostUsd > 0 && (
-            <span className="text-green-600 dark:text-green-400">${leg.estimatedCostUsd}</span>
-          )}
-          {leg.distanceDisplay && (
-            <span className="text-muted-foreground/50 text-[11px]">{leg.distanceDisplay}</span>
-          )}
-          <span className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-            {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </span>
-        </button>
+        </div>
 
         {open && (
           <div className="flex flex-wrap gap-1.5 mt-2" data-testid={`mode-picker-${leg.id}`}>
@@ -199,6 +243,11 @@ export function ActivitiesSection({
       ? (legModes[upNextLeg.id] || upNextLeg.userSelectedMode || upNextLeg.recommendedMode)
       : "walk") as TraveloureMode;
 
+  const fabCanShow =
+    isLiveDay &&
+    upNextActivity != null &&
+    hasValidCoords(upNextActivity.lat, upNextActivity.lng);
+
   const toggleVisited = (actId: string) => {
     setVisited((prev) => {
       const next = new Set(prev);
@@ -260,128 +309,155 @@ export function ActivitiesSection({
               </div>
             )}
 
-            <div
-              className={`flex gap-3.5 py-3.5 ${
-                i < activities.length - 1 ? "border-b border-border/30" : ""
-              } transition-opacity duration-300 ${isPast ? "opacity-50" : "opacity-100"}`}
-              data-testid={`activity-row-${a.id}`}
-            >
-              <div className="flex flex-col items-center w-12 flex-shrink-0">
-                <div
-                  className="text-[13px] font-bold text-foreground"
-                  data-testid={`text-activity-time-${a.id}`}
-                >
-                  {a.time}
+            {isVisited ? (
+              <div
+                className={`flex gap-3.5 py-2.5 opacity-40 ${
+                  i < activities.length - 1 ? "border-b border-border/20" : ""
+                } border-l-[3px] border-l-transparent pl-1`}
+                data-testid={`activity-row-${a.id}`}
+              >
+                <div className="w-12 flex-shrink-0">
+                  <div className="text-[12px] text-muted-foreground" data-testid={`text-activity-time-${a.id}`}>
+                    {a.time}
+                  </div>
                 </div>
-                <div
-                  className={`w-2.5 h-2.5 rounded-full mt-1.5 border-2 border-card transition-all ${
-                    isUpcoming ? "scale-125 ring-2 ring-primary/40" : ""
-                  }`}
-                  style={{ backgroundColor: tc.dot, boxShadow: `0 0 8px ${tc.dot}40` }}
-                />
-                {i < activities.length - 1 && (
-                  <div
-                    className="w-0.5 flex-1 mt-1"
-                    style={{
-                      background: `linear-gradient(to bottom, ${tc.dot}40, transparent)`,
-                    }}
-                  />
-                )}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start gap-2 flex-wrap">
+                <div className="flex-1 flex items-center gap-2 min-w-0">
                   <button
                     onClick={() => toggleVisited(a.id)}
-                    className={`flex-shrink-0 mt-0.5 transition-colors ${
-                      isVisited
-                        ? "text-green-500"
-                        : "text-muted-foreground/40 hover:text-muted-foreground"
-                    }`}
-                    title={isVisited ? "Mark as not visited" : "Mark as visited"}
+                    className="flex-shrink-0 text-green-500 hover:text-green-600 transition-colors"
+                    title="Mark as not visited"
                     data-testid={`button-visited-${a.id}`}
                   >
-                    {isVisited ? (
-                      <CheckCircle2 className="w-4 h-4" />
-                    ) : (
-                      <Circle className="w-4 h-4" />
-                    )}
+                    <CheckCircle2 className="w-4 h-4" />
                   </button>
-
                   <span
-                    className={`text-[15px] font-semibold flex-1 min-w-0 ${
-                      isUpcoming ? "text-primary" : "text-foreground"
-                    }`}
+                    className="text-[13px] text-muted-foreground line-through truncate"
                     data-testid={`text-activity-name-${a.id}`}
                   >
                     {a.name}
-                    {isUpcoming && (
-                      <span
-                        className="ml-2 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-1.5 py-0.5 rounded-md align-middle"
-                        data-testid={`badge-up-next-${a.id}`}
-                      >
-                        Up Next
-                      </span>
-                    )}
                   </span>
-
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 ${tc.bg} ${tc.fg}`}
-                    data-testid={`badge-activity-type-${a.id}`}
-                  >
-                    {typeLabel}
-                  </span>
-                  <span
-                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${ss.bg} ${ss.fg}`}
-                    data-testid={`badge-activity-status-${a.id}`}
-                  >
-                    {ss.label}
-                  </span>
-                </div>
-
-                <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1">
-                  <MapPin className="w-3 h-3 flex-shrink-0" />
-                  <span data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
-                  {a.cost > 0 && (
-                    <span
-                      className="ml-2 text-green-600 dark:text-green-400 font-semibold"
-                      data-testid={`text-activity-cost-${a.id}`}
-                    >
-                      ${a.cost}
-                    </span>
-                  )}
-                </div>
-
-                {a.expertNote && (
-                  <div
-                    className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 italic"
-                    data-testid={`text-expert-note-${a.id}`}
-                  >
-                    💡 {a.expertNote}
-                  </div>
-                )}
-
-                <div className="flex gap-2.5 mt-2">
-                  {a.comments > 0 && (
-                    <span
-                      className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer hover:underline"
-                      data-testid={`link-comments-${a.id}`}
-                    >
-                      <MessageSquare className="w-3 h-3" /> {a.comments} comment
-                      {a.comments > 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {(a.changes?.length ?? 0) > 0 && (
-                    <span
-                      className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1"
-                      data-testid={`text-activity-change-${a.id}`}
-                    >
-                      <History className="w-3 h-3" /> {a.changes![0].who}: {a.changes![0].what}
-                    </span>
-                  )}
                 </div>
               </div>
-            </div>
+            ) : (
+              <div
+                className={`flex gap-3.5 py-3.5 transition-all ${
+                  i < activities.length - 1 ? "border-b border-border/30" : ""
+                } border-l-[3px] pl-1 ${
+                  isUpcoming
+                    ? "border-l-primary bg-primary/5 rounded-r-lg"
+                    : "border-l-transparent"
+                }`}
+                data-testid={`activity-row-${a.id}`}
+              >
+                <div className="flex flex-col items-center w-12 flex-shrink-0">
+                  <div
+                    className={`text-[13px] font-bold ${isUpcoming ? "text-primary" : "text-foreground"}`}
+                    data-testid={`text-activity-time-${a.id}`}
+                  >
+                    {a.time}
+                  </div>
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full mt-1.5 border-2 border-card transition-all ${
+                      isUpcoming ? "scale-125 ring-2 ring-primary/40" : ""
+                    }`}
+                    style={{ backgroundColor: tc.dot, boxShadow: `0 0 8px ${tc.dot}40` }}
+                  />
+                  {i < activities.length - 1 && (
+                    <div
+                      className="w-0.5 flex-1 mt-1"
+                      style={{
+                        background: `linear-gradient(to bottom, ${tc.dot}40, transparent)`,
+                      }}
+                    />
+                  )}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-2 flex-wrap">
+                    <button
+                      onClick={() => toggleVisited(a.id)}
+                      className="flex-shrink-0 mt-0.5 transition-colors text-muted-foreground/40 hover:text-muted-foreground"
+                      title="Mark as visited"
+                      data-testid={`button-visited-${a.id}`}
+                    >
+                      <Circle className="w-4 h-4" />
+                    </button>
+
+                    <span
+                      className={`text-[15px] font-semibold flex-1 min-w-0 ${
+                        isUpcoming ? "text-primary" : "text-foreground"
+                      }`}
+                      data-testid={`text-activity-name-${a.id}`}
+                    >
+                      {a.name}
+                      {isUpcoming && (
+                        <span
+                          className="ml-2 text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary px-1.5 py-0.5 rounded-md align-middle"
+                          data-testid={`badge-up-next-${a.id}`}
+                        >
+                          Up Next
+                        </span>
+                      )}
+                    </span>
+
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 ${tc.bg} ${tc.fg}`}
+                      data-testid={`badge-activity-type-${a.id}`}
+                    >
+                      {typeLabel}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${ss.bg} ${ss.fg}`}
+                      data-testid={`badge-activity-status-${a.id}`}
+                    >
+                      {ss.label}
+                    </span>
+                  </div>
+
+                  <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                    <span data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                    {a.cost > 0 && (
+                      <span
+                        className="ml-2 text-green-600 dark:text-green-400 font-semibold"
+                        data-testid={`text-activity-cost-${a.id}`}
+                      >
+                        ${a.cost}
+                      </span>
+                    )}
+                  </div>
+
+                  {a.expertNote && (
+                    <div
+                      className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 italic"
+                      data-testid={`text-expert-note-${a.id}`}
+                    >
+                      💡 {a.expertNote}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2.5 mt-2">
+                    {a.comments > 0 && (
+                      <span
+                        className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer hover:underline"
+                        data-testid={`link-comments-${a.id}`}
+                      >
+                        <MessageSquare className="w-3 h-3" /> {a.comments} comment
+                        {a.comments > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    {(a.changes?.length ?? 0) > 0 && (
+                      <span
+                        className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1"
+                        data-testid={`text-activity-change-${a.id}`}
+                      >
+                        <History className="w-3 h-3" /> {a.changes![0].who}: {a.changes![0].what}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {legAfter && (
               <TransportConnector
@@ -396,15 +472,15 @@ export function ActivitiesSection({
         );
       })}
 
-      {isLiveDay && upNextActivity && (
+      {fabCanShow && (
         <div className="sticky bottom-0 mt-4 flex justify-end pb-1 pointer-events-none">
           <button
             onClick={() =>
               openInMaps({
                 destination: {
-                  lat: upNextActivity.lat,
-                  lng: upNextActivity.lng,
-                  name: upNextActivity.name,
+                  lat: upNextActivity!.lat,
+                  lng: upNextActivity!.lng,
+                  name: upNextActivity!.name,
                 },
                 mode: upNextMode,
               })
