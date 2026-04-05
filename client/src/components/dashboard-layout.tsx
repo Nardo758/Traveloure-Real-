@@ -46,7 +46,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
           </header>
           <main className="flex-1 overflow-auto">
-            <div style={{ maxWidth: 860, margin: "0 auto", padding: "16px 24px" }}>
+            <div style={{ maxWidth: 1024, margin: "0 auto", padding: "16px 24px" }}>
               {children}
             </div>
           </main>
