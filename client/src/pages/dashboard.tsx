@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import {
   Plus, Loader2, MessageSquare, CreditCard, Bot, Calendar, Bookmark, Clock,
-  ChevronRight, MapPin
+  ChevronRight, MapPin, Sparkles, Users, Bell
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
@@ -34,6 +34,45 @@ interface TripScore {
   optimizationScore: number | null;
   shareToken: string | null;
 }
+
+const QUICK_ACTIONS = [
+  {
+    href: "/chat",
+    icon: MessageSquare,
+    label: "Message Expert",
+    description: "Chat with a travel expert",
+    color: "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400",
+    border: "border-blue-100 dark:border-blue-900",
+    testId: "button-quick-message",
+  },
+  {
+    href: "/credits",
+    icon: CreditCard,
+    label: "Buy Credits",
+    description: "Top up your credit balance",
+    color: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
+    border: "border-emerald-100 dark:border-emerald-900",
+    testId: "button-quick-credits",
+  },
+  {
+    href: "/ai-assistant",
+    icon: Bot,
+    label: "AI Assistant",
+    description: "Get smart travel suggestions",
+    color: "bg-rose-50 dark:bg-rose-950/40 text-[#FF385C]",
+    border: "border-rose-100 dark:border-rose-900",
+    testId: "button-quick-ai",
+  },
+  {
+    href: "/discover",
+    icon: Sparkles,
+    label: "Discover",
+    description: "Explore trending experiences",
+    color: "bg-violet-50 dark:bg-violet-950/40 text-violet-600 dark:text-violet-400",
+    border: "border-violet-100 dark:border-violet-900",
+    testId: "button-quick-discover",
+  },
+];
 
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
@@ -78,10 +117,11 @@ export default function Dashboard() {
   const upcomingTrips = trips?.filter(t => new Date(t.startDate) > now) || [];
   const allPlans = trips || [];
 
-  const recentActivity = (notificationsData ?? []).slice(0, 4).map((n: any, index: number) => ({
+  const recentActivity = (notificationsData ?? []).slice(0, 5).map((n: any, index: number) => ({
     id: index + 1,
     message: n.title ?? n.message ?? "New notification",
     time: n.createdAt ? getRelativeTime(n.createdAt) : "Recently",
+    type: n.type ?? "info",
   }));
 
   const stats = [
@@ -201,7 +241,6 @@ export default function Dashboard() {
                     />
                   );
                 }
-                // Fallback for saved trips not linked to a trip
                 return (
                   <motion.div
                     key={saved.id}
@@ -236,100 +275,106 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Create New Plan Card */}
-        <Card className="bg-gradient-to-r from-[#FF385C] to-[#E23350] text-white border-0">
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold mb-2">What's your next experience?</h3>
-                <p className="text-white/80">Create a new plan and let our AI and experts help you.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Link href="/experiences/travel/new">
-                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-travel">
-                    Travel
-                  </Button>
+        {/* Quick Actions + Recent Activity */}
+        <div className="grid md:grid-cols-5 gap-6">
+          {/* Quick Actions — wider */}
+          <div className="md:col-span-3 space-y-3">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-xl font-bold text-[#111827] dark:text-white">Quick Actions</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {QUICK_ACTIONS.map((action) => (
+                <Link key={action.testId} href={action.href} className="block group">
+                  <div
+                    className={`rounded-xl border p-4 flex items-start gap-3 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 bg-card ${action.border}`}
+                    data-testid={action.testId}
+                  >
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${action.color}`}>
+                      <action.icon className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-foreground leading-tight">{action.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{action.description}</p>
+                    </div>
+                  </div>
                 </Link>
-                <Link href="/experiences/wedding/new">
-                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-wedding">
-                    Wedding
-                  </Button>
-                </Link>
-                <Link href="/experiences/proposal/new">
-                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-proposal">
-                    Proposal
-                  </Button>
-                </Link>
-                <Link href="/experiences/birthday/new">
-                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-birthday">
-                    Birthday
-                  </Button>
-                </Link>
-                <Link href="/experiences/corporate-events/new">
-                  <Button variant="secondary" size="sm" className="bg-white/20 hover:bg-white/30 text-white border-0" data-testid="button-quick-corporate">
-                    Corporate
-                  </Button>
-                </Link>
+              ))}
+            </div>
+
+            {/* What's your next experience — moved here, compact */}
+            <div className="rounded-xl bg-gradient-to-r from-[#FF385C] to-[#E23350] p-4 text-white">
+              <p className="font-bold text-sm mb-2">What's your next experience?</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: "✈️ Travel", href: "/experiences/travel/new", testId: "button-quick-travel" },
+                  { label: "💍 Wedding", href: "/experiences/wedding/new", testId: "button-quick-wedding" },
+                  { label: "💝 Proposal", href: "/experiences/proposal/new", testId: "button-quick-proposal" },
+                  { label: "🎂 Birthday", href: "/experiences/birthday/new", testId: "button-quick-birthday" },
+                  { label: "🏢 Corporate", href: "/experiences/corporate-events/new", testId: "button-quick-corporate" },
+                ].map(({ label, href, testId }) => (
+                  <Link key={testId} href={href}>
+                    <button
+                      className="bg-white/20 hover:bg-white/30 transition-colors text-white text-xs font-semibold px-3 py-1.5 rounded-full border border-white/20"
+                      data-testid={testId}
+                    >
+                      {label}
+                    </button>
+                  </Link>
+                ))}
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {/* Quick Actions & Recent Activity */}
-        <div className="grid md:grid-cols-2 gap-6">
-          {/* Quick Actions */}
-          <Card className="border border-[#E5E7EB]">
-            <CardHeader>
-              <CardTitle className="text-lg text-[#111827] dark:text-white">Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/chat" className="block">
-                <Button variant="outline" className="w-full justify-start text-[#6B7280] hover:text-[#111827]" data-testid="button-quick-message">
-                  <MessageSquare className="w-5 h-5 mr-3 text-blue-500" />
-                  Message Expert
+          {/* Recent Activity — narrower */}
+          <div className="md:col-span-2">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-[#111827] dark:text-white">Recent Activity</h2>
+              <Link href="/notifications">
+                <Button variant="ghost" size="sm" className="text-[#FF385C] hover:text-[#E23350] h-auto py-1 px-2 text-xs" data-testid="button-view-all-activity">
+                  View All
                 </Button>
               </Link>
-              <Link href="/credits" className="block">
-                <Button variant="outline" className="w-full justify-start text-[#6B7280] hover:text-[#111827]" data-testid="button-quick-credits">
-                  <CreditCard className="w-5 h-5 mr-3 text-green-500" />
-                  Buy Credits
-                </Button>
-              </Link>
-              <Link href="/ai-assistant" className="block">
-                <Button variant="outline" className="w-full justify-start text-[#6B7280] hover:text-[#111827]" data-testid="button-quick-ai">
-                  <Bot className="w-5 h-5 mr-3 text-[#FF385C]" />
-                  AI Assistant
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Recent Activity */}
-          <Card className="border border-[#E5E7EB]">
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <CardTitle className="text-lg text-[#111827] dark:text-white">Recent Activity</CardTitle>
-              <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="button-view-all-activity">
-                View All
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {recentActivity.length > 0 ? (
-                  recentActivity.map((activity: any) => (
+            <div className="rounded-xl border border-[#E5E7EB] dark:border-border bg-card h-full min-h-[200px] p-4">
+              {recentActivity.length > 0 ? (
+                <div className="space-y-3">
+                  {recentActivity.map((activity) => (
                     <div key={activity.id} className="flex items-start gap-3" data-testid={`activity-${activity.id}`}>
-                      <div className="w-2 h-2 rounded-full bg-[#FF385C] mt-2 flex-shrink-0"></div>
+                      <div className="w-7 h-7 rounded-full bg-[#FFE3E8] flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Bell className="w-3.5 h-3.5 text-[#FF385C]" />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-[#111827] dark:text-white">{activity.message}</p>
-                        <p className="text-xs text-[#9CA3AF]">{activity.time}</p>
+                        <p className="text-sm text-foreground leading-snug">{activity.message}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{activity.time}</p>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-[#6B7280]">No recent activity</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full py-8 text-center">
+                  <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center mb-3">
+                    <Bell className="w-6 h-6 text-muted-foreground/50" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground mb-1">No activity yet</p>
+                  <p className="text-xs text-muted-foreground max-w-[160px]">
+                    Your bookings and updates will appear here
+                  </p>
+                  <Link href="/experiences">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-4 text-xs border-[#FF385C] text-[#FF385C] hover:bg-[#FFE3E8]"
+                      data-testid="button-activity-cta"
+                    >
+                      <Plus className="w-3 h-3 mr-1.5" />
+                      Start a plan
+                    </Button>
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Trending Recommendations */}
