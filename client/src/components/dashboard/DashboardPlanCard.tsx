@@ -371,7 +371,7 @@ export function DashboardPlanCard({
       </div>
 
       {advisor && (
-        <Link href={`/itinerary/${trip.id}`}>
+        <Link href={`/trip/${trip.id}`}>
           <div
             className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px] cursor-pointer hover:bg-muted/30 transition-colors"
             data-testid={`advisor-strip-${trip.id}`}
