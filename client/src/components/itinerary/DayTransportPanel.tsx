@@ -24,9 +24,8 @@ import {
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
-  openInMaps,
-  detectMapsPlatform,
 } from "@/lib/maps-platform";
+import { openInMaps } from "@/lib/navigate";
 import { cn } from "@/lib/utils";
 import type { InlineTransportLegData } from "./InlineTransportSelector";
 import { TransportBookingCard } from "./TransportBookingCard";
@@ -44,23 +43,6 @@ const ENHANCED_MODES = [
   { mode: "ferry", label: "Ferry", icon: Ship, description: "Water transport" },
 ];
 
-function getGoogleMode(mode: string): string {
-  const modes: Record<string, string> = {
-    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
-    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
-    bike: "bicycling", ferry: "transit",
-  };
-  return modes[mode] || "transit";
-}
-
-function getAppleFlag(mode: string): string {
-  const flags: Record<string, string> = {
-    walk: "w", transit: "r", train: "r", tram: "r", bus: "r",
-    taxi: "d", rideshare: "d", private_driver: "d", rental_car: "d",
-    bike: "c", ferry: "r",
-  };
-  return flags[mode] || "r";
-}
 
 function formatCost(cost: number | null): string {
   if (cost === null || cost === undefined || cost === 0) return "Free";
@@ -400,14 +382,11 @@ function TransportLegCard({
 
   const handleOpenInMaps = () => {
     if (!leg.fromLat || !leg.fromLng || !leg.toLat || !leg.toLng) return;
-    const platform = detectMapsPlatform();
-    let url: string;
-    if (platform === "apple") {
-      url = `maps://?saddr=${leg.fromLat},${leg.fromLng}&daddr=${leg.toLat},${leg.toLng}&dirflg=${getAppleFlag(currentMode)}`;
-    } else {
-      url = `https://www.google.com/maps/dir/?api=1&origin=${leg.fromLat},${leg.fromLng}&destination=${leg.toLat},${leg.toLng}&travelmode=${getGoogleMode(currentMode)}`;
-    }
-    openInMaps(url);
+    openInMaps({
+      origin: { lat: leg.fromLat, lng: leg.fromLng, name: leg.fromName },
+      destination: { lat: leg.toLat, lng: leg.toLng, name: leg.toName },
+      mode: currentMode,
+    });
   };
 
   const isCustomized = currentMode !== leg.recommendedMode;
@@ -587,7 +566,7 @@ function TransportLegCard({
                       data-testid={`button-transit-maps-${leg.legOrder}`}
                     >
                       <Navigation className="h-3 w-3" />
-                      View Route in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
+                      View Route in Maps
                     </Button>
                   )}
                 </div>

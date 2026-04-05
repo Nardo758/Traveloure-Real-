@@ -18,9 +18,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
-  openInMaps,
-  detectMapsPlatform,
 } from "@/lib/maps-platform";
+import { openInMaps } from "@/lib/navigate";
 import { cn } from "@/lib/utils";
 
 export interface TransportAlternative {
@@ -63,23 +62,6 @@ interface InlineTransportSelectorProps {
   onSwitchToTransport?: () => void;
 }
 
-function getAppleFlag(mode: string): string {
-  const flags: Record<string, string> = {
-    walk: "w", transit: "r", train: "r", tram: "r", bus: "r",
-    taxi: "d", rideshare: "d", private_driver: "d", rental_car: "d",
-    bike: "c", ferry: "r", auto_rickshaw: "d", tuk_tuk: "d", cable_car: "w",
-  };
-  return flags[mode] || "r";
-}
-
-function getGoogleMode(mode: string): string {
-  const modes: Record<string, string> = {
-    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
-    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
-    bike: "bicycling", ferry: "transit", auto_rickshaw: "driving", tuk_tuk: "driving", cable_car: "walking",
-  };
-  return modes[mode] || "transit";
-}
 
 function formatCost(cost: number | null): string {
   if (cost === null || cost === undefined) return "Free";
@@ -222,14 +204,11 @@ export function InlineTransportSelector({
 
   const handleOpenLegInMaps = () => {
     if (!leg.fromLat || !leg.fromLng || !leg.toLat || !leg.toLng) return;
-    const platform = detectMapsPlatform();
-    let url: string;
-    if (platform === "apple") {
-      url = `maps://?saddr=${leg.fromLat},${leg.fromLng}&daddr=${leg.toLat},${leg.toLng}&dirflg=${getAppleFlag(currentMode)}`;
-    } else {
-      url = `https://www.google.com/maps/dir/?api=1&origin=${leg.fromLat},${leg.fromLng}&destination=${leg.toLat},${leg.toLng}&travelmode=${getGoogleMode(currentMode)}`;
-    }
-    openInMaps(url);
+    openInMaps({
+      origin: { lat: leg.fromLat, lng: leg.fromLng, name: leg.fromName },
+      destination: { lat: leg.toLat, lng: leg.toLng, name: leg.toName },
+      mode: currentMode,
+    });
   };
 
   const modeIcon = TRANSPORT_MODE_ICONS[currentMode] || "🚌";
@@ -380,7 +359,7 @@ export function InlineTransportSelector({
                   href="#"
                   onClick={(e) => { e.preventDefault(); handleOpenLegInMaps(); }}
                   className="text-primary hover:underline flex items-center gap-0.5 text-xs px-1"
-                  title={`Open in ${detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}`}
+                  title="Open in Maps"
                   data-testid={`link-maps-${leg.legOrder}`}
                 >
                   <MapPin className="h-3 w-3" />
@@ -478,7 +457,7 @@ export function InlineTransportSelector({
                     data-testid={`button-maps-expanded-${leg.legOrder}`}
                   >
                     <MapPin className="h-3 w-3" />
-                    Open in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
+                    Open in Maps
                   </button>
                 </div>
               )}
