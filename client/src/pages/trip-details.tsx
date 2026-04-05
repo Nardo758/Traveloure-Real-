@@ -18,7 +18,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
@@ -29,7 +28,7 @@ import { ChangeLogPanel } from "@/components/plancard/ChangeLogPanel";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { HeroSection } from "@/components/plancard/HeroSection";
 import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
-import { InlineTransportSelector } from "@/components/itinerary/InlineTransportSelector";
+import { InlineTransportSelector, type InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 
 type Section = "activities" | "transport";
 
