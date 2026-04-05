@@ -13,7 +13,7 @@ interface ServiceCategory {
 }
 
 const ICON_FALLBACK: Record<string, string> = {
-  transport: "🚗",
+  transport: "🚘",
   tour: "🧭",
   photography: "📸",
   dining: "🍽️",
@@ -27,19 +27,6 @@ const ICON_FALLBACK: Record<string, string> = {
   default: "✨",
 };
 
-const ICON_COLORS: Record<string, string> = {
-  transport: "#E1F5EE",
-  tour: "#FAEEDA",
-  photography: "#FBEAF0",
-  dining: "#FAECE7",
-  accommodation: "#E6F1FB",
-  wedding: "#FBEAF0",
-  proposal: "#FBEAF0",
-  birthday: "#FAEEDA",
-  corporate: "#E6F1FB",
-  default: "#F3F4F6",
-};
-
 function getIcon(category: ServiceCategory): string {
   if (category.icon) return category.icon;
   const slug = (category.slug || category.name || "").toLowerCase();
@@ -49,14 +36,6 @@ function getIcon(category: ServiceCategory): string {
   return ICON_FALLBACK.default;
 }
 
-function getIconColor(category: ServiceCategory): string {
-  const slug = (category.slug || category.name || "").toLowerCase();
-  for (const key of Object.keys(ICON_COLORS)) {
-    if (slug.includes(key)) return ICON_COLORS[key];
-  }
-  return ICON_COLORS.default;
-}
-
 export function ServicesScroll() {
   const { data: categories, isLoading } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
@@ -64,13 +43,13 @@ export function ServicesScroll() {
 
   if (isLoading) {
     return (
-      <section className="mb-6" data-testid="services-scroll-section">
-        <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
-          <span>Top services</span>
+      <section className="mb-[22px]" data-testid="services-scroll-section">
+        <div className="text-[13px] font-medium mb-2.5" style={{ color: "#1A1A18" }}>
+          Top services
         </div>
-        <div className="flex gap-2.5 overflow-x-auto pb-1">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="flex-shrink-0 w-[145px] h-[90px] rounded-xl bg-muted animate-pulse" />
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="flex-shrink-0 w-[110px] h-[80px] rounded-[10px] animate-pulse" style={{ background: "#F3F3EE" }} />
           ))}
         </div>
       </section>
@@ -81,33 +60,28 @@ export function ServicesScroll() {
   if (active.length === 0) return null;
 
   return (
-    <section className="mb-6" data-testid="services-scroll-section">
-      <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
+    <section className="mb-[22px]" data-testid="services-scroll-section">
+      <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
         <span>Top services</span>
         <Link href="/discover">
-          <span className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline" data-testid="link-browse-services">
+          <span className="text-[11px] cursor-pointer hover:underline" style={{ color: "#2E8B8B" }} data-testid="link-browse-services">
             Browse all
           </span>
         </Link>
       </div>
 
-      <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide" data-testid="services-scroll-track">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide" data-testid="services-scroll-track">
         {active.map((cat) => (
           <Link key={cat.id} href={`/discover?category=${cat.slug || cat.id}`}>
             <div
-              className="flex-shrink-0 w-[145px] bg-card border border-border rounded-xl py-4 px-3.5 cursor-pointer text-center hover:border-border/80 transition-colors"
-              style={{ borderWidth: "0.5px" }}
+              className="flex-shrink-0 w-[110px] rounded-[10px] py-3 px-2.5 cursor-pointer text-center transition-colors hover:opacity-80"
+              style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
               data-testid={`service-card-${cat.id}`}
             >
-              <div
-                className="w-10 h-10 rounded-full mx-auto mb-2 flex items-center justify-center text-lg"
-                style={{ background: getIconColor(cat) }}
-              >
-                {getIcon(cat)}
-              </div>
-              <div className="text-[13px] font-medium text-foreground truncate">{cat.name}</div>
+              <div className="text-[16px] mb-1">{getIcon(cat)}</div>
+              <div className="text-[12px] font-medium truncate" style={{ color: "#1A1A18" }}>{cat.name}</div>
               {cat.description && (
-                <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{cat.description}</div>
+                <div className="text-[10px] mt-0.5 line-clamp-1" style={{ color: "#7A7A72" }}>{cat.description}</div>
               )}
             </div>
           </Link>

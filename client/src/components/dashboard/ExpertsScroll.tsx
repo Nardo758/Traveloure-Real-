@@ -74,13 +74,13 @@ export function ExpertsScroll({ destinations }: { destinations?: string[] }) {
 
   if (isLoading) {
     return (
-      <section className="mb-6" data-testid="experts-scroll-section">
-        <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
-          <span>Top experts in your destinations</span>
+      <section className="mb-[22px]" data-testid="experts-scroll-section">
+        <div className="text-[13px] font-medium mb-2.5" style={{ color: "#1A1A18" }}>
+          Top experts in your destinations
         </div>
         <div className="flex gap-3 overflow-x-auto pb-1">
           {[1, 2, 3].map(i => (
-            <div key={i} className="flex-shrink-0 w-[175px] h-[160px] rounded-xl bg-muted animate-pulse" />
+            <div key={i} className="flex-shrink-0 w-[175px] h-[160px] rounded-xl animate-pulse" style={{ background: "#F3F3EE" }} />
           ))}
         </div>
       </section>
@@ -109,11 +109,11 @@ export function ExpertsScroll({ destinations }: { destinations?: string[] }) {
   if (displayed.length === 0) return null;
 
   return (
-    <section className="mb-6" data-testid="experts-scroll-section">
-      <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
+    <section className="mb-[22px]" data-testid="experts-scroll-section">
+      <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
         <span>Top experts in your destinations</span>
         <Link href="/chat">
-          <span className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline" data-testid="link-view-all-dest-experts">
+          <span className="text-[11px] cursor-pointer hover:underline" style={{ color: "#2E8B8B" }} data-testid="link-view-all-dest-experts">
             View all
           </span>
         </Link>
@@ -133,29 +133,29 @@ export function ExpertsScroll({ destinations }: { destinations?: string[] }) {
           return (
             <Link key={expert.id} href={`/chat`}>
               <div
-                className="flex-shrink-0 w-[175px] bg-card border border-border rounded-xl overflow-hidden cursor-pointer hover:border-border/60 transition-colors"
-                style={{ borderWidth: "0.5px" }}
+                className="flex-shrink-0 w-[175px] rounded-xl overflow-hidden cursor-pointer transition-colors hover:opacity-90"
+                style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
                 data-testid={`expert-card-${expert.id}`}
               >
                 <div className="relative h-14" style={{ background: headerGrad }}>
                   <div
-                    className="absolute -bottom-[18px] left-3.5 w-11 h-11 rounded-full border-2 border-card flex items-center justify-center text-[14px] font-medium"
-                    style={{ background: avatarColor.bg, color: avatarColor.text }}
+                    className="absolute -bottom-[18px] left-3.5 w-11 h-11 rounded-full flex items-center justify-center text-[14px] font-medium"
+                    style={{ background: avatarColor.bg, color: avatarColor.text, border: "2px solid #FFFFFF" }}
                   >
                     {initials}
                   </div>
                 </div>
 
                 <div className="pt-6 px-3.5 pb-3.5">
-                  <div className="text-[13px] font-medium text-foreground truncate">
+                  <div className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
                     {expert.firstName} {expert.lastName}
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                  <div className="text-[11px] mt-0.5 truncate" style={{ color: "#7A7A72" }}>
                     {location && `${location} · `}{specialty}
                   </div>
                   <div className="flex items-center gap-1 mt-1.5">
-                    <span className="text-[#E8B339] text-[11px]">★★★★★</span>
-                    <span className="text-[11px] text-muted-foreground">{rating} ({reviews})</span>
+                    <span className="text-[11px]" style={{ color: "#E8B339" }}>★★★★★</span>
+                    <span className="text-[11px]" style={{ color: "#7A7A72" }}>{rating} ({reviews})</span>
                   </div>
                   <span
                     className="inline-block text-[9px] px-1.5 py-0.5 rounded-lg mt-1.5 font-medium"
