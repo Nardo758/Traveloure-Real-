@@ -123,6 +123,7 @@ import QuickStartItinerary from "@/pages/quick-start-itinerary";
 import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import ItineraryViewPage from "@/pages/itinerary-view";
+import SharedTripPage from "@/pages/shared-trip";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
@@ -210,6 +211,9 @@ function Router() {
 
       <Route path="/itinerary-view/:token">
         <ItineraryViewPage />
+      </Route>
+      <Route path="/trips/shared/:token">
+        <SharedTripPage />
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
