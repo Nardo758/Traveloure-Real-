@@ -15,10 +15,11 @@ import {
   Loader2,
   Calendar
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface ProviderApplication {
   id: string;
@@ -42,6 +43,13 @@ export default function AdminProviders() {
   const [activeTab, setActiveTab] = useState<"applications" | "active">("applications");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if (location.endsWith("/pending")) {
+      setActiveTab("applications");
+    }
+  }, [location]);
 
   const { data: applications = [], isLoading } = useQuery<ProviderApplication[]>({
     queryKey: ["/api/admin/provider-applications"],
