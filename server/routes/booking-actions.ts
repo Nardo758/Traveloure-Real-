@@ -619,6 +619,7 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
         tea.id as advisor_id,
         tea.status,
         tea.message,
+        tea.expert_response,
         tea.assigned_at,
         lef.id as expert_form_id,
         lef.first_name, lef.last_name,
@@ -633,7 +634,7 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
       LEFT JOIN review_ratings rr ON rr.local_expert_id = tea.local_expert_id
       WHERE tea.trip_id = ${id}
         AND tea.status IN ('pending', 'accepted')
-      GROUP BY tea.id, tea.status, tea.message, tea.assigned_at,
+      GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
                lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
                lef.destinations, lef.hourly_rate, u.profile_image_url
       ORDER BY tea.assigned_at DESC
@@ -646,26 +647,12 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
 
     const advisorRow = result.rows[0] as Record<string, unknown>;
 
-    // Fetch the expert's first message from any conversation they have with this user
-    // (expert's userId matches the conversation's userId or message role)
-    let expertFirstMessage: string | null = null;
-    try {
-      const msgResult = await db.execute(sql`
-        SELECT m.content
-        FROM messages m
-        JOIN conversations c ON c.id = m.conversation_id
-        WHERE c.user_id = ${userId}
-          AND m.role = 'assistant'
-        ORDER BY m.created_at ASC
-        LIMIT 1
-      `);
-      if (msgResult.rows && msgResult.rows.length > 0) {
-        const content = (msgResult.rows[0] as any).content as string;
-        expertFirstMessage = content.length > 140 ? content.slice(0, 140) + '…' : content;
-      }
-    } catch (_) {
-      // Non-fatal: message strip is optional
-    }
+    // Surface the expert's first response from trip_expert_advisors.expert_response
+    // (set by the expert when they accept/respond to this specific trip request)
+    const rawResponse = advisorRow.expert_response as string | null;
+    const expertFirstMessage = rawResponse
+      ? (rawResponse.length > 140 ? rawResponse.slice(0, 140) + '…' : rawResponse)
+      : null;
 
     res.json({ advisor: { ...advisorRow, expertFirstMessage } });
   } catch (error: any) {
@@ -707,9 +694,13 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
     `);
 
     if (existing.rows && existing.rows.length > 0) {
-      return res.status(409).json({
-        error: 'A pending or accepted expert is already assigned to this trip',
-        advisorId: existing.rows[0].id,
+      // Idempotent: return the existing advisor record instead of erroring
+      const existingRow = existing.rows[0] as Record<string, unknown>;
+      return res.json({
+        success: true,
+        advisorId: existingRow.id,
+        status: existingRow.status,
+        existing: true,
       });
     }
 

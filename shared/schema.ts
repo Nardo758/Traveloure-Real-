@@ -107,6 +107,7 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   localExpertId: varchar("local_expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: varchar("status", { length: 20 }).default("pending"), // Enum: expertAdvisorStatusEnum
   message: text("message"),
+  expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
