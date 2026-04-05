@@ -5100,9 +5100,10 @@ export const providerPricing = pgTable("provider_pricing", {
 
 export const sharedTrips = pgTable("shared_trips", {
   id: uuid("id").primaryKey().defaultRandom(),
-  variantId: text("variant_id").notNull(),
-  comparisonId: text("comparison_id").notNull(),
-  sharedBy: text("shared_by").notNull(),
+  variantId: text("variant_id"),
+  comparisonId: text("comparison_id"),
+  sharedBy: text("shared_by"),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   shareToken: text("share_token").notNull(),
   views: integer("views").default(0),
   bookings: integer("bookings").default(0),

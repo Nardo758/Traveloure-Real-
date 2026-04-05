@@ -419,7 +419,7 @@ router.get('/shared-trips/:token', async (req, res) => {
 /**
  * POST /api/trips/:id/share
  * Generate (or retrieve) a share token for a trip plan.
- * Stores the token in trips.share_token and marks trips.is_public = true.
+ * Creates/reuses a shared_trips record (trip_id column) for the trip.
  */
 router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
   try {
@@ -434,34 +434,34 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    // Fetch trip, verify ownership
+    // Verify ownership
     const tripResult = await db.execute(sql`
-      SELECT id, user_id, share_token, title, destination, start_date, end_date, status
-      FROM trips
-      WHERE id = ${id}
-        AND user_id = ${userId}
+      SELECT id, user_id FROM trips WHERE id = ${id} AND user_id = ${userId}
     `);
 
     if (!tripResult.rows || tripResult.rows.length === 0) {
       return res.status(404).json({ error: 'Trip not found or not owned by you' });
     }
 
-    interface TripRow {
-      id: string;
-      share_token: string | null;
-    }
-    const trip = tripResult.rows[0] as TripRow;
+    // Reuse existing shared_trips record if already created for this trip
+    const existing = await db.execute(sql`
+      SELECT share_token FROM shared_trips WHERE trip_id = ${id} LIMIT 1
+    `);
 
-    // Re-use existing token if already generated
-    const shareToken = trip.share_token || generateToken();
-
-    if (!trip.share_token) {
-      await db.execute(sql`
-        UPDATE trips
-        SET share_token = ${shareToken}, is_public = true, updated_at = NOW()
-        WHERE id = ${id}
-      `);
+    if (existing.rows && existing.rows.length > 0) {
+      return res.json({ success: true, shareToken: existing.rows[0].share_token });
     }
+
+    // Create new shared_trips record for this trip
+    const shareToken = generateToken();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 90);
+    const sharedTripId = crypto.randomUUID();
+
+    await db.execute(sql`
+      INSERT INTO shared_trips (id, trip_id, shared_by, share_token, expires_at, views, bookings, created_at)
+      VALUES (${sharedTripId}, ${id}, ${userId}, ${shareToken}, ${expiresAt.toISOString()}, 0, 0, NOW())
+    `);
 
     res.json({ success: true, shareToken });
   } catch (error: any) {
@@ -472,42 +472,57 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
 
 /**
  * GET /api/trips/shared/:token
- * Public endpoint — fetch trip plan by share token, log the view.
+ * Public endpoint — fetch trip plan by share token (shared_trips.share_token), log the view.
  * No auth required.
  */
 router.get('/trips/shared/:token', async (req, res) => {
   try {
     const { token } = req.params;
 
-    const tripResult = await db.execute(sql`
+    // Fetch via shared_trips.share_token -> trips + generated_itineraries
+    const result = await db.execute(sql`
       SELECT
+        st.id as shared_trip_id,
         t.id, t.title, t.destination, t.start_date, t.end_date,
-        t.number_of_travelers, t.status, t.share_token,
+        t.number_of_travelers, t.status,
         gi.itinerary_data
-      FROM trips t
+      FROM shared_trips st
+      JOIN trips t ON t.id = st.trip_id
       LEFT JOIN generated_itineraries gi ON gi.trip_id = t.id AND gi.status = 'generated'
-      WHERE t.share_token = ${token}
-        AND t.is_public = true
+      WHERE st.share_token = ${token}
+        AND (st.expires_at IS NULL OR st.expires_at > NOW())
       LIMIT 1
     `);
 
-    if (!tripResult.rows || tripResult.rows.length === 0) {
+    if (!result.rows || result.rows.length === 0) {
       return res.status(404).json({ error: 'Shared trip not found or link has expired' });
     }
 
-    // Log view — insert into shared_trip_views with trip_id
+    interface SharedTripResultRow {
+      shared_trip_id: string;
+      id: string;
+      [key: string]: unknown;
+    }
+    const row = result.rows[0] as SharedTripResultRow;
+
+    // Log view into shared_trip_views using shared_trip_id (relational integrity preserved)
     const viewerIp = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim()
       || req.socket?.remoteAddress
       || null;
 
     await db.execute(sql`
-      INSERT INTO shared_trip_views (id, trip_id, viewer_ip, viewed_at)
-      VALUES (${crypto.randomUUID()}, ${tripResult.rows[0].id as string}, ${viewerIp}, NOW())
+      INSERT INTO shared_trip_views (id, shared_trip_id, viewer_ip, viewed_at)
+      VALUES (${crypto.randomUUID()}, ${row.shared_trip_id}::uuid, ${viewerIp}, NOW())
     `);
 
-    res.json({ success: true, trip: tripResult.rows[0] });
+    // Increment view counter on shared_trips
+    await db.execute(sql`
+      UPDATE shared_trips SET views = views + 1 WHERE share_token = ${token}
+    `);
+
+    res.json({ success: true, trip: row });
   } catch (error: any) {
-    console.error('Get shared trip (trip-based) error:', error);
+    console.error('Get shared trip error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
