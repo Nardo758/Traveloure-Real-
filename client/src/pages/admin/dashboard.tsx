@@ -172,7 +172,7 @@ export default function AdminDashboard() {
               ) : (
                 <p className="text-gray-500 dark:text-gray-400 text-center py-4">No pending applications</p>
               )}
-              <Link href="/admin/experts">
+              <Link href="/admin/experts/pending">
                 <Button variant="ghost" className="w-full" data-testid="button-review-expert-applications">
                   Review Applications <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
@@ -205,7 +205,7 @@ export default function AdminDashboard() {
               ) : (
                 <p className="text-gray-500 dark:text-gray-400 text-center py-4">No pending applications</p>
               )}
-              <Link href="/admin/providers">
+              <Link href="/admin/providers/pending">
                 <Button variant="ghost" className="w-full" data-testid="button-review-provider-applications">
                   Review Applications <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
