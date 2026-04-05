@@ -111,7 +111,7 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 max-w-3xl mx-auto">
+      <div className="px-6 py-6 w-full">
         <div className="pt-4 mb-4">
           <div
             className="text-[22px] font-medium text-foreground pb-0.5"
