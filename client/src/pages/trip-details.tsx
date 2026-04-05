@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useParams, Link } from "wouter";
-import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package } from "lucide-react";
+import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -52,6 +54,33 @@ export default function TripDetails() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [showFullItinerary, setShowFullItinerary] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const shareMutation = useMutation({
+    mutationFn: async (tripId: string) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/share`);
+      return res.json() as Promise<{ success: boolean; shareToken: string }>;
+    },
+    onSuccess: (data) => {
+      const link = `${window.location.origin}/trips/shared/${data.shareToken}`;
+      setShareLink(link);
+      setShareOpen(true);
+    },
+    onError: () => {
+      toast({ title: "Could not create share link", variant: "destructive" });
+    },
+  });
+
+  const handleCopyLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink).then(() => {
+      setCopied(true);
+      toast({ title: "Link copied!", description: "Share it with friends." });
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const { data: servicesResult, isLoading: servicesLoading } = useQuery<ProviderService[]>({
     queryKey: [`/api/services?location=${encodeURIComponent(trip?.destination || "")}`],
@@ -215,6 +244,19 @@ export default function TripDetails() {
                     >
                       <MapPin className="w-4 h-4 mr-2" />
                       Open in Maps
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => shareMutation.mutate(trip.id)}
+                      disabled={shareMutation.isPending}
+                      data-testid="button-share-trip"
+                    >
+                      {shareMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Share2 className="w-4 h-4 mr-2" />
+                      )}
+                      Share with friends
                     </Button>
                     <Button 
                       onClick={() => generateItinerary.mutate(trip.id)}
@@ -521,6 +563,44 @@ export default function TripDetails() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Share Dialog */}
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-share-trip">
+          <DialogHeader>
+            <DialogTitle>Share your trip plan</DialogTitle>
+            <DialogDescription>
+              Anyone with this link can view your itinerary for {trip?.destination}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              readOnly
+              value={shareLink ?? ""}
+              className="text-sm"
+              data-testid="input-share-link"
+              onFocus={(e) => e.target.select()}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCopyLink}
+              data-testid="button-copy-link"
+              className="shrink-0"
+            >
+              {copied ? (
+                <Check className="w-4 h-4 text-green-600" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+              <span className="ml-1.5">{copied ? "Copied" : "Copy"}</span>
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">
+            Friends can view the itinerary without signing in. Only you can make changes.
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
