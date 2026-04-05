@@ -1,12 +1,7 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Map, ChevronDown } from "lucide-react";
-import { detectedPlatform } from "@/lib/navigate";
-
-function openUrl(url: string) {
-  window.open(url, "_blank", "noopener,noreferrer");
-}
+import { detectedPlatform, openRawUrl } from "@/lib/navigate";
 
 interface DayMapsButtonProps {
   dayNumber: number;
@@ -23,9 +18,9 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
 
   const handleSmartOpen = () => {
     if (detectedPlatform === "ios" && (appleUrl || appleWebUrl)) {
-      openUrl(appleUrl || appleWebUrl!);
+      openRawUrl(appleUrl || appleWebUrl!);
     } else if (googleUrl) {
-      openUrl(googleUrl);
+      openRawUrl(googleUrl);
     }
   };
 
@@ -47,7 +42,7 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
         <DropdownMenuContent align="start">
           {googleUrl && (
             <DropdownMenuItem
-              onClick={() => openUrl(googleUrl)}
+              onClick={() => openRawUrl(googleUrl)}
               data-testid={`button-google-maps-day-${dayNumber}`}
             >
               🗺️ Google Maps
@@ -55,7 +50,7 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
           )}
           {(appleUrl || appleWebUrl) && (
             <DropdownMenuItem
-              onClick={() => openUrl(appleUrl || appleWebUrl!)}
+              onClick={() => openRawUrl(appleUrl || appleWebUrl!)}
               data-testid={`button-apple-maps-day-${dayNumber}`}
             >
               🍎 Apple Maps
