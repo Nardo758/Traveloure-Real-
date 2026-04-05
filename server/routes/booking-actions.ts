@@ -764,4 +764,144 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/trips/:id/suggestions
+ * Return all expert suggestions for a trip. Trip owner sees all; expert sees their own.
+ */
+router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+
+    // Verify user is either trip owner or an assigned expert
+    const authCheck = await db.execute(sql`
+      SELECT
+        t.user_id as owner_id,
+        tea.local_expert_id as expert_user_id
+      FROM trips t
+      LEFT JOIN trip_expert_advisors tea ON tea.trip_id = t.id AND tea.status IN ('pending', 'accepted')
+      WHERE t.id = ${id}
+      LIMIT 1
+    `);
+
+    if (!authCheck.rows || authCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    const row = authCheck.rows[0] as { owner_id: string; expert_user_id: string | null };
+    const isOwner = row.owner_id === userId;
+    const isExpert = row.expert_user_id === userId;
+
+    if (!isOwner && !isExpert) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const result = await db.execute(sql`
+      SELECT
+        ts.id, ts.trip_id, ts.expert_id, ts.type, ts.day_number,
+        ts.title, ts.description, ts.estimated_cost, ts.status,
+        ts.rejection_note, ts.created_at, ts.reviewed_at,
+        u.first_name as expert_first_name, u.last_name as expert_last_name,
+        u.profile_image_url as expert_profile_image_url
+      FROM trip_suggestions ts
+      JOIN users u ON u.id = ts.expert_id
+      WHERE ts.trip_id = ${id}
+      ORDER BY ts.created_at DESC
+    `);
+
+    res.json({ suggestions: result.rows || [] });
+  } catch (error: any) {
+    console.error('Get trip suggestions error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/trips/:id/suggestions
+ * Expert submits a curated suggestion for a trip they are assigned to.
+ */
+router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+    const { type, dayNumber, title, description, estimatedCost } = req.body;
+
+    if (!type || !title) {
+      return res.status(400).json({ error: 'type and title are required' });
+    }
+
+    // Verify expert is assigned to this trip
+    const expertCheck = await db.execute(sql`
+      SELECT tea.id FROM trip_expert_advisors tea
+      WHERE tea.trip_id = ${id}
+        AND tea.local_expert_id = ${userId}
+        AND tea.status IN ('pending', 'accepted')
+      LIMIT 1
+    `);
+
+    if (!expertCheck.rows || expertCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'You are not an assigned expert for this trip' });
+    }
+
+    const suggestionId = crypto.randomUUID();
+    await db.execute(sql`
+      INSERT INTO trip_suggestions (id, trip_id, expert_id, type, day_number, title, description, estimated_cost, status, created_at)
+      VALUES (${suggestionId}, ${id}, ${userId}, ${type}, ${dayNumber ?? null}, ${title}, ${description ?? null}, ${estimatedCost ?? null}, 'pending', NOW())
+    `);
+
+    res.json({ success: true, suggestionId });
+  } catch (error: any) {
+    console.error('Create trip suggestion error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/trips/:id/suggestions/:suggestionId
+ * Trip owner approves or rejects a suggestion.
+ */
+router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id, suggestionId } = req.params;
+    const { status, rejectionNote } = req.body;
+
+    if (!status || !['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'status must be "approved" or "rejected"' });
+    }
+
+    // Only trip owner can review suggestions
+    const ownerCheck = await db.execute(sql`
+      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
+    `);
+    if (!ownerCheck.rows || ownerCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    const updateResult = await db.execute(sql`
+      UPDATE trip_suggestions
+      SET status = ${status},
+          rejection_note = ${rejectionNote ?? null},
+          reviewed_at = NOW()
+      WHERE id = ${suggestionId} AND trip_id = ${id} AND status = 'pending'
+      RETURNING id, status
+    `);
+
+    if (!updateResult.rows || updateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
+    }
+
+    res.json({ success: true, suggestion: updateResult.rows[0] });
+  } catch (error: any) {
+    console.error('Review trip suggestion error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;
