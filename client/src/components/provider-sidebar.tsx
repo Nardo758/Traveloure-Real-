@@ -1,13 +1,13 @@
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  CalendarCheck, 
-  Package, 
-  DollarSign, 
-  TrendingUp, 
-  Calendar, 
-  Building, 
-  Settings, 
+import {
+  LayoutDashboard,
+  CalendarCheck,
+  Package,
+  DollarSign,
+  TrendingUp,
+  Calendar,
+  Building,
+  Settings,
   BookOpen,
   LogOut,
   ChevronLeft,
@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard" },
@@ -35,9 +36,21 @@ const bottomNavItems = [
 export function ProviderSidebar() {
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const { user, logout } = useAuth();
 
   const handleLogout = () => {
-    window.location.href = "/api/logout";
+    logout();
+  };
+
+  // Get initials for avatar
+  const getInitials = () => {
+    if (user?.businessName) {
+      return user.businessName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+    }
+    if (user?.firstName && user?.lastName) {
+      return (user.firstName[0] + user.lastName[0]).toUpperCase();
+    }
+    return "SP";
   };
 
   return (
@@ -73,10 +86,12 @@ export function ProviderSidebar() {
         <div className="p-4 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
-              <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C]">GE</AvatarFallback>
+              <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C]">{getInitials()}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">Grand Estate Venue</p>
+              <p className="font-medium text-gray-900 truncate">
+                {user?.businessName || `${user?.firstName} ${user?.lastName}`.trim() || "Service Provider"}
+              </p>
               <p className="text-xs text-gray-500">Service Provider</p>
             </div>
           </div>
