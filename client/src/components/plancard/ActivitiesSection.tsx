@@ -205,12 +205,18 @@ export function ActivitiesSection({
   const [legModes, setLegModes] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!day?.dayNum) return;
-    const key = `traveloure_visited_${tripId}_${day.dayNum}`;
-    try {
-      const raw = localStorage.getItem(key);
-      if (raw) setVisited(new Set(JSON.parse(raw)));
-    } catch {}
+    if (!day?.dayNum || !day.activities) {
+      setVisited(new Set());
+      return;
+    }
+    const newVisited = new Set<string>();
+    for (const a of day.activities) {
+      const key = `traveloure_visited_${tripId}_${day.dayNum}_${a.id}`;
+      try {
+        if (localStorage.getItem(key) === "1") newVisited.add(a.id);
+      } catch {}
+    }
+    setVisited(newVisited);
   }, [tripId, day?.dayNum]);
 
   useEffect(() => {
@@ -251,11 +257,15 @@ export function ActivitiesSection({
   const toggleVisited = (actId: string) => {
     setVisited((prev) => {
       const next = new Set(prev);
-      if (next.has(actId)) next.delete(actId);
-      else next.add(actId);
-      const key = `traveloure_visited_${tripId}_${day.dayNum}`;
+      const key = `traveloure_visited_${tripId}_${day!.dayNum}_${actId}`;
       try {
-        localStorage.setItem(key, JSON.stringify([...next]));
+        if (next.has(actId)) {
+          next.delete(actId);
+          localStorage.removeItem(key);
+        } else {
+          next.add(actId);
+          localStorage.setItem(key, "1");
+        }
       } catch {}
       return next;
     });
@@ -346,7 +356,7 @@ export function ActivitiesSection({
                   isUpcoming
                     ? "border-l-primary bg-primary/5 rounded-r-lg"
                     : "border-l-transparent"
-                }`}
+                } ${isPast ? "opacity-50" : ""}`}
                 data-testid={`activity-row-${a.id}`}
               >
                 <div className="flex flex-col items-center w-12 flex-shrink-0">
