@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ProviderLayout } from "@/components/provider-layout";
+import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
