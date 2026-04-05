@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { MapPin, Calendar, UserCheck, Clock, Car, Users, Briefcase, Lightbulb, X } from "lucide-react";
+import { Lightbulb, X } from "lucide-react";
 import { useDeleteTrip } from "@/hooks/use-trips";
 
 interface Trip {
@@ -29,7 +29,7 @@ interface PlanCardData {
 
 interface DayData {
   activities?: Array<{ status?: string }>;
-  transports?: Array<{ duration?: number }>;
+  transports?: Array<{ duration?: number; mode?: string }>;
 }
 
 interface ConversationMessage {
@@ -171,7 +171,6 @@ export function DashboardPlanCard({
     staleTime: 60000,
   });
   const advisor = advisorData?.advisor ?? null;
-  const expertTooltip = advisor ? `${advisor.firstName} ${advisor.lastName}` : '';
 
   const { data: serviceBookings } = useQuery<any[]>({
     queryKey: ['/api/service-bookings'],
@@ -231,30 +230,12 @@ export function DashboardPlanCard({
       )
     );
 
-  // Service bookings count
   const tripServiceBookings = serviceBookings?.filter((b: any) => b.tripId === trip.id) ?? [];
   const serviceBookingsCount = tripServiceBookings.length;
 
-  // Service booking details for tooltip
-  const serviceTooltip = tripServiceBookings
-    .map(b => `${b.service?.serviceName}${b.provider?.businessName ? ` (${b.provider.businessName})` : ''}`)
-    .join(', ');
-
-  // Transport legs breakdown
   const transportModes = days.flatMap(d => d.transports ?? []);
   const transportLegCount = transportModes.length;
-  // Also count from stats if days are empty (plancard may only return stats)
   const effectiveTransportCount = transportLegCount || (plancardData?.stats?.totalLegs ?? 0);
-
-  // Build tooltip: mode breakdown summary
-  const modeCounts: Record<string, number> = {};
-  for (const t of transportModes) {
-    const m = t.mode || 'walk';
-    modeCounts[m] = (modeCounts[m] || 0) + 1;
-  }
-  const transportTooltip = Object.entries(modeCounts)
-    .map(([mode, cnt]) => `${cnt}× ${mode}`)
-    .join(', ');
 
   const daysTil = daysUntil(trip.startDate);
   const statusLabel = getStatusLabel(trip);
@@ -267,7 +248,6 @@ export function DashboardPlanCard({
     new Date(d).toLocaleDateString("en-GB", {
       day: "numeric",
       month: "short",
-      year: "numeric",
     });
 
   const lastAssistantMsg = convWithMessages?.messages
@@ -277,26 +257,13 @@ export function DashboardPlanCard({
     : null;
 
   const expertMsgText = lastAssistantMsg
-    ? lastAssistantMsg.content.slice(0, 120) + (lastAssistantMsg.content.length > 120 ? "…" : "")
+    ? lastAssistantMsg.content.slice(0, 100) + (lastAssistantMsg.content.length > 100 ? "…" : "")
     : null;
 
-  const expertName = convWithMessages
-    ? convWithMessages.title
-        .replace(/chat with /i, "")
-        .replace(/conversation with /i, "")
-        .trim()
-    : null;
-
-  const initials = expertName ? getInitials(expertName) : null;
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
 
-  // Click handlers for pills
-  const handleServicesClick = () => {
-    navigate('/bookings');
-  };
-  const handleTransportClick = () => {
-    navigate(`/trip/${trip.id}`);
-  };
+  const handleServicesClick = () => navigate('/bookings');
+  const handleTransportClick = () => navigate(`/trip/${trip.id}`);
   const handleExpertClick = () => {
     if (matchedConvId) {
       navigate(`/chat?conversation=${matchedConvId}`);
@@ -314,20 +281,22 @@ export function DashboardPlanCard({
 
   return (
     <div
-      className="rounded-[14px] overflow-hidden bg-card border border-border border-[0.5px] hover:shadow-md transition-shadow"
+      className="rounded-[14px] overflow-hidden"
+      style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF" }}
       data-testid={`dashboard-plan-card-${trip.id}`}
     >
-      <div className="relative p-3.5 pb-3 text-white" style={{ background: gradient }}>
-        <div className="flex items-center mb-2">
+      <div className="relative text-white" style={{ background: gradient, padding: "13px 15px 11px" }}>
+        <div className="flex gap-1.5 mb-[7px]">
           <span
-            className="text-[10px] font-medium px-2.5 py-0.5 rounded-full uppercase tracking-[0.5px] bg-white/25"
+            className="text-[9px] font-semibold px-2.5 py-[3px] rounded-lg uppercase tracking-[0.4px]"
+            style={{ background: "rgba(255,255,255,0.25)" }}
             data-testid={`status-pill-${trip.id}`}
           >
-            {statusLabel}
+            ⚡ {statusLabel}
           </span>
         </div>
 
-        <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
+        <div className="absolute top-3 right-3.5 flex flex-col items-end gap-1">
           <button
             onClick={handleDelete}
             disabled={deleteTrip.isPending}
@@ -343,21 +312,20 @@ export function DashboardPlanCard({
           </button>
           {showCountdown && (
             <div className="text-right leading-none">
-              <div className="text-[24px] font-medium leading-none">{daysTil}</div>
-              <div className="text-[10px] opacity-70">days</div>
+              <div className="text-[22px] font-medium leading-none">{daysTil}</div>
+              <div className="text-[9px] opacity-70">days</div>
             </div>
           )}
         </div>
 
-        <div className="text-[16px] font-medium mb-0.5 pr-16">{tripTitle}</div>
-        <div className="text-[12px] opacity-85 flex items-center gap-1">
-          <MapPin className="w-3 h-3" />
-          {trip.destination} &middot; {formatDate(trip.startDate)} – {formatDate(trip.endDate)}
+        <div className="text-[15px] font-medium mb-0.5 pr-[50px]">{tripTitle}</div>
+        <div className="text-[11px] opacity-85">
+          📍 {trip.destination} · {formatDate(trip.startDate)}–{formatDate(trip.endDate)}
         </div>
       </div>
 
-      <div className="px-4 py-3">
-        <div className="flex text-center mb-2.5">
+      <div style={{ padding: "10px 14px" }}>
+        <div className="flex text-center mb-2">
           {(
             [
               { label: "Days", value: numDays },
@@ -368,173 +336,130 @@ export function DashboardPlanCard({
           ).map((s, i) => (
             <div
               key={i}
-              className={`flex-1 py-1.5 ${i > 0 ? "border-l border-border" : ""}`}
+              className="flex-1 py-1"
+              style={{ borderLeft: i > 0 ? "0.5px solid #E8E8E2" : "none" }}
             >
-              <div className="text-[10px] text-muted-foreground mb-0.5">{s.label}</div>
-              <div className="text-[15px] font-medium text-foreground">{s.value}</div>
+              <div className="text-[9px]" style={{ color: "#7A7A72", marginBottom: 1 }}>{s.label}</div>
+              <div className="text-[14px] font-medium" style={{ color: "#1A1A18" }}>{s.value}</div>
             </div>
           ))}
         </div>
-        
-        {(serviceBookingsCount > 0 || effectiveTransportCount > 0 || advisor) && (
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {serviceBookingsCount > 0 && (
-              <button
-                type="button"
-                onClick={handleServicesClick}
-                className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                title={serviceTooltip || undefined}
-                data-testid={`pill-services-${trip.id}`}
-              >
-                <Briefcase className="w-3 h-3" />
-                {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
-              </button>
-            )}
-            {effectiveTransportCount > 0 && (
-              <button
-                type="button"
-                onClick={handleTransportClick}
-                className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                title={transportTooltip || `${effectiveTransportCount} transport legs`}
-                data-testid={`pill-transport-${trip.id}`}
-              >
-                <Car className="w-3 h-3" />
-                {effectiveTransportCount} leg{effectiveTransportCount !== 1 ? 's' : ''}
-              </button>
-            )}
-            {advisor && (
-              <button
-                type="button"
-                onClick={handleExpertClick}
-                className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
-                title={expertTooltip || undefined}
-              >
-                <Users className="w-3 h-3" />
-                Expert
-              </button>
-            )}
-          </div>
-        )}
+
+        <div className="flex gap-[5px] flex-wrap">
+          {serviceBookingsCount > 0 && (
+            <button
+              type="button"
+              onClick={handleServicesClick}
+              className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ background: "#E6F1FB", color: "#0C447C" }}
+              data-testid={`pill-services-${trip.id}`}
+            >
+              💼 {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
+            </button>
+          )}
+          {effectiveTransportCount > 0 && (
+            <button
+              type="button"
+              onClick={handleTransportClick}
+              className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ background: "#E1F5EE", color: "#085041" }}
+              data-testid={`pill-transport-${trip.id}`}
+            >
+              🚗 {effectiveTransportCount} leg{effectiveTransportCount !== 1 ? 's' : ''}
+            </button>
+          )}
+          {advisor && (
+            <button
+              type="button"
+              onClick={handleExpertClick}
+              className="text-[9px] px-[7px] py-[2px] rounded-[10px] cursor-pointer hover:opacity-80 transition-opacity"
+              style={{ background: "#EEEDFE", color: "#3C3489" }}
+            >
+              👥 Expert
+            </button>
+          )}
+        </div>
       </div>
 
       {advisor && (
         <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`}>
           <div
-            className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px] cursor-pointer hover:bg-muted/30 transition-colors"
+            className="flex items-center gap-2.5 cursor-pointer hover:bg-[#F3F3EE] transition-colors"
+            style={{ padding: "9px 14px", borderTop: "0.5px solid #E8E8E2" }}
             data-testid={`advisor-strip-${trip.id}`}
           >
             {advisor.profile_image_url ? (
               <img
                 src={advisor.profile_image_url}
                 alt={advisor.first_name + ' ' + advisor.last_name}
-                className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+                className="w-[26px] h-[26px] rounded-full object-cover flex-shrink-0"
               />
             ) : (
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+                className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-[9px] font-semibold flex-shrink-0"
                 style={{ background: avatarColor.bg, color: avatarColor.text }}
               >
                 {getInitials(advisor.first_name + ' ' + advisor.last_name)}
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <div className="text-[11px] font-medium text-foreground">
+              <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>
                 {advisor.first_name} {advisor.last_name}
               </div>
-              <div className="text-[10px] text-muted-foreground flex items-center gap-1">
-                {advisor.status === "accepted" ? (
-                  <>
-                    <UserCheck className="w-2.5 h-2.5 text-[#2E8B8B]" />
-                    Expert assigned
-                  </>
-                ) : (
-                  <>
-                    <Clock className="w-2.5 h-2.5" />
-                    Request pending
-                  </>
-                )}
-              </div>
               {advisor.status === "accepted" && expertMsgText && (
-                <div className="text-[10px] text-muted-foreground truncate mt-0.5">{expertMsgText}</div>
+                <div className="text-[10px] truncate" style={{ color: "#7A7A72" }}>
+                  "{expertMsgText}"
+                </div>
               )}
             </div>
             {pendingSuggestions > 0 ? (
               <div
-                className="flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex-shrink-0"
+                className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "#FAEEDA", color: "#633806" }}
                 data-testid={`badge-suggestions-${trip.id}`}
               >
                 <Lightbulb className="w-2.5 h-2.5" />
                 {pendingSuggestions}
               </div>
             ) : (
-              <div
-                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${advisor.status === "accepted" ? "bg-[#2E8B8B]" : "bg-amber-400"}`}
-              />
+              advisor.status === "accepted" && (
+                <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: "#5DCAA5" }} />
+              )
             )}
           </div>
         </Link>
       )}
 
-      {!advisor && expertMsgText && initials && (
-        <div
-          className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px]"
-          data-testid={`expert-msg-${trip.id}`}
-        >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
-            style={{ background: avatarColor.bg, color: avatarColor.text }}
-          >
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            {expertName && (
-              <div className="text-[11px] font-medium text-foreground">{expertName}</div>
-            )}
-            <div className="text-[11px] text-muted-foreground truncate">{expertMsgText}</div>
-          </div>
-          <div className="w-1.5 h-1.5 rounded-full bg-[#2E8B8B] flex-shrink-0" />
-        </div>
-      )}
-
       {actionItems.length > 0 && (
-        <div className="mx-4 mb-3 rounded-lg bg-muted/50 px-3 py-2 space-y-1.5">
+        <div className="rounded-lg" style={{ margin: "0 14px 10px", background: "#F3F3EE", padding: "7px 10px" }}>
           {actionItems.map((n, i) => (
-            <div key={n.id ?? i} className="flex items-start gap-1.5">
+            <div key={n.id ?? i} className="flex items-start gap-[5px] py-[2px]">
               <div
-                className={`w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0 ${
-                  n.type === "urgent" || n.type === "alert" ? "bg-[#E24B4A]" : "bg-[#EF9F27]"
-                }`}
+                className="w-[5px] h-[5px] rounded-full mt-[5px] flex-shrink-0"
+                style={{ background: n.type === "urgent" || n.type === "alert" ? "#E24B4A" : "#EF9F27" }}
               />
-              <span className="text-[11px] text-foreground flex-1">{n.title || n.message}</span>
-              <span className="text-[10px] text-muted-foreground flex-shrink-0">
-                {n.createdAt
-                  ? new Date(n.createdAt).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                    })
-                  : "New"}
-              </span>
+              <span className="text-[10px] flex-1" style={{ color: "#1A1A18" }}>{n.title || n.message}</span>
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex gap-2 px-4 pb-3 pt-1">
+      <div className="flex gap-[7px]" style={{ padding: "0 14px 12px" }}>
         <button
           onClick={() => openInMaps(trip.destination)}
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium bg-card text-foreground hover:bg-muted transition-colors border border-border border-[0.5px]"
+          className="flex-none py-[7px] px-3 rounded-lg text-[11px] font-medium cursor-pointer hover:bg-[#F3F3EE] transition-colors"
+          style={{ border: "0.5px solid #E8E8E2", background: "#FFFFFF", color: "#1A1A18" }}
           data-testid={`btn-maps-${trip.id}`}
         >
-          <MapPin className="w-3.5 h-3.5" />
-          Maps
+          📍 Maps
         </button>
         <Link href={`/itinerary/${trip.id}`} className="flex-1">
           <button
-            className="w-full flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium text-white transition-colors bg-[#E85D55] hover:bg-[#D85A30] border border-[#E85D55]"
+            className="w-full py-[7px] px-3 rounded-lg text-[11px] font-medium text-white cursor-pointer transition-colors"
+            style={{ background: "#E85D55", border: "none" }}
             data-testid={`btn-itinerary-${trip.id}`}
           >
-            <Calendar className="w-3.5 h-3.5" />
-            View itinerary &rsaquo;
+            📅 View itinerary ›
           </button>
         </Link>
       </div>

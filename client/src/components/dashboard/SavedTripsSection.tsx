@@ -36,11 +36,11 @@ function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
   const urgent = daysLeft <= 7;
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium ${
-        urgent
-          ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-          : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-      }`}
+      className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-medium"
+      style={{
+        background: urgent ? "rgba(226,75,74,0.1)" : "rgba(239,159,39,0.1)",
+        color: urgent ? "#E24B4A" : "#EF9F27",
+      }}
       data-testid="saved-trip-expiry"
     >
       <Clock className="w-3 h-3" />
@@ -76,11 +76,11 @@ export function SavedTripsSection() {
   if (isLoading || !savedTrips || savedTrips.length === 0) return null;
 
   return (
-    <section className="mb-6" data-testid="saved-trips-section">
-      <div className="text-sm font-medium text-foreground mb-3 flex items-center gap-1.5">
-        <Bookmark className="w-4 h-4 text-[#E85D55]" />
+    <section className="mb-[22px]" data-testid="saved-trips-section">
+      <div className="text-[13px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: "#1A1A18" }}>
+        <Bookmark className="w-4 h-4" style={{ color: "#E85D55" }} />
         <span>Saved for later</span>
-        <span className="ml-1 text-[11px] text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+        <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#F3F3EE", color: "#7A7A72" }}>
           {savedTrips.length}
         </span>
       </div>
@@ -98,23 +98,24 @@ export function SavedTripsSection() {
           return (
             <div
               key={st.id}
-              className="flex items-center justify-between bg-card border border-border rounded-xl px-4 py-3 gap-3"
+              className="flex items-center justify-between rounded-xl px-4 py-3 gap-3"
+              style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
               data-testid={`saved-trip-card-${st.id}`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-[14px] font-medium text-foreground truncate">
+                  <span className="text-[14px] font-medium truncate" style={{ color: "#1A1A18" }}>
                     {destination}
                   </span>
                   <ExpiryBadge expiresAt={st.expires_at} />
                 </div>
-                <div className="text-[12px] text-muted-foreground flex flex-wrap gap-2">
+                <div className="text-[12px] flex flex-wrap gap-2" style={{ color: "#7A7A72" }}>
                   {dateRange && <span>{dateRange}</span>}
                   {travelers && <span>· {travelers}</span>}
                   {price && <span>· est. {price}</span>}
                 </div>
                 {st.notes && (
-                  <div className="text-[11px] text-muted-foreground mt-1 italic truncate">
+                  <div className="text-[11px] mt-1 italic truncate" style={{ color: "#7A7A72" }}>
                     {st.notes}
                   </div>
                 )}
@@ -122,7 +123,8 @@ export function SavedTripsSection() {
 
               <Button
                 size="sm"
-                className="shrink-0 bg-[#FF385C] hover:bg-[#E23350] text-white text-[12px] h-8 px-3 gap-1"
+                className="shrink-0 text-white text-[12px] h-8 px-3 gap-1"
+                style={{ background: "#E85D55", border: "none" }}
                 onClick={() => convertMutation.mutate(st.id)}
                 disabled={isConverting || convertMutation.isPending}
                 data-testid={`button-start-planning-${st.id}`}

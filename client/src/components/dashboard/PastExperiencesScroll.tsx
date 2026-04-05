@@ -1,6 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { useTrips } from "@/hooks/use-trips";
+import { Link } from "wouter";
 
 export function PastExperiencesScroll() {
   const { data: trips } = useTrips();
@@ -20,11 +19,11 @@ export function PastExperiencesScroll() {
     Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000));
 
   return (
-    <section className="mb-6" data-testid="past-experiences-section">
-      <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
+    <section className="mb-[22px]" data-testid="past-experiences-section">
+      <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
         <span>Past experiences</span>
         <Link href="/my-trips">
-          <span className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline" data-testid="link-view-all-past">
+          <span className="text-[11px] cursor-pointer hover:underline" style={{ color: "#2E8B8B" }} data-testid="link-view-all-past">
             View all
           </span>
         </Link>
@@ -37,16 +36,17 @@ export function PastExperiencesScroll() {
           return (
             <Link key={trip.id} href={`/itinerary/${trip.id}`}>
               <div
-                className="flex-shrink-0 w-[160px] bg-muted/50 rounded-lg px-3 py-3 cursor-pointer hover:bg-muted/80 transition-colors"
+                className="flex-shrink-0 w-[160px] rounded-[10px] px-3 py-3 cursor-pointer transition-colors hover:opacity-80"
+                style={{ background: "#F3F3EE", border: "0.5px solid #E8E8E2" }}
                 data-testid={`past-card-${trip.id}`}
               >
-                <div className="text-[13px] font-medium text-foreground truncate">
+                <div className="text-[13px] font-medium truncate" style={{ color: "#1A1A18" }}>
                   {trip.title || trip.destination}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
+                <div className="text-[11px] mt-0.5" style={{ color: "#7A7A72" }}>
                   {formatDate(trip.endDate)} · {days} day{days !== 1 ? "s" : ""}
                 </div>
-                <div className="text-[11px] text-[#E8B339] mt-1">★★★★★</div>
+                <div className="text-[11px] mt-1" style={{ color: "#E8B339" }}>★★★★★</div>
               </div>
             </Link>
           );
@@ -55,11 +55,12 @@ export function PastExperiencesScroll() {
         {pastTrips.length >= 8 && (
           <Link href="/my-trips">
             <div
-              className="flex-shrink-0 w-[120px] bg-muted/30 rounded-lg px-3 py-3 cursor-pointer flex flex-col justify-center opacity-60 hover:opacity-80 transition-opacity"
+              className="flex-shrink-0 w-[120px] rounded-[10px] px-3 py-3 cursor-pointer flex flex-col justify-center opacity-60 hover:opacity-80 transition-opacity"
+              style={{ background: "#F3F3EE" }}
               data-testid="past-card-more"
             >
-              <div className="text-[13px] font-medium text-foreground">+ more</div>
-              <div className="text-[11px] text-muted-foreground">View all</div>
+              <div className="text-[13px] font-medium" style={{ color: "#1A1A18" }}>+ more</div>
+              <div className="text-[11px]" style={{ color: "#7A7A72" }}>View all</div>
             </div>
           </Link>
         )}

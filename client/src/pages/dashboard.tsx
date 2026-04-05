@@ -40,14 +40,14 @@ const CTA_CARDS = [
     testId: "cta-new-experience",
   },
   {
-    icon: "✨",
+    icon: "✦",
     label: "AI planner",
     sub: "Get a plan in minutes",
     href: "/ai-assistant",
     testId: "cta-ai-planner",
   },
   {
-    icon: "🔍",
+    icon: "◎",
     label: "Find experts",
     sub: "In your destinations",
     href: "/chat",
@@ -68,8 +68,8 @@ export default function Dashboard() {
   if (isLoading) {
     return (
       <DashboardLayout>
-        <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
+        <div className="min-h-[60vh] flex items-center justify-center">
+          <Loader2 className="w-10 h-10 animate-spin" style={{ color: "#E85D55" }} />
         </div>
       </DashboardLayout>
     );
@@ -78,7 +78,7 @@ export default function Dashboard() {
   if (isError) {
     return (
       <DashboardLayout>
-        <div className="container mx-auto px-4 py-12 text-center">
+        <div className="py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
           <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
         </div>
@@ -111,94 +111,95 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 max-w-[640px] mx-auto w-full">
-        <div className="pt-4 mb-4">
-          <div
-            className="text-[22px] font-medium text-foreground pb-0.5"
-            data-testid="text-welcome"
-          >
-            Welcome back, {user?.firstName || "Traveler"}
-          </div>
-          <div className="text-[14px] text-muted-foreground" data-testid="text-greeting-sub">
-            {greetingSub}
-          </div>
+      <div className="mb-1">
+        <div
+          className="text-[20px] font-medium mb-[3px]"
+          style={{ color: "#1A1A18" }}
+          data-testid="text-welcome"
+        >
+          Welcome back, {user?.firstName || "Traveler"}
         </div>
+        <div className="text-[13px] mb-[14px]" style={{ color: "#7A7A72" }} data-testid="text-greeting-sub">
+          {greetingSub}
+        </div>
+      </div>
 
-        <TravelPulseTicker />
+      <TravelPulseTicker />
 
-        <div className="flex gap-2.5 mb-[18px]">
-          {CTA_CARDS.map(card => (
-            <Link key={card.testId} href={card.href} className="flex-1">
-              <div
-                className="bg-muted/50 hover:bg-muted rounded-xl px-3 py-4 cursor-pointer text-center transition-colors"
-                data-testid={card.testId}
-              >
-                <div className="text-[18px] mb-1">{card.icon}</div>
-                <div className="text-[13px] font-medium text-foreground">{card.label}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">{card.sub}</div>
-              </div>
-            </Link>
+      <div className="flex gap-2 mb-4">
+        {CTA_CARDS.map(card => (
+          <Link key={card.testId} href={card.href} className="flex-1">
+            <div
+              className="rounded-[10px] px-2.5 py-3.5 cursor-pointer text-center transition-colors hover:opacity-80"
+              style={{ background: "#F3F3EE" }}
+              data-testid={card.testId}
+            >
+              <div className="text-[16px] mb-1">{card.icon}</div>
+              <div className="text-[12px] font-medium" style={{ color: "#1A1A18" }}>{card.label}</div>
+              <div className="text-[10px] mt-0.5" style={{ color: "#7A7A72" }}>{card.sub}</div>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      <SavedTripsSection />
+
+      <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
+        <span>Your active plans</span>
+        {activePlans.length > 0 && (
+          <Link href="/my-trips">
+            <span
+              className="text-[11px] cursor-pointer hover:underline"
+              style={{ color: "#2E8B8B" }}
+              data-testid="link-view-all-plans"
+            >
+              View all
+            </span>
+          </Link>
+        )}
+      </div>
+
+      {activePlans.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-[22px]" data-testid="active-plans-grid">
+          {activePlans.slice(0, 6).map((trip, i) => (
+            <DashboardPlanCard
+              key={trip.id}
+              trip={trip}
+              index={i}
+              conversations={convList}
+              notifications={notifications}
+            />
           ))}
         </div>
-
-        <SavedTripsSection />
-
-        <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
-          <span>Your active plans</span>
-          {activePlans.length > 0 && (
-            <Link href="/my-trips">
-              <span
-                className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline"
-                data-testid="link-view-all-plans"
-              >
-                View all
-              </span>
+      ) : (
+        <Card className="border-2 border-dashed mb-6" style={{ borderColor: "#E8E8E2" }}>
+          <CardContent className="p-8 text-center">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#FFE3E8" }}>
+              <Calendar className="w-8 h-8" style={{ color: "#E85D55" }} />
+            </div>
+            <h3 className="text-lg font-semibold mb-2" style={{ color: "#1A1A18" }}>No active plans</h3>
+            <p className="mb-4" style={{ color: "#7A7A72" }}>Start planning your next adventure!</p>
+            <Link href="/experiences">
+              <Button className="text-white" style={{ background: "#E85D55" }} data-testid="button-first-plan">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Your First Plan
+              </Button>
             </Link>
-          )}
-        </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {activePlans.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6" data-testid="active-plans-grid">
-            {activePlans.slice(0, 6).map((trip, i) => (
-              <DashboardPlanCard
-                key={trip.id}
-                trip={trip}
-                index={i}
-                conversations={convList}
-                notifications={notifications}
-              />
-            ))}
-          </div>
-        ) : (
-          <Card className="border-2 border-dashed border-border mb-6">
-            <CardContent className="p-8 text-center">
-              <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Calendar className="w-8 h-8 text-[#FF385C]" />
-              </div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">No active plans</h3>
-              <p className="text-muted-foreground mb-4">Start planning your next adventure!</p>
-              <Link href="/experiences">
-                <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-first-plan">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Plan
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        )}
+      <ActiveExpertsList
+        conversations={convList}
+        trips={activePlans}
+        isLoading={convsLoading}
+      />
 
-        <ActiveExpertsList
-          conversations={convList}
-          trips={activePlans}
-          isLoading={convsLoading}
-        />
+      <ServicesScroll />
 
-        <ServicesScroll />
+      <ExpertsScroll destinations={destinations} />
 
-        <ExpertsScroll destinations={destinations} />
-
-        <PastExperiencesScroll />
-      </div>
+      <PastExperiencesScroll />
     </DashboardLayout>
   );
 }
