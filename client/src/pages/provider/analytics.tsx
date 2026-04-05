@@ -1,4 +1,4 @@
-import { ProviderLayout } from "@/components/provider-layout";
+import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

@@ -1,4 +1,4 @@
-import { ExpertLayout } from "@/components/expert-layout";
+import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Award } from "lucide-react";
 
