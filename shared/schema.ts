@@ -111,6 +111,24 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   assignedAt: timestamp("assigned_at").defaultNow(),
 });
 
+export const tripSuggestions = pgTable("trip_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(), // activity | transport | venue | note
+  dayNumber: integer("day_number"),
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  estimatedCost: decimal("estimated_cost", { precision: 10, scale: 2 }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | approved | rejected
+  rejectionNote: text("rejection_note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+});
+
+export type TripSuggestion = typeof tripSuggestions.$inferSelect;
+export type InsertTripSuggestion = typeof tripSuggestions.$inferInsert;
+
 export const reviewRatings = pgTable("review_ratings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   localExpertId: varchar("local_expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
