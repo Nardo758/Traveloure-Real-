@@ -50,6 +50,7 @@ import EAProfile from "@/pages/ea/profile";
 import EASettings from "@/pages/ea/settings";
 import ProviderDashboard from "@/pages/provider/dashboard";
 import ProviderBookings from "@/pages/provider/bookings";
+import ProviderMessages from "@/pages/provider/messages";
 import ProviderServices from "@/pages/provider/services";
 import ProviderEarnings from "@/pages/provider/earnings";
 import ProviderPerformance from "@/pages/provider/performance";
@@ -469,6 +470,9 @@ function Router() {
       </Route>
       <Route path="/provider/bookings">
         {() => <ProtectedRoute component={ProviderBookings} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/messages">
+        {() => <ProtectedRoute component={ProviderMessages} requiredRole="provider" />}
       </Route>
       <Route path="/provider/services">
         {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
