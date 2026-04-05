@@ -169,6 +169,7 @@ export function DashboardPlanCard({
     staleTime: 60000,
   });
   const advisor = advisorData?.advisor ?? null;
+  const expertTooltip = advisor ? `${advisor.firstName} ${advisor.lastName}` : '';
 
   const { data: serviceBookings } = useQuery<any[]>({
     queryKey: ['/api/service-bookings'],
@@ -219,11 +220,22 @@ export function DashboardPlanCard({
   const tripServiceBookings = serviceBookings?.filter((b: any) => b.tripId === trip.id) ?? [];
   const serviceBookingsCount = tripServiceBookings.length;
 
+  // Service booking details for tooltip
+  const serviceTooltip = tripServiceBookings
+    .map(b => `${b.service?.serviceName}${b.provider?.businessName ? ` (${b.provider.businessName})` : ''}`)
+    .join(', ');
+
   // Transport mode breakdown
   const transportModes = days.flatMap(d => d.transports ?? []);
-  const privateTransportCount = transportModes.filter(t => 
+  const privateTransports = transportModes.filter(t => 
     t.mode && (t.mode.includes('car') || t.mode.includes('private') || t.mode.includes('taxi') || t.mode.includes('rideshare'))
-  ).length;
+  );
+  const privateTransportCount = privateTransports.length;
+
+  // Private transport details for tooltip
+  const transportTooltip = privateTransports
+    .map(t => `${t.details?.provider || t.mode}${t.details?.driver ? ` (${t.details.driver})` : ''}`)
+    .join(', ');
 
   const daysTil = daysUntil(trip.startDate);
   const statusLabel = getStatusLabel(trip);
@@ -341,6 +353,7 @@ export function DashboardPlanCard({
                 type="button"
                 onClick={handleServicesClick}
                 className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+                title={serviceTooltip || undefined}
               >
                 <Briefcase className="w-3 h-3" />
                 {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
@@ -351,6 +364,7 @@ export function DashboardPlanCard({
                 type="button"
                 onClick={handleTransportClick}
                 className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+                title={transportTooltip || undefined}
               >
                 <Car className="w-3 h-3" />
                 Private x{privateTransportCount}
@@ -361,6 +375,7 @@ export function DashboardPlanCard({
                 type="button"
                 onClick={handleExpertClick}
                 className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+                title={expertTooltip || undefined}
               >
                 <Users className="w-3 h-3" />
                 Expert
