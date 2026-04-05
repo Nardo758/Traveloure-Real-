@@ -29,8 +29,7 @@ interface ServiceFormData {
   active: boolean;
 }
 
-const MOCK_SERVICE = {
-  id: "1",
+const MOCK_SERVICE: ServiceFormData = {
   name: "Full Expert Itinerary Planning",
   category: "Full Service",
   description: "Complete 7-day Kyoto itinerary with expert guidance and insider recommendations.",
