@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TravelPulseTicker } from "@/components/shared/travel-pulse-ticker";
 import {
   CalendarCheck,
   Calendar,
@@ -88,6 +89,15 @@ export default function ProviderDashboard() {
           </h2>
           <p className="text-gray-600 mt-1">3 bookings today • {analytics?.summary?.totalBookings || 0} this month</p>
         </div>
+
+        {/* Travel Pulse Ticker */}
+        <TravelPulseTicker items={[
+          { city: "Kyoto", text: "Peak season: transport demand +120%", type: "up" },
+          { city: "Airport", text: "KIX arrivals surge Apr 7-10", type: "up" },
+          { city: "Pricing", text: "Your rates: competitive ✓", type: "neutral" },
+          { city: "Roads", text: "Arashiyama area: expect delays", type: "down" },
+          { city: "Demand", text: "Night transfers trending +45%", type: "up" },
+        ]} />
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -231,7 +241,7 @@ export default function ProviderDashboard() {
           </div>
 
           {/* Right Panel - 40% width */}
-          <div className="space-y-6">
+          <div className="space-y-6 hidden lg:block">
             {/* Earnings Card */}
             <Card className="border border-gray-200 bg-gradient-to-br from-green-50 to-white">
               <CardHeader className="pb-3">
@@ -251,6 +261,40 @@ export default function ProviderDashboard() {
                 <Button className="w-full bg-green-600 hover:bg-green-700" data-testid="button-request-payout">
                   Request Payout
                 </Button>
+              </CardContent>
+            </Card>
+
+            {/* Upcoming 5 Days */}
+            <Card className="border border-gray-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Upcoming 5 Days</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
+                  <span className="text-gray-600">Apr 9</span>
+                  <span className="font-semibold text-gray-900">4 rides</span>
+                  <span className="font-semibold text-green-600">$310</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
+                  <span className="text-gray-600">Apr 10</span>
+                  <span className="font-semibold text-gray-900">2 rides</span>
+                  <span className="font-semibold text-green-600">$170</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
+                  <span className="text-gray-600">Apr 11</span>
+                  <span className="font-semibold text-gray-900">5 rides</span>
+                  <span className="font-semibold text-green-600">$425</span>
+                </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-100 text-sm">
+                  <span className="text-gray-600">Apr 12</span>
+                  <span className="font-semibold text-gray-900">3 rides</span>
+                  <span className="font-semibold text-green-600">$255</span>
+                </div>
+                <div className="flex items-center justify-between py-2 text-sm">
+                  <span className="text-gray-600">Apr 13</span>
+                  <span className="font-semibold text-gray-900">1 ride</span>
+                  <span className="font-semibold text-green-600">$85</span>
+                </div>
               </CardContent>
             </Card>
 

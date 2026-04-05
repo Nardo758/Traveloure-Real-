@@ -103,6 +103,8 @@ import ExpertTemplates from "@/pages/expert/templates";
 import ExpertContentStudio from "@/pages/expert/content-studio";
 import ExpertClientDetail from "@/pages/expert/client-detail";
 import ExpertSettings from "@/pages/expert/settings";
+import ExpertServiceForm from "@/pages/expert/service-form";
+import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
@@ -359,6 +361,9 @@ function Router() {
       <Route path="/expert/messages">
         {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
       </Route>
+      <Route path="/expert/messages/:clientId">
+        {() => <ProtectedRoute component={ExpertMessages} requiredRole="expert" />}
+      </Route>
       <Route path="/expert/clients">
         {() => <ProtectedRoute component={ExpertClients} requiredRole="expert" />}
       </Route>
@@ -372,7 +377,10 @@ function Router() {
         {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/new">
-        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
+        {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/services/:id/edit">
+        {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/templates">
         {() => <ProtectedRoute component={ServiceTemplates} requiredRole="expert" />}
@@ -466,10 +474,10 @@ function Router() {
         {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
       </Route>
       <Route path="/provider/services/new">
-        {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
+        {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
       <Route path="/provider/services/:id/edit">
-        {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
+        {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
       <Route path="/provider/earnings">
         {() => <ProtectedRoute component={ProviderEarnings} requiredRole="provider" />}
