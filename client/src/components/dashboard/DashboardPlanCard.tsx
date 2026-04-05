@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import { MapPin, Calendar, UserCheck, Clock } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { MapPin, Calendar, UserCheck, Clock, Car, Users, Briefcase } from "lucide-react";
 
 interface Trip {
   id: string;
@@ -170,7 +170,13 @@ export function DashboardPlanCard({
   });
   const advisor = advisorData?.advisor ?? null;
 
+  const { data: serviceBookings } = useQuery<any[]>({
+    queryKey: ['/api/service-bookings'],
+    staleTime: 60000,
+  });
+
   const matchedConvId = findMatchedConversationId(trip, conversations);
+  const [, navigate] = useLocation();
 
   const { data: convWithMessages } = useQuery<ConversationWithMessages>({
     queryKey: [`/api/conversations/${matchedConvId}`],
@@ -201,6 +207,16 @@ export function DashboardPlanCard({
           86400000
       )
     );
+
+  // Service bookings count
+  const tripServiceBookings = serviceBookings?.filter((b: any) => b.tripId === trip.id) ?? [];
+  const serviceBookingsCount = tripServiceBookings.length;
+
+  // Transport mode breakdown
+  const transportModes = days.flatMap(d => d.transports ?? []);
+  const privateTransportCount = transportModes.filter(t => 
+    t.mode && (t.mode.includes('car') || t.mode.includes('private') || t.mode.includes('taxi') || t.mode.includes('rideshare'))
+  ).length;
 
   const daysTil = daysUntil(trip.startDate);
   const statusLabel = getStatusLabel(trip);
@@ -236,6 +252,21 @@ export function DashboardPlanCard({
   const initials = expertName ? getInitials(expertName) : null;
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
 
+  // Click handlers for pills
+  const handleServicesClick = () => {
+    navigate('/bookings');
+  };
+  const handleTransportClick = () => {
+    navigate(`/trip/${trip.id}`);
+  };
+  const handleExpertClick = () => {
+    if (matchedConvId) {
+      navigate(`/chat?conversation=${matchedConvId}`);
+    } else {
+      navigate('/chat');
+    }
+  };
+
   const actionItems = notifications
     .filter(n => n.tripId === trip.id)
     .sort((a, b) =>
@@ -245,22 +276,20 @@ export function DashboardPlanCard({
 
   return (
     <div
-      className="rounded-[14px] overflow-hidden bg-card"
-      style={{ border: "0.5px solid hsl(var(--border))" }}
+      className="rounded-[14px] overflow-hidden bg-card border border-border border-[0.5px] hover:shadow-md transition-shadow"
       data-testid={`dashboard-plan-card-${trip.id}`}
     >
       <div className="relative p-3.5 pb-3 text-white" style={{ background: gradient }}>
         <div className="flex items-center justify-between mb-2">
           <span
-            className="text-[10px] font-medium px-2.5 py-0.5 rounded-full uppercase tracking-[0.5px]"
-            style={{ background: "rgba(255,255,255,0.25)" }}
+            className="text-[10px] font-medium px-2.5 py-0.5 rounded-full uppercase tracking-[0.5px] bg-white/25"
             data-testid={`status-pill-${trip.id}`}
           >
             {statusLabel}
           </span>
           <div className="flex gap-2">
-            <button className="text-[11px] opacity-85">Share</button>
-            <button className="text-[11px] opacity-85">Export</button>
+            <button className="text-[11px] opacity-85 hover:opacity-100">Share</button>
+            <button className="text-[11px] opacity-85 hover:opacity-100">Export</button>
           </div>
         </div>
 
@@ -290,20 +319,53 @@ export function DashboardPlanCard({
           ).map((s, i) => (
             <div
               key={i}
-              className={`flex-1 py-1.5 ${i > 0 ? "border-l" : ""}`}
-              style={i > 0 ? { borderColor: "hsl(var(--border))", borderLeftWidth: "0.5px" } : {}}
+              className={`flex-1 py-1.5 ${i > 0 ? "border-l border-border" : ""}`}
             >
               <div className="text-[10px] text-muted-foreground mb-0.5">{s.label}</div>
               <div className="text-[15px] font-medium text-foreground">{s.value}</div>
             </div>
           ))}
         </div>
+        
+        {(serviceBookingsCount > 0 || privateTransportCount > 0 || advisor) && (
+          <div className="flex items-center gap-2 mt-2">
+            {serviceBookingsCount > 0 && (
+              <button
+                type="button"
+                onClick={handleServicesClick}
+                className="flex items-center gap-1 text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <Briefcase className="w-3 h-3" />
+                {serviceBookingsCount} service{serviceBookingsCount !== 1 ? 's' : ''}
+              </button>
+            )}
+            {privateTransportCount > 0 && (
+              <button
+                type="button"
+                onClick={handleTransportClick}
+                className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <Car className="w-3 h-3" />
+                Private x{privateTransportCount}
+              </button>
+            )}
+            {advisor && (
+              <button
+                type="button"
+                onClick={handleExpertClick}
+                className="flex items-center gap-1 text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full cursor-pointer hover:opacity-80 transition-opacity"
+              >
+                <Users className="w-3 h-3" />
+                Expert
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {advisor && (
         <div
-          className="flex items-center gap-2.5 px-4 py-2.5 border-t"
-          style={{ borderTopWidth: "0.5px", borderColor: "hsl(var(--border))" }}
+          className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px]"
           data-testid={`advisor-strip-${trip.id}`}
         >
           {advisor.profile_image_url ? (
@@ -349,8 +411,7 @@ export function DashboardPlanCard({
 
       {!advisor && expertMsgText && initials && (
         <div
-          className="flex items-center gap-2.5 px-4 py-2.5 border-t"
-          style={{ borderTopWidth: "0.5px", borderColor: "hsl(var(--border))" }}
+          className="flex items-center gap-2.5 px-4 py-2.5 border-t border-border border-t-[0.5px]"
           data-testid={`expert-msg-${trip.id}`}
         >
           <div
@@ -395,8 +456,7 @@ export function DashboardPlanCard({
       <div className="flex gap-2 px-4 pb-3 pt-1">
         <button
           onClick={() => openInMaps(trip.destination)}
-          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium bg-card text-foreground hover:bg-muted transition-colors"
-          style={{ border: "0.5px solid hsl(var(--border))" }}
+          className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium bg-card text-foreground hover:bg-muted transition-colors border border-border border-[0.5px]"
           data-testid={`btn-maps-${trip.id}`}
         >
           <MapPin className="w-3.5 h-3.5" />
@@ -404,8 +464,7 @@ export function DashboardPlanCard({
         </button>
         <Link href={`/itinerary/${trip.id}`} className="flex-1">
           <button
-            className="w-full flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium text-white transition-colors"
-            style={{ background: "#E85D55" }}
+            className="w-full flex items-center justify-center gap-1 py-2 rounded-lg text-[12px] font-medium text-white transition-colors bg-[#E85D55] hover:bg-[#D85A30] border border-[#E85D55]"
             data-testid={`btn-itinerary-${trip.id}`}
           >
             <Calendar className="w-3.5 h-3.5" />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { DashboardLayout } from "@/components/dashboard-layout";
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -127,8 +127,7 @@ export default function CreditsBillingPage() {
   });
 
   return (
-    <DashboardLayout>
-      <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
@@ -426,6 +425,6 @@ export default function CreditsBillingPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }
