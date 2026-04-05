@@ -1219,8 +1219,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const map: Record<string, number> = {};
       counts.forEach(c => { if (c.categoryId) map[c.categoryId] = c.count; });
       res.json(map);
-    } catch (error) {
-      res.json({});
+    } catch (error: any) {
+      console.error("Failed to fetch provider counts:", error?.message || error);
+      res.status(500).json({});
     }
   });
 
