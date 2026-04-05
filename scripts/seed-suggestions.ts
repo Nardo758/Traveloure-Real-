@@ -1,6 +1,6 @@
 import { db } from '../server/db';
-import { tripSuggestions, trips, experts } from '../shared/schema';
-import { eq } from 'drizzle-orm';
+import { tripSuggestions, trips, users } from '../shared/schema';
+import { eq, sql } from 'drizzle-orm';
 
 /**
  * Seed trip suggestions for testing the expert curation system.
@@ -16,73 +16,87 @@ async function seedSuggestions() {
     return;
   }
 
-  // Fetch first expert
-  const allExperts = await db.select().from(experts).limit(1);
+  // Fetch first user with role='expert'
+  const allExperts = await db
+    .select()
+    .from(users)
+    .where(eq(users.role, 'expert'))
+    .limit(1);
+
   if (allExperts.length === 0) {
-    console.log('No experts found — ensure experts are seeded');
+    console.log('No expert users found — ensure an expert account exists');
     return;
   }
 
   const expert = allExperts[0];
+  console.log(`✅ Using expert: ${expert.firstName} ${expert.lastName} (${expert.id})`);
+
+  // Clear existing suggestions for these trips to avoid duplicates
+  for (const trip of allTrips.slice(0, 2)) {
+    await db.delete(tripSuggestions).where(eq(tripSuggestions.tripId, trip.id));
+  }
 
   const suggestions = [
     {
       tripId: allTrips[0].id,
       expertId: expert.id,
       status: 'pending' as const,
-      suggestionType: 'hotel',
+      type: 'accommodation',
       title: 'Upgrade hotel to The Ritz-Carlton',
-      description: 'The current hotel is fine, but The Ritz-Carlton offers better views and breakfast included.',
-      estimatedCost: 450,
-      reason: 'Better amenities and location closer to Day 2 activities.',
-      createdAt: new Date(),
+      description: 'The current hotel is fine, but The Ritz-Carlton offers better views and breakfast included. Highly recommended for a smoother stay on Day 2.',
+      estimatedCost: '450.00',
+      dayNumber: 2,
     },
     {
       tripId: allTrips[0].id,
       expertId: expert.id,
       status: 'approved' as const,
-      suggestionType: 'restaurant',
+      type: 'food',
       title: 'Replace lunch spot with Farmhouse Kitchen',
-      description: 'Farmhouse Kitchen has better Thai food and takes reservations.',
-      estimatedCost: 75,
-      reason: 'Higher rated on Yelp and more authentic.',
-      createdAt: new Date(Date.now() - 86400000), // yesterday
+      description: 'Farmhouse Kitchen has better Thai food and takes reservations. Higher rated and more authentic than the current option.',
+      estimatedCost: '75.00',
+      dayNumber: 3,
+      reviewedAt: new Date(Date.now() - 3600000),
     },
     {
       tripId: allTrips[1]?.id || allTrips[0].id,
       expertId: expert.id,
       status: 'pending' as const,
-      suggestionType: 'activity',
-      title: 'Add wine tasting in Napa',
-      description: 'Half-day tour of two vineyards with transportation.',
-      estimatedCost: 200,
-      reason: 'Fits perfectly between Day 3 morning and evening plans.',
-      createdAt: new Date(),
+      type: 'activity',
+      title: 'Add wine tasting in Napa Valley',
+      description: 'Half-day tour of two top vineyards with private transportation included. Fits perfectly between Day 3 morning and evening plans.',
+      estimatedCost: '200.00',
+      dayNumber: 4,
     },
     {
       tripId: allTrips[1]?.id || allTrips[0].id,
       expertId: expert.id,
       status: 'rejected' as const,
-      suggestionType: 'transport',
-      title: 'Switch from Uber to private car',
-      description: 'Private car is more reliable for airport transfer.',
-      estimatedCost: 150,
-      reason: 'Cost exceeds budget; Uber XL is sufficient.',
-      createdAt: new Date(Date.now() - 172800000), // 2 days ago
+      type: 'transport',
+      title: 'Switch from Uber to private car service',
+      description: 'Private car is more reliable for airport transfers and can handle luggage better.',
+      estimatedCost: '150.00',
+      dayNumber: 1,
+      rejectionNote: 'Cost exceeds budget. Uber XL is sufficient for this group size.',
+      reviewedAt: new Date(Date.now() - 86400000),
     },
   ];
 
   // Insert suggestions
+  let inserted = 0;
   for (const suggestion of suggestions) {
     await db.insert(tripSuggestions).values(suggestion);
+    inserted++;
   }
 
-  console.log(`✅ Inserted ${suggestions.length} trip suggestions`);
-  console.log('   - 2 pending suggestions (should show badge on trip card)');
-  console.log('   - 1 approved, 1 rejected (for testing filters)');
+  console.log(`✅ Inserted ${inserted} trip suggestions`);
+  console.log('   - 2 pending (should show badge on trip cards)');
+  console.log('   - 1 approved, 1 rejected (for status filter testing)');
 }
 
-seedSuggestions().catch((err) => {
-  console.error('❌ Failed to seed suggestions:', err);
-  process.exit(1);
-});
+seedSuggestions()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('❌ Failed to seed suggestions:', err);
+    process.exit(1);
+  });
