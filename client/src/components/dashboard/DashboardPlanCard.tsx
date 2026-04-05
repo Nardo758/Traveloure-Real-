@@ -306,12 +306,20 @@ export function DashboardPlanCard({
           style={{ borderTopWidth: "0.5px", borderColor: "hsl(var(--border))" }}
           data-testid={`advisor-strip-${trip.id}`}
         >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
-            style={{ background: avatarColor.bg, color: avatarColor.text }}
-          >
-            {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
-          </div>
+          {advisor.profile_image_url ? (
+            <img
+              src={advisor.profile_image_url}
+              alt={advisor.first_name + ' ' + advisor.last_name}
+              className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+            />
+          ) : (
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+              style={{ background: avatarColor.bg, color: avatarColor.text }}
+            >
+              {getInitials(advisor.first_name + ' ' + advisor.last_name)}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <div className="text-[11px] font-medium text-foreground">
               {advisor.first_name} {advisor.last_name}

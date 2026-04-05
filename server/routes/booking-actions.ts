@@ -644,7 +644,30 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
       return res.json({ advisor: null });
     }
 
-    res.json({ advisor: result.rows[0] });
+    const advisorRow = result.rows[0] as Record<string, unknown>;
+
+    // Fetch the expert's first message from any conversation they have with this user
+    // (expert's userId matches the conversation's userId or message role)
+    let expertFirstMessage: string | null = null;
+    try {
+      const msgResult = await db.execute(sql`
+        SELECT m.content
+        FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+        WHERE c.user_id = ${userId}
+          AND m.role = 'assistant'
+        ORDER BY m.created_at ASC
+        LIMIT 1
+      `);
+      if (msgResult.rows && msgResult.rows.length > 0) {
+        const content = (msgResult.rows[0] as any).content as string;
+        expertFirstMessage = content.length > 140 ? content.slice(0, 140) + '…' : content;
+      }
+    } catch (_) {
+      // Non-fatal: message strip is optional
+    }
+
+    res.json({ advisor: { ...advisorRow, expertFirstMessage } });
   } catch (error: any) {
     console.error('Get trip expert advisor error:', error);
     res.status(500).json({ error: error.message });
@@ -714,26 +737,34 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
     `);
     const queuePosition = (queueResult.rows?.[0] as any)?.next_position || 1;
 
-    // Create expert_requests record (with trip_id; variant_id/comparison_id are now nullable)
+    // Create both records atomically inside a transaction
     const expertRequestId = crypto.randomUUID();
-    await db.execute(sql`
-      INSERT INTO expert_requests (
-        id, user_id, trip_id, destination_city, request_type,
-        status, queue_position, notes, assigned_expert_id, created_at
-      ) VALUES (
-        ${expertRequestId}, ${userId}, ${id},
-        ${destination.toLowerCase()}, 'review',
-        'queued', ${queuePosition}, ${message || null},
-        ${expertUserId}, NOW()
-      )
-    `);
-
-    // Create trip_expert_advisors record (pending)
     const advisorId = crypto.randomUUID();
-    await db.execute(sql`
-      INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
-      VALUES (${advisorId}, ${id}, ${expertUserId}, 'pending', ${message || null}, NOW())
-    `);
+
+    await db.execute(sql`BEGIN`);
+    try {
+      await db.execute(sql`
+        INSERT INTO expert_requests (
+          id, user_id, trip_id, destination_city, request_type,
+          status, queue_position, notes, assigned_expert_id, created_at
+        ) VALUES (
+          ${expertRequestId}, ${userId}, ${id},
+          ${destination.toLowerCase()}, 'review',
+          'queued', ${queuePosition}, ${message || null},
+          ${expertUserId}, NOW()
+        )
+      `);
+
+      await db.execute(sql`
+        INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
+        VALUES (${advisorId}, ${id}, ${expertUserId}, 'pending', ${message || null}, NOW())
+      `);
+
+      await db.execute(sql`COMMIT`);
+    } catch (txErr) {
+      await db.execute(sql`ROLLBACK`);
+      throw txErr;
+    }
 
     res.json({ success: true, advisorId, expertRequestId, status: 'pending' });
   } catch (error: any) {
