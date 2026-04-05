@@ -131,7 +131,7 @@ export function SavedTripsSection() {
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <>
-                    Start planning
+                    Start planning this
                     <ArrowRight className="w-3 h-3" />
                   </>
                 )}
