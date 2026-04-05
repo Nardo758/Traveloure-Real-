@@ -5,6 +5,7 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -33,23 +34,33 @@ import {
   Lightbulb,
 } from "lucide-react";
 
-const menuItems = [
-  { title: "Dashboard", href: "/expert/dashboard", icon: Home },
-  { title: "Revenue Optimizer", href: "/expert/revenue-optimization", icon: TrendingUp },
-  { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
-  { title: "Messages", href: "/chat", icon: MessageSquare },
-  { title: "Clients", href: "/expert/clients", icon: Users },
-  { title: "Assigned Trips", href: "/expert/assigned-trips", icon: Lightbulb },
-  { title: "Bookings", href: "/expert/bookings", icon: Calendar },
-  { title: "Services", href: "/expert/services", icon: Briefcase },
-  { title: "Custom Services", href: "/expert/custom-services", icon: PlusSquare },
-  { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
-  { title: "Performance", href: "/expert/performance", icon: BarChart3 },
-  { title: "Leaderboard", href: "/expert/leaderboard", icon: Award },
-  { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
-  { title: "Templates", href: "/expert/templates", icon: FileText },
-  { title: "Content Studio", href: "/expert/content-studio", icon: Camera },
-  { title: "Profile", href: "/expert/profile", icon: User },
+const menuGroups = [
+  {
+    label: "WORK",
+    items: [
+      { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+      { title: "Bookings", href: "/expert/bookings", icon: Calendar },
+      { title: "Clients", href: "/expert/clients", icon: Users },
+      { title: "Messages", href: "/chat", icon: MessageSquare },
+    ],
+  },
+  {
+    label: "BUSINESS",
+    items: [
+      { title: "Services", href: "/expert/services", icon: Briefcase },
+      { title: "Templates", href: "/expert/templates", icon: FileText },
+      { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
+      { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
+    ],
+  },
+  {
+    label: "ACCOUNT",
+    items: [
+      { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
+      { title: "Profile", href: "/expert/profile", icon: User },
+      { title: "Settings", href: "/expert/settings", icon: User },
+    ],
+  },
 ];
 
 export function ExpertSidebar() {
@@ -79,32 +90,37 @@ export function ExpertSidebar() {
       </SidebarHeader>
 
       <SidebarContent className="px-3 py-4">
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => {
-                const isActive = location === item.href || 
-                  (item.href !== "/expert/dashboard" && location.startsWith(item.href));
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                    >
-                      <Link
-                        href={item.href}
-                        data-testid={`link-expert-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+        {menuGroups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-3 mb-2">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const isActive = location === item.href ||
+                    (item.href !== "/expert/dashboard" && location.startsWith(item.href));
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
                       >
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+                        <Link
+                          href={item.href}
+                          data-testid={`link-expert-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          <item.icon className="w-5 h-5" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-border">
