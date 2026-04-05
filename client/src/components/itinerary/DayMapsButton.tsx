@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Map, ChevronDown } from "lucide-react";
-import { detectedPlatform, openRawUrl } from "@/lib/navigate";
+import { getMapsPreference, openRawUrl } from "@/lib/navigate";
 
 interface DayMapsButtonProps {
   dayNumber: number;
@@ -17,10 +17,13 @@ export function DayMapsButton({ dayNumber, googleUrl, appleUrl, appleWebUrl, cla
   if (!hasUrls) return null;
 
   const handleSmartOpen = () => {
-    if (detectedPlatform === "ios" && (appleUrl || appleWebUrl)) {
+    const pref = getMapsPreference();
+    if ((pref === "apple" || pref === "waze") && (appleUrl || appleWebUrl)) {
       openRawUrl(appleUrl || appleWebUrl!);
     } else if (googleUrl) {
       openRawUrl(googleUrl);
+    } else if (appleUrl || appleWebUrl) {
+      openRawUrl(appleUrl || appleWebUrl!);
     }
   };
 

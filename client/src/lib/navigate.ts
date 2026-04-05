@@ -56,6 +56,10 @@ function detectPlatform(): Platform {
 }
 
 function getMapsPref(): MapsApp {
+  return getMapsPreference();
+}
+
+export function getMapsPreference(): MapsApp {
   const pref = localStorage.getItem("traveloure_maps_pref") || "auto";
   if (pref === "auto") return PLATFORM === "ios" ? "apple" : "google";
   if (pref === "apple" || pref === "google" || pref === "waze") return pref;
@@ -108,6 +112,7 @@ function buildGoogleUrl(params: NavigateParams): string {
   if (params.waypoints && params.waypoints.length === 1) {
     sp.set("destination", locStr(params.waypoints[0].lat, params.waypoints[0].lng, params.waypoints[0].name));
   } else if (params.waypoints && params.waypoints.length > 1) {
+    // Google supports origin + destination + up to 9 intermediate waypoints = 11 total stops
     const stops = params.waypoints.slice(0, 11);
     sp.set("origin", locStr(stops[0].lat, stops[0].lng, stops[0].name));
     sp.set("destination", locStr(stops[stops.length - 1].lat, stops[stops.length - 1].lng, stops[stops.length - 1].name));
