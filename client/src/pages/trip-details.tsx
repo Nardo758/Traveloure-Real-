@@ -18,6 +18,58 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
+import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
+import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "@/components/plancard/StatsRow";
+import { DaySelector } from "@/components/plancard/DaySelector";
+import { SectionTabs } from "@/components/plancard/SectionTabs";
+import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
+import { ChangeLogPanel } from "@/components/plancard/ChangeLogPanel";
+import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { HeroSection } from "@/components/plancard/HeroSection";
+import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
+import { InlineTransportSelector } from "@/components/itinerary/InlineTransportSelector";
+
+type Section = "activities" | "transport";
+
+function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
+  if (!activities || activities.length < 2) return [];
+  const legs: InlineTransportLegData[] = [];
+  for (let i = 0; i < activities.length - 1; i++) {
+    const from = activities[i];
+    const to = activities[i + 1];
+    legs.push({
+      id: `synth-leg-${from.id}-${to.id}`,
+      legOrder: i + 1,
+      fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
+      toName: to.location || to.title || to.name || `Stop ${i + 2}`,
+      recommendedMode: "walk",
+      userSelectedMode: null,
+      distanceDisplay: "~1 km",
+      estimatedDurationMinutes: 15,
+      estimatedCostUsd: null,
+      alternativeModes: [
+        { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
+        { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
+        { mode: "rideshare", durationMinutes: 7, costUsd: 6, energyCost: 25, reason: "Convenient pickup" },
+      ],
+      fromLat: from.lat || null,
+      fromLng: from.lng || null,
+      toLat: to.lat || null,
+      toLng: to.lng || null,
+    });
+  }
+  return legs;
+}
+
+type BookingType = "inApp" | "partner";
+
+function getBookingType(actType: string): BookingType {
+  const partnerTypes = ['transport', 'event', 'concert', 'show', 'entertainment'];
+  if (partnerTypes.includes(actType.toLowerCase())) return 'partner';
+  return 'inApp';
+}
 
 function getActivityIcon(type: string) {
   switch (type?.toLowerCase()) {
@@ -94,6 +146,9 @@ export default function TripDetails() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
+  const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
+  const [section, setSection] = useState<Section>(initialSection);
+  const [selectedDay, setSelectedDay] = useState(1);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
@@ -115,6 +170,18 @@ export default function TripDetails() {
       return () => clearTimeout(timer);
     }
   }, [initialTab, deepSection]);
+
+  // Auto‑select today's day when trip is live (same logic as itinerary.tsx)
+  useEffect(() => {
+    if (!trip) return;
+    const now = new Date();
+    const start = new Date(trip.startDate);
+    const end = new Date(trip.endDate);
+    if (now >= start && now <= end) {
+      const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      setSelectedDay(Math.min(Math.max(daysInto, 1), Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1));
+    }
+  }, [trip]);
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -444,105 +511,232 @@ export default function TripDetails() {
                     </div>
                   ) : (
                     <>
-                      <div className="space-y-8">
-                        {((generatedItinerary.itineraryData as any)?.days ?? [])
-                          .slice(0, showFullItinerary ? duration : Math.min(duration, 3))
-                          .map((day: any, dayIndex: number) => (
-                              <motion.div
-                                key={day.day}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: dayIndex * 0.1 }}
-                              >
-                                <div className="flex items-center gap-4 mb-4">
-                                  <div className="w-12 h-12 rounded-full bg-primary text-white flex items-center justify-center font-bold">
-                                    {day.day}
-                                  </div>
-                                  <div>
-                                    <h3 className="font-bold text-lg text-slate-900 dark:text-white">Day {day.day}</h3>
-                                    <p className="text-muted-foreground">{day.title}</p>
-                                  </div>
-                                </div>
+                      {/* PlanCard components merged from itinerary.tsx */}
+                      {(() => {
+                        const itinerary = generatedItinerary.itineraryData;
+                        if (!itinerary) return null;
 
-                                <div className="ml-6 pl-6 border-l-2 border-border space-y-4">
-                                  {(day.activities ?? []).map((activity: any, actIndex: number) => {
-                                    const ActivityIcon = getActivityIcon(activity.type);
-                                    return (
-                                      <div
-                                        key={actIndex}
-                                        className="relative flex items-start gap-4 p-4 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
-                                        data-testid={`activity-item-${day.day}-${actIndex}`}
-                                      >
-                                        <div className="absolute -left-[33px] w-4 h-4 rounded-full bg-primary border-4 border-background" />
-                                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                                          <ActivityIcon className="w-5 h-5 text-primary" />
-                                        </div>
-                                        <div className="flex-1">
-                                          <div className="text-xs text-muted-foreground mb-1">{activity.time}</div>
-                                          <p className="font-medium text-slate-900 dark:text-white">{activity.title}</p>
-                                          {activity.description && (
-                                            <p className="text-sm text-muted-foreground mt-1">{activity.description}</p>
-                                          )}
-                                          {activity.locationName && (
-                                            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                                              <MapPin className="w-3 h-3" />
-                                              {activity.locationName}
-                                            </div>
-                                          )}
-                                          {activity.estimatedCost != null && (
-                                            <div className="text-xs text-primary mt-1">~${activity.estimatedCost}</div>
-                                          )}
-                                        </div>
-                                        <ChevronRight className="w-5 h-5 text-muted-foreground shrink-0" />
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </motion.div>
-                          ))}
-                      </div>
+                        // Real transport legs map (if available)
+                        const realLegsMap: Record<number, any[]> = {};
+                        // TODO: fetch real legs data if needed
 
-                      {duration > 3 && !showFullItinerary && (
-                        <div className="text-center py-6 border-t border-border">
-                          <p className="text-muted-foreground mb-4">
-                            + {duration - 3} more days of activities
-                          </p>
-                          <Button
-                            variant="outline"
-                            data-testid="button-view-full"
-                            onClick={() => setShowFullItinerary(true)}
-                          >
-                            View Full Itinerary
-                          </Button>
-                        </div>
-                      )}
-                      {showFullItinerary && duration > 3 && (
-                        <div className="text-center py-6 border-t border-border">
-                          <Button
-                            variant="ghost"
-                            data-testid="button-collapse"
-                            onClick={() => setShowFullItinerary(false)}
-                          >
-                            Show Less
-                          </Button>
-                        </div>
-                      )}
+                        const templateConfig = getTemplateConfig(trip?.eventType);
+
+                        const planCardTrip: PlanCardTrip = {
+                          id: String(itinerary.id),
+                          destination: itinerary.destination,
+                          title: itinerary.title,
+                          startDate: format(new Date(itinerary.startDate), "yyyy-MM-dd"),
+                          endDate: format(new Date(itinerary.endDate), "yyyy-MM-dd"),
+                          numberOfTravelers: itinerary.travelers,
+                          budget: itinerary.budget,
+                        };
+
+                        const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
+                          dayNum: d.day,
+                          date: format(d.date instanceof Date ? d.date : new Date(d.date), "yyyy-MM-dd"),
+                          label: (() => {
+                            const parsed = d.date instanceof Date ? d.date : new Date(d.date);
+                            return !isNaN(parsed.getTime()) ? format(parsed, "EEE, MMM d") : (d.title || `Day ${d.day}`);
+                          })(),
+                          activities: (d.activities || []).map((a: any): PlanCardActivity => ({
+                            id: a.id,
+                            name: a.title || a.name || "Activity",
+                            time: a.time || "09:00",
+                            type: a.type || "activity",
+                            location: a.location || "",
+                            lat: a.lat ?? undefined,
+                            lng: a.lng ?? undefined,
+                            status: a.booked ? "confirmed" : "pending",
+                            cost: a.price || 0,
+                            comments: 0,
+                            expertNote: a.notes || a.description || undefined,
+                          })),
+                          transports: (() => {
+                            const dayNum = d.day;
+                            const real = realLegsMap[dayNum];
+                            const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+                            return legs.map((l: any): PlanCardTransport => ({
+                              id: l.id,
+                              from: l.fromName || l.from || "",
+                              to: l.toName || l.to || "",
+                              mode: l.userSelectedMode || l.recommendedMode || l.mode || "walk",
+                              duration: l.estimatedDurationMinutes || l.duration || 0,
+                              cost: l.estimatedCostUsd || l.cost || 0,
+                              status: "active",
+                            }));
+                          })(),
+                        }));
+
+                        const currentPlanCardDay = planCardDays[selectedDay - 1];
+                        const currentItineraryDay = itinerary.days[selectedDay - 1];
+                        const currentDayLegs: InlineTransportLegData[] = (() => {
+                          if (!currentItineraryDay) return [];
+                          const dayNum = currentItineraryDay.day;
+                          const real = realLegsMap[dayNum];
+                          return real?.length ? real : currentItineraryDay.transportLegs || synthesizeTransportLegs(currentItineraryDay.activities || []);
+                        })();
+
+                        // Compute extra stats
+                        const totalDays = itinerary.days.length;
+                        const totalActivities = planCardDays.reduce((sum, d) => sum + (d.activities?.length || 0), 0);
+                        const totalLegs = planCardDays.reduce((sum, d) => sum + (d.transports?.length || 0), 0);
+                        const totalTransitMinutes = planCardDays.reduce((sum, d) => sum + (d.transports?.reduce((t, tr) => t + (tr.duration || 0), 0) || 0), 0);
+                        const totalBooked = planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.status === "confirmed").length || 0), 0);
+                        const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
+                        const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
+
+                        const extraStats: ExtraStat[] = [
+                          { label: "Days", value: String(totalDays), icon: null },
+                          { label: "Activities", value: String(totalActivities), icon: null },
+                          { label: "Transit legs", value: String(totalLegs), icon: null },
+                          { label: "Transit time", value: `${Math.floor(totalTransitMinutes / 60)}h ${totalTransitMinutes % 60}m`, icon: null },
+                          { label: "Booked", value: `${totalBooked}/${totalActivities}`, icon: BookedIcon },
+                          { label: "Total Cost", value: `$${totalCost.toLocaleString()}`, icon: CostIcon },
+                          { label: "Efficiency", value: `${efficiencyScore}%`, icon: EfficiencyIcon },
+                        ];
+
+                        // Category counts (simplified)
+                        const categoryCounts = {
+                          Sightseeing: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "sightseeing").length || 0), 0),
+                          Food: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "food").length || 0), 0),
+                          Culture: planCardDays.reduce((sum, d) => sum + (d.activities?.filter((a: any) => a.type === "culture").length || 0), 0),
+                        };
+
+                        return (
+                          <div className="space-y-6">
+                            {/* Stats row */}
+                            <StatsRow stats={extraStats} />
+
+                            {/* Category pills */}
+                            <div className="flex gap-2 overflow-x-auto pb-1">
+                              {Object.entries(categoryCounts).map(([cat, count]) => (
+                                <button
+                                  key={cat}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-full bg-muted text-muted-foreground whitespace-nowrap"
+                                >
+                                  {cat} ({count})
+                                </button>
+                              ))}
+                            </div>
+
+                            {/* Day selector */}
+                            <DaySelector
+                              days={planCardDays}
+                              selectedDay={selectedDay}
+                              onSelectDay={setSelectedDay}
+                              templateConfig={templateConfig}
+                            />
+
+                            {/* Section tabs */}
+                            <SectionTabs
+                              section={section}
+                              onSelectSection={setSection}
+                              activitiesCount={currentPlanCardDay?.activities?.length || 0}
+                              transportCount={currentPlanCardDay?.transports?.length || 0}
+                              confirmedActivitiesCount={currentPlanCardDay?.activities?.filter((a: any) => a.status === "confirmed").length || 0}
+                            />
+
+                            {/* Activities section (when section === "activities") */}
+                            {section === "activities" && (
+                              <ActivitiesSection
+                                day={currentPlanCardDay}
+                                legs={currentDayLegs}
+                                expertLayerEnabled={false}
+                                onExpertLayerToggle={() => {}}
+                                onActivityClick={(activityId) => {
+                                  // navigate to activity detail
+                                }}
+                                onTransportClick={(legId) => {
+                                  setSection("transport");
+                                }}
+                              />
+                            )}
+
+                            {/* Transport section (when section === "transport") */}
+                            {section === "transport" && (
+                              <DayTransportPanel
+                                day={currentItineraryDay}
+                                legs={currentDayLegs}
+                                onLegUpdate={() => {}}
+                              />
+                            )}
+
+                            {/* Show Map toggle */}
+                            <div className="pt-4 border-t">
+                              <MapControlCenter days={planCardDays} selectedDay={selectedDay} />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </TabsContent>
 
                 <TabsContent value="bookings" className="mt-0">
-                  <div className="text-center py-16">
-                    <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
-                      <Plane className="w-8 h-8 text-muted-foreground" />
+                  <div className="space-y-6">
+                    {/* Booking Summary card from itinerary.tsx */}
+                    {generatedItinerary?.itineraryData && (
+                      <Card className="bg-card border-border" data-testid="booking-summary-card">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-primary" />
+                            Booking Summary
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0 space-y-2">
+                          {(() => {
+                            const itinerary = generatedItinerary.itineraryData;
+                            const allActivities = itinerary.days.flatMap((d: any) => d.activities);
+                            const inAppBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'inApp' && !a.booked);
+                            const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
+                            const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                            const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                            return (
+                              <>
+                                <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
+                                  <div className="flex items-center gap-1.5">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                                    <span className="text-xs font-medium">Book on Traveloure</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-xs text-muted-foreground" data-testid="text-inapp-count">{inAppBookings.length} items</p>
+                                    <p className="text-sm font-semibold text-primary" data-testid="text-inapp-total">${inAppTotal}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center justify-between p-2.5 bg-muted/50 rounded-lg">
+                                  <div className="flex items-center gap-1.5">
+                                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                    <span className="text-xs font-medium">Book via Partners</span>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-xs text-muted-foreground" data-testid="text-partner-count">{partnerBookings.length} items</p>
+                                    <p className="text-sm font-semibold text-foreground" data-testid="text-partner-total">${partnerTotal}</p>
+                                  </div>
+                                </div>
+                                <div className="border-t pt-2 mt-1 flex items-center justify-between">
+                                  <span className="text-sm font-semibold text-foreground">Total Pending</span>
+                                  <span className="text-base font-bold text-primary" data-testid="text-total-pending">${inAppTotal + partnerTotal}</span>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <div className="text-center py-16">
+                      <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-muted flex items-center justify-center">
+                        <Plane className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Bookings Yet</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        Add flights, hotels, and activities to your trip to keep everything organized in one place.
+                      </p>
+                      <Button variant="outline" data-testid="button-add-booking">
+                        Add a Booking
+                      </Button>
                     </div>
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Bookings Yet</h3>
-                    <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                      Add flights, hotels, and activities to your trip to keep everything organized in one place.
-                    </p>
-                    <Button variant="outline" data-testid="button-add-booking">
-                      Add a Booking
-                    </Button>
                   </div>
                 </TabsContent>
 
