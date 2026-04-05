@@ -11,7 +11,8 @@ import {
   BookOpen,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -25,6 +26,7 @@ const navGroups = [
       { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard" },
       { icon: Calendar, label: "Calendar", href: "/provider/calendar" },
       { icon: CalendarCheck, label: "Bookings", href: "/provider/bookings" },
+      { icon: MessageSquare, label: "Messages", href: "/provider/messages" },
     ],
   },
   {

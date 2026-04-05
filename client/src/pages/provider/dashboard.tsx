@@ -174,6 +174,9 @@ export default function ProviderDashboard() {
                           </Badge>
                         </div>
                         <p className="text-sm font-medium text-gray-900 mt-2">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
+                        {booking.referredBy && booking.referredBy !== "Direct" && (
+                          <p className="text-xs text-[#2E8B8B] font-medium mt-1">via {booking.referredBy}</p>
+                        )}
                       </div>
                     </div>
                   </div>
