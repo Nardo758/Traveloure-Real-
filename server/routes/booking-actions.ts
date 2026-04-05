@@ -237,6 +237,20 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
     const travelers = saved.travelers || 1;
     const budget = saved.budget || null;
 
+    // Atomically mark saved trip as converted — prevents duplicate conversions under concurrent requests
+    const markResult = await db.execute(sql`
+      UPDATE saved_trips
+      SET status = 'converted'
+      WHERE id = ${id}
+        AND user_id = ${userId}
+        AND status = 'active'
+      RETURNING id
+    `);
+
+    if (!markResult.rows || markResult.rows.length === 0) {
+      return res.status(409).json({ error: 'Already converted or not eligible' });
+    }
+
     // Create a Trip record in planning status
     const tripId = crypto.randomUUID();
     await db.execute(sql`
@@ -256,13 +270,6 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
         NOW(),
         NOW()
       )
-    `);
-
-    // Mark saved trip as converted
-    await db.execute(sql`
-      UPDATE saved_trips
-      SET status = 'converted'
-      WHERE id = ${id}
     `);
 
     res.json({ success: true, tripId });
