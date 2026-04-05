@@ -7,7 +7,7 @@ import { SiGoogle, SiApple } from "react-icons/si";
 import {
   Layers, MapPin, Check, CalendarPlus,
 } from "lucide-react";
-import { detectMapsPlatform, openInMaps } from "@/lib/maps-platform";
+import { openInMaps } from "@/lib/navigate";
 import {
   TYPE_COLORS, MODE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardActivity, type PlanCardTransport,
@@ -344,56 +344,38 @@ export function MapControlCenter({
     return a.location || a.name || tripDestination;
   }
 
-  function getDominantMode(transports: PlanCardTransport[] | undefined): { google: string; apple: string } {
-    if (!transports || transports.length === 0) return { google: "walking", apple: "w" };
+  function getDominantRawMode(transports: PlanCardTransport[] | undefined): string {
+    if (!transports || transports.length === 0) return "walk";
     const counts: Record<string, number> = {};
     transports.forEach(t => { counts[t.mode] = (counts[t.mode] || 0) + 1; });
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-    const gMap: Record<string, string> = { walk: "walking", taxi: "driving", car: "driving", shuttle: "driving", bus: "transit", train: "transit", ferry: "transit", bicycle: "bicycling" };
-    const aMap: Record<string, string> = { walk: "w", taxi: "d", car: "d", shuttle: "d", bus: "r", train: "r", ferry: "r", bicycle: "w" };
-    return { google: gMap[top] || "walking", apple: aMap[top] || "w" };
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  }
+
+  function buildWaypoints(acts: PlanCardActivity[]) {
+    return acts.map(a => {
+      if (a.lat != null && a.lng != null) return { lat: a.lat, lng: a.lng, name: a.name };
+      return { name: getActivityLoc(a) };
+    });
   }
 
   function handleGoogleMaps() {
     const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
+    const mode = getDominantRawMode(day?.transports);
     if (acts.length === 0) {
-      openInMaps(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(tripDestination)}`);
+      openInMaps({ destination: { lat: 0, lng: 0, name: tripDestination }, app: "google" });
       return;
     }
-    if (acts.length === 1) {
-      openInMaps(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(getActivityLoc(acts[0]))}`);
-      return;
-    }
-    const mode = getDominantMode(day?.transports);
-    const origin = encodeURIComponent(getActivityLoc(acts[0]));
-    const destination = encodeURIComponent(getActivityLoc(acts[acts.length - 1]));
-    const googleMode = acts.length > 2 && mode.google === "transit" ? "walking" : mode.google;
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=${googleMode}`;
-    if (acts.length > 2) {
-      const waypoints = acts.slice(1, -1).map(a => encodeURIComponent(getActivityLoc(a))).join("%7C");
-      url += `&waypoints=${waypoints}`;
-    }
-    openInMaps(url);
+    openInMaps({ waypoints: buildWaypoints(acts), mode, app: "google" });
   }
 
   function handleAppleMaps() {
     const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
-    const platform = detectMapsPlatform();
+    const mode = getDominantRawMode(day?.transports);
     if (acts.length === 0) {
-      const q = encodeURIComponent(tripDestination);
-      openInMaps(platform === "apple" ? `maps://?q=${q}` : `https://maps.apple.com/?q=${q}`);
+      openInMaps({ destination: { lat: 0, lng: 0, name: tripDestination }, app: "apple" });
       return;
     }
-    if (acts.length === 1) {
-      const q = encodeURIComponent(getActivityLoc(acts[0]));
-      openInMaps(platform === "apple" ? `maps://?q=${q}` : `https://maps.apple.com/?q=${q}`);
-      return;
-    }
-    const mode = getDominantMode(day?.transports);
-    const saddr = encodeURIComponent(getActivityLoc(acts[0]));
-    const daddr = encodeURIComponent(getActivityLoc(acts[acts.length - 1]));
-    const base = platform === "apple" ? "maps://" : "https://maps.apple.com/";
-    openInMaps(`${base}?saddr=${saddr}&daddr=${daddr}&dirflg=${mode.apple}`);
+    openInMaps({ waypoints: buildWaypoints(acts), mode, app: "apple" });
   }
 
   function handleAddToCalendar() {

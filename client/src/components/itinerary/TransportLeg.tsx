@@ -14,9 +14,8 @@ import {
 import {
   TRANSPORT_MODE_ICONS,
   TRANSPORT_MODE_LABELS,
-  openInMaps,
-  detectMapsPlatform,
 } from "@/lib/maps-platform";
+import { openInMaps } from "@/lib/navigate";
 import { cn } from "@/lib/utils";
 
 export interface TransportAlternative {
@@ -58,23 +57,6 @@ interface TransportLegProps {
   onModeChangeSuccess?: (legId: string, timeDiffMinutes: number) => void;
 }
 
-function getAppleFlag(mode: string): string {
-  const flags: Record<string, string> = {
-    walk: "w", transit: "r", train: "r", tram: "r", bus: "r",
-    taxi: "d", rideshare: "d", private_driver: "d", rental_car: "d",
-    bike: "c", ferry: "r", auto_rickshaw: "d", tuk_tuk: "d", cable_car: "w",
-  };
-  return flags[mode] || "r";
-}
-
-function getGoogleMode(mode: string): string {
-  const modes: Record<string, string> = {
-    walk: "walking", transit: "transit", train: "transit", tram: "transit", bus: "transit",
-    taxi: "driving", rideshare: "driving", private_driver: "driving", rental_car: "driving",
-    bike: "bicycling", ferry: "transit", auto_rickshaw: "driving", tuk_tuk: "driving", cable_car: "walking",
-  };
-  return modes[mode] || "transit";
-}
 
 export function TransportLeg({
   leg,
@@ -176,15 +158,11 @@ export function TransportLeg({
 
   const handleOpenLegInMaps = () => {
     if (!leg.fromLat || !leg.fromLng || !leg.toLat || !leg.toLng) return;
-    const platform = detectMapsPlatform();
-    const mode = currentMode;
-    let url: string;
-    if (platform === "apple") {
-      url = `maps://?saddr=${leg.fromLat},${leg.fromLng}&daddr=${leg.toLat},${leg.toLng}&dirflg=${getAppleFlag(mode)}`;
-    } else {
-      url = `https://www.google.com/maps/dir/?api=1&origin=${leg.fromLat},${leg.fromLng}&destination=${leg.toLat},${leg.toLng}&travelmode=${getGoogleMode(mode)}`;
-    }
-    openInMaps(url);
+    openInMaps({
+      origin: { lat: leg.fromLat, lng: leg.fromLng, name: leg.fromName },
+      destination: { lat: leg.toLat, lng: leg.toLng, name: leg.toName },
+      mode: currentMode,
+    });
   };
 
   const modeIcon = TRANSPORT_MODE_ICONS[currentMode] || "🚌";
@@ -336,7 +314,7 @@ export function TransportLeg({
               data-testid="button-open-leg-maps"
             >
               <MapPin className="h-3 w-3" />
-              Open in {detectMapsPlatform() === "apple" ? "Apple Maps" : "Google Maps"}
+              Open in Maps
             </button>
           )}
           {leg.linkedProductUrl && (
