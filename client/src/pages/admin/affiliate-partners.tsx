@@ -1,4 +1,4 @@
-import { AdminLayout } from "@/components/admin-layout";
+import { AdminLayout } from "@/components/admin/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

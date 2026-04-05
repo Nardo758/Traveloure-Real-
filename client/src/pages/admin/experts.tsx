@@ -1,4 +1,4 @@
-import { AdminLayout } from "@/components/admin-layout";
+import { AdminLayout } from "@/components/admin/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,10 +16,11 @@ import {
   Clock,
   Loader2
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface ExpertApplication {
   id: string;
@@ -43,6 +44,13 @@ export default function AdminExperts() {
   const [activeTab, setActiveTab] = useState<"applications" | "active">("applications");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [location] = useLocation();
+
+  useEffect(() => {
+    if (location.endsWith("/pending")) {
+      setActiveTab("applications");
+    }
+  }, [location]);
 
   const { data: applications = [], isLoading } = useQuery<ExpertApplication[]>({
     queryKey: ["/api/admin/expert-applications"],

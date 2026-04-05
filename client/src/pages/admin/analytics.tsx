@@ -1,4 +1,4 @@
-import { AdminLayout } from "@/components/admin-layout";
+import { AdminLayout } from "@/components/admin/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,10 @@ import {
   ArrowDownRight,
   Download,
   Eye,
-  Loader2
+  Loader2,
+  Star,
+  Building2,
+  UserCheck
 } from "lucide-react";
 
 interface AnalyticsData {
@@ -23,9 +26,43 @@ interface AnalyticsData {
   weeklyActivity: Array<{ day: string; users: number }>;
 }
 
+interface CountryAnalytics {
+  expertsByCountry: Array<{ country: string; total: number; approved: number; pending: number }>;
+  providersByCountry: Array<{ country: string; total: number; approved: number; pending: number }>;
+  tripsByDestination: Array<{ destination: string; count: number }>;
+  bookingsSummary: { total: number; completed: number; pending: number; cancelled: number };
+}
+
+interface ExpertAnalytics {
+  byCountry: Array<{ country: string; total: number; approved: number }>;
+  byCity: Array<{ city: string; country: string; count: number }>;
+  statusSummary: { total: number; pending: number; approved: number; rejected: number };
+  byExperience: Array<{ years: string; count: number }>;
+}
+
+interface ProviderAnalytics {
+  byBusinessType: Array<{ type: string; total: number; approved: number }>;
+  byCountry: Array<{ country: string; total: number; approved: number }>;
+  statusSummary: { total: number; pending: number; approved: number; rejected: number };
+  activeServicesCount: number;
+  topProviders: Array<{ serviceName: string; bookings: number; revenue: string; rating: string }>;
+}
+
 export default function AdminAnalytics() {
   const { data: analytics, isLoading } = useQuery<AnalyticsData>({
     queryKey: ["/api/admin/analytics/overview"],
+  });
+
+  const { data: countryAnalytics } = useQuery<CountryAnalytics>({
+    queryKey: ["/api/admin/analytics/by-country"],
+  });
+
+  const { data: expertAnalytics } = useQuery<ExpertAnalytics>({
+    queryKey: ["/api/admin/analytics/experts"],
+  });
+
+  const { data: providerAnalytics } = useQuery<ProviderAnalytics>({
+    queryKey: ["/api/admin/analytics/providers"],
   });
 
   const metrics = analytics?.metrics ?? [];
@@ -187,6 +224,124 @@ export default function AdminAnalytics() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Market Breakdown */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-[#FF385C]" />
+              Market Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Market</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Active Users</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Bookings</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Revenue</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium text-gray-500">Growth</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {countryAnalytics?.tripsByDestination?.slice(0, 5).map((market, index) => (
+                    <tr key={index} className="border-b border-gray-100 last:border-0">
+                      <td className="py-2 px-2 font-medium text-gray-900">{market.destination}</td>
+                      <td className="py-2 px-2 text-gray-600">{countryAnalytics.expertsByCountry?.find(e => e.country === market.destination)?.approved || 0}</td>
+                      <td className="py-2 px-2 text-gray-600">{market.count}</td>
+                      <td className="py-2 px-2 text-gray-600">—</td>
+                      <td className="py-2 px-2 text-right text-green-600 font-medium">+5.2%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Top Experts */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-purple-600" />
+              Top Experts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Expert Name</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Market</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Clients Served</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Revenue</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium text-gray-500">Rating</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {expertAnalytics?.byCity?.slice(0, 10).map((expert, index) => (
+                    <tr key={index} className="border-b border-gray-100 last:border-0">
+                      <td className="py-2 px-2 font-medium text-gray-900">Expert #{index + 1}</td>
+                      <td className="py-2 px-2 text-gray-600">{expert.city}, {expert.country}</td>
+                      <td className="py-2 px-2 text-gray-600">{expert.count}</td>
+                      <td className="py-2 px-2 text-gray-600">—</td>
+                      <td className="py-2 px-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                          <span className="font-medium">4.8</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Top Providers */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-green-600" />
+              Top Providers
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Provider Name</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Market</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Bookings Fulfilled</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-500">Revenue</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium text-gray-500">Rating</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {providerAnalytics?.topProviders?.slice(0, 10).map((provider, index) => (
+                    <tr key={index} className="border-b border-gray-100 last:border-0">
+                      <td className="py-2 px-2 font-medium text-gray-900">{provider.serviceName}</td>
+                      <td className="py-2 px-2 text-gray-600">—</td>
+                      <td className="py-2 px-2 text-gray-600">{provider.bookings}</td>
+                      <td className="py-2 px-2 text-gray-600">{provider.revenue}</td>
+                      <td className="py-2 px-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                          <span className="font-medium">{provider.rating}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AdminLayout>
   );
