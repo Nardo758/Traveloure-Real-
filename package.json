@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push",
     "seed:beta": "tsx server/seeds/run-beta-seed.ts",
     "seed:california": "tsx scripts/seed-california-full.ts",
+    "verify:california": "tsx scripts/verify-california.ts",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
