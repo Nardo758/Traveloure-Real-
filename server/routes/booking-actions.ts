@@ -525,4 +525,182 @@ router.get('/trips/shared/:token', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/experts?destination=X
+ * Return approved experts, optionally filtered by destination.
+ */
+router.get('/experts', async (req, res) => {
+  try {
+    const { destination } = req.query as { destination?: string };
+
+    let result;
+    if (destination && destination.trim()) {
+      const destLower = destination.trim().toLowerCase();
+      const destPattern = `%${destLower}%`;
+      result = await db.execute(sql`
+        SELECT
+          lef.id, lef.user_id,
+          lef.first_name, lef.last_name,
+          lef.bio, lef.specialties, lef.destinations,
+          lef.hourly_rate, lef.years_of_experience,
+          lef.availability, lef.response_time,
+          u.profile_image_url,
+          COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
+          COUNT(rr.id) as review_count
+        FROM local_expert_forms lef
+        JOIN users u ON u.id = lef.user_id
+        LEFT JOIN review_ratings rr ON rr.local_expert_id = lef.user_id
+        WHERE lef.status = 'approved'
+          AND EXISTS (
+            SELECT 1 FROM jsonb_array_elements_text(lef.destinations) d
+            WHERE lower(d) LIKE ${destPattern}
+          )
+        GROUP BY lef.id, lef.user_id, lef.first_name, lef.last_name, lef.bio,
+                 lef.specialties, lef.destinations, lef.hourly_rate,
+                 lef.years_of_experience, lef.availability, lef.response_time,
+                 u.profile_image_url
+        ORDER BY avg_rating DESC, review_count DESC
+        LIMIT 20
+      `);
+    } else {
+      result = await db.execute(sql`
+        SELECT
+          lef.id, lef.user_id,
+          lef.first_name, lef.last_name,
+          lef.bio, lef.specialties, lef.destinations,
+          lef.hourly_rate, lef.years_of_experience,
+          lef.availability, lef.response_time,
+          u.profile_image_url,
+          COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
+          COUNT(rr.id) as review_count
+        FROM local_expert_forms lef
+        JOIN users u ON u.id = lef.user_id
+        LEFT JOIN review_ratings rr ON rr.local_expert_id = lef.user_id
+        WHERE lef.status = 'approved'
+        GROUP BY lef.id, lef.user_id, lef.first_name, lef.last_name, lef.bio,
+                 lef.specialties, lef.destinations, lef.hourly_rate,
+                 lef.years_of_experience, lef.availability, lef.response_time,
+                 u.profile_image_url
+        ORDER BY avg_rating DESC, review_count DESC
+        LIMIT 20
+      `);
+    }
+
+    res.json(result.rows || []);
+  } catch (error: any) {
+    console.error('Get experts error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/trips/:id/expert-advisor
+ * Return the assigned expert advisor for a trip (or null).
+ */
+router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+
+    const result = await db.execute(sql`
+      SELECT
+        tea.id as advisor_id,
+        tea.status,
+        tea.message,
+        tea.assigned_at,
+        lef.id as expert_form_id,
+        lef.first_name, lef.last_name,
+        lef.bio, lef.specialties, lef.destinations,
+        lef.hourly_rate,
+        u.profile_image_url,
+        COALESCE(AVG(rr.rating), 0)::numeric(3,1) as avg_rating,
+        COUNT(rr.id) as review_count
+      FROM trip_expert_advisors tea
+      JOIN local_expert_forms lef ON lef.user_id = tea.local_expert_id
+      JOIN users u ON u.id = tea.local_expert_id
+      LEFT JOIN review_ratings rr ON rr.local_expert_id = tea.local_expert_id
+      WHERE tea.trip_id = ${id}
+        AND tea.status IN ('pending', 'accepted')
+      GROUP BY tea.id, tea.status, tea.message, tea.assigned_at,
+               lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
+               lef.destinations, lef.hourly_rate, u.profile_image_url
+      ORDER BY tea.assigned_at DESC
+      LIMIT 1
+    `);
+
+    if (!result.rows || result.rows.length === 0) {
+      return res.json({ advisor: null });
+    }
+
+    res.json({ advisor: result.rows[0] });
+  } catch (error: any) {
+    console.error('Get trip expert advisor error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/trips/:id/expert-advisor
+ * Assign an expert to a trip — creates trip_expert_advisors record (status: pending).
+ * Idempotent: if an active advisor exists, returns existing record.
+ */
+router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+    const { expertUserId, message } = req.body;
+
+    if (!expertUserId) {
+      return res.status(400).json({ error: 'expertUserId is required' });
+    }
+
+    // Verify trip ownership
+    const tripCheck = await db.execute(sql`
+      SELECT id FROM trips WHERE id = ${id} AND user_id = ${userId}
+    `);
+    if (!tripCheck.rows || tripCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    // Check if already assigned (pending or accepted)
+    const existing = await db.execute(sql`
+      SELECT id, status FROM trip_expert_advisors
+      WHERE trip_id = ${id} AND status IN ('pending', 'accepted')
+      LIMIT 1
+    `);
+
+    if (existing.rows && existing.rows.length > 0) {
+      return res.status(409).json({
+        error: 'A pending or accepted expert is already assigned to this trip',
+        advisorId: existing.rows[0].id,
+      });
+    }
+
+    // Verify expert exists and is approved
+    const expertCheck = await db.execute(sql`
+      SELECT user_id FROM local_expert_forms
+      WHERE user_id = ${expertUserId} AND status = 'approved'
+    `);
+    if (!expertCheck.rows || expertCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Expert not found or not approved' });
+    }
+
+    // Create trip_expert_advisors record
+    const advisorId = crypto.randomUUID();
+    await db.execute(sql`
+      INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
+      VALUES (${advisorId}, ${id}, ${expertUserId}, 'pending', ${message || null}, NOW())
+    `);
+
+    res.json({ success: true, advisorId, status: 'pending' });
+  } catch (error: any) {
+    console.error('Assign expert advisor error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 export default router;

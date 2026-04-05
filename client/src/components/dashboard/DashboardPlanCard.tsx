@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { MapPin, Calendar } from "lucide-react";
+import { MapPin, Calendar, UserCheck, Clock } from "lucide-react";
 
 interface Trip {
   id: string;
@@ -54,6 +54,14 @@ interface Notification {
   createdAt?: string;
   tripId?: string | null;
   read?: boolean;
+}
+
+interface ExpertAdvisor {
+  advisor_id: string;
+  status: "pending" | "accepted" | "rejected";
+  first_name: string;
+  last_name: string;
+  profile_image_url: string | null;
 }
 
 function daysUntil(dateStr: string): number {
@@ -155,6 +163,12 @@ export function DashboardPlanCard({
     queryKey: [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
   });
+
+  const { data: advisorData } = useQuery<{ advisor: ExpertAdvisor | null }>({
+    queryKey: [`/api/trips/${trip.id}/expert-advisor`],
+    staleTime: 60000,
+  });
+  const advisor = advisorData?.advisor ?? null;
 
   const matchedConvId = findMatchedConversationId(trip, conversations);
 
@@ -286,7 +300,43 @@ export function DashboardPlanCard({
         </div>
       </div>
 
-      {expertMsgText && initials && (
+      {advisor && (
+        <div
+          className="flex items-center gap-2.5 px-4 py-2.5 border-t"
+          style={{ borderTopWidth: "0.5px", borderColor: "hsl(var(--border))" }}
+          data-testid={`advisor-strip-${trip.id}`}
+        >
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-medium flex-shrink-0"
+            style={{ background: avatarColor.bg, color: avatarColor.text }}
+          >
+            {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-medium text-foreground">
+              {advisor.first_name} {advisor.last_name}
+            </div>
+            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+              {advisor.status === "accepted" ? (
+                <>
+                  <UserCheck className="w-2.5 h-2.5 text-[#2E8B8B]" />
+                  Expert assigned
+                </>
+              ) : (
+                <>
+                  <Clock className="w-2.5 h-2.5" />
+                  Request pending
+                </>
+              )}
+            </div>
+          </div>
+          <div
+            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${advisor.status === "accepted" ? "bg-[#2E8B8B]" : "bg-amber-400"}`}
+          />
+        </div>
+      )}
+
+      {!advisor && expertMsgText && initials && (
         <div
           className="flex items-center gap-2.5 px-4 py-2.5 border-t"
           style={{ borderTopWidth: "0.5px", borderColor: "hsl(var(--border))" }}
