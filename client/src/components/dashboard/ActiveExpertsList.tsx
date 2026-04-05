@@ -63,15 +63,6 @@ function expertDisplayName(title: string): string {
   );
 }
 
-function expertSpecialty(title: string): string {
-  const lower = title.toLowerCase();
-  if (lower.includes("wedding")) return "Wedding specialist";
-  if (lower.includes("proposal")) return "Proposal expert";
-  if (lower.includes("birthday")) return "Birthday planner";
-  if (lower.includes("corporate")) return "Corporate events";
-  return "Travel expert";
-}
-
 function matchConversationToTrip(
   conv: Conversation,
   trips: Trip[]
@@ -109,13 +100,13 @@ export function ActiveExpertsList({
 }: ActiveExpertsListProps) {
   if (isLoading) {
     return (
-      <section className="mb-6" data-testid="active-experts-section">
-        <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
+      <section className="mb-[22px]" data-testid="active-experts-section">
+        <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
           <span>Your active experts</span>
         </div>
-        <div className="space-y-2">
+        <div className="flex flex-col gap-1.5">
           {[1, 2].map(i => (
-            <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />
+            <div key={i} className="h-14 rounded-lg animate-pulse" style={{ background: "#F3F3EE" }} />
           ))}
         </div>
       </section>
@@ -127,12 +118,13 @@ export function ActiveExpertsList({
   const displayed = conversations.slice(0, 5);
 
   return (
-    <section className="mb-6" data-testid="active-experts-section">
-      <div className="text-sm font-medium text-foreground mb-3 flex items-center justify-between">
+    <section className="mb-[22px]" data-testid="active-experts-section">
+      <div className="text-[13px] font-medium mb-2.5 flex items-center justify-between" style={{ color: "#1A1A18" }}>
         <span>Your active experts</span>
         <Link href="/chat">
           <span
-            className="text-[12px] text-[#2E8B8B] cursor-pointer hover:underline"
+            className="text-[11px] cursor-pointer hover:underline"
+            style={{ color: "#2E8B8B" }}
             data-testid="link-view-all-experts"
           >
             View all
@@ -140,7 +132,7 @@ export function ActiveExpertsList({
         </Link>
       </div>
 
-      <div className="space-y-2">
+      <div className="flex flex-col gap-1.5">
         {displayed.map((conv, i) => {
           const activityTs = activityTimestamp(conv);
           const online = isOnline(activityTs);
@@ -148,51 +140,45 @@ export function ActiveExpertsList({
           const initials = getInitials(conv.title);
           const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
           const displayName = expertDisplayName(conv.title);
-          const specialty = expertSpecialty(conv.title);
           const linkedTrip = matchConversationToTrip(conv, trips);
 
           return (
             <Link key={conv.id} href="/chat">
               <div
-                className="flex items-center gap-3 px-3.5 py-2.5 bg-card border border-border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                style={{ borderWidth: "0.5px" }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer transition-colors hover:bg-[#F3F3EE]"
+                style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
                 data-testid={`expert-row-${conv.id}`}
               >
                 <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-medium flex-shrink-0"
+                  className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[11px] font-semibold flex-shrink-0"
                   style={{ background: color.bg, color: color.text }}
                 >
                   {initials}
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium text-foreground truncate">
+                  <div className="text-[12px] font-medium truncate" style={{ color: "#1A1A18" }}>
                     {displayName}
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-px">
-                    {specialty}
-                  </div>
+                  {linkedTrip && (
+                    <div className="text-[10px] mt-px" style={{ color: "#7A7A72" }}>
+                      {linkedTrip.destination}
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-right flex-shrink-0">
                   {linkedTrip && (
-                    <div
-                      className="text-[11px] font-medium text-foreground mb-0.5 max-w-[120px] truncate text-right"
-                      data-testid={`expert-trip-name-${conv.id}`}
-                    >
+                    <div className="text-[10px] font-medium mb-0.5 max-w-[120px] truncate text-right" style={{ color: "#1A1A18" }} data-testid={`expert-trip-name-${conv.id}`}>
                       {linkedTrip.title || linkedTrip.destination}
                     </div>
                   )}
                   <div className="flex items-center gap-1 justify-end">
                     {online && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#5DCAA5] inline-block" />
+                      <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: "#5DCAA5" }} />
                     )}
-                    <span
-                      className={`text-[10px] ${
-                        online ? "text-[#2E8B8B]" : "text-muted-foreground"
-                      }`}
-                    >
-                      {relTime}
+                    <span className="text-[9px]" style={{ color: online ? "#2E8B8B" : "#7A7A72" }}>
+                      {online ? "● Online" : relTime}
                     </span>
                   </div>
                 </div>
