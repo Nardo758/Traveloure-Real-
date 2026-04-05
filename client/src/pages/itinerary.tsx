@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,6 +116,21 @@ export default function ItineraryPage() {
   const queryClient = useQueryClient();
   const [mainTab, setMainTab] = useState<"itinerary" | "logistics">("itinerary");
   const [selectedDay, setSelectedDay] = useState(1);
+
+  useEffect(() => {
+    if (!tripData?.startDate || !tripData?.endDate) return;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(tripData.startDate);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(tripData.endDate);
+    end.setHours(0, 0, 0, 0);
+    if (today >= start && today <= end) {
+      const dayNum = differenceInDays(today, start) + 1;
+      setSelectedDay(Math.max(1, dayNum));
+    }
+  }, [tripData?.startDate, tripData?.endDate]);
+
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [isSaved, setIsSaved] = useState(false);
   const [showExpertDialog, setShowExpertDialog] = useState(false);
@@ -417,6 +432,7 @@ export default function ItineraryPage() {
       status: a.booked ? "confirmed" : "pending",
       cost: a.price || 0,
       comments: 0,
+      expertNote: a.notes || a.description || undefined,
     })),
     transports: (() => {
       const dayNum = d.day;
@@ -621,6 +637,7 @@ export default function ItineraryPage() {
                   tripId={String(itinerary.id)}
                   day={currentPlanCardDay}
                   templateConfig={templateConfig}
+                  legs={currentDayLegs}
                 />
               )}
 

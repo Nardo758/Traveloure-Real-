@@ -102,6 +102,7 @@ export interface PlanCardActivity {
   cost: number;
   comments: number;
   changes?: Array<{ who: string; what: string }>;
+  expertNote?: string;
 }
 
 export interface PlanCardTransport {
