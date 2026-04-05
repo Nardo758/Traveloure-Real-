@@ -5112,7 +5112,8 @@ export const sharedTrips = pgTable("shared_trips", {
 
 export const sharedTripViews = pgTable("shared_trip_views", {
   id: uuid("id").primaryKey().defaultRandom(),
-  sharedTripId: uuid("shared_trip_id").notNull(),
+  sharedTripId: uuid("shared_trip_id"),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   viewerIp: text("viewer_ip"),
   viewerCountry: text("viewer_country"),
   viewedAt: timestamp("viewed_at").defaultNow(),
