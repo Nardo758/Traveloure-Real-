@@ -3,59 +3,38 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Calendar } from "@/components/ui/calendar";
-import { 
-  CalendarDays, 
-  Clock, 
-  MapPin, 
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  CalendarDays,
+  Clock,
+  MapPin,
   User,
   CheckCircle,
   AlertCircle,
   ArrowRight
 } from "lucide-react";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface Booking {
+  id: string;
+  travelerId?: string;
+  travelerName?: string;
+  date?: string;
+  status: string;
+  notes?: string;
+  [key: string]: any;
+}
 
 export default function ExpertBookings() {
   const [date, setDate] = useState<Date | undefined>(new Date());
+  const { toast } = useToast();
 
-  const upcomingBookings = [
-    {
-      id: 1,
-      client: "Sarah & Mike",
-      event: "Restaurant Reservation",
-      date: "Today",
-      time: "7:00 PM",
-      location: "Sushi Saito, Roppongi",
-      status: "confirmed",
-      notes: "Table for 2, window seat requested"
-    },
-    {
-      id: 2,
-      client: "Jennifer",
-      event: "Venue Viewing",
-      date: "Tomorrow",
-      time: "10:00 AM",
-      location: "Shangri-La Paris",
-      status: "pending",
-      notes: "Proposal venue tour"
-    },
-    {
-      id: 3,
-      client: "David & Emma",
-      event: "Final Menu Review",
-      date: "Friday",
-      time: "2:00 PM",
-      location: "Le Bernardin",
-      status: "confirmed",
-      notes: "Anniversary dinner menu tasting"
-    },
-  ];
-
-  const todayEvents = [
-    { time: "9:00 AM", event: "Morning briefing", type: "internal" },
-    { time: "11:00 AM", event: "Sarah & Mike check-in call", type: "call" },
-    { time: "2:00 PM", event: "Jennifer venue research", type: "research" },
-    { time: "7:00 PM", event: "Sarah & Mike dinner reservation", type: "booking" },
-  ];
+  const { data: bookings, isLoading } = useQuery<Booking[]>({
+    queryKey: ["/api/expert/bookings"],
+  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -104,22 +83,32 @@ export default function ExpertBookings() {
               <CardTitle className="text-lg">Today's Schedule</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {todayEvents.map((event, index) => (
-                <div 
-                  key={index} 
-                  className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover-elevate"
-                  data-testid={`today-event-${index}`}
-                >
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600 min-w-16">
-                    <Clock className="w-4 h-4" />
-                    {event.time}
+              {isLoading ? (
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 rounded-lg" />
+                  ))}
+                </>
+              ) : bookings && bookings.length > 0 ? (
+                bookings.slice(0, 3).map((booking, index) => (
+                  <div
+                    key={index}
+                    className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover-elevate"
+                    data-testid={`today-event-${index}`}
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium text-gray-600 min-w-16">
+                      <Clock className="w-4 h-4" />
+                      {booking.date || "N/A"}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{booking.travelerName || "Booking"}</p>
+                      <Badge variant="outline" className="text-xs mt-1">{booking.status}</Badge>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{event.event}</p>
-                    <Badge variant="outline" className="text-xs mt-1">{event.type}</Badge>
-                  </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-sm text-gray-500">No bookings scheduled for today</p>
+              )}
             </CardContent>
           </Card>
 
@@ -162,44 +151,53 @@ export default function ExpertBookings() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {upcomingBookings.map((booking) => (
-              <div 
-                key={booking.id} 
-                className="p-4 rounded-lg border border-gray-200 hover-elevate"
-                data-testid={`booking-${booking.id}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <p className="font-semibold text-gray-900">{booking.event}</p>
-                      {getStatusBadge(booking.status)}
+            {isLoading ? (
+              <>
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-24 rounded-lg" />
+                ))}
+              </>
+            ) : bookings && bookings.length > 0 ? (
+              bookings.map((booking) => (
+                <div
+                  key={booking.id}
+                  className="p-4 rounded-lg border border-gray-200 hover-elevate"
+                  data-testid={`booking-${booking.id}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <p className="font-semibold text-gray-900">Booking</p>
+                        {getStatusBadge(booking.status)}
+                      </div>
+                      <div className="space-y-1 text-sm text-gray-600">
+                        <p className="flex items-center gap-2">
+                          <User className="w-4 h-4" /> {booking.travelerName || "Traveler"}
+                        </p>
+                        {booking.date && (
+                          <p className="flex items-center gap-2">
+                            <CalendarDays className="w-4 h-4" /> {booking.date}
+                          </p>
+                        )}
+                      </div>
+                      {booking.notes && (
+                        <p className="text-sm text-gray-500 mt-2 italic">Note: {booking.notes}</p>
+                      )}
                     </div>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      <p className="flex items-center gap-2">
-                        <User className="w-4 h-4" /> {booking.client}
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <CalendarDays className="w-4 h-4" /> {booking.date} at {booking.time}
-                      </p>
-                      <p className="flex items-center gap-2">
-                        <MapPin className="w-4 h-4" /> {booking.location}
-                      </p>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" data-testid={`button-edit-booking-${booking.id}`}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="outline" data-testid={`button-cancel-booking-${booking.id}`}>
+                        Cancel
+                      </Button>
                     </div>
-                    {booking.notes && (
-                      <p className="text-sm text-gray-500 mt-2 italic">Note: {booking.notes}</p>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" data-testid={`button-edit-booking-${booking.id}`}>
-                      Edit
-                    </Button>
-                    <Button size="sm" variant="outline" data-testid={`button-cancel-booking-${booking.id}`}>
-                      Cancel
-                    </Button>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-8">No bookings yet</p>
+            )}
           </CardContent>
         </Card>
         {/* Booking Analytics */}
