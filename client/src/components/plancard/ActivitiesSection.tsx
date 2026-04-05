@@ -94,18 +94,29 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
   const modeIcon = TRANSPORT_MODE_ICONS[activeMode] || "🚶";
   const modeLabel = TRANSPORT_MODE_LABELS[activeMode] || activeMode;
 
-  const allModes = [
-    { mode: activeMode, durationMinutes: leg.estimatedDurationMinutes, costUsd: leg.estimatedCostUsd },
-    ...(leg.alternativeModes || [])
-      .filter((m) => m.mode !== activeMode)
-      .map((m) => ({ mode: m.mode, durationMinutes: m.durationMinutes, costUsd: m.costUsd })),
-  ];
+  const recommendedEntry = {
+    mode: leg.recommendedMode || leg.userSelectedMode || "walk",
+    durationMinutes: leg.estimatedDurationMinutes,
+    costUsd: leg.estimatedCostUsd,
+  };
+  const altEntries = (leg.alternativeModes || []).map((m) => ({
+    mode: m.mode,
+    durationMinutes: m.durationMinutes,
+    costUsd: m.costUsd,
+  }));
+  const allModes = [recommendedEntry, ...altEntries.filter((m) => m.mode !== recommendedEntry.mode)];
+
+  const selectedEntry =
+    allModes.find((m) => m.mode === activeMode) ??
+    { mode: activeMode, durationMinutes: leg.estimatedDurationMinutes, costUsd: leg.estimatedCostUsd };
+  const displayDuration = selectedEntry.durationMinutes;
+  const displayCost = selectedEntry.costUsd;
 
   const canNavigate =
     hasValidCoords(leg.fromLat ?? undefined, leg.fromLng ?? undefined) &&
     hasValidCoords(leg.toLat ?? undefined, leg.toLng ?? undefined);
 
-  const handleOpenMaps = () => {
+  const openMapsForMode = (mode: string) => {
     openInMaps({
       origin: {
         lat: leg.fromLat ?? undefined,
@@ -117,7 +128,7 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
         lng: leg.toLng ?? undefined,
         name: leg.toName,
       },
-      mode: activeMode as TraveloureMode,
+      mode: mode as TraveloureMode,
     });
   };
 
@@ -135,11 +146,11 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
           >
             <span className="text-sm leading-none flex-shrink-0">{modeIcon}</span>
             <span className="font-medium">{modeLabel}</span>
-            {leg.estimatedDurationMinutes > 0 && (
-              <span className="text-muted-foreground/60">{leg.estimatedDurationMinutes}m</span>
+            {displayDuration > 0 && (
+              <span className="text-muted-foreground/60">{displayDuration}m</span>
             )}
-            {leg.estimatedCostUsd != null && leg.estimatedCostUsd > 0 && (
-              <span className="text-green-600 dark:text-green-400">${leg.estimatedCostUsd}</span>
+            {displayCost != null && displayCost > 0 && (
+              <span className="text-green-600 dark:text-green-400">${displayCost}</span>
             )}
             {leg.distanceDisplay && (
               <span className="text-muted-foreground/50 text-[11px]">{leg.distanceDisplay}</span>
@@ -151,7 +162,7 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
 
           {canNavigate && (
             <button
-              onClick={handleOpenMaps}
+              onClick={() => openMapsForMode(activeMode)}
               className="flex items-center gap-1 text-[11px] text-primary/70 hover:text-primary transition-colors flex-shrink-0 px-1.5 py-0.5 rounded hover:bg-primary/10"
               title={`Open route in Maps (${modeLabel})`}
               data-testid={`button-connector-maps-${leg.id}`}
@@ -171,7 +182,11 @@ function TransportConnector({ leg, modeOverride, onModeChange }: ConnectorProps)
               return (
                 <button
                   key={m.mode}
-                  onClick={() => { onModeChange(m.mode); setOpen(false); }}
+                  onClick={() => {
+                    onModeChange(m.mode);
+                    setOpen(false);
+                    if (canNavigate) openMapsForMode(m.mode);
+                  }}
                   className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all border ${
                     isActive
                       ? "bg-primary text-primary-foreground border-primary shadow-sm"
