@@ -232,7 +232,6 @@ export default function Profile() {
             Save Changes
           </Button>
         </div>
-      </div>
     </div>
   );
 }
