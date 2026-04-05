@@ -29,7 +29,6 @@ import {
 } from "@/lib/maps-platform";
 import { cn } from "@/lib/utils";
 import type { InlineTransportLegData } from "./InlineTransportSelector";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TransportBookingCard } from "./TransportBookingCard";
 
 const ENHANCED_MODES = [
@@ -619,14 +618,6 @@ function TransportLegCard({
                 </div>
               );
             })()}
-
-            {(isTransitMode(currentMode) || ["private_driver", "rental_car", "taxi", "rideshare"].includes(currentMode)) && (
-              <TwelveGoTransport
-                origin={leg.fromName}
-                destination={leg.toName}
-                variant="compact"
-              />
-            )}
 
             <div className="flex items-center gap-2 pt-1 flex-wrap">
               {(leg.fromLat && leg.toLat) && !isTransitMode(currentMode) && (
