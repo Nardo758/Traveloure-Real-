@@ -21,7 +21,8 @@ import {
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
   userAndExpertChats, insertUserAndExpertChatSchema,
-  expertPayouts, providerPayouts
+  expertPayouts, providerPayouts,
+  platformSettings
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
@@ -49,6 +50,7 @@ import { opportunityEngineService } from "./services/opportunity-engine.service"
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries } from "@shared/schema";
+import { accessAuditLogs, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -12301,6 +12303,83 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Suspend/Unsuspend user
+  app.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const userId = req.params.id;
+      const { suspended } = req.body;
+
+      if (typeof suspended !== "boolean") {
+        return res.status(400).json({ message: "suspended must be a boolean" });
+      }
+
+      const targetUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await db.update(users).set({ suspended }).where(eq(users.id, userId));
+
+      res.json({
+        success: true,
+        user: {
+          id: userId,
+          suspended,
+        },
+      });
+    } catch (err) {
+      console.error("Suspend user error:", err);
+      res.status(500).json({ message: "Failed to update user suspension status" });
+    }
+  });
+
+  // Change user role
+  app.patch("/api/admin/users/:id/role", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const userId = req.params.id;
+      const { role } = req.body;
+      const currentAdminId = admin.id;
+
+      // Prevent self-role-change
+      if (userId === currentAdminId) {
+        return res.status(400).json({ message: "Cannot change your own role" });
+      }
+
+      const validRoles = ["user", "travel_expert", "local_expert", "event_planner", "service_provider", "executive_assistant", "admin"];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+
+      const targetUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await db.update(users).set({ role }).where(eq(users.id, userId));
+
+      res.json({
+        success: true,
+        user: {
+          id: userId,
+          role,
+        },
+      });
+    } catch (err) {
+      console.error("Change user role error:", err);
+      res.status(500).json({ message: "Failed to change user role" });
+    }
+  });
+
   // === Admin Trips/Plans Management ===
   app.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     try {
@@ -15041,6 +15120,207 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false });
+    }
+  });
+
+  // === Admin Activity Feed ===
+
+  app.get("/api/admin/activity/recent", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser || dbUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+
+      const rows = await db
+        .select({
+          id: accessAuditLogs.id,
+          actorId: accessAuditLogs.actorId,
+          actorRole: accessAuditLogs.actorRole,
+          action: accessAuditLogs.action,
+          resourceType: accessAuditLogs.resourceType,
+          resourceId: accessAuditLogs.resourceId,
+          ipAddress: accessAuditLogs.ipAddress,
+          createdAt: accessAuditLogs.createdAt,
+          actorEmail: users.email,
+          actorFirstName: users.firstName,
+          actorLastName: users.lastName,
+        })
+        .from(accessAuditLogs)
+        .leftJoin(users, eq(accessAuditLogs.actorId, users.id))
+        .orderBy(desc(accessAuditLogs.createdAt))
+        .limit(limit);
+
+      res.json(rows);
+    } catch (err) {
+      console.error("Get activity error:", err);
+      res.status(500).json({ message: "Failed to fetch activity feed" });
+    }
+  });
+
+  // === Admin Flagged Content Queue ===
+
+  app.get("/api/admin/flagged-content", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser || dbUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+
+      const rows = await db
+        .select({
+          id: contentRegistry.id,
+          trackingNumber: contentRegistry.trackingNumber,
+          contentType: contentRegistry.contentType,
+          contentId: contentRegistry.contentId,
+          title: contentRegistry.title,
+          status: contentRegistry.status,
+          flagReason: contentRegistry.flagReason,
+          flaggedAt: contentRegistry.flaggedAt,
+          ownerId: contentRegistry.ownerId,
+          ownerEmail: users.email,
+          ownerFirstName: users.firstName,
+          ownerLastName: users.lastName,
+        })
+        .from(contentRegistry)
+        .leftJoin(users, eq(contentRegistry.ownerId, users.id))
+        .where(eq(contentRegistry.status, "flagged"))
+        .orderBy(desc(contentRegistry.flaggedAt))
+        .limit(limit);
+
+      res.json(rows);
+    } catch (err) {
+      console.error("Get flagged content error:", err);
+      res.status(500).json({ message: "Failed to fetch flagged content" });
+    }
+  });
+
+  // === Admin Platform Settings ===
+
+  const DEFAULT_SETTINGS: Record<string, string> = {
+    platform_name: "Traveloure",
+    default_currency: "USD",
+    timezone: "UTC",
+    support_email: "support@traveloure.com",
+    expert_commission_min: "75",
+    expert_commission_max: "85",
+    provider_commission_min: "4",
+    provider_commission_max: "12",
+    ai_recommendations_enabled: "true",
+    new_registrations_enabled: "true",
+    travelpulse_enabled: "true",
+    credit_system_enabled: "true",
+    affiliate_bookings_enabled: "true",
+  };
+
+  async function seedDefaultSettings() {
+    try {
+      for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+        await db.insert(platformSettings)
+          .values({ key, value })
+          .onConflictDoNothing();
+      }
+    } catch (err) {
+      console.error("Failed to seed platform settings:", err);
+    }
+  }
+  // Seed on startup (non-blocking)
+  seedDefaultSettings();
+
+  app.get("/api/admin/settings", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser || dbUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const rows = await db.select().from(platformSettings);
+      const settings: Record<string, string> = { ...DEFAULT_SETTINGS };
+      for (const row of rows) {
+        settings[row.key] = row.value;
+      }
+      res.json(settings);
+    } catch (err) {
+      console.error("Get settings error:", err);
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  app.patch("/api/admin/settings", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user?.claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser || dbUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const updates = req.body as Record<string, string>;
+      if (!updates || typeof updates !== "object" || Array.isArray(updates)) {
+        return res.status(400).json({ message: "Invalid settings payload" });
+      }
+
+      const BOOLEAN_KEYS = new Set([
+        "ai_recommendations_enabled", "new_registrations_enabled",
+        "travelpulse_enabled", "credit_system_enabled", "affiliate_bookings_enabled",
+      ]);
+      const COMMISSION_KEYS = new Set([
+        "expert_commission_min", "expert_commission_max",
+        "provider_commission_min", "provider_commission_max",
+      ]);
+      const ALLOWED_KEYS = new Set([
+        ...Object.keys(DEFAULT_SETTINGS),
+      ]);
+
+      const errors: string[] = [];
+      for (const [key, value] of Object.entries(updates)) {
+        if (!ALLOWED_KEYS.has(key)) {
+          errors.push(`Unknown setting key: ${key}`);
+          continue;
+        }
+        const strValue = String(value);
+        if (BOOLEAN_KEYS.has(key)) {
+          if (strValue !== "true" && strValue !== "false") {
+            errors.push(`Setting '${key}' must be 'true' or 'false'`);
+            continue;
+          }
+        } else if (COMMISSION_KEYS.has(key)) {
+          const num = parseFloat(strValue);
+          if (!Number.isFinite(num) || num < 0 || num > 100) {
+            errors.push(`Setting '${key}' must be a number between 0 and 100`);
+            continue;
+          }
+        }
+        await db.insert(platformSettings)
+          .values({ key, value: strValue, updatedAt: new Date() })
+          .onConflictDoUpdate({
+            target: platformSettings.key,
+            set: { value: strValue, updatedAt: new Date() },
+          });
+      }
+
+      if (errors.length > 0) {
+        return res.status(400).json({ message: "Validation errors", errors });
+      }
+
+      res.json({ success: true, message: "Settings saved successfully" });
+    } catch (err) {
+      console.error("Save settings error:", err);
+      res.status(500).json({ message: "Failed to save settings" });
     }
   });
 

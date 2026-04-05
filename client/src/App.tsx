@@ -63,6 +63,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
 import AdminExperts from "@/pages/admin/experts";
 import AdminProviders from "@/pages/admin/providers";
+import AdminBookings from "@/pages/admin/bookings";
 import AdminPlans from "@/pages/admin/plans";
 import AdminRevenue from "@/pages/admin/revenue";
 import AdminAnalytics from "@/pages/admin/analytics";
@@ -70,6 +71,7 @@ import AdminCategories from "@/pages/admin/categories";
 import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
+import AdminSettings from "@/pages/admin/settings";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
@@ -515,8 +517,17 @@ function Router() {
       <Route path="/admin/experts">
         {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/experts/pending">
+        {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
+      </Route>
       <Route path="/admin/providers">
         {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/providers/pending">
+        {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/bookings">
+        {() => <ProtectedRoute component={AdminBookings} requiredRole="admin" />}
       </Route>
       <Route path="/admin/plans">
         {() => <ProtectedRoute component={AdminPlans} requiredRole="admin" />}
@@ -539,6 +550,9 @@ function Router() {
       <Route path="/admin/system">
         {() => <ProtectedRoute component={AdminSystem} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/settings">
+        {() => <ProtectedRoute component={AdminSettings} requiredRole="admin" />}
+      </Route>
       <Route path="/admin/data">
         {() => <ProtectedRoute component={AdminData} requiredRole="admin" />}
       </Route>
@@ -546,6 +560,9 @@ function Router() {
         {() => <ProtectedRoute component={AdminAffiliatePartners} requiredRole="admin" />}
       </Route>
       <Route path="/admin/content-tracking">
+        {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/content">
         {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
       </Route>
       <Route path="/admin/ai-costs">
