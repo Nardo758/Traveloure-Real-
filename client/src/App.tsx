@@ -71,6 +71,7 @@ import AdminCategories from "@/pages/admin/categories";
 import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
+import AdminSettings from "@/pages/admin/settings";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
@@ -542,6 +543,9 @@ function Router() {
       </Route>
       <Route path="/admin/system">
         {() => <ProtectedRoute component={AdminSystem} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/settings">
+        {() => <ProtectedRoute component={AdminSettings} requiredRole="admin" />}
       </Route>
       <Route path="/admin/data">
         {() => <ProtectedRoute component={AdminData} requiredRole="admin" />}
