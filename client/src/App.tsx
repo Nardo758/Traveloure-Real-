@@ -328,12 +328,12 @@ function Router() {
         {() => <ProtectedRoute component={MyTrips} />}
       </Route>
       <Route path="/profile">
-        {() => <ProtectedRoute component={Profile} />}
+        {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
       </Route>
       
       {/* Consolidated Credits page */}
       <Route path="/credits">
-        {() => <ProtectedRoute component={CreditsBillingPage} />}
+        {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
       </Route>
       
       <Route path="/notifications">
