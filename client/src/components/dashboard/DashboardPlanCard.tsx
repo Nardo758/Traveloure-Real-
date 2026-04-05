@@ -137,7 +137,7 @@ function findMatchedConversationId(
       (titleKey && cTitle.includes(titleKey))
     );
   });
-  return match?.id ?? conversations[0].id;
+  return match?.id ?? null;
 }
 
 export function DashboardPlanCard({
@@ -223,7 +223,7 @@ export function DashboardPlanCard({
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
 
   const actionItems = notifications
-    .filter(n => !n.tripId || n.tripId === trip.id)
+    .filter(n => n.tripId === trip.id)
     .sort((a, b) =>
       new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
     )

@@ -5,6 +5,7 @@ interface Conversation {
   title: string;
   userId?: string | null;
   createdAt: string;
+  updatedAt?: string | null;
 }
 
 interface Trip {
@@ -13,6 +14,10 @@ interface Trip {
   startDate: string;
   endDate: string;
   title?: string | null;
+}
+
+function activityTimestamp(conv: Conversation): string {
+  return conv.updatedAt ?? conv.createdAt;
 }
 
 function getRelativeTime(dateStr: string): string {
@@ -137,8 +142,9 @@ export function ActiveExpertsList({
 
       <div className="space-y-2">
         {displayed.map((conv, i) => {
-          const online = isOnline(conv.createdAt);
-          const relTime = getRelativeTime(conv.createdAt);
+          const activityTs = activityTimestamp(conv);
+          const online = isOnline(activityTs);
+          const relTime = getRelativeTime(activityTs);
           const initials = getInitials(conv.title);
           const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
           const displayName = expertDisplayName(conv.title);
