@@ -1,0 +1,421 @@
+import { useState } from "react";
+
+const C = {
+  bg: "#FAFAF8",
+  sidebar: "#FFFFFF",
+  sidebarBorder: "#EEEEE8",
+  primary: "#1E3A5F",
+  accent: "#E85D55",
+  teal: "#2E8B8B",
+  gold: "#E8B339",
+  dark: "#0D2137",
+  text: "#1A1A18",
+  textMuted: "#7A7A72",
+  textFaint: "#AEAEA6",
+  border: "#E8E8E2",
+  surface: "#F3F3EE",
+  white: "#FFFFFF",
+};
+
+const nav = [
+  { group: "Plan", items: [
+    { id: "home", label: "Home", icon: "⌂", href: "dashboard" },
+    { id: "plans", label: "My plans", icon: "◫", href: "plans" },
+    { id: "create", label: "Plan new", icon: "✦", href: "create" },
+    { id: "ai", label: "AI planner", icon: "◈", href: "ai" },
+  ]},
+  { group: "Marketplace", items: [
+    { id: "discover", label: "Discover", icon: "◎", href: "discover" },
+    { id: "experts", label: "Experts", icon: "◉", href: "experts" },
+    { id: "bookings", label: "Bookings", icon: "▣", href: "bookings" },
+    { id: "cart", label: "Cart", icon: "▤", href: "cart" },
+  ]},
+  { group: "Account", items: [
+    { id: "messages", label: "Messages", icon: "◩", href: "messages", badge: 2 },
+    { id: "notifications", label: "Notifications", icon: "◬", href: "notifs", badge: 3 },
+    { id: "credits", label: "Credits", icon: "◆", href: "credits" },
+    { id: "profile", label: "Profile", icon: "○", href: "profile" },
+  ]},
+];
+
+const trips = [
+  { id: "1", title: "Kyoto Spring Trip", dest: "Kyoto, Japan", dates: "Apr 8–18, 2026", days: 10, acts: 14, legs: 22, transit: "8h 20m", status: "upcoming", away: 4, budget: "$3,200", pp: "$1,600/pp", expert: { name: "Yuki Matsuda", init: "YM", msg: "Updated Days 9-10 with Arashiyama alternatives!", online: true }, actions: [{ t: "Approve Fushimi guide — expires tomorrow", u: true }, { t: "Review updated Day 9-10", u: false }], booked: "6/14", cost: "$878", eff: "43%", services: 3 },
+  { id: "2", title: "California Coastal Road Trip", dest: "California", dates: "Jun 13–20, 2026", days: 8, acts: 32, legs: 29, transit: "14h 41m", status: "planning", away: 69, budget: "$12,000", pp: "$2,000/pp", expert: { name: "Maria Santos", init: "MS", msg: "Excited to help! I know the coast well.", online: false }, actions: [], booked: "0/32", cost: "$520", eff: "0%", services: 3 },
+];
+
+const ticker = [
+  { c: "Kyoto", t: "Cherry blossom peak: Apr 8-14", i: "peak", k: "up" },
+  { c: "JPY/USD", t: "152.3", i: "+0.8%", k: "up" },
+  { c: "California", t: "PCH conditions: clear", i: "normal", k: "n" },
+  { c: "EUR/USD", t: "1.087", i: "-0.3%", k: "down" },
+  { c: "Kyoto", t: "Fushimi Inari: low crowds", i: "good", k: "up" },
+  { c: "California", t: "3 trending spots from experts", i: "new", k: "n" },
+];
+
+function Sidebar({ active, onNav, collapsed }) {
+  const w = collapsed ? 56 : 220;
+  return (
+    <div style={{ width: w, minWidth: w, height: "100vh", background: C.white, borderRight: `1px solid ${C.sidebarBorder}`, display: "flex", flexDirection: "column", position: "fixed", left: 0, top: 0, zIndex: 50, transition: "width .2s", overflow: "hidden" }}>
+      <div style={{ padding: collapsed ? "16px 12px" : "16px 20px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${C.sidebarBorder}`, minHeight: 56 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 10, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <span style={{ color: "#fff", fontSize: 16, fontWeight: 700 }}>T</span>
+        </div>
+        {!collapsed && <span style={{ fontSize: 16, fontWeight: 600, color: C.text, letterSpacing: -0.3 }}>Traveloure</span>}
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: collapsed ? "12px 6px" : "12px 10px" }}>
+        {nav.map(g => (
+          <div key={g.group} style={{ marginBottom: 20 }}>
+            {!collapsed && <div style={{ fontSize: 10, fontWeight: 600, color: C.textFaint, textTransform: "uppercase", letterSpacing: 1.2, padding: "0 10px", marginBottom: 6 }}>{g.group}</div>}
+            {g.items.map(item => {
+              const isActive = active === item.id;
+              return (
+                <div key={item.id} onClick={() => onNav(item.id)} style={{ display: "flex", alignItems: "center", gap: 10, padding: collapsed ? "9px 12px" : "9px 12px", borderRadius: 8, cursor: "pointer", background: isActive ? "rgba(232,85,85,0.08)" : "transparent", color: isActive ? C.accent : C.textMuted, marginBottom: 2, transition: "all .15s", position: "relative", justifyContent: collapsed ? "center" : "flex-start" }} title={collapsed ? item.label : undefined}>
+                  <span style={{ fontSize: 16, width: 20, textAlign: "center", flexShrink: 0, opacity: isActive ? 1 : 0.7 }}>{item.icon}</span>
+                  {!collapsed && <span style={{ fontSize: 13, fontWeight: isActive ? 600 : 400 }}>{item.label}</span>}
+                  {!collapsed && item.badge && (
+                    <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 600, background: C.accent, color: "#fff", width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>{item.badge}</span>
+                  )}
+                  {collapsed && item.badge && (
+                    <span style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: "50%", background: C.accent }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div style={{ borderTop: `1px solid ${C.sidebarBorder}`, padding: collapsed ? "12px 8px" : "12px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accent}, ${C.primary})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>LD</div>
+          {!collapsed && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Leon Dixon</div>
+              <div style={{ fontSize: 11, color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>m.dixon5030@gmail.com</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Header({ collapsed, onToggle, onOpenTrip }) {
+  return (
+    <header style={{ height: 52, background: C.white, borderBottom: `1px solid ${C.sidebarBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 20px", position: "sticky", top: 0, zIndex: 40 }}>
+      <button onClick={onToggle} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: C.textMuted }}>☰</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <button style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", position: "relative", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: C.textMuted }}>
+          ◬
+          <span style={{ position: "absolute", top: 6, right: 6, width: 7, height: 7, borderRadius: "50%", background: C.accent }} />
+        </button>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accent}, ${C.primary})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>LD</div>
+      </div>
+    </header>
+  );
+}
+
+function Ticker() {
+  const d = [...ticker, ...ticker];
+  return (
+    <div style={{ background: C.dark, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "7px 14px 0" }}>
+        <span style={{ fontSize: 9, fontWeight: 600, color: "#5DCAA5", letterSpacing: 1.3, textTransform: "uppercase" }}>TravelPulse</span>
+        <span style={{ fontSize: 9, color: C.gold, background: "rgba(232,179,57,0.15)", padding: "2px 8px", borderRadius: 8, cursor: "pointer" }}>Upgrade</span>
+      </div>
+      <div style={{ overflow: "hidden", padding: "8px 0 10px", position: "relative" }}>
+        <div style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 30, background: `linear-gradient(90deg,${C.dark},transparent)`, zIndex: 2 }} />
+        <div style={{ position: "absolute", top: 0, bottom: 0, right: 0, width: 30, background: `linear-gradient(270deg,${C.dark},transparent)`, zIndex: 2 }} />
+        <div style={{ display: "flex", gap: 24, padding: "0 14px", whiteSpace: "nowrap", animation: "tk 28s linear infinite" }}>
+          {d.map((x, i) => (
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, fontSize: 11 }}>
+              <span style={{ fontSize: 9, color: "#5DCAA5", textTransform: "uppercase", fontWeight: 600 }}>{x.c}</span>
+              <span style={{ color: "#E1F5EE" }}>{x.t}</span>
+              <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 6, color: x.k === "up" ? "#5DCAA5" : x.k === "down" ? "#F09595" : "#FAC775", background: x.k === "up" ? "rgba(93,202,165,0.12)" : x.k === "down" ? "rgba(240,149,149,0.12)" : "rgba(250,199,117,0.12)" }}>{x.i}</span>
+              {i < d.length - 1 && <span style={{ color: "rgba(255,255,255,0.1)", margin: "0 2px" }}>|</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+      <style>{`@keyframes tk{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
+    </div>
+  );
+}
+
+function PlanCard({ trip, onOpen }) {
+  const grad = trip.status === "upcoming" ? "linear-gradient(135deg,#D85A30,#F0997B)" : "linear-gradient(135deg,#E85D55,#F4A29C)";
+  return (
+    <div style={{ borderRadius: 14, overflow: "hidden", border: `0.5px solid ${C.border}`, background: C.white }}>
+      <div style={{ background: grad, padding: "13px 15px 11px", color: "#fff", position: "relative" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 7 }}>
+          <span style={{ fontSize: 9, fontWeight: 600, background: "rgba(255,255,255,0.25)", padding: "3px 9px", borderRadius: 8, textTransform: "uppercase", letterSpacing: .4 }}>{trip.status === "upcoming" ? "⚡ Upcoming" : "⚡ Planning"}</span>
+        </div>
+        {trip.away > 0 && <div style={{ position: "absolute", top: 12, right: 14, textAlign: "right" }}><div style={{ fontSize: 22, fontWeight: 500 }}>{trip.away}</div><div style={{ fontSize: 9, opacity: .7 }}>days</div></div>}
+        <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 2, paddingRight: 50 }}>{trip.title}</div>
+        <div style={{ fontSize: 11, opacity: .85 }}>📍 {trip.dest} · {trip.dates}</div>
+      </div>
+      <div style={{ padding: "10px 14px" }}>
+        <div style={{ display: "flex", textAlign: "center", marginBottom: 8 }}>
+          {[["Days", trip.days], ["Activities", trip.acts], ["Transit legs", trip.legs], ["Transit time", trip.transit]].map(([l, v], i) => (
+            <div key={i} style={{ flex: 1, padding: "4px 0", borderLeft: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
+              <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 1 }}>{l}</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+          <span onClick={() => onOpen(trip, "bookings")} style={{ fontSize: 9, background: "#E6F1FB", color: "#0C447C", padding: "2px 7px", borderRadius: 10, cursor: "pointer" }}>💼 {trip.services} services</span>
+          <span onClick={() => onOpen(trip, "itinerary")} style={{ fontSize: 9, background: "#E1F5EE", color: "#085041", padding: "2px 7px", borderRadius: 10, cursor: "pointer" }}>🚗 {trip.legs} legs</span>
+          <span onClick={() => onOpen(trip, "expert")} style={{ fontSize: 9, background: "#EEEDFE", color: "#3C3489", padding: "2px 7px", borderRadius: 10, cursor: "pointer" }}>👥 Expert</span>
+        </div>
+      </div>
+      {trip.expert && (
+        <div onClick={() => onOpen(trip, "expert")} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 14px", borderTop: `0.5px solid ${C.border}`, cursor: "pointer" }}>
+          <div style={{ width: 26, height: 26, borderRadius: "50%", background: C.gold, color: "#412402", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600, flexShrink: 0 }}>{trip.expert.init}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 500, color: C.text }}>{trip.expert.name}</div>
+            <div style={{ fontSize: 10, color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>"{trip.expert.msg}"</div>
+          </div>
+          {trip.expert.online && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#5DCAA5", flexShrink: 0 }} />}
+        </div>
+      )}
+      {trip.actions.length > 0 && (
+        <div style={{ margin: "0 14px 10px", background: C.surface, borderRadius: 8, padding: "7px 10px" }}>
+          {trip.actions.map((a, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 5, padding: "2px 0" }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: a.u ? "#E24B4A" : "#EF9F27", marginTop: 5, flexShrink: 0 }} />
+              <span style={{ fontSize: 10, flex: 1, color: C.text }}>{a.t}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 7, padding: "0 14px 12px" }}>
+        <button style={{ flex: "0 0 auto", padding: "7px 12px", borderRadius: 8, fontSize: 11, fontWeight: 500, border: `0.5px solid ${C.border}`, background: C.white, cursor: "pointer", color: C.text }}>📍 Maps</button>
+        <button onClick={() => onOpen(trip, "itinerary")} style={{ flex: 1, padding: "7px 12px", borderRadius: 8, fontSize: 11, fontWeight: 500, border: "none", background: C.accent, color: "#fff", cursor: "pointer" }}>📅 View itinerary ›</button>
+      </div>
+    </div>
+  );
+}
+
+function TripView({ trip, tab: initTab, onBack }) {
+  const [tab, setTab] = useState(initTab);
+  const [day, setDay] = useState(0);
+  const [sec, setSec] = useState("act");
+  const grad = `linear-gradient(135deg,${C.primary} 0%,#D85A30 60%,#8b5cf6 100%)`;
+  const days = Array.from({ length: trip.days }, (_, i) => ({ n: i + 1, d: `Day ${i + 1}`, e: i % 3 === 0 ? "Relaxed" : i % 3 === 1 ? "Balanced" : "Intense" }));
+  const acts = [
+    { time: "09:00", name: "Morning exploration", loc: trip.dest, type: "Sightseeing", cost: "$0", tr: { m: "🚘 Rideshare", d: "42m", c: "$35" } },
+    { time: "12:00", name: "Local lunch", loc: trip.dest, type: "Food", cost: "$20", tr: { m: "🚶 Walk", d: "22m", c: "Free" } },
+    { time: "14:00", name: "Cultural experience", loc: trip.dest, type: "Culture", cost: "$15", tr: { m: "🚶 Walk", d: "12m", c: "Free" } },
+    { time: "19:00", name: "Dinner", loc: trip.dest, type: "Food", cost: "$30", tr: null },
+  ];
+  const typeColors = { Sightseeing: ["#E6F1FB", "#0C447C"], Food: ["#FAEEDA", "#633806"], Culture: ["#EEEDFE", "#3C3489"] };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0 10px" }}>
+        <span onClick={onBack} style={{ fontSize: 12, color: C.textMuted, cursor: "pointer" }}>← Back to dashboard</span>
+        <div style={{ display: "flex", gap: 6 }}>{["♡", "↗", "⬇"].map((ic, i) => <div key={i} style={{ width: 30, height: 30, borderRadius: 8, border: `0.5px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 13, color: C.textMuted }}>{ic}</div>)}</div>
+      </div>
+      <div style={{ borderRadius: 12, overflow: "hidden", border: `0.5px solid ${C.border}`, background: C.white }}>
+        <div style={{ position: "relative", height: 170, background: grad }}>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top,rgba(0,0,0,.7),rgba(0,0,0,.15),transparent)" }} />
+          <div style={{ position: "absolute", top: 10, left: 12, display: "flex", gap: 5 }}>
+            <span style={{ fontSize: 9, fontWeight: 600, background: "rgba(232,85,85,.85)", color: "#fff", padding: "3px 8px", borderRadius: 7, textTransform: "uppercase" }}>⚡ {trip.away}d away</span>
+            <span style={{ fontSize: 9, background: "rgba(255,255,255,.3)", color: "#fff", padding: "3px 8px", borderRadius: 7 }}>👥 6</span>
+          </div>
+          <div style={{ position: "absolute", top: 10, right: 12, display: "flex", gap: 5, alignItems: "center" }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: C.text }}>87</div>
+            <button style={{ fontSize: 10, color: "#fff", background: "rgba(255,255,255,.3)", padding: "4px 9px", borderRadius: 7, border: "none", cursor: "pointer" }}>Share</button>
+            <button style={{ fontSize: 10, color: "#fff", background: "rgba(255,255,255,.3)", padding: "4px 9px", borderRadius: 7, border: "none", cursor: "pointer" }}>Export</button>
+          </div>
+          <div style={{ position: "absolute", bottom: 12, left: 16, right: 16 }}>
+            <div style={{ fontFamily: "Georgia,serif", fontSize: 19, color: "#fff", marginBottom: 5 }}>{trip.title}</div>
+            <div style={{ display: "flex", gap: 10, fontSize: 11, color: "rgba(255,255,255,.85)", flexWrap: "wrap" }}>
+              <span>📍 {trip.dest}</span><span>📅 {trip.dates}</span>
+              <span style={{ color: "#6ee7b7", fontWeight: 500 }}>{trip.budget}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", borderBottom: `0.5px solid ${C.border}`, padding: "0 14px", overflowX: "auto" }}>
+          {[["itinerary", "Itinerary"], ["bookings", "Bookings"], ["expert", "Ask an Expert"], ["logistics", "Logistics"]].map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} style={{ padding: "11px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer", borderBottom: tab === k ? `2px solid ${C.accent}` : "2px solid transparent", color: tab === k ? C.accent : C.textMuted, background: "none", border: "none", borderBottomWidth: 2, borderBottomStyle: "solid", borderBottomColor: tab === k ? C.accent : "transparent", whiteSpace: "nowrap" }}>{l}</button>
+          ))}
+          <div style={{ marginLeft: "auto", display: "flex", gap: 5, padding: "6px 0", flexShrink: 0 }}>
+            <button style={{ fontSize: 10, padding: "5px 10px", borderRadius: 7, border: `0.5px solid ${C.border}`, background: "transparent", cursor: "pointer" }}>📍 Maps</button>
+            <button style={{ fontSize: 10, padding: "5px 10px", borderRadius: 7, border: "none", background: C.accent, color: "#fff", cursor: "pointer" }}>✨ Regenerate</button>
+          </div>
+        </div>
+
+        {tab === "itinerary" && (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", borderBottom: `0.5px solid ${C.border}` }}>
+              {[["Days", trip.days], ["Activities", trip.acts], ["Legs", trip.legs], ["Transit", trip.transit], ["Booked", trip.booked], ["Cost", trip.cost], ["Efficiency", trip.eff]].map(([l, v], i) => (
+                <div key={i} style={{ padding: "8px 3px", textAlign: "center", borderLeft: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 1 }}>{l}</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 3, padding: "8px 14px 0", overflowX: "auto" }}>
+              {days.map((d, i) => (
+                <button key={i} onClick={() => setDay(i)} style={{ padding: "5px 12px", borderRadius: "8px 8px 0 0", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 500, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, borderBottom: day === i ? `2px solid ${C.accent}` : "2px solid transparent", background: day === i ? "rgba(232,85,85,0.06)" : "transparent", color: day === i ? C.accent : C.textMuted, flexShrink: 0 }}>
+                  <span>{d.d}</span>
+                  <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 5, background: d.e === "Relaxed" ? "#E1F5EE" : d.e === "Intense" ? "#FCEBEB" : "#FAEEDA", color: d.e === "Relaxed" ? "#085041" : d.e === "Intense" ? "#791F1F" : "#633806" }}>{d.e}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", borderBottom: `0.5px solid ${C.border}`, padding: "0 14px" }}>
+              {[["act", "Activities", acts.length], ["trans", "Transport", 4]].map(([k, l, c]) => (
+                <button key={k} onClick={() => setSec(k)} style={{ padding: "9px 12px", fontSize: 11, fontWeight: 500, cursor: "pointer", borderBottom: sec === k ? `2px solid ${C.accent}` : "2px solid transparent", color: sec === k ? C.accent : C.textMuted, background: "none", border: "none", borderBottomWidth: 2, borderBottomStyle: "solid", borderBottomColor: sec === k ? C.accent : "transparent", display: "flex", alignItems: "center", gap: 4 }}>
+                  {l} <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 7, background: sec === k ? C.accent : C.surface, color: sec === k ? "#fff" : C.textMuted }}>{c}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: "8px 14px 14px" }}>
+              {sec === "act" ? acts.map((a, i) => (
+                <div key={i}>
+                  <div style={{ padding: 9, border: `0.5px solid ${C.border}`, borderRadius: 8, marginBottom: 5, display: "flex", gap: 7 }}>
+                    <div style={{ fontSize: 10, color: C.textMuted, minWidth: 42, paddingTop: 1 }}>{a.time}</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{a.name}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>📍 {a.loc}</div>
+                      <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
+                        <span style={{ fontSize: 8, padding: "1px 6px", borderRadius: 5, fontWeight: 500, background: (typeColors[a.type] || typeColors.Sightseeing)[0], color: (typeColors[a.type] || typeColors.Sightseeing)[1] }}>{a.type}</span>
+                        <span style={{ fontSize: 8, padding: "1px 6px", borderRadius: 5, fontWeight: 500, background: "#FAEEDA", color: "#633806" }}>Pending</span>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.accent, fontWeight: 500, flexShrink: 0 }}>{a.cost}</div>
+                  </div>
+                  {a.tr && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "1px 14px 1px 56px", marginBottom: 3, fontSize: 9, color: C.textMuted }}>
+                      <div style={{ width: 1, height: 12, background: C.border }} />
+                      <div style={{ background: C.surface, padding: "2px 7px", borderRadius: 8 }}>{a.tr.m} {a.tr.d} · {a.tr.c}</div>
+                      <span style={{ color: C.teal, marginLeft: "auto", cursor: "pointer" }}>Open in Maps</span>
+                    </div>
+                  )}
+                </div>
+              )) : <div style={{ textAlign: "center", padding: 24, color: C.textMuted, fontSize: 12 }}>Transport legs with booking options and mode selectors</div>}
+            </div>
+          </div>
+        )}
+
+        {tab === "bookings" && (
+          <div style={{ padding: 18 }}>
+            <div style={{ border: `0.5px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>Booking summary</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ flex: 1, background: "rgba(232,85,85,0.04)", padding: 9, borderRadius: 8 }}>
+                  <div style={{ fontSize: 10, color: C.textMuted }}>Book on Traveloure</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, color: C.accent, marginTop: 2 }}>{trip.cost}</div>
+                </div>
+                <div style={{ flex: 1, background: C.surface, padding: 9, borderRadius: 8 }}>
+                  <div style={{ fontSize: 10, color: C.textMuted }}>Via partners</div>
+                  <div style={{ fontSize: 14, fontWeight: 500, marginTop: 2 }}>$0</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "expert" && trip.expert && (
+          <div style={{ padding: 18 }}>
+            <div style={{ border: `0.5px solid ${C.border}`, borderRadius: 8, padding: 12, display: "flex", gap: 10 }}>
+              <div style={{ width: 44, height: 44, borderRadius: "50%", background: C.gold, color: "#412402", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 600, flexShrink: 0 }}>{trip.expert.init}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{trip.expert.name}</span>
+                  <span style={{ fontSize: 9, background: C.accent, color: "#fff", padding: "2px 7px", borderRadius: 5 }}>Expert assigned</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic", background: C.surface, padding: "6px 8px", borderRadius: 6, marginBottom: 6 }}><span style={{ fontStyle: "normal", fontWeight: 500, color: C.text }}>{trip.expert.name.split(" ")[0]}:</span> {trip.expert.msg}</div>
+                <button style={{ fontSize: 11, background: "transparent", border: `0.5px solid ${C.accent}`, color: C.accent, padding: "5px 12px", borderRadius: 7, cursor: "pointer" }}>💬 Message expert</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "logistics" && (
+          <div style={{ padding: 24, textAlign: "center", color: C.textMuted, fontSize: 12 }}>Logistics dashboard, temporal anchors, schedule validator</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [page, setPage] = useState("dashboard");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeNav, setActiveNav] = useState("home");
+  const [tripView, setTripView] = useState(null);
+
+  const sidebarWidth = sidebarCollapsed ? 56 : 220;
+
+  const openTrip = (trip, tab) => {
+    setTripView({ trip, tab });
+    setPage("trip");
+    setActiveNav("plans");
+  };
+
+  const content = page === "trip" && tripView ? (
+    <TripView trip={tripView.trip} tab={tripView.tab} onBack={() => { setPage("dashboard"); setActiveNav("home"); }} />
+  ) : (
+    <div>
+      <div style={{ marginBottom: 4 }}>
+        <div style={{ fontSize: 20, fontWeight: 500, color: C.text, marginBottom: 3 }}>Welcome back, Leon</div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginBottom: 14 }}>2 active plans · 1 action needed today</div>
+      </div>
+      <Ticker />
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {[{ i: "+", l: "New experience", s: "Travel, wedding, event" }, { i: "✦", l: "AI planner", s: "Get a plan in minutes" }, { i: "◎", l: "Find experts", s: "In your destinations" }].map(c => (
+          <div key={c.l} style={{ flex: 1, background: C.surface, borderRadius: 10, padding: "14px 10px", cursor: "pointer", textAlign: "center" }}>
+            <div style={{ fontSize: 16, marginBottom: 4 }}>{c.i}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{c.l}</div>
+            <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>{c.s}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+        <span>Your active plans</span>
+        <span style={{ fontSize: 11, color: C.teal, cursor: "pointer" }}>View all</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 22 }}>
+        {trips.map(t => <PlanCard key={t.id} trip={t} onOpen={openTrip} />)}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+        <span>Your active experts</span>
+        <span style={{ fontSize: 11, color: C.teal, cursor: "pointer" }}>View all</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 22 }}>
+        {trips.filter(t => t.expert).map(t => (
+          <div key={t.id} onClick={() => openTrip(t, "expert")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", background: C.white, border: `0.5px solid ${C.border}`, borderRadius: 8, cursor: "pointer" }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.gold, color: "#412402", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{t.expert.init}</div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{t.expert.name}</div><div style={{ fontSize: 10, color: C.textMuted }}>{t.dest}</div></div>
+            <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, fontWeight: 500, color: C.text }}>{t.title}</div><div style={{ fontSize: 9, color: t.expert.online ? C.teal : C.textMuted }}>{t.expert.online ? "● Online" : "2h ago"}</div></div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 10 }}>Top services</div>
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 22 }}>
+        {[["🚘", "Transport", 42], ["🧭", "Guides", 38], ["📸", "Photo", 27], ["🍽", "Dining", 65], ["🏨", "Stay", 54]].map(([i, n, c]) => (
+          <div key={n} style={{ flex: "0 0 110px", background: C.white, border: `0.5px solid ${C.border}`, borderRadius: 10, padding: "12px 10px", textAlign: "center", cursor: "pointer" }}>
+            <div style={{ fontSize: 16, marginBottom: 4 }}>{i}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{n}</div>
+            <div style={{ fontSize: 10, color: C.textMuted }}>{c} providers</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif" }}>
+      <Sidebar active={activeNav} onNav={(id) => { setActiveNav(id); if (id === "home") setPage("dashboard"); }} collapsed={sidebarCollapsed} />
+      <div style={{ marginLeft: sidebarWidth, flex: 1, transition: "margin-left .2s" }}>
+        <Header collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
+        <main style={{ padding: "16px 24px", maxWidth: 860, margin: "0 auto" }}>
+          {content}
+        </main>
+      </div>
+    </div>
+  );
+}
