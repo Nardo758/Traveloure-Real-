@@ -49,8 +49,7 @@ import { StatsRow, BookedIcon, CostIcon, EfficiencyIcon, type ExtraStat } from "
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
-import { TransportSection } from "@/components/plancard/TransportSection";
-import { TwelveGoTransport } from "@/components/TwelveGoTransport";
+import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
 import { TripLogisticsDashboard } from "@/components/logistics";
 
 type BookingType = 'inApp' | 'partner';
@@ -440,6 +439,14 @@ export default function ItineraryPage() {
 
   const currentPlanCardDay = planCardDays[selectedDay - 1];
 
+  const currentItineraryDay = itinerary.days[selectedDay - 1];
+  const currentDayLegs: InlineTransportLegData[] = (() => {
+    if (!currentItineraryDay) return [];
+    const dayNum = currentItineraryDay.day;
+    const real = realLegsMap[dayNum];
+    return real?.length ? real : currentItineraryDay.transportLegs || synthesizeTransportLegs(currentItineraryDay.activities || []);
+  })();
+
   const perPerson = itinerary.travelers > 1 ? `$${Math.round(totalCost / itinerary.travelers).toLocaleString()}/person` : null;
 
   return (
@@ -621,21 +628,15 @@ export default function ItineraryPage() {
               )}
 
               {section === "transport" && (
-                <>
-                  <TransportSection
+                <div className="p-5">
+                  <DayTransportPanel
+                    dayNumber={selectedDay}
+                    legs={currentDayLegs}
+                    readOnly={false}
                     tripId={String(itinerary.id)}
-                    tripDestination={itinerary.destination}
-                    day={currentPlanCardDay}
+                    destination={itinerary.destination}
                   />
-                  <div className="px-5 pb-5">
-                    <TwelveGoTransport
-                      destination={itinerary.destination.split(',')[0]}
-                      departureDate={itinerary.startDate.toISOString()}
-                      passengers={itinerary.travelers}
-                      variant="compact"
-                    />
-                  </div>
-                </>
+                </div>
               )}
             </Card>
 
