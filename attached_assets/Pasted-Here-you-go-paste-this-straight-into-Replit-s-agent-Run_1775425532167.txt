@@ -1,0 +1,49 @@
+Here you go — paste this straight into Replit's agent:
+
+---
+
+**Run a full audit of the admin panel. Do NOT change any code — just report what you find.**
+
+**Step 1: Map every admin file**
+Run `find client/src -path "*admin*" -type f | sort` and list every file with its line count (`wc -l`). Include pages, components, layouts, and sidebar files. Show me the complete file tree.
+
+**Step 2: For each admin page, report:**
+- Route path (e.g., `/admin/dashboard`)
+- What it actually renders (real functionality, not just a placeholder heading)
+- Whether it fetches real data from API endpoints or uses hardcoded/mock data
+- Whether the layout uses a dedicated admin sidebar + navbar (not the traveler DashboardLayout)
+- Line count
+
+**Step 3: Check the admin route protection**
+- Is there an admin role check/guard on these routes? Show me the exact code that prevents a regular user from accessing `/admin/*`
+- Does the backend have admin-only middleware on the admin API endpoints?
+
+**Step 4: Compare against this required route list and mark each as ✅ Built, ⚠️ Partial (exists but incomplete), or ❌ Missing:**
+
+```
+/admin/dashboard        — Platform overview: KPI cards (total users, active plans, revenue MTD, new users today), pending approvals queue, dispute resolution queue, platform health metrics, recent activity feed
+/admin/users            — User management: searchable/filterable user table, view user details, suspend/unsuspend, role assignment
+/admin/experts          — Expert management: all experts list with status, search/filter
+/admin/experts/pending  — Pending expert applications: review, approve, reject with notes
+/admin/providers        — Provider management: all providers list with status, search/filter
+/admin/providers/pending — Pending provider applications: review, approve, reject with notes
+/admin/bookings         — All bookings across platform: filterable by status, market, date range, user
+/admin/revenue          — Revenue tracking: platform commission breakdown, expert payouts, provider payouts, daily/monthly summaries
+/admin/content          — Content moderation: flagged content queue, approval workflow
+/admin/analytics        — Platform analytics: user growth, booking trends, market-level breakdowns, conversion rates
+/admin/settings         — Platform settings: configuration options
+```
+
+**Step 5: Check admin sidebar navigation**
+- Does an admin-specific sidebar exist? What file is it in?
+- Does it link to all the routes above?
+- Is it in the correct directory (`components/admin/`) or is it floating in the root components folder?
+
+**Step 6: Check API coverage**
+Search `server/` for admin-specific API routes. List every admin endpoint you find (e.g., `GET /api/admin/users`, `PATCH /api/admin/experts/:id/approve`). For each route from Step 4, note whether a corresponding backend endpoint exists.
+
+**Format your report as a single table per step. Do not fix anything — report only.**
+
+---
+
+This will give you a clean picture of what's actually there vs. what's scaffolded vs. what's missing, so we can decide what to build next without guessing.

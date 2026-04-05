@@ -12301,6 +12301,83 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Suspend/Unsuspend user
+  app.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const userId = req.params.id;
+      const { suspended } = req.body;
+
+      if (typeof suspended !== "boolean") {
+        return res.status(400).json({ message: "suspended must be a boolean" });
+      }
+
+      const targetUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await db.update(users).set({ suspended }).where(eq(users.id, userId));
+
+      res.json({
+        success: true,
+        user: {
+          id: userId,
+          suspended,
+        },
+      });
+    } catch (err) {
+      console.error("Suspend user error:", err);
+      res.status(500).json({ message: "Failed to update user suspension status" });
+    }
+  });
+
+  // Change user role
+  app.patch("/api/admin/users/:id/role", isAuthenticated, async (req, res) => {
+    try {
+      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      if (!admin || admin.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const userId = req.params.id;
+      const { role } = req.body;
+      const currentAdminId = admin.id;
+
+      // Prevent self-role-change
+      if (userId === currentAdminId) {
+        return res.status(400).json({ message: "Cannot change your own role" });
+      }
+
+      const validRoles = ["user", "travel_expert", "local_expert", "event_planner", "service_provider", "executive_assistant", "admin"];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+
+      const targetUser = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      await db.update(users).set({ role }).where(eq(users.id, userId));
+
+      res.json({
+        success: true,
+        user: {
+          id: userId,
+          role,
+        },
+      });
+    } catch (err) {
+      console.error("Change user role error:", err);
+      res.status(500).json({ message: "Failed to change user role" });
+    }
+  });
+
   // === Admin Trips/Plans Management ===
   app.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     try {
