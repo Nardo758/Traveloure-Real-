@@ -223,7 +223,14 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Saved trip not found or already converted' });
     }
 
-    const saved = savedResult.rows[0] as any;
+    interface SavedTripRow {
+      destination: string | null;
+      start_date: string | null;
+      end_date: string | null;
+      travelers: number | null;
+      budget: string | null;
+    }
+    const saved = savedResult.rows[0] as SavedTripRow;
     const destination = saved.destination || 'My Destination';
     const startDate = saved.start_date || new Date().toISOString().split('T')[0];
     const endDate = saved.end_date || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];

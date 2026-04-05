@@ -58,13 +58,15 @@ export function SavedTripsSection() {
   });
 
   const convertMutation = useMutation({
-    mutationFn: async (savedTripId: string): Promise<ConvertResponse> =>
-      apiRequest("POST", `/api/saved-trips/${savedTripId}/convert`),
+    mutationFn: async (savedTripId: string): Promise<ConvertResponse> => {
+      const res = await apiRequest("POST", `/api/saved-trips/${savedTripId}/convert`);
+      return res.json() as Promise<ConvertResponse>;
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/saved-trips"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
       toast({ title: "Trip created!", description: "Your plan is ready — let's build it out." });
-      navigate(`/my-trips`);
+      navigate(`/trip/${data.tripId}`);
     },
     onError: () => {
       toast({ title: "Something went wrong", description: "Could not create the trip. Please try again.", variant: "destructive" });
