@@ -63,6 +63,7 @@ import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
 import AdminExperts from "@/pages/admin/experts";
 import AdminProviders from "@/pages/admin/providers";
+import AdminBookings from "@/pages/admin/bookings";
 import AdminPlans from "@/pages/admin/plans";
 import AdminRevenue from "@/pages/admin/revenue";
 import AdminAnalytics from "@/pages/admin/analytics";
@@ -518,6 +519,9 @@ function Router() {
       <Route path="/admin/providers">
         {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/bookings">
+        {() => <ProtectedRoute component={AdminBookings} requiredRole="admin" />}
+      </Route>
       <Route path="/admin/plans">
         {() => <ProtectedRoute component={AdminPlans} requiredRole="admin" />}
       </Route>
@@ -546,6 +550,9 @@ function Router() {
         {() => <ProtectedRoute component={AdminAffiliatePartners} requiredRole="admin" />}
       </Route>
       <Route path="/admin/content-tracking">
+        {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/content">
         {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
       </Route>
       <Route path="/admin/ai-costs">

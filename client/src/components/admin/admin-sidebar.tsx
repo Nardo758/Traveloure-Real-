@@ -31,8 +31,9 @@ const navItems = [
   { icon: Users, label: "Users", href: "/admin/users" },
   { icon: UserCheck, label: "Experts", href: "/admin/experts" },
   { icon: Building2, label: "Providers", href: "/admin/providers" },
+  { icon: ClipboardList, label: "Bookings", href: "/admin/bookings" },
   { icon: Link2, label: "Affiliates", href: "/admin/affiliate-partners" },
-  { icon: FileText, label: "Content", href: "/admin/content-tracking" },
+  { icon: FileText, label: "Content", href: "/admin/content" },
   { icon: FolderKanban, label: "Categories", href: "/admin/categories" },
   { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
   { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },
@@ -46,6 +47,7 @@ const navItems = [
 ];
 
 const bottomNavItems = [
+  { icon: Settings, label: "Settings", href: "/admin/settings" },
   { icon: Settings, label: "System", href: "/admin/system" },
 ];
 
