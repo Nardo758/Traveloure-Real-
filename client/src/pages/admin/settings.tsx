@@ -107,6 +107,14 @@ export default function AdminSettings() {
     const max = parseFloat(commissions.expert_commission_max);
     const pMin = parseFloat(commissions.provider_commission_min);
     const pMax = parseFloat(commissions.provider_commission_max);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      toast({ title: "Invalid input", description: "Expert commission values must be valid numbers.", variant: "destructive" });
+      return;
+    }
+    if (!Number.isFinite(pMin) || !Number.isFinite(pMax)) {
+      toast({ title: "Invalid input", description: "Provider commission values must be valid numbers.", variant: "destructive" });
+      return;
+    }
     if (min < 0 || max > 100 || min > max) {
       toast({ title: "Invalid range", description: "Expert commission min must be ≤ max and between 0–100.", variant: "destructive" });
       return;
