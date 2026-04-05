@@ -53,6 +53,7 @@ import ProviderBookings from "@/pages/provider/bookings";
 import ProviderServices from "@/pages/provider/services";
 import ProviderEarnings from "@/pages/provider/earnings";
 import ProviderPerformance from "@/pages/provider/performance";
+import ProviderAnalytics from "@/pages/provider/analytics";
 import ProviderCalendar from "@/pages/provider/calendar";
 import ProviderProfile from "@/pages/provider/profile";
 import ProviderSettings from "@/pages/provider/settings";
@@ -100,6 +101,8 @@ import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
 import ExpertTemplates from "@/pages/expert/templates";
 import ExpertContentStudio from "@/pages/expert/content-studio";
+import ExpertClientDetail from "@/pages/expert/client-detail";
+import ExpertSettings from "@/pages/expert/settings";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
@@ -398,6 +401,15 @@ function Router() {
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
+      <Route path="/expert/content-studio/:contentType">
+        {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/clients/:id">
+        {() => <ProtectedRoute component={ExpertClientDetail} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/settings">
+        {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
+      </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
       </Route>
@@ -453,11 +465,20 @@ function Router() {
       <Route path="/provider/services">
         {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
       </Route>
+      <Route path="/provider/services/new">
+        {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/services/:id/edit">
+        {() => <ProtectedRoute component={ProviderServices} requiredRole="provider" />}
+      </Route>
       <Route path="/provider/earnings">
         {() => <ProtectedRoute component={ProviderEarnings} requiredRole="provider" />}
       </Route>
       <Route path="/provider/performance">
         {() => <ProtectedRoute component={ProviderPerformance} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/analytics">
+        {() => <ProtectedRoute component={ProviderAnalytics} requiredRole="provider" />}
       </Route>
       <Route path="/provider/calendar">
         {() => <ProtectedRoute component={ProviderCalendar} requiredRole="provider" />}
