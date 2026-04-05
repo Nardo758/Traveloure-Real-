@@ -5,6 +5,7 @@ import {
   Package,
   DollarSign,
   TrendingUp,
+  BarChart3,
   Calendar,
   Building,
   Settings,
@@ -34,7 +35,7 @@ const navGroups = [
     items: [
       { icon: Package, label: "Services", href: "/provider/services" },
       { icon: DollarSign, label: "Earnings", href: "/provider/earnings" },
-      { icon: TrendingUp, label: "Performance", href: "/provider/performance" },
+      { icon: BarChart3, label: "Analytics", href: "/provider/analytics" },
     ],
   },
   {
