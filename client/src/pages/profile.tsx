@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { DashboardLayout } from "@/components/dashboard-layout";
+
 import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
 import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -50,8 +50,7 @@ export default function Profile() {
   };
 
   return (
-    <DashboardLayout>
-      <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
         <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
           Profile Settings
         </h1>
@@ -234,6 +233,6 @@ export default function Profile() {
           </Button>
         </div>
       </div>
-    </DashboardLayout>
+    </div>
   );
 }

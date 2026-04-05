@@ -30,18 +30,38 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const menuItems = [
-  { title: "Home", href: "/dashboard", icon: Home },
-  { title: "Plan Experience", href: "/experiences", icon: Sparkles },
-  { title: "All Events", href: "/my-trips", icon: Calendar },
-  { title: "My Bookings", href: "/bookings", icon: Package },
-  { title: "Cart", href: "/cart", icon: ShoppingCart },
-  { title: "AI Planner", href: "/ai-assistant", icon: Bot },
-  { title: "Messages", href: "/chat", icon: MessageSquare },
-  { title: "Discover", href: "/discover", icon: Users },
-  { title: "Credits", href: "/credits", icon: CreditCard },
-  { title: "Profile", href: "/profile", icon: User },
-  { title: "Notifications", href: "/notifications", icon: Bell },
+const menuGroups = [
+  {
+    label: "Planning",
+    items: [
+      { title: "Home", href: "/dashboard", icon: Home },
+      { title: "Plan Experience", href: "/experiences", icon: Sparkles },
+      { title: "All Events", href: "/my-trips", icon: Calendar },
+      { title: "AI Planner", href: "/ai-assistant", icon: Bot },
+    ],
+  },
+  {
+    label: "Booking & Services",
+    items: [
+      { title: "My Bookings", href: "/bookings", icon: Package },
+      { title: "Cart", href: "/cart", icon: ShoppingCart },
+      { title: "Discover", href: "/discover", icon: Users },
+    ],
+  },
+  {
+    label: "Communication",
+    items: [
+      { title: "Messages", href: "/chat", icon: MessageSquare },
+      { title: "Notifications", href: "/notifications", icon: Bell },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { title: "Credits", href: "/credits", icon: CreditCard },
+      { title: "Profile", href: "/profile", icon: User },
+    ],
+  },
 ];
 
 export function DashboardSidebar() {
@@ -60,40 +80,42 @@ export function DashboardSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide px-4">
-            User Menu
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => {
-                const isActive = location === item.href ||
-                  (item.href === "/dashboard" && location === "/dashboard") ||
-                  (item.href === "/my-trips" && (
-                    location.startsWith("/my-trips") ||
-                    location.startsWith("/itinerary") ||
-                    location.startsWith("/my-itinerary")
-                  )) ||
-                  (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
-                
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      className={isActive ? "bg-[#FFE3E8] text-[#FF385C]" : "text-[#6B7280] hover:text-[#111827] hover:bg-[#F3F4F6]"}
-                    >
-                      <Link href={item.href} data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
-                        <item.icon className="w-5 h-5" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {menuGroups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="text-xs font-semibold text-[#9CA3AF] uppercase tracking-wide px-4">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map((item) => {
+                  const isActive = location === item.href ||
+                    (item.href === "/dashboard" && location === "/dashboard") ||
+                    (item.href === "/my-trips" && (
+                      location.startsWith("/my-trips") ||
+                      location.startsWith("/itinerary") ||
+                      location.startsWith("/my-itinerary")
+                    )) ||
+                    (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
+                  
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        className={isActive ? "bg-[#FFE3E8] text-[#FF385C]" : "text-[#6B7280] hover:text-[#111827] hover:bg-[#F3F4F6]"}
+                      >
+                        <Link href={item.href} data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
+                          <item.icon className="w-5 h-5" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="p-4 border-t border-[#E5E7EB]">
