@@ -81,7 +81,7 @@ export default function ProviderDashboard() {
 
   return (
     <ProviderLayout title="Dashboard">
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6" data-testid="provider-dashboard">
         {/* Welcome Section */}
         <div>
           <h2 className="text-2xl font-bold text-gray-900" data-testid="text-welcome">

@@ -117,7 +117,7 @@ export default function EADashboard() {
 
   return (
     <EALayout title="Dashboard">
-      <div className="p-6 space-y-6">
+      <div className="p-6 space-y-6" data-testid="ea-dashboard">
         <div>
           <h1 className="text-2xl font-bold text-gray-900" data-testid="text-ea-welcome">
             Welcome back, Rachel!
