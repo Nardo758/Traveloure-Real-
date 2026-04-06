@@ -12,11 +12,15 @@ export async function fillExpertProfile(
     languages: string[];
   }
 ) {
+  // Wait for async profile data to load (Skeleton disappears, textarea appears)
+  await page.waitForSelector('[data-testid="profile-bio"]', { state: 'visible', timeout: 20000 });
+
   // Fill bio
   await page.fill('[data-testid="profile-bio"]', data.bio);
 
-  // Fill hourly rate
+  // Fill hourly rate (also async-loaded, wait for it)
   const hourlyRateField = page.locator('[data-testid="hourly-rate"]');
+  await hourlyRateField.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
   if (await hourlyRateField.isVisible().catch(() => false)) {
     await hourlyRateField.fill(data.hourlyRate.toString());
   }

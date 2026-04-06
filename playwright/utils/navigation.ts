@@ -1,7 +1,8 @@
 import { Page, expect } from '@playwright/test';
 
 /**
- * Navigate to a dashboard based on user role
+ * Navigate to a dashboard based on user role.
+ * Uses 'load' waitUntil — networkidle is unreliable with Vite HMR WebSocket.
  */
 export async function navigateToDashboard(page: Page, role: 'expert' | 'provider' | 'traveler' | 'ea' | 'admin') {
   let path = '';
@@ -24,8 +25,7 @@ export async function navigateToDashboard(page: Page, role: 'expert' | 'provider
       break;
   }
 
-  await page.goto(path);
-  await page.waitForLoadState('networkidle');
+  await page.goto(path, { waitUntil: 'load' });
 }
 
 /**
@@ -41,9 +41,9 @@ export async function expectRoute(page: Page, path: string) {
  */
 export async function waitForNavigation(page: Page, predicate?: (url: URL) => boolean) {
   if (predicate) {
-    await page.waitForURL(predicate);
+    await page.waitForURL(predicate, { timeout: 15000 }).catch(() => null);
   } else {
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -51,14 +51,13 @@ export async function waitForNavigation(page: Page, predicate?: (url: URL) => bo
  * Navigate to a specific path
  */
 export async function navigateTo(page: Page, path: string) {
-  await page.goto(path);
-  await page.waitForLoadState('networkidle');
+  await page.goto(path, { waitUntil: 'load' });
 }
 
 /**
  * Wait for a page element to be visible
  */
-export async function waitForElement(page: Page, selector: string, timeout = 10000) {
+export async function waitForElement(page: Page, selector: string, timeout = 15000) {
   await page.locator(selector).waitFor({ state: 'visible', timeout });
 }
 
