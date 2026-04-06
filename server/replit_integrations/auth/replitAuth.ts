@@ -27,8 +27,14 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    console.error('SESSION_SECRET environment variable is not set');
+    throw new Error('SESSION_SECRET environment variable is not set');
+  }
+  console.log('Session secret loaded:', secret ? 'present' : 'missing');
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,

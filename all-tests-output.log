@@ -1,0 +1,944 @@
+
+Running 80 tests using 6 workers
+
+Navigating to /login...
+Logging in as nyc-art@traveloure.test
+Logging in as nyc-nightlife@traveloure.test
+Logging in as nyc-food@traveloure.test
+Navigating to /login...
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/login
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@vite/client
+[REQUEST] GET https://fonts.googleapis.com/css2?family=Architects+Daughter&family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=DM+Serif+Display:ital@0;1&family=Fira+Code:wght@300..700&family=Geist+Mono:wght@100..900&family=Geist:wght@100..900&family=IBM+Plex+Mono:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;1,100;1,200;1,300;1,400;1,500;1,600;1,700&family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400..700;1,400..700&family=Merriweather:ital,opsz,wght@0,18..144,300..900;1,18..144,300..900&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@100..900&family=Oxanium:wght@200..800&family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Roboto:ital,wght@0,100..900;1,100..900&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&family=Source+Serif+4:ital,opsz,wght@0,8..60,200..900;1,8..60,200..900&family=Space+Grotesk:wght@300..700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@react-refresh
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@replit/vite-plugin-dev-banner/banner-script.js
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/main.tsx?v=JOpXiehZPFnFtHFy-Q-Kw
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/vite/dist/client/env.mjs
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/App.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/index.css
+[CONSOLE] debug: [vite] connecting...
+[CONSOLE] debug: [vite] connecting...
+[CONSOLE] debug: [vite] connecting...
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-LPF6KSF2.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-PMKBOVCG.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-G3PMV62Z.js?v=0afbd6a8
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: [vite] failed to connect to websocket.
+your current setup:
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev:/vite-hmr <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/lib/queryClient.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/toaster.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/tooltip.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/layout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard-layout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/hooks/use-auth.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/contexts/TripQueueContext.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/contexts/SignInModalContext.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/landing.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/landing-mockups.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/trip-details.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/my-trips.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/profile.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/notifications.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/chat.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ai-assistant.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/vendors.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/executive-assistant.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/how-it-works.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/pricing.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/about.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/not-found.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/clients.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/earnings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/profile.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/ai-assistant.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/messages.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/bookings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/services.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/performance.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/custom-services.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/assigned-trips.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/executives.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/calendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/events.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/communications.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/ai-assistant.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/travel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/venues.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/gifts.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/reports.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/profile.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/ea/settings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/bookings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/messages.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/services.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/earnings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/performance.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/analytics.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/calendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/profile.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/settings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/resources.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/users.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/experts.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/providers.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/bookings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/plans.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/revenue.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/analytics.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/categories.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/search.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/notifications.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/system.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/settings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/data.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/affiliate-partners.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/content-tracking.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/ai-costs.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/tourism-analytics.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/admin/payouts.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/optimize.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/experts.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/service-providers.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/discover.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/partner-with-us.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/contact.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/faq.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/features.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/experience-template.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/architecture-diagram.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/experiences.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/experience-discovery.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/deals.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/payment.tsx
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: [vite] failed to connect to websocket.
+your current setup:
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev:/vite-hmr <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/travel-experts.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/services-provider.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/credits-billing.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert-status.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider-status.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/contract-categories.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/revenue-optimization.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/leaderboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/analytics.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/templates.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/content-studio.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/client-detail.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/settings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/service-form.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/provider/service-form.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert/service-templates.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/cart.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/my-bookings.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/contract-view.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/service-detail.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/layout-mock.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/itinerary-comparison.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/global-calendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/spontaneous.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/hidden-gems.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/transportation-booking.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/privacy.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/terms.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/accept-terms.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/careers.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/blog.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/press.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/help.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/expert-detail.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/quick-start-itinerary.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/booking-demo.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/itinerary-view.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/shared-trip.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/pages/login.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/lucide-react.js?v=0afbd6a8
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: [vite] failed to connect to websocket.
+your current setup:
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev:/vite-hmr <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-HCTRTZFR.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/hooks/use-toast.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/toast.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/lib/utils.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/sidebar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard-sidebar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/button.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/user-menu.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/framer-motion.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/avatar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/notification-bell.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-JNHKTJZS.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/SignInModal.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/hooks/use-trips.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/DashboardPlanCard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/SavedTripsSection.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/TravelPulsePanel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/ActionItemsPanel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/ActiveExpertsPanel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/TopExpertsPanel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/CreditsPanel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/dashboard/RecommendedServices.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/CityTickerTape.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/TrendingCities.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/experience-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/testimonial-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/stat-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/attached_assets/stock_images/turquoise_lake_with__22a4624c.jpg?import
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/seo-head.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/progress.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/badge.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/input.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/date-fns.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/select.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/hooks/use-chat.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/scroll-area.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/hooks/use-websocket.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/textarea.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/index.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/tabs.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/dialog.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/skeleton.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/plancard-types.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/StatsRow.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/DaySelector.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/SectionTabs.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/ActivitiesSection.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/MapControlCenter.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/itinerary/DayTransportPanel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-hook-form.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@hookform_resolvers_zod.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/zod.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/form.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/label.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/expert/expert-layout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/shared/travel-pulse-ticker.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/stripe-connect-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/switch.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/calendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/dropdown-menu.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ea-layout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/provider/provider-layout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/provider/service-recommendations.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/sheet.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/admin/admin-layout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/alert-dialog.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/table.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/accordion.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/recharts.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/radio-group.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/separator.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/collapsible.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/popover.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/expert-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/expert-match-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/slider.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/CityGrid.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/GlobalCalendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/TripQueueIndicator.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/loading-skeleton.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/lib/analytics.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/checkbox.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-icons_si.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-resizable-panels.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/experience-map.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/expert-chat-widget.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ai-matched-experts-section.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/shared/constants/providerCategories.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/add-custom-venue-modal.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/flight-search.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/hotel-search.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/service-browser.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/activity-search.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ai-itinerary-builder.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/template-filters-panel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/trip-transport-planner.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/amadeus-pois.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/amadeus-safety.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/venue-search-panel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/expert/service-recommendations.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/shared/dynamic-pricing-editor.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/booking/StripeCheckout.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@vis__gl_react-google-maps.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ItineraryComparisonWithBooking.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/booking/VariantActionButtons.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/itinerary/TransportLeg.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/spontaneous-discovery.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/widgets/TwelveGoWidget.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/PlanningWithBooking.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-toast.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/class-variance-authority.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-BZE6WXYY.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-FOCBE7VZ.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-ZX4INVWX.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-VVFNKKEH.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-N2LCAOGE.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-CV3ZSXO2.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-4IGGD3YR.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-5SMCMHIW.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-33XR6CIQ.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-3Z3U6VSM.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-OKRDQZDL.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/clsx.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/tailwind-merge.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-slot.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/hooks/use-mobile.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-avatar.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/shared/routes.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/CityTickerTape.css
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/HeroSection.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/plancard/TransportSection.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-progress.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WBPQ5B3C.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-select.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-scroll-area.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-dialog.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/multi-person-coordination.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/vendor-management.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/itinerary-optimization.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/budget-intelligence.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/emergency-response.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/logistics-intelligence-panel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/temporal-anchor-manager.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/schedule-validator.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/energy-budget-display.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/wedding-anchor-presets.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/participant-travel-tracker.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/anchor-suggestions-panel.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/expert-constraint-dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/provider-availability-manager.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/expert-coordination-hub.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/provider-booking-context.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/logistics/trip-logistics-dashboard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tabs.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/lib/maps-platform.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/lib/navigate.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/map-polyline.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/itinerary/TransportBookingCard.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-KM43AH6H.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-O2WMGG5S.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-label.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/expert/expert-sidebar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-switch.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-dropdown-menu.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-day-picker.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/provider/provider-sidebar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ea-sidebar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/admin/admin-sidebar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-alert-dialog.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-accordion.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-separator.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-popover.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-radio-group.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-collapsible.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-GSJHEFGA.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-U7P2NEEE.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/CityDetailView.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/YearOverviewCalendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/MonthCalendarGrid.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/CompactYearCalendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-slider.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-checkbox.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/command.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/venue-card.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/ui/alert.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@stripe_stripe-js.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@stripe_react-stripe-js.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/booking/BookingFlowModal.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-TKCFH4OL.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-ZX7LIZGY.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/shared/schema.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-6ZMM2PAV.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-HP4C2D67.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-7OTKUJFN.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-35BHMGOL.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-ZYMZL72W.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-7OJ4MC6A.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-AEUB5J6F.js?v=0afbd6a8
+[CONSOLE] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[CONSOLE] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/cmdk.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/booking/BookingConfirmation.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/drizzle-orm_pg-core.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/drizzle-zod.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/drizzle-orm.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/shared/models/auth.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/shared/models/chat.ts
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/dompurify.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/DestinationCalendar.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/src/components/travelpulse/AIRecommendationBadges.tsx
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-CECBIGCF.js?v=0afbd6a8
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-5NW6BBWY.js?v=0afbd6a8
+[CONSOLE] error: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[REQUEST] GET https://js.stripe.com/v3
+[REQUEST] GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap
+[REQUEST] GET https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2
+[CONSOLE] error: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[REQUEST] GET https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/api/auth/user
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[RESPONSE ERROR] 401 https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/api/auth/user
+[CONSOLE] error: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[REQUEST] GET https://js.stripe.com/v3/controller-with-preconnect-35cc796c8a7030881a53bbbc9215476e.html
+[REQUEST] GET https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[REQUEST] GET https://js.stripe.com/v3/fingerprinted/js/shared-755a36c00e50e4adaca60980ce76ae11.js
+[REQUEST] GET https://js.stripe.com/v3/fingerprinted/js/controller-with-preconnect-5872d61c05e6acae63f4d56b00e36f21.js
+Current URL: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/login
+Page title: 
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[REQUEST] GET https://js.stripe.com/v3/.deploy_status_henson.json
+[REQUEST] GET https://js.stripe.com/v3/fingerprinted/js/stripe-cookies-28d0c3a5a6dfa738496e3527f2037989.js
+[REQUEST] GET https://js.stripe.com/v3/.deploy_status_henson.json
+Page URL: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/login
+Page title: 
+[REQUEST] GET https://js.stripe.com/v3/m-outer-3437aaddcdf6922d623e172c2d6f9278.html
+[REQUEST] GET https://js.stripe.com/v3/fingerprinted/js/m-outer-15a2b40a058ddff1cffdb63779fe3de1.js
+[REQUEST] GET https://m.stripe.network/inner.html
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[REQUEST] GET https://m.stripe.network/out-4.5.45.js
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Failed to load resource: the server responded with a status of 401 (Unauthorized)
+[REQUEST] POST https://m.stripe.com/6
+[CONSOLE] error: Access to XMLHttpRequest at 'https://m.stripe.com/6' from origin 'https://m.stripe.network' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+[CONSOLE] error: Access to XMLHttpRequest at 'https://m.stripe.com/6' from origin 'https://m.stripe.network' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to XMLHttpRequest at 'https://m.stripe.com/6' from origin 'https://m.stripe.network' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[REQUEST] POST https://r.stripe.com/b
+[REQUEST] POST https://r.stripe.com/b
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+[REQUEST] POST https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/api/auth/login {"email":"nyc-art@traveloure.test","password":"TestPass123!"}
+[RESPONSE] 200 https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/api/auth/login
+[RESPONSE BODY] {"message":"Logged in successfully","user":{"id":"16becd76-4a4f-4602-8549-a2e842d583e9","email":"nyc-art@traveloure.test","firstName":"Marcus","lastName":"Chen","role":"local_expert"}}
+Email field visible, filling...
+Clicking submit button...
+HTML length: [33m296481[39m
+Waiting for login to complete...
+Email field visible: [33mtrue[39m
+Password field visible: [33mtrue[39m
+Submit button visible: [33mtrue[39m
+Total input elements: [33m2[39m
+Body text (first 500 chars): TRAVELOURE
+Sign in to your account
+
+Welcome back — let's continue planning.
+
+Email
+Password
+Sign In
+OR
+Continue with Replit
+
+Don't have an account? Sign up on the home page
+
+This is a temporary development preview, and these links are not for public use. Deploy your app for secure sharing or use an invite link.
+[CONSOLE] debug: [vite] connecting...
+  ✓   1 [chromium] › playwright/tests/debug-login.spec.ts:3:1 › debug login page (11.6s)
+Logging in as nyc-architecture@traveloure.test
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: [vite] failed to connect to websocket.
+your current setup:
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev:/vite-hmr <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+[CONSOLE] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] debug: [vite] connecting...
+Modal visible: false
+Current URL: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/accept-terms
+[CONSOLE] error: WebSocket connection to 'wss://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/vite-hmr?token=F7ndLP9569HH' failed: Error during WebSocket handshake: Unexpected response code: 400
+[CONSOLE] error: WebSocket connection to 'wss://localhost:5173/?token=F7ndLP9569HH' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED
+[CONSOLE] error: [vite] failed to connect to websocket.
+your current setup:
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/ <--[HTTP]--> localhost:5173/ (server)
+  (browser) 796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev:/vite-hmr <--[WebSocket (failing)]--> localhost:5173/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+[CONSOLE] info: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/roboto/v51/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[CONSOLE] error: Access to font at 'https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2' from origin 'https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev' has been blocked by CORS policy: Request header field x-test-token is not allowed by Access-Control-Allow-Headers in preflight response.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+  ✓   4 [chromium] › playwright/tests/debug-login-submit.spec.ts:3:1 › debug login submit (20.6s)
+Logging in as nyc-fashion@traveloure.test
+Successfully redirected to dashboard
+[CONSOLE] error: Access to fetch at 'https://r.stripe.com/b' from origin 'https://js.stripe.com' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+[CONSOLE] error: Failed to load resource: net::ERR_FAILED
+[PAGE ERROR] Error fetching https://r.stripe.com/b: Failed to fetch
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Selector "#email": 1 elements
+  First element visible: true
+  placeholder: you@example.com, id: email
+Waiting for login to complete...
+Selector "input[type="email"]": 1 elements
+  First element visible: true
+  placeholder: you@example.com, id: email
+Selector "input[placeholder*="email"]": 0 elements
+Selector "input[placeholder*="Email"]": 0 elements
+Selector "input[placeholder="you@example.com"]": 1 elements
+  First element visible: true
+  placeholder: you@example.com, id: email
+Selector "#password": 1 elements
+  First element visible: true
+  placeholder: ••••••••, id: password
+Selector "input[type="password"]": 1 elements
+  First element visible: true
+  placeholder: ••••••••, id: password
+Selector "input[placeholder*="password"]": 0 elements
+Selector "input[placeholder*="Password"]": 0 elements
+Selector "input[placeholder="••••••••"]": 1 elements
+  First element visible: true
+  placeholder: ••••••••, id: password
+Selector "[data-testid="button-sign-in-submit"]": 1 elements
+  First element visible: true
+  text: "Sign In", data-testid: button-sign-in-submit
+Selector "[data-testid="button-auth-submit"]": 0 elements
+Selector "button[type="submit"]": 1 elements
+  First element visible: true
+  text: "Sign In", data-testid: button-sign-in-submit
+Selector "button:has-text("Sign In")": 1 elements
+  First element visible: true
+  text: "Sign In", data-testid: button-sign-in-submit
+Selector "button:has-text("Sign in")": 1 elements
+  First element visible: true
+  text: "Sign In", data-testid: button-sign-in-submit
+Selector "[role="dialog"]": 0 elements
+Selector "[data-state="open"]": 0 elements
+Selector ".modal": 0 elements
+Selector "[data-testid="modal-sign-in"]": 0 elements
+Selector "[data-state="open"][aria-hidden="true"]": 0 elements
+Selector ".backdrop": 0 elements
+Selector ".overlay": 0 elements
+Selector "[aria-hidden="true"]": 2 elements
+  First element visible: false
+Body text (first 500 chars): TRAVELOURE
+Sign in to your account
+
+Welcome back — let's continue planning.
+
+Email
+Password
+Sign In
+OR
+Continue with Replit
+
+Don't have an account? Sign up on the home page
+
+This is a temporary development preview, and these links are not for public use. Deploy your app for secure sharing or use an invite link.
+  ✓   2 [chromium] › playwright/tests/debug-login-2.spec.ts:3:1 › debug login page elements (27.2s)
+Logging in as nyc-transport@traveloure.test
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘   5 [chromium] › playwright/tests/nyc-market.spec.ts:135:3 › [NYC] Expert Setup - Sofia Ricci (31.7s)
+  ✘   3 [chromium] › playwright/tests/nyc-market.spec.ts:135:3 › [NYC] Expert Setup - Jordan Williams (31.7s)
+  ✘   6 [chromium] › playwright/tests/nyc-market.spec.ts:135:3 › [NYC] Expert Setup - Marcus Chen (32.0s)
+Logging in as nyc-photography@traveloure.test
+Logging in as nyc-stays@traveloure.test
+Logging in as nyc-concierge@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Screenshot saved to login-failed-1775457262211.png
+  ✘   8 [chromium] › playwright/tests/nyc-market.spec.ts:135:3 › [NYC] Expert Setup - Aisha Johnson (20.3s)
+  ✘   7 [chromium] › playwright/tests/nyc-market.spec.ts:135:3 › [NYC] Expert Setup - Emma Goldstein (30.3s)
+Logging in as test-traveler-nyc@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Logging in as test-traveler-nyc@traveloure.test
+Waiting for login to complete...
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Email field visible, filling...
+Email field visible, filling...
+  ✘   9 [chromium] › playwright/tests/nyc-market.spec.ts:258:3 › [NYC] Provider Setup - Tony Russo (30.2s)
+Clicking submit button...
+Clicking submit button...
+Waiting for login to complete...
+Waiting for login to complete...
+
+=== NYC Test Content Summary ===
+Experts created: 5
+Providers created: 4
+Total services created: 18
+Markets covered: Art, Food, Nightlife, Architecture, Fashion, Transport, Photography, Stays, Concierge
+================================
+
+  ✓  15 [chromium] › playwright/tests/nyc-market.spec.ts:428:1 › [NYC] Summary - All NYC Content Created (5ms)
+Logging in as kyoto-temple@traveloure.test
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+  ✘  12 [chromium] › playwright/tests/nyc-market.spec.ts:258:3 › [NYC] Provider Setup - Michael Torres (30.2s)
+Logging in as kyoto-arts@traveloure.test
+  ✘  11 [chromium] › playwright/tests/nyc-market.spec.ts:258:3 › [NYC] Provider Setup - Sarah Miller (34.9s)
+  ✘  10 [chromium] › playwright/tests/nyc-market.spec.ts:258:3 › [NYC] Provider Setup - David Kim (34.9s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Logging in as kyoto-food@traveloure.test
+Logging in as kyoto-neighborhood@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  13 [chromium] › playwright/tests/nyc-market.spec.ts:303:1 › [NYC] Traveler Flow - Weekend Getaway (30.9s)
+  ✘  14 [chromium] › playwright/tests/nyc-market.spec.ts:377:1 › [NYC] Booking & Payment - Art Tour (30.8s)
+Successfully redirected to dashboard
+Logging in as kyoto-etiquette@traveloure.test
+Logging in as edinburgh-culture@traveloure.test
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+  ✘  16 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Yuki Tanaka (kyoto) (30.7s)
+Logging in as edinburgh-whisky@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  17 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Haruki Sato (kyoto) (30.6s)
+Logging in as edinburgh-festival@traveloure.test
+Successfully redirected to dashboard
+  ✘  18 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Aiko Yamamoto (kyoto) (30.2s)
+  ✘  19 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Kenji Nakamura (kyoto) (30.2s)
+Logging in as edinburgh-highlands@traveloure.test
+Logging in as cartagena-romance@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  20 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Mei Kobayashi (kyoto) (30.5s)
+  ✘  21 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Alistair MacGregor (edinburgh) (30.5s)
+Logging in as cartagena-culture@traveloure.test
+Logging in as cartagena-food@traveloure.test
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Successfully redirected to dashboard
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+  ✘  22 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Fiona Campbell (edinburgh) (30.3s)
+Successfully redirected to dashboard
+Logging in as cartagena-beach@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  23 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Hamish Stewart (edinburgh) (30.8s)
+Logging in as jaipur-artisan@traveloure.test
+  ✘  25 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Valentina Herrera (cartagena) (30.6s)
+Logging in as jaipur-culture@traveloure.test
+Successfully redirected to dashboard
+  ✘  24 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Morag Fraser (edinburgh) (33.4s)
+Logging in as jaipur-food@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  26 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Miguel Castillo (cartagena) (30.7s)
+  ✘  27 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Sofia Vargas (cartagena) (30.5s)
+Logging in as jaipur-photography-expert@traveloure.test
+Logging in as porto-wine@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+  ✘  28 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Diego Morales (cartagena) (30.2s)
+Logging in as porto-architecture@traveloure.test
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+  ✘  29 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Priya Sharma (jaipur) (30.0s)
+Waiting for login to complete...
+Logging in as porto-food@traveloure.test
+  ✘  30 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Arjun Singh (jaipur) (30.7s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Logging in as porto-digitalnomad@traveloure.test
+  ✘  31 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Deepa Gupta (jaipur) (30.3s)
+Logging in as nyc-art@traveloure.test
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+  ✘  32 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Vikram Rathore (jaipur) (30.4s)
+  ✘  33 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Joao Ferreira (porto) (30.5s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Logging in as nyc-food@traveloure.test
+Logging in as nyc-nightlife@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+  ✘  34 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Ana Silva (porto) (30.7s)
+Successfully redirected to dashboard
+Logging in as nyc-architecture@traveloure.test
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+  ✘  35 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Pedro Costa (porto) (30.2s)
+Logging in as nyc-fashion@traveloure.test
+  ✘  36 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Mariana Santos (porto) (30.2s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+
+    ✓ Phase 1 Complete: Expert Setup
+    - Kyoto: 5 experts
+    - Edinburgh: 4 experts
+    - Cartagena: 4 experts
+    - Jaipur: 4 experts
+    - Porto: 4 experts
+    - Total: 26 experts set up with profiles and services
+  
+  ✓  42 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:154:1 › [Phase 1] Summary - All experts set up (290ms)
+Logging in as kyoto-transport@traveloure.test
+  ✘  37 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Marcus Chen (newyork) (30.2s)
+Logging in as kyoto-photography@traveloure.test
+  ✘  38 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Sofia Ricci (newyork) (30.2s)
+  ✘  39 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Jordan Williams (newyork) (30.3s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Logging in as kyoto-stays@traveloure.test
+Logging in as edinburgh-transport@traveloure.test
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Successfully redirected to dashboard
+  ✘  40 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Emma Goldstein (newyork) (30.2s)
+Successfully redirected to dashboard
+Successfully redirected to dashboard
+Logging in as edinburgh-photography@traveloure.test
+  ✘  41 [chromium] › playwright/tests/phase-1-expert-setup.spec.ts:46:3 › [Phase 1] Expert Setup - Aisha Johnson (newyork) (30.9s)
+Logging in as edinburgh-stays@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  43 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Takeshi Ito (kyoto) (30.7s)
+Logging in as cartagena-transport@traveloure.test
+  ✘  44 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Sakura Watanabe (kyoto) (30.7s)
+Logging in as cartagena-photography@traveloure.test
+  ✘  45 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Ryo Suzuki (kyoto) (30.6s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  46 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Angus MacDonald (edinburgh) (30.8s)
+Logging in as cartagena-stays@traveloure.test
+Successfully redirected to dashboard
+Logging in as cartagena-luxury@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Redirected to: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/dashboard
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Redirected to: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/dashboard
+Successfully redirected to dashboard
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  47 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Isla Robertson (edinburgh) (30.2s)
+Redirected to: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/accept-terms
+User needs to accept terms first
+Clicking accept terms button...
+Redirected to: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/dashboard
+Successfully redirected to dashboard
+Redirected to: https://796e6056-bc9f-472e-ba38-753fa8c7073d-00-9qqxl5xr9s8v.riker.replit.dev/dashboard
+Successfully redirected to dashboard
+Logging in as cartagena-concierge@traveloure.test
+  ✘  48 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Duncan Murray (edinburgh) (30.6s)
+Logging in as jaipur-transport@traveloure.test
+  ✘  49 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Andres Reyes (cartagena) (30.6s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Logging in as jaipur-photography@traveloure.test
+  ✘  50 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Camila Torres (cartagena) (31.0s)
+Logging in as jaipur-stays@traveloure.test
+  ✘  51 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Juan Ospina (cartagena) (30.2s)
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+  ✘  52 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Isabella Mendoza (cartagena) (30.4s)
+Logging in as jaipur-shopping@traveloure.test
+Logging in as porto-transport@traveloure.test
+Screenshot saved to login-failed-1775457500375.png
+  ✘  53 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Carlos Rivera (cartagena) (19.2s)
+Email field visible, filling...
+Clicking submit button...
+Email field visible, filling...
+Waiting for login to complete...
+Clicking submit button...
+Waiting for login to complete...
+Logging in as porto-photography@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Screenshot saved to login-failed-1775457507309.png
+  ✘  54 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Ravi Kumar (jaipur) (20.5s)
+Logging in as porto-stays@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Screenshot saved to login-failed-1775457512709.png
+Screenshot saved to login-failed-1775457512892.png
+  ✘  55 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Ananya Mehra (jaipur) (20.6s)
+  ✘  56 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Manish Joshi (jaipur) (18.3s)
+Logging in as porto-winery@traveloure.test
+Logging in as nyc-transport@traveloure.test
+Screenshot saved to login-failed-1775457515523.png
+  ✘  57 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Neha Agarwal (jaipur) (18.2s)
+Screenshot saved to login-failed-1775457516871.png
+  ✘  58 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Tiago Oliveira (porto) (18.1s)
+Logging in as nyc-photography@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Logging in as nyc-stays@traveloure.test
+Screenshot saved to login-failed-1775457520806.png
+  ✘  59 [chromium] › playwright/tests/phase-2-provider-setup.spec.ts:35:3 › [Phase 2] Provider Setup - Ines Pereira (porto) (18.1s)
+Logging in as nyc-concierge@traveloure.test
+Email field visible, filling...
+Clicking submit button...
+Waiting for login to complete...
+Email field visible, filling...
