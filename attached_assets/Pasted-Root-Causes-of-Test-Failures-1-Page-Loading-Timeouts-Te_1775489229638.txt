@@ -1,0 +1,73 @@
+Root Causes of Test Failures:
+
+1. Page Loading Timeouts
+
+• Tests use waitForLoadState('networkidle') which times out
+• Live server might have ongoing requests or slow responses
+• Example: Clicking "Services" link → networkidle timeout after 30 seconds
+
+2. Missing/Different UI Elements
+
+• Tests expect specific data-testid attributes that don't exist
+• Example: Profile page has [data-testid="profile-bio"] (we confirmed this), but tests still report "Bio field exists: false"
+• Could be timing: element exists but test checks too early
+
+3. Navigation Issues
+
+• Clicking links doesn't always navigate as expected
+• Example: Services page might have loading states or redirects
+
+4. Form Submission Problems
+
+• forms.ts functions might not match actual form structure
+• Example: createService looks for "Save Service" button but should use [data-testid="button-submit-service"]
+
+5. Test Data Issues
+
+• Some test accounts don't exist (traveler@traveloure.test)
+• Others might have different data than expected
+
+Specific Evidence from Tests:
+
+From complete-expert-steps.spec.ts:
+
+Bio field exists: false
+Profile form not found, taking screenshot...
+Body contains "profile": true
+Body contains "bio": false
+But our check-testids.spec.ts showed:
+
+[data-testid="profile-bio"]: 1 element(s)
+Visible: true
+Tag: TEXTAREA
+Contradiction! The element exists but test says it doesn't. This suggests:
+
+1. Timing issue (element loads after test checks)
+2. Different page state (maybe not on correct profile form)
+3. Test checking wrong selector
+
+From Phase 1-3 test outputs:
+All fail at ~30 seconds (test timeout), not with specific errors. This suggests waitForLoadState('networkidle') or similar waits are timing out.
+
+Why This Happened:
+
+The tests were written against an expected UI state that doesn't match the actual deployed UI. While you fixed:
+
+• Dashboard test IDs ✓
+• Route guards ✓
+• Form test IDs ✓
+
+There are still mismatches in:
+
+1. Page load behavior (networkidle never happens)
+2. Navigation flows (links don't work as expected)
+3. Form interactions (buttons have different text/selectors)
+4. Test timing (elements load slower than tests expect)
+
+To Fix These:
+
+1. Update timeouts: Use domcontentloaded instead of networkidle
+2. Add defensive waits: Check for elements with retries
+3. Update selectors: Match actual UI, not expected UI
+4. Fix navigation: Ensure links actually work
+5. Validate test data: Use correct account credentials
