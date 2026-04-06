@@ -95,6 +95,7 @@ export default function ExpertServiceForm() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Full Expert Service"
                 className="mt-2"
+                data-testid="service-name"
               />
             </div>
 
@@ -124,6 +125,7 @@ export default function ExpertServiceForm() {
                 placeholder="Describe what your service includes..."
                 rows={4}
                 className="mt-2"
+                data-testid="service-description"
               />
             </div>
 
@@ -137,6 +139,7 @@ export default function ExpertServiceForm() {
                   value={formData.basePrice}
                   onChange={(e) => setFormData({ ...formData, basePrice: parseInt(e.target.value) || 0 })}
                   className="mt-2"
+                  data-testid="service-price"
                 />
               </div>
               <div>
@@ -163,6 +166,7 @@ export default function ExpertServiceForm() {
                 onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                 placeholder="e.g., 7 days, 2 hours"
                 className="mt-2"
+                data-testid="service-duration"
               />
             </div>
 
@@ -231,8 +235,8 @@ export default function ExpertServiceForm() {
               <Button variant="outline" onClick={() => window.history.back()}>
                 Cancel
               </Button>
-              <Button variant="outline">Save Draft</Button>
-              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90">
+              <Button variant="outline" data-testid="button-save-draft">Save Draft</Button>
+              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-submit-service">
                 Publish
               </Button>
             </div>

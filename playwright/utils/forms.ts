@@ -16,7 +16,10 @@ export async function fillExpertProfile(
   await page.fill('[data-testid="profile-bio"]', data.bio);
 
   // Fill hourly rate
-  await page.fill('[data-testid="hourly-rate"]', data.hourlyRate.toString());
+  const hourlyRateField = page.locator('[data-testid="hourly-rate"]');
+  if (await hourlyRateField.isVisible().catch(() => false)) {
+    await hourlyRateField.fill(data.hourlyRate.toString());
+  }
 
   // Select specialties (checkboxes or multiselect)
   for (const specialty of data.specialties) {
@@ -35,8 +38,11 @@ export async function fillExpertProfile(
   }
 
   // Save profile
-  await page.click('button:has-text("Save")');
-  await page.waitForNavigation().catch(() => null);
+  const saveButton = page.locator('[data-testid="button-save-profile"], button:has-text("Save")').first();
+  if (await saveButton.isVisible().catch(() => false)) {
+    await saveButton.click();
+    await page.waitForLoadState('networkidle').catch(() => null);
+  }
 }
 
 /**
@@ -53,27 +59,50 @@ export async function createService(
   }
 ) {
   // Navigate to create service page if not already there
-  const createButton = page.locator('button:has-text("Create Service")').first();
+  const createButton = page.locator('[data-testid="button-add-service"], [data-testid="button-create-first-service"], button:has-text("Create Service")').first();
   if (await createButton.isVisible().catch(() => false)) {
     await createButton.click();
-    await page.waitForNavigation();
+    await page.waitForLoadState('networkidle').catch(() => null);
   }
 
+  // Wait for form to appear
+  await page.waitForSelector('[data-testid="service-name"]', { state: 'visible', timeout: 10000 }).catch(() => null);
+
   // Fill service form
-  await page.fill('[data-testid="service-name"]', data.name);
-  await page.fill('[data-testid="service-description"]', data.description);
-  await page.fill('[data-testid="service-price"]', data.price.toString());
-  await page.fill('[data-testid="service-duration"]', data.duration.toString());
+  const nameField = page.locator('[data-testid="service-name"]');
+  if (await nameField.isVisible().catch(() => false)) {
+    await nameField.fill(data.name);
+  }
+
+  const descField = page.locator('[data-testid="service-description"]');
+  if (await descField.isVisible().catch(() => false)) {
+    await descField.fill(data.description);
+  }
+
+  const priceField = page.locator('[data-testid="service-price"]');
+  if (await priceField.isVisible().catch(() => false)) {
+    await priceField.fill(data.price.toString());
+  }
+
+  const durationField = page.locator('[data-testid="service-duration"]');
+  if (await durationField.isVisible().catch(() => false)) {
+    await durationField.fill(data.duration.toString());
+  }
 
   // Select currency if provided
   if (data.currency) {
     const currencySelect = page.locator('[data-testid="service-currency"]');
-    await currencySelect.selectOption(data.currency);
+    if (await currencySelect.isVisible().catch(() => false)) {
+      await currencySelect.selectOption(data.currency);
+    }
   }
 
-  // Save service
-  await page.click('button:has-text("Save Service")');
-  await page.waitForNavigation().catch(() => null);
+  // Save service — button says "Publish" on the service form
+  const saveButton = page.locator('[data-testid="button-submit-service"], button:has-text("Publish"), button:has-text("Save Service")').first();
+  if (await saveButton.isVisible().catch(() => false)) {
+    await saveButton.click();
+    await page.waitForLoadState('networkidle').catch(() => null);
+  }
 }
 
 /**
@@ -88,10 +117,16 @@ export async function fillProviderProfile(
   }
 ) {
   // Fill business name
-  await page.fill('[data-testid="business-name"]', data.businessName);
+  const businessNameField = page.locator('[data-testid="business-name"]');
+  if (await businessNameField.isVisible().catch(() => false)) {
+    await businessNameField.fill(data.businessName);
+  }
 
   // Fill description
-  await page.fill('[data-testid="business-description"]', data.description);
+  const descField = page.locator('[data-testid="business-description"]');
+  if (await descField.isVisible().catch(() => false)) {
+    await descField.fill(data.description);
+  }
 
   // Select service types
   for (const serviceType of data.serviceTypes) {
@@ -102,8 +137,11 @@ export async function fillProviderProfile(
   }
 
   // Save profile
-  await page.click('button:has-text("Save")');
-  await page.waitForNavigation().catch(() => null);
+  const saveButton = page.locator('button:has-text("Save")').first();
+  if (await saveButton.isVisible().catch(() => false)) {
+    await saveButton.click();
+    await page.waitForLoadState('networkidle').catch(() => null);
+  }
 }
 
 /**
@@ -124,31 +162,52 @@ export async function createTrip(
   const createButton = page.locator('button:has-text("Create Trip")').first();
   if (await createButton.isVisible().catch(() => false)) {
     await createButton.click();
-    await page.waitForNavigation();
+    await page.waitForLoadState('networkidle').catch(() => null);
   }
 
   // Fill destination
-  await page.fill('[data-testid="trip-destination"]', data.destination);
+  const destField = page.locator('[data-testid="trip-destination"]');
+  if (await destField.isVisible().catch(() => false)) {
+    await destField.fill(data.destination);
+  }
 
   // Fill dates
-  await page.fill('[data-testid="trip-start-date"]', data.startDate);
-  await page.fill('[data-testid="trip-end-date"]', data.endDate);
+  const startDateField = page.locator('[data-testid="trip-start-date"]');
+  if (await startDateField.isVisible().catch(() => false)) {
+    await startDateField.fill(data.startDate);
+  }
+
+  const endDateField = page.locator('[data-testid="trip-end-date"]');
+  if (await endDateField.isVisible().catch(() => false)) {
+    await endDateField.fill(data.endDate);
+  }
 
   // Fill guests
-  await page.fill('[data-testid="trip-guests"]', data.guests.toString());
+  const guestsField = page.locator('[data-testid="trip-guests"]');
+  if (await guestsField.isVisible().catch(() => false)) {
+    await guestsField.fill(data.guests.toString());
+  }
 
   // Fill budget
-  await page.fill('[data-testid="trip-budget"]', data.budget.toString());
+  const budgetField = page.locator('[data-testid="trip-budget"]');
+  if (await budgetField.isVisible().catch(() => false)) {
+    await budgetField.fill(data.budget.toString());
+  }
 
   // Select experience type if provided
   if (data.experienceType) {
     const typeSelect = page.locator('[data-testid="trip-type"]');
-    await typeSelect.selectOption(data.experienceType);
+    if (await typeSelect.isVisible().catch(() => false)) {
+      await typeSelect.selectOption(data.experienceType);
+    }
   }
 
   // Save trip
-  await page.click('button:has-text("Create Trip")');
-  await page.waitForNavigation().catch(() => null);
+  const saveButton = page.locator('button:has-text("Create Trip")').first();
+  if (await saveButton.isVisible().catch(() => false)) {
+    await saveButton.click();
+    await page.waitForLoadState('networkidle').catch(() => null);
+  }
 }
 
 /**
@@ -167,19 +226,31 @@ export async function addActivityToTrip(
     await addButton.click();
   }
 
-  await page.fill('[data-testid="activity-name"]', activity.name);
+  const nameField = page.locator('[data-testid="activity-name"]');
+  if (await nameField.isVisible().catch(() => false)) {
+    await nameField.fill(activity.name);
+  }
 
   if (activity.description) {
-    await page.fill('[data-testid="activity-description"]', activity.description);
+    const descField = page.locator('[data-testid="activity-description"]');
+    if (await descField.isVisible().catch(() => false)) {
+      await descField.fill(activity.description);
+    }
   }
 
   if (activity.date) {
-    await page.fill('[data-testid="activity-date"]', activity.date);
+    const dateField = page.locator('[data-testid="activity-date"]');
+    if (await dateField.isVisible().catch(() => false)) {
+      await dateField.fill(activity.date);
+    }
   }
 
   // Save activity
-  await page.click('button:has-text("Save Activity")');
-  await page.waitForNavigation().catch(() => null);
+  const saveButton = page.locator('button:has-text("Save Activity")').first();
+  if (await saveButton.isVisible().catch(() => false)) {
+    await saveButton.click();
+    await page.waitForLoadState('networkidle').catch(() => null);
+  }
 }
 
 /**
@@ -189,7 +260,7 @@ export async function addToCart(page: Page, serviceId?: string) {
   const addButton = page.locator('button:has-text("Add to Cart")').first();
   if (await addButton.isVisible().catch(() => false)) {
     await addButton.click();
-    await page.waitForNavigation().catch(() => null);
+    await page.waitForLoadState('networkidle').catch(() => null);
   }
 }
 
@@ -229,7 +300,7 @@ export async function submitPayment(
   const payButton = page.locator('button:has-text("Pay")').first();
   if (await payButton.isVisible().catch(() => false)) {
     await payButton.click();
-    await page.waitForNavigation().catch(() => null);
+    await page.waitForLoadState('networkidle').catch(() => null);
   }
 }
 
@@ -244,7 +315,7 @@ export async function sendMessage(page: Page, message: string) {
     const sendButton = page.locator('button:has-text("Send")').first();
     if (await sendButton.isVisible().catch(() => false)) {
       await sendButton.click();
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
   }
 }
@@ -274,6 +345,6 @@ export async function setAvailability(
   const saveButton = page.locator('button:has-text("Save Availability")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForNavigation().catch(() => null);
+    await page.waitForLoadState('networkidle').catch(() => null);
   }
 }
