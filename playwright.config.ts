@@ -31,6 +31,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     /* Video on failure */
     video: 'retain-on-failure',
+    /* Rate limit bypass header - automatically included in every request */
+    extraHTTPHeaders: process.env.RATE_LIMIT_BYPASS_KEY ? {
+      'x-test-token': process.env.RATE_LIMIT_BYPASS_KEY
+    } : {},
   },
 
   /* Configure projects for major browsers */
