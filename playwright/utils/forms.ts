@@ -316,11 +316,14 @@ export async function submitPayment(
  * Send message to expert
  */
 export async function sendMessage(page: Page, message: string) {
-  const messageInput = page.locator('input[placeholder*="message"]').first();
+  // Support textarea (chat page) and input (other pages)
+  const messageInput = page.locator(
+    '[data-testid="input-message"], textarea[placeholder*="message"], textarea[placeholder*="Message"], input[placeholder*="message"]'
+  ).first();
   if (await messageInput.isVisible().catch(() => false)) {
     await messageInput.fill(message);
 
-    const sendButton = page.locator('button:has-text("Send")').first();
+    const sendButton = page.locator('[data-testid="button-send"], [data-testid="button-send-message"], button:has-text("Send")').first();
     if (await sendButton.isVisible().catch(() => false)) {
       await sendButton.click();
       await page.waitForLoadState('load').catch(() => null);
