@@ -24,7 +24,7 @@ test('Test with rate limit bypass fixture', async ({ page }) => {
       const acceptButton = page.locator('button:has-text("Accept")').first();
       if (await acceptButton.isVisible().catch(() => false)) {
         await acceptButton.click();
-        await page.waitForLoadState('networkidle');
+        await page.waitForLoadState('load');
         console.log('Terms accepted via button');
       } else {
         console.log('No accept button found');
@@ -32,10 +32,10 @@ test('Test with rate limit bypass fixture', async ({ page }) => {
     }
     
     console.log('Final URL:', page.url());
-    await page.screenshot({ path: 'test-with-fixture.png' });
+    // await page.screenshot({ path: 'test-with-fixture.png' });
     
   } catch (error: any) {
     console.log('Test failed:', error.message);
-    await page.screenshot({ path: 'test-with-fixture-error.png' });
+    // await page.screenshot({ path: 'test-with-fixture-error.png' });
   }
 });

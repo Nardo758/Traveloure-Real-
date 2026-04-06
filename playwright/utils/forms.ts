@@ -45,7 +45,7 @@ export async function fillExpertProfile(
   const saveButton = page.locator('[data-testid="button-save-profile"], button:has-text("Save")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -148,7 +148,7 @@ export async function fillProviderProfile(
   const saveButton = page.locator('button:has-text("Save")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -170,7 +170,7 @@ export async function createTrip(
   const createButton = page.locator('button:has-text("Create Trip")').first();
   if (await createButton.isVisible().catch(() => false)) {
     await createButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 
   // Fill destination
@@ -214,7 +214,7 @@ export async function createTrip(
   const saveButton = page.locator('button:has-text("Create Trip")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -257,7 +257,7 @@ export async function addActivityToTrip(
   const saveButton = page.locator('button:has-text("Save Activity")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -268,7 +268,7 @@ export async function addToCart(page: Page, serviceId?: string) {
   const addButton = page.locator('button:has-text("Add to Cart")').first();
   if (await addButton.isVisible().catch(() => false)) {
     await addButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -308,7 +308,7 @@ export async function submitPayment(
   const payButton = page.locator('button:has-text("Pay")').first();
   if (await payButton.isVisible().catch(() => false)) {
     await payButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }
 
@@ -323,7 +323,7 @@ export async function sendMessage(page: Page, message: string) {
     const sendButton = page.locator('button:has-text("Send")').first();
     if (await sendButton.isVisible().catch(() => false)) {
       await sendButton.click();
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
     }
   }
 }
@@ -353,6 +353,6 @@ export async function setAvailability(
   const saveButton = page.locator('button:has-text("Save Availability")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 }

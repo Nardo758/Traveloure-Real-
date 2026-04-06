@@ -58,7 +58,7 @@ export async function navigateTo(page: Page, path: string) {
  * Wait for a page element to be visible
  */
 export async function waitForElement(page: Page, selector: string, timeout = 15000) {
-  await page.locator(selector).waitFor({ state: 'visible', timeout });
+  await page.locator(selector).first().waitFor({ state: 'visible', timeout });
 }
 
 /**

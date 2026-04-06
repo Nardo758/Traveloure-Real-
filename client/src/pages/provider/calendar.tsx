@@ -344,7 +344,7 @@ export default function ProviderCalendar() {
               </Button>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" data-testid="calendar">
                 <div className="grid grid-cols-7 gap-1">
                   {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day, dayIdx) => (
                     <div key={day} className="min-w-max">
@@ -407,6 +407,7 @@ export default function ProviderCalendar() {
               </Button>
             </CardHeader>
             <CardContent>
+              <div data-testid="calendar">
               <div className="grid grid-cols-7 gap-1 mb-2">
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                   <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
@@ -475,6 +476,7 @@ export default function ProviderCalendar() {
                   <div className="w-4 h-4 bg-white border border-gray-200 rounded" />
                   <span className="text-sm text-gray-600 dark:text-gray-400">Available</span>
                 </div>
+              </div>
               </div>
             </CardContent>
           </Card>

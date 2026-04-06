@@ -52,7 +52,7 @@ for (const provider of providers) {
       const profileButton = page.locator('a:has-text("Profile")').first();
       if (await profileButton.isVisible().catch(() => false)) {
         await profileButton.click();
-        await page.waitForLoadState('networkidle').catch(() => null);
+        await page.waitForLoadState('load').catch(() => null);
       }
 
       const businessNames = {
@@ -132,7 +132,7 @@ for (const provider of providers) {
         const servicesLink = page.locator('a:has-text("Services")').first();
         if (await servicesLink.isVisible().catch(() => false)) {
           await servicesLink.click();
-          await page.waitForLoadState('networkidle').catch(() => null);
+          await page.waitForLoadState('load').catch(() => null);
         }
 
         // Create service
@@ -169,25 +169,25 @@ for (const provider of providers) {
         const saveButton = page.locator('button:has-text("Save")').first();
         if (await saveButton.isVisible().catch(() => false)) {
           await saveButton.click();
-          await page.waitForLoadState('networkidle').catch(() => null);
+          await page.waitForLoadState('load').catch(() => null);
         }
       }
 
-      await page.screenshot({ path: `playwright/reports/phase2-${provider.email}-calendar.png` });
+      // await page.screenshot({ path: `playwright/reports/phase2-${provider.email}-calendar.png` });
     });
 
     // Step 6: Verify bookings page
     await test.step('Verify bookings page', async () => {
       await navigateTo(page, '/provider/bookings');
       await verifyRouteAccessible(page);
-      await page.screenshot({ path: `playwright/reports/phase2-${provider.email}-bookings.png` });
+      // await page.screenshot({ path: `playwright/reports/phase2-${provider.email}-bookings.png` });
     });
 
     // Step 7: Verify earnings page
     await test.step('Verify earnings page', async () => {
       await navigateTo(page, '/provider/earnings');
       await verifyRouteAccessible(page);
-      await page.screenshot({ path: `playwright/reports/phase2-${provider.email}-earnings.png` });
+      // await page.screenshot({ path: `playwright/reports/phase2-${provider.email}-earnings.png` });
     });
 
     // Step 8: Logout

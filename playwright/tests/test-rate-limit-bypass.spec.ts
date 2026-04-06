@@ -29,10 +29,10 @@ test('Test rate limit bypass with header', async ({ page, context }) => {
   
   // Now try a real login
   await page.fill('#email', 'admin@traveloure.test');
-  await page.fill('#password', 'AdminPass123!');
+  await page.fill('#password', 'TestPass123!');
   await page.click('[data-testid="button-sign-in-submit"]');
   
-  // Should redirect to dashboard
-  await page.waitForLoadState('networkidle')(/\/dashboard/);
+  // Should redirect to admin dashboard
+  await page.waitForURL(/\/admin\/dashboard/, { timeout: 20000 });
   console.log('Successfully logged in after multiple attempts!');
 });
