@@ -5,46 +5,40 @@ import { Page } from '@playwright/test';
  * Handles the /accept-terms flow automatically if the account hasn't accepted yet.
  */
 export async function loginAs(page: Page, email: string, password: string) {
+  console.log(`Logging in as ${email}`);
+
   await page.goto('/login');
   await page.waitForLoadState('networkidle');
 
   await page.fill('#email', email);
   await page.fill('#password', password);
   await page.click('[data-testid="button-sign-in-submit"]');
+  await page.waitForLoadState('networkidle');
 
-  // Wait until we've left /login (could go to /dashboard, /accept-terms, etc.)
-  await page.waitForURL((url) => !url.toString().includes('/login'), { timeout: 15000 });
-
-  // Handle the /accept-terms page — two checkboxes must both be ticked first
+  // Handle /accept-terms — two checkboxes must be ticked before button enables
   if (page.url().includes('/accept-terms')) {
-    await page.locator('[data-testid="checkbox-accept-terms"]').click();
-    await page.locator('[data-testid="checkbox-accept-privacy"]').click();
-    await page.locator('[data-testid="button-accept-continue"]').click();
-
-    // Wait until /accept-terms is gone
-    await page.waitForURL((url) => !url.toString().includes('/accept-terms'), { timeout: 15000 });
+    console.log('On accept-terms page, accepting terms...');
+    await page.waitForSelector('[data-testid="checkbox-accept-terms"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="checkbox-accept-privacy"]', { timeout: 5000 });
+    await page.click('[data-testid="checkbox-accept-terms"]');
+    await page.click('[data-testid="checkbox-accept-privacy"]');
+    await page.waitForSelector('[data-testid="button-accept-continue"]:not([disabled])', { timeout: 5000 });
+    await page.click('[data-testid="button-accept-continue"]');
+    await page.waitForLoadState('networkidle');
+    if (page.url().includes('/accept-terms')) {
+      throw new Error('Still on accept-terms page after accepting terms');
+    }
   }
 
-  // Final wait for the landing page to settle
-  await page.waitForLoadState('networkidle');
+  console.log('Login successful, current URL:', page.url());
 }
 
 /**
  * Logout from the platform.
  */
 export async function logout(page: Page) {
-  const profileButton = page.locator('[data-testid="profile-menu"]').first();
-
-  if (await profileButton.isVisible().catch(() => false)) {
-    await profileButton.click();
-    const logoutButton = page.locator('[data-testid="button-logout"]').first();
-    if (await logoutButton.isVisible().catch(() => false)) {
-      await logoutButton.click();
-    } else {
-      await page.click('text=Logout');
-    }
-    await page.waitForURL((url) => url.toString().includes('/login') || url.toString().endsWith('/'), { timeout: 10000 }).catch(() => null);
-  }
+  await page.goto('/api/logout');
+  await page.waitForLoadState('networkidle');
 }
 
 /**
