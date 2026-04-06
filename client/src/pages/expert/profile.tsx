@@ -189,7 +189,7 @@ export default function ExpertProfile() {
                   rows={4}
                   defaultValue={expertProfile?.bio || ""}
                   placeholder="Tell clients about yourself and your expertise"
-                  data-testid="input-bio"
+                  data-testid="profile-bio"
                 />
               )}
             </div>
@@ -328,6 +328,47 @@ export default function ExpertProfile() {
             <Button variant="outline" size="sm" data-testid="button-add-language">
               <Plus className="w-4 h-4 mr-1" /> Add Language
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Pricing */}
+        <Card className="border border-gray-200">
+          <CardHeader>
+            <CardTitle className="text-lg">Pricing</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="hourlyRate">Hourly Rate (USD)</Label>
+                {profileLoading ? (
+                  <Skeleton className="h-10 rounded" />
+                ) : (
+                  <Input
+                    id="hourlyRate"
+                    type="number"
+                    min={0}
+                    defaultValue={expertProfile?.hourlyRate || ""}
+                    placeholder="e.g. 50"
+                    data-testid="hourly-rate"
+                  />
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="minBookingHours">Minimum Booking (hours)</Label>
+                {profileLoading ? (
+                  <Skeleton className="h-10 rounded" />
+                ) : (
+                  <Input
+                    id="minBookingHours"
+                    type="number"
+                    min={1}
+                    defaultValue={expertProfile?.minBookingHours || ""}
+                    placeholder="e.g. 2"
+                    data-testid="min-booking-hours"
+                  />
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
