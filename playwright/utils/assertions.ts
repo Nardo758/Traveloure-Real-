@@ -13,8 +13,11 @@ export async function verifyDashboardLoaded(page: Page, role: 'expert' | 'provid
   };
 
   const selector = dashboardSelectors[role];
-  const element = page.locator(selector).first();
-  await expect(element).toBeVisible({ timeout: 10000 });
+
+  // Wait for React hydration and element to appear in the DOM first
+  await page.waitForSelector(selector, { state: 'attached', timeout: 15000 });
+  // Then assert it is visible
+  await expect(page.locator(selector).first()).toBeVisible({ timeout: 10000 });
 }
 
 /**
