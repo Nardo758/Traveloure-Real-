@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,12 +14,13 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
 
-  if (user) {
-    window.location.href = "/dashboard";
-    return null;
-  }
+  useEffect(() => {
+    if (user && !authLoading) {
+      window.location.href = "/dashboard";
+    }
+  }, [user, authLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,13 +50,27 @@ export default function LoginPage() {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (user) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
             <Compass className="h-7 w-7 text-primary" />
-            <span className="font-bold text-2xl tracking-tight text-foreground uppercase">Traveloure</span>
+            <span className="font-bold text-2xl tracking-tight text-foreground uppercase">
+              Traveloure
+            </span>
           </Link>
           <h1 className="text-2xl font-bold text-foreground">Sign in to your account</h1>
           <p className="text-muted-foreground mt-2 text-sm">
@@ -108,11 +123,16 @@ export default function LoginPage() {
               data-testid="button-sign-in-submit"
             >
               {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Signing in…
+                </>
               ) : (
-                <LogIn className="h-4 w-4 mr-2" />
+                <>
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Sign In
+                </>
               )}
-              {isLoading ? "Signing in…" : "Sign In"}
             </Button>
           </form>
 
