@@ -77,7 +77,7 @@ test('[Phase 3.1] Traveler Flow - Kyoto Couples Trip', async ({ page }) => {
     }
 
     // Screenshot itinerary
-    await page.screenshot({ path: 'playwright/reports/phase3-kyoto-itinerary.png' });
+    // await page.screenshot({ path: 'playwright/reports/phase3-kyoto-itinerary.png' });
   });
 
   // Browse experts and message
@@ -89,14 +89,14 @@ test('[Phase 3.1] Traveler Flow - Kyoto Couples Trip', async ({ page }) => {
     if (await searchBox.isVisible().catch(() => false)) {
       await searchBox.fill('Aiko Yamamoto');
       await page.keyboard.press('Enter');
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
     }
 
     // Find and click Aiko's profile
     const aikoProfile = page.locator('text=Aiko Yamamoto').first();
     if (await aikoProfile.isVisible().catch(() => false)) {
       await aikoProfile.click();
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
 
       // Send message
       await sendMessage(page, 'Hi Aiko! I would love to book your Nishiki Market food tour for our trip. Can you accommodate 2 people on July 18th?');
@@ -110,7 +110,7 @@ test('[Phase 3.1] Traveler Flow - Kyoto Couples Trip', async ({ page }) => {
     const messageVisible = await page.locator('text=Nishiki Market').isVisible().catch(() => false);
     expect(messageVisible).toBeTruthy();
 
-    await page.screenshot({ path: 'playwright/reports/phase3-kyoto-chat.png' });
+    // await page.screenshot({ path: 'playwright/reports/phase3-kyoto-chat.png' });
   });
 
   // Logout
@@ -159,7 +159,7 @@ test('[Phase 3.2] Traveler Flow - Edinburgh Whisky Trip', async ({ page }) => {
     if (await searchBox.isVisible().catch(() => false)) {
       await searchBox.fill('Fiona Campbell');
       await page.keyboard.press('Enter');
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
     }
 
     await sendMessage(
@@ -213,7 +213,7 @@ test('[Phase 3.3] Traveler Flow - Cartagena Proposal Trip', async ({ page }) => 
     if (await searchBox.isVisible().catch(() => false)) {
       await searchBox.fill('Valentina Herrera');
       await page.keyboard.press('Enter');
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
     }
 
     await sendMessage(
@@ -224,7 +224,7 @@ test('[Phase 3.3] Traveler Flow - Cartagena Proposal Trip', async ({ page }) => 
 
   await test.step('View trip bookings', async () => {
     await navigateTo(page, '/my-bookings');
-    await page.screenshot({ path: 'playwright/reports/phase3-cartagena-bookings.png' });
+    // await page.screenshot({ path: 'playwright/reports/phase3-cartagena-bookings.png' });
   });
 
   await test.step('Logout', async () => {
@@ -272,7 +272,7 @@ test('[Phase 3.4] Traveler Flow - Jaipur Family Trip', async ({ page }) => {
     if (await searchBox.isVisible().catch(() => false)) {
       await searchBox.fill('Priya Sharma');
       await page.keyboard.press('Enter');
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
     }
 
     await sendMessage(
@@ -326,7 +326,7 @@ test('[Phase 3.5] Traveler Flow - Porto Digital Nomad', async ({ page }) => {
     if (await searchBox.isVisible().catch(() => false)) {
       await searchBox.fill('Mariana Santos');
       await page.keyboard.press('Enter');
-      await page.waitForLoadState('networkidle').catch(() => null);
+      await page.waitForLoadState('load').catch(() => null);
     }
 
     await sendMessage(
