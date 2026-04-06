@@ -43,7 +43,7 @@ export async function waitForNavigation(page: Page, predicate?: (url: URL) => bo
   if (predicate) {
     await page.waitForURL(predicate);
   } else {
-    await page.waitForNavigation();
+    await page.waitForLoadState('networkidle');
   }
 }
 
