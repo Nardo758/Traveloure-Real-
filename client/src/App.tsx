@@ -163,7 +163,8 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   const ROLE_FAMILIES: Record<string, string[]> = {
     expert: ["expert", "local_expert"],
     provider: ["provider", "service_provider"],
-    ea: ["ea"],
+    ea: ["ea", "executive_assistant"],
+    executive_assistant: ["ea", "executive_assistant"],
     admin: ["admin"],
     user: ["user"],
   };

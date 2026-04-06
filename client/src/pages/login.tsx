@@ -8,6 +8,23 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 
+function getDashboardUrl(role: string): string {
+  switch (role) {
+    case "local_expert":
+    case "expert":
+      return "/expert/dashboard";
+    case "service_provider":
+    case "provider":
+      return "/provider/dashboard";
+    case "ea":
+      return "/ea/dashboard";
+    case "admin":
+      return "/admin/dashboard";
+    default:
+      return "/dashboard";
+  }
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -18,7 +35,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user && !authLoading) {
-      window.location.href = "/dashboard";
+      const role = (user as any)?.role || (user as any)?.claims?.role || "user";
+      window.location.href = getDashboardUrl(role);
     }
   }, [user, authLoading]);
 
@@ -38,7 +56,8 @@ export default function LoginPage() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Welcome back!", description: data.message });
-      window.location.href = "/dashboard";
+      const role = data.user?.role || "user";
+      window.location.href = getDashboardUrl(role);
     } catch (error: any) {
       toast({
         title: "Sign in failed",

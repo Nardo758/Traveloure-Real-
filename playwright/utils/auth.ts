@@ -10,6 +10,9 @@ import { Page } from '@playwright/test';
 export async function loginAs(page: Page, email: string, password: string) {
   console.log(`Logging in as ${email}`);
 
+  // Always clear any existing session first to prevent redirect before /login renders
+  await page.goto('/api/logout', { waitUntil: 'load' });
+
   await page.goto('/login', { waitUntil: 'load' });
 
   // Wait for the form inputs to be ready

@@ -66,7 +66,7 @@ export async function createService(
   const createButton = page.locator('[data-testid="button-add-service"], [data-testid="button-create-first-service"], button:has-text("Create Service")').first();
   if (await createButton.isVisible().catch(() => false)) {
     await createButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    await page.waitForLoadState('load').catch(() => null);
   }
 
   // Wait for form to appear
@@ -105,7 +105,11 @@ export async function createService(
   const saveButton = page.locator('[data-testid="button-submit-service"], button:has-text("Publish"), button:has-text("Save Service")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('networkidle').catch(() => null);
+    // After Publish, the form redirects to /expert/services or /provider/services
+    await page.waitForURL((url) =>
+      url.toString().includes('/services') && !url.toString().includes('/new') && !url.toString().includes('/edit'),
+      { timeout: 15000 }
+    ).catch(() => page.waitForLoadState('load').catch(() => null));
   }
 }
 
