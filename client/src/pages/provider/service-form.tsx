@@ -14,8 +14,11 @@ import {
 } from "@/components/ui/select";
 import { DynamicPricingEditor } from "@/components/shared/dynamic-pricing-editor";
 import { useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { Plus, Trash2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ServiceFormData {
   name: string;
@@ -55,6 +58,8 @@ const MOCK_SERVICE = {
 export default function ProviderServiceForm() {
   const params = useParams<{ id: string }>();
   const isEditMode = !!params?.id;
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [formData, setFormData] = useState<ServiceFormData>(
     isEditMode ? MOCK_SERVICE : {
       name: "",
@@ -74,6 +79,25 @@ export default function ProviderServiceForm() {
     }
   );
   const [newIncluded, setNewIncluded] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/provider/services", {
+      serviceName: formData.name,
+      description: formData.description,
+      price: formData.basePrice.toString(),
+      priceType: formData.priceType.toLowerCase(),
+      deliveryTimeframe: formData.duration,
+      status: formData.active ? "active" : "draft",
+      whatIncluded: formData.whatIncluded,
+    }),
+    onSuccess: () => {
+      toast({ title: "Service created", description: "Your service has been published." });
+      setLocation("/provider/services");
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to create service", description: err?.message || "Please try again.", variant: "destructive" });
+    },
+  });
 
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
@@ -294,9 +318,24 @@ export default function ProviderServiceForm() {
               <Button variant="outline" onClick={() => window.history.back()}>
                 Cancel
               </Button>
-              <Button variant="outline">Save Draft</Button>
-              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90">
-                Publish
+              <Button
+                variant="outline"
+                data-testid="button-save-draft"
+                onClick={() => {
+                  setFormData({ ...formData, active: false });
+                  createMutation.mutate();
+                }}
+                disabled={createMutation.isPending}
+              >
+                Save Draft
+              </Button>
+              <Button
+                className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                data-testid="button-submit-service"
+                onClick={() => createMutation.mutate()}
+                disabled={createMutation.isPending || !formData.name.trim()}
+              >
+                {createMutation.isPending ? "Saving..." : "Publish"}
               </Button>
             </div>
           </CardContent>
