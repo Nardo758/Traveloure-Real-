@@ -1,0 +1,107 @@
+[4/6/2026 1:23 AM] RocketManOpenClaw2: Now I have a clear picture. Let me create a summary of what the database needs to be seeded with:
+
+Database Seeding Requirements
+
+Based on the test files and seed scripts, here's what needs to be seeded into the database:
+
+1. Database Tables (from schema.ts)
+
+• Users table (with different roles: expert, provider, traveler, ea, admin)
+• Trips table
+• Services table
+• Bookings table
+• Reviews table
+• Categories table
+• And many more (itineraries, vendor assignments, etc.)
+
+2. Test Accounts (from test-accounts.ts)
+
+The tests expect these specific accounts to exist:
+
+Kyoto Market (8 accounts):
+
+• kyoto-temple@traveloure.test - Temple Guide expert
+• kyoto-arts@traveloure.test - Traditional Arts expert
+• kyoto-food@traveloure.test - Food & Culinary expert
+• kyoto-neighborhood@traveloure.test - Neighborhood expert
+• kyoto-etiquette@traveloure.test - Etiquette expert
+• kyoto-transport@traveloure.test - Transport provider
+• kyoto-photography@traveloure.test - Photography provider
+• kyoto-stays@traveloure.test - Stays provider
+
+Edinburgh Market (7 accounts):
+
+• edinburgh-culture@traveloure.test - Culture & History expert
+• edinburgh-whisky@traveloure.test - Whisky expert
+• edinburgh-festival@traveloure.test - Festival expert
+• edinburgh-highlands@traveloure.test - Highlands expert
+• edinburgh-transport@traveloure.test - Transport provider
+• edinburgh-photography@traveloure.test - Photography provider
+• edinburgh-stays@traveloure.test - Stays provider
+
+Cartagena Market (9 accounts):
+
+• cartagena-history@traveloure.test - History & Culture expert
+• cartagena-beach@traveloure.test - Beach & Islands expert
+• cartagena-food@traveloure.test - Food & Rum expert
+• cartagena-music@traveloure.test - Music & Dance expert
+• cartagena-architecture@traveloure.test - Architecture expert
+• cartagena-transport@traveloure.test - Transport provider
+• cartagena-photography@traveloure.test - Photography provider
+• cartagena-stays@traveloure.test - Stays provider
+• cartagena-concierge@traveloure.test - Concierge provider
+
+NYC Market (10 accounts):
+
+• nyc-art@traveloure.test - Art expert (Marcus Chen)
+• nyc-food@traveloure.test - Food expert (Sofia Ricci)
+• nyc-nightlife@traveloure.test - Nightlife expert (Jordan Williams)
+• nyc-architecture@traveloure.test - Architecture expert (Emma Goldstein)
+• nyc-fashion@traveloure.test - Fashion expert (Aisha Johnson)
+• nyc-transport@traveloure.test - Transport provider (Tony Russo)
+• nyc-photography@traveloure.test - Photography provider (David Kim)
+• nyc-stays@traveloure.test - Stays provider (Sarah Miller)
+• nyc-concierge@traveloure.test - Concierge provider (Michael Torres)
+• test-traveler-nyc@traveloure.test - Traveler account
+
+Original Test Accounts (5 accounts):
+
+• test-travel-expert@traveloure.test
+• test-local-expert@traveloure.test
+• test-event-planner@traveloure.test
+• test-provider@traveloure.test
+• test-ea@traveloure.test
+
+All accounts use password: TestPass123!
+
+3. Additional Data Needed:
+
+• Expert profiles with bios, specialties, hourly rates
+• Service listings for each expert/provider
+• Categories for services (Art, Food, Transport, etc.)
+• Sample trips for travelers
+• Bookings between travelers and experts/providers
+• Reviews for services
+
+4. Seed Scripts Available:
+[4/6/2026 1:23 AM] RocketManOpenClaw2: 1. npm run seed:beta - Main beta launch seed (creates 15+ experts, 40+ services, 70+ reviews, 45 bookings)
+2. npm run seed:california - California-specific seed data
+3. db:push - Pushes database schema migrations
+
+5. Setup Steps Required:
+
+# 1. Start PostgreSQL database
+# 2. Run database migrations
+npm run db:push
+
+# 3. Seed the database with test data
+npm run seed:beta
+
+# 4. Start the backend server
+npm run dev
+
+# 5. Run tests
+npm run test:e2e
+
+The tests are failing because they're trying to authenticate with these test accounts, but the database doesn't have them yet. The seed scripts would create all the necessary users, services, and relationships for the tests to work.
+[4/6/2026 1:23 AM] RocketManOpenClaw2: Would you like me to help set up PostgreSQL and run the seed scripts so we can run the remaining tests?
