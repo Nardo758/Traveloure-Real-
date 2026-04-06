@@ -63,7 +63,7 @@ for (const expert of experts) {
       const profileButton = page.locator('a:has-text("Profile")').first();
       if (await profileButton.isVisible().catch(() => false)) {
         await profileButton.click();
-        await page.waitForLoadState('networkidle').catch(() => null);
+        await page.waitForLoadState('load').catch(() => null);
       }
 
       await fillExpertProfile(page, {
@@ -99,7 +99,7 @@ for (const expert of experts) {
         const servicesLink = page.locator('a:has-text("Services")').first();
         if (await servicesLink.isVisible().catch(() => false)) {
           await servicesLink.click();
-          await page.waitForLoadState('networkidle').catch(() => null);
+          await page.waitForLoadState('load').catch(() => null);
         }
 
         // Create service
@@ -125,20 +125,20 @@ for (const expert of experts) {
       }
 
       // Screenshot services page
-      await page.screenshot({ path: `playwright/reports/phase1-${expert.email}-services.png` });
+      // await page.screenshot({ path: `playwright/reports/phase1-${expert.email}-services.png` });
     });
 
     // Step 6: Check earnings and analytics pages
     await test.step('Verify earnings page loads', async () => {
       await navigateTo(page, '/expert/earnings');
       await verifyRouteAccessible(page);
-      await page.screenshot({ path: `playwright/reports/phase1-${expert.email}-earnings.png` });
+      // await page.screenshot({ path: `playwright/reports/phase1-${expert.email}-earnings.png` });
     });
 
     await test.step('Verify analytics page loads', async () => {
       await navigateTo(page, '/expert/analytics');
       await verifyRouteAccessible(page);
-      await page.screenshot({ path: `playwright/reports/phase1-${expert.email}-analytics.png` });
+      // await page.screenshot({ path: `playwright/reports/phase1-${expert.email}-analytics.png` });
     });
 
     // Step 7: Logout
