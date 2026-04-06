@@ -320,10 +320,10 @@ function Router() {
         {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}
       </Route>
       <Route path="/itinerary/:id">
-        {() => <DashboardLayout><ProtectedRoute component={ItineraryPage} /></DashboardLayout>}
+        {({ id }) => <Redirect to={`/trip/${id}?tab=itinerary`} />}
       </Route>
       <Route path="/my-itinerary/:id">
-        {() => <DashboardLayout><ProtectedRoute component={MyItineraryPage} /></DashboardLayout>}
+        {({ id }) => <Redirect to={`/trip/${id}?tab=itinerary`} />}
       </Route>
       <Route path="/itinerary-comparison/:id">
         {() => <DashboardLayout><ProtectedRoute component={ItineraryComparisonPage} /></DashboardLayout>}

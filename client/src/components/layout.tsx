@@ -353,8 +353,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden border-t border-border bg-background"
+              className="lg:hidden border-t border-border bg-background overflow-y-auto max-h-[85vh]"
             >
+              {/* Sign In — shown at top for logged-out users */}
+              {!user && (
+                <div className="px-4 pt-4 pb-3 flex flex-col gap-2 border-b border-border">
+                  <Button
+                    className="w-full"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      openSignInModal();
+                    }}
+                    data-testid="button-mobile-sign-in-top"
+                  >
+                    Sign In
+                  </Button>
+                  <Link href="/become-expert" onClick={() => setIsMobileMenuOpen(false)}>
+                    <Button variant="outline" className="w-full" data-testid="button-mobile-become-expert-top">
+                      Become an Expert
+                    </Button>
+                  </Link>
+                </div>
+              )}
+
               {/* Mobile Nav - Same for all users */}
               <div className="pt-2 pb-3 space-y-1 px-4">
                 {navItems.map((item) => (

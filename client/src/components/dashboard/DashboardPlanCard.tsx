@@ -262,14 +262,15 @@ export function DashboardPlanCard({
 
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
 
-  const handleServicesClick = () => navigate('/bookings');
-  const handleTransportClick = () => navigate(`/trip/${trip.id}`);
+  // Click handlers for pills
+  const handleServicesClick = () => {
+    navigate(`/trip/${trip.id}?tab=bookings`);
+  };
+  const handleTransportClick = () => {
+    navigate(`/trip/${trip.id}?tab=itinerary&section=transport`);
+  };
   const handleExpertClick = () => {
-    if (matchedConvId) {
-      navigate(`/chat?conversation=${matchedConvId}`);
-    } else {
-      navigate('/chat');
-    }
+    navigate(`/trip/${trip.id}?tab=expert`);
   };
 
   const actionItems = notifications
@@ -453,7 +454,7 @@ export function DashboardPlanCard({
         >
           📍 Maps
         </button>
-        <Link href={`/itinerary/${trip.id}`} className="flex-1">
+        <Link href={`/trip/${trip.id}?tab=itinerary`} className="flex-1">
           <button
             className="w-full py-[7px] px-3 rounded-lg text-[11px] font-medium text-white cursor-pointer transition-colors"
             style={{ background: "#E85D55", border: "none" }}
