@@ -34,7 +34,7 @@ test('[Phase 4] Expert Review - Aiko Reviews Kyoto Trip', async ({ page }) => {
     const tripCard = page.locator('text=Kyoto').first();
     if (await tripCard.isVisible().catch(() => false)) {
       await tripCard.click();
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     // Verify itinerary items
@@ -62,7 +62,7 @@ test('[Phase 4] Expert Review - Aiko Reviews Kyoto Trip', async ({ page }) => {
       const sendButton = page.locator('button:has-text("Send")').first();
       if (await sendButton.isVisible().catch(() => false)) {
         await sendButton.click();
-        await page.waitForNavigation().catch(() => null);
+        await page.waitForLoadState('networkidle').catch(() => null);
       }
     }
   });
@@ -99,7 +99,7 @@ test('[Phase 5] Executive Assistant Dashboard', async ({ page }) => {
     const clientsLink = page.locator('a:has-text("Clients")').first();
     if (await clientsLink.isVisible().catch(() => false)) {
       await clientsLink.click();
-      await page.waitForNavigation();
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     // Verify multiple trips are visible
@@ -113,7 +113,7 @@ test('[Phase 5] Executive Assistant Dashboard', async ({ page }) => {
     const calendarLink = page.locator('a:has-text("Calendar")').first();
     if (await calendarLink.isVisible().catch(() => false)) {
       await calendarLink.click();
-      await page.waitForNavigation();
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     await verifyRouteAccessible(page);
@@ -124,7 +124,7 @@ test('[Phase 5] Executive Assistant Dashboard', async ({ page }) => {
     const planningLink = page.locator('a:has-text("Planning")').first();
     if (await planningLink.isVisible().catch(() => false)) {
       await planningLink.click();
-      await page.waitForNavigation();
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     await verifyRouteAccessible(page);
@@ -161,7 +161,7 @@ test('[Phase 6] Transport & Itinerary - Kyoto Trip', async ({ page }) => {
     const tripLink = page.locator('[data-testid="trip-link"]').first();
     if (await tripLink.isVisible().catch(() => false)) {
       await tripLink.click();
-      await page.waitForNavigation();
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
   });
 
@@ -251,7 +251,7 @@ test('[Phase 6] Transport & Itinerary - Cartagena Trip', async ({ page }) => {
     const cartagenaTrip = page.locator('text=Cartagena').first();
     if (await cartagenaTrip.isVisible().catch(() => false)) {
       await cartagenaTrip.click();
-      await page.waitForNavigation();
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
   });
 
@@ -260,7 +260,7 @@ test('[Phase 6] Transport & Itinerary - Cartagena Trip', async ({ page }) => {
     const transportTab = page.locator('[data-testid="transport-tab"]').first();
     if (await transportTab.isVisible().catch(() => false)) {
       await transportTab.click();
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     // Verify map elements
@@ -302,14 +302,14 @@ test('[Phase 7] Booking & Payment - Kyoto Food Tour', async ({ page }) => {
     if (await searchBox.isVisible().catch(() => false)) {
       await searchBox.fill('Aiko Yamamoto');
       await page.keyboard.press('Enter');
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     // Click on expert/service
     const serviceCard = page.locator('text=Nishiki Market').first();
     if (await serviceCard.isVisible().catch(() => false)) {
       await serviceCard.click();
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
   });
 
@@ -318,7 +318,7 @@ test('[Phase 7] Booking & Payment - Kyoto Food Tour', async ({ page }) => {
     const addButton = page.locator('button:has-text("Add to Cart")').first();
     if (await addButton.isVisible().catch(() => false)) {
       await addButton.click();
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
 
     // Navigate to cart
@@ -328,7 +328,7 @@ test('[Phase 7] Booking & Payment - Kyoto Food Tour', async ({ page }) => {
     const checkoutButton = page.locator('button:has-text("Checkout")').first();
     if (await checkoutButton.isVisible().catch(() => false)) {
       await checkoutButton.click();
-      await page.waitForNavigation().catch(() => null);
+      await page.waitForLoadState('networkidle').catch(() => null);
     }
   });
 
@@ -337,7 +337,7 @@ test('[Phase 7] Booking & Payment - Kyoto Food Tour', async ({ page }) => {
     await submitPayment(page);
 
     // Wait for confirmation
-    await page.waitForNavigation().catch(() => null);
+    await page.waitForLoadState('networkidle').catch(() => null);
 
     // Verify booking confirmation
     const confirmationElement = page.locator('[data-testid="booking-confirmation"]').first();
