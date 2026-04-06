@@ -2,85 +2,102 @@ import { Page } from '@playwright/test';
 
 /**
  * Login to the platform with email and password
+ * Correct selectors: #email, #password, data-testid="button-sign-in-submit"
+ * Handles /accept-terms page with checkboxes
  */
 export async function loginAs(page: Page, email: string, password: string) {
-  // Navigate to login page
+  console.log(`Logging in as ${email}`);
+  
+  // Go to login page
   await page.goto('/login');
-
-  // Fill email
-  await page.fill('input[type="email"]', email);
-
-  // Fill password
-  await page.fill('input[type="password"]', password);
-
-  // Submit form
-  await page.click('button[type="submit"]');
-
-  // Wait for navigation to complete and page to load
-  await page.waitForURL((url) => !url.toString().includes('/login'));
-
-  // Accept terms if modal appears
-  const termsButton = await page.locator('button:has-text("Accept")').first();
-  if (await termsButton.isVisible().catch(() => false)) {
-    await termsButton.click();
-    await page.waitForNavigation();
+  await page.waitForLoadState('networkidle');
+  
+  // Fill email and password with correct selectors
+  await page.fill('#email', email);
+  await page.fill('#password', password);
+  
+  // Click submit with correct selector
+  await page.click('[data-testid="button-sign-in-submit"]');
+  await page.waitForLoadState('networkidle');
+  
+  // Check if we're on accept-terms page
+  if (page.url().includes('/accept-terms')) {
+    console.log('On accept-terms page, accepting terms...');
+    
+    // Wait for checkboxes to be visible
+    await page.waitForSelector('[data-testid="checkbox-accept-terms"]', { timeout: 5000 });
+    await page.waitForSelector('[data-testid="checkbox-accept-privacy"]', { timeout: 5000 });
+    
+    // Click checkboxes
+    await page.click('[data-testid="checkbox-accept-terms"]');
+    await page.click('[data-testid="checkbox-accept-privacy"]');
+    
+    // Wait for button to be enabled and click
+    await page.waitForSelector('[data-testid="button-accept-continue"]:not([disabled])', { timeout: 5000 });
+    await page.click('[data-testid="button-accept-continue"]');
+    
+    // Wait for navigation away from /accept-terms
+    await page.waitForLoadState('networkidle');
+    
+    // Should be redirected away from /accept-terms
+    if (page.url().includes('/accept-terms')) {
+      throw new Error('Still on accept-terms page after accepting terms');
+    }
   }
+  
+  console.log('Login successful, current URL:', page.url());
+}
+
+/**
+ * Accept terms via API (faster for test setup)
+ */
+export async function acceptTermsViaApi(page: Page) {
+  console.log('Accepting terms via API...');
+  
+  const response = await page.evaluate(async () => {
+    const response = await fetch('/api/auth/accept-terms', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-test-token': process.env.RATE_LIMIT_BYPASS_KEY || ''
+      },
+      body: JSON.stringify({ acceptTerms: true, acceptPrivacy: true }),
+      credentials: 'include'
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to accept terms: ${response.status}`);
+    }
+    
+    return response.json();
+  });
+  
+  console.log('Terms accepted via API:', response);
+  return response;
 }
 
 /**
  * Logout from the platform
  */
 export async function logout(page: Page) {
-  // Click profile menu or logout button
-  // This may vary depending on implementation
-  const profileButton = page.locator('[data-testid="profile-menu"]').first();
-
-  if (await profileButton.isVisible().catch(() => false)) {
-    await profileButton.click();
-    await page.click('text=Logout');
-    await page.waitForURL((url) => !url.toString().includes('/dashboard'));
-  }
+  await page.goto('/api/logout');
+  await page.waitForLoadState('networkidle');
 }
 
 /**
- * Check if user is logged in by checking for dashboard elements
+ * Check if user is logged in
  */
 export async function isLoggedIn(page: Page): Promise<boolean> {
   try {
-    const url = page.url();
-    // If we're on login page, not logged in
-    if (url.includes('/login')) return false;
-
-    // Check for common authenticated elements
-    const dashboardElement = page.locator('[data-testid="dashboard"]').first();
-    return await dashboardElement.isVisible().catch(() => false);
+    const response = await page.evaluate(async () => {
+      const response = await fetch('/api/auth/user', {
+        credentials: 'include'
+      });
+      return response.status;
+    });
+    
+    return response === 200;
   } catch {
     return false;
-  }
-}
-
-/**
- * Accept terms and conditions if modal appears
- */
-export async function acceptTerms(page: Page) {
-  try {
-    const acceptButton = page.locator('button:has-text("Accept")').first();
-    if (await acceptButton.isVisible()) {
-      await acceptButton.click();
-      await page.waitForNavigation().catch(() => null);
-    }
-  } catch {
-    // Terms may not appear, that's ok
-  }
-}
-
-/**
- * Wait for authentication to complete
- */
-export async function waitForAuth(page: Page, timeout = 10000) {
-  try {
-    await page.waitForURL((url) => !url.toString().includes('/login'), { timeout });
-  } catch {
-    // May already be logged in
   }
 }

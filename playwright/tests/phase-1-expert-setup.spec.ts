@@ -63,7 +63,7 @@ for (const expert of experts) {
       const profileButton = page.locator('a:has-text("Profile")').first();
       if (await profileButton.isVisible().catch(() => false)) {
         await profileButton.click();
-        await page.waitForNavigation();
+        await page.waitForLoadState('networkidle');
       }
 
       await fillExpertProfile(page, {
@@ -99,7 +99,7 @@ for (const expert of experts) {
         const servicesLink = page.locator('a:has-text("Services")').first();
         if (await servicesLink.isVisible().catch(() => false)) {
           await servicesLink.click();
-          await page.waitForNavigation();
+          await page.waitForLoadState('networkidle');
         }
 
         // Create service
