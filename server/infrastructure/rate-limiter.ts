@@ -54,6 +54,12 @@ class InMemoryRateLimiter {
 
 const limiterStore = new InMemoryRateLimiter();
 
+function isBypassRequest(req: Request): boolean {
+  const bypassKey = process.env.RATE_LIMIT_BYPASS_KEY;
+  if (!bypassKey) return false;
+  return req.headers["x-test-token"] === bypassKey;
+}
+
 export function createRateLimiter(config: RateLimitConfig) {
   const {
     windowMs,
@@ -70,7 +76,7 @@ export function createRateLimiter(config: RateLimitConfig) {
   } = config;
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (skip(req)) {
+    if (isBypassRequest(req) || skip(req)) {
       next();
       return;
     }
