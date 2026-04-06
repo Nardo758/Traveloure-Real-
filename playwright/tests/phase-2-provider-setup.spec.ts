@@ -52,7 +52,7 @@ for (const provider of providers) {
       const profileButton = page.locator('a:has-text("Profile")').first();
       if (await profileButton.isVisible().catch(() => false)) {
         await profileButton.click();
-        await page.waitForNavigation();
+        await page.waitForLoadState('networkidle').catch(() => null);
       }
 
       const businessNames = {
@@ -132,7 +132,7 @@ for (const provider of providers) {
         const servicesLink = page.locator('a:has-text("Services")').first();
         if (await servicesLink.isVisible().catch(() => false)) {
           await servicesLink.click();
-          await page.waitForNavigation();
+          await page.waitForLoadState('networkidle').catch(() => null);
         }
 
         // Create service
@@ -169,7 +169,7 @@ for (const provider of providers) {
         const saveButton = page.locator('button:has-text("Save")').first();
         if (await saveButton.isVisible().catch(() => false)) {
           await saveButton.click();
-          await page.waitForNavigation().catch(() => null);
+          await page.waitForLoadState('networkidle').catch(() => null);
         }
       }
 

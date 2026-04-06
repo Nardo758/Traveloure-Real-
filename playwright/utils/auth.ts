@@ -1,86 +1,77 @@
 import { Page } from '@playwright/test';
 
 /**
- * Login to the platform with email and password
+ * Login to the platform with email and password.
+ * Handles the /accept-terms flow automatically if the account hasn't accepted yet.
  */
 export async function loginAs(page: Page, email: string, password: string) {
-  // Navigate to login page
   await page.goto('/login');
+  await page.waitForLoadState('networkidle');
 
-  // Fill email
-  await page.fill('input[type="email"]', email);
+  await page.fill('#email', email);
+  await page.fill('#password', password);
+  await page.click('[data-testid="button-sign-in-submit"]');
 
-  // Fill password
-  await page.fill('input[type="password"]', password);
+  // Wait until we've left /login (could go to /dashboard, /accept-terms, etc.)
+  await page.waitForURL((url) => !url.toString().includes('/login'), { timeout: 15000 });
 
-  // Submit form
-  await page.click('button[type="submit"]');
+  // Handle the /accept-terms page — two checkboxes must both be ticked first
+  if (page.url().includes('/accept-terms')) {
+    await page.locator('[data-testid="checkbox-accept-terms"]').click();
+    await page.locator('[data-testid="checkbox-accept-privacy"]').click();
+    await page.locator('[data-testid="button-accept-continue"]').click();
 
-  // Wait for navigation to complete and page to load
-  await page.waitForURL((url) => !url.toString().includes('/login'));
-
-  // Accept terms if modal appears
-  const termsButton = await page.locator('button:has-text("Accept")').first();
-  if (await termsButton.isVisible().catch(() => false)) {
-    await termsButton.click();
-    await page.waitForNavigation();
+    // Wait until /accept-terms is gone
+    await page.waitForURL((url) => !url.toString().includes('/accept-terms'), { timeout: 15000 });
   }
+
+  // Final wait for the landing page to settle
+  await page.waitForLoadState('networkidle');
 }
 
 /**
- * Logout from the platform
+ * Logout from the platform.
  */
 export async function logout(page: Page) {
-  // Click profile menu or logout button
-  // This may vary depending on implementation
   const profileButton = page.locator('[data-testid="profile-menu"]').first();
 
   if (await profileButton.isVisible().catch(() => false)) {
     await profileButton.click();
-    await page.click('text=Logout');
-    await page.waitForURL((url) => !url.toString().includes('/dashboard'));
+    const logoutButton = page.locator('[data-testid="button-logout"]').first();
+    if (await logoutButton.isVisible().catch(() => false)) {
+      await logoutButton.click();
+    } else {
+      await page.click('text=Logout');
+    }
+    await page.waitForURL((url) => url.toString().includes('/login') || url.toString().endsWith('/'), { timeout: 10000 }).catch(() => null);
   }
 }
 
 /**
- * Check if user is logged in by checking for dashboard elements
+ * Check if the current user is authenticated.
  */
 export async function isLoggedIn(page: Page): Promise<boolean> {
   try {
-    const url = page.url();
-    // If we're on login page, not logged in
-    if (url.includes('/login')) return false;
-
-    // Check for common authenticated elements
-    const dashboardElement = page.locator('[data-testid="dashboard"]').first();
-    return await dashboardElement.isVisible().catch(() => false);
+    if (page.url().includes('/login')) return false;
+    const response = await page.request.get('/api/auth/user');
+    return response.status() === 200;
   } catch {
     return false;
   }
 }
 
 /**
- * Accept terms and conditions if modal appears
+ * Accept terms via the API directly (bypasses the UI — faster for test setup).
  */
-export async function acceptTerms(page: Page) {
-  try {
-    const acceptButton = page.locator('button:has-text("Accept")').first();
-    if (await acceptButton.isVisible()) {
-      await acceptButton.click();
-      await page.waitForNavigation().catch(() => null);
-    }
-  } catch {
-    // Terms may not appear, that's ok
-  }
+export async function acceptTermsViaApi(page: Page) {
+  await page.request.post('/api/auth/accept-terms', {
+    data: { acceptTerms: true, acceptPrivacy: true },
+  });
 }
 
 /**
- * Wait for authentication to complete
+ * Wait for authentication navigation to complete.
  */
-export async function waitForAuth(page: Page, timeout = 10000) {
-  try {
-    await page.waitForURL((url) => !url.toString().includes('/login'), { timeout });
-  } catch {
-    // May already be logged in
-  }
+export async function waitForAuth(page: Page, timeout = 15000) {
+  await page.waitForURL((url) => !url.toString().includes('/login'), { timeout }).catch(() => null);
 }
