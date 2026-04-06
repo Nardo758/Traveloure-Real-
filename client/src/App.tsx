@@ -159,7 +159,16 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   // Check role-based access
-  if (requiredRole && user.role !== requiredRole && user.role !== "admin") {
+  // Role families: local_expert counts as "expert", service_provider counts as "provider"
+  const ROLE_FAMILIES: Record<string, string[]> = {
+    expert: ["expert", "local_expert"],
+    provider: ["provider", "service_provider"],
+    ea: ["ea"],
+    admin: ["admin"],
+    user: ["user"],
+  };
+  const allowedRoles = requiredRole ? (ROLE_FAMILIES[requiredRole] ?? [requiredRole]) : null;
+  if (allowedRoles && !allowedRoles.includes(user.role) && user.role !== "admin") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
         <h2 className="text-2xl font-bold mb-2">Access Denied</h2>

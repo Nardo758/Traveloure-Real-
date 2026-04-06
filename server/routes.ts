@@ -2149,7 +2149,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const userId = (req.user as any).claims.sub;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
       
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
 
@@ -11199,7 +11199,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
-      if (!['expert', 'service_provider'].includes(user.role || '')) {
+      if (!['expert', 'local_expert', 'service_provider'].includes(user.role || '')) {
         return res.status(403).json({ error: "Only experts and providers can onboard for payouts" });
       }
 
@@ -11212,7 +11212,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       let accountId = existing.stripeAccountId;
       if (!accountId) {
         const result = await stripeConnectService.createConnectedAccount(
-          userId, user.email, user.role === 'expert' ? 'expert' : 'provider', user.name || undefined
+          userId, user.email, ['expert', 'local_expert'].includes(user.role) ? 'expert' : 'provider', user.name || undefined
         );
         accountId = result.accountId;
         await storage.updateUserStripeAccount(userId, accountId, 'onboarding_incomplete');
@@ -11408,7 +11408,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11427,7 +11427,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11493,7 +11493,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11512,7 +11512,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11537,7 +11537,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11591,7 +11591,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11669,7 +11669,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11699,7 +11699,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11721,7 +11721,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11755,7 +11755,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
+      if (trip.userId !== userId && user.role !== "admin" && !["expert", "local_expert"].includes(user.role)) {
         return res.status(403).json({ message: "Not authorized to access this trip" });
       }
 
@@ -11778,7 +11778,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
       const trip = await storage.getTrip(req.params.tripId);
@@ -11826,7 +11826,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
       const { date, startTime, endTime, serviceType } = req.body;
@@ -11882,7 +11882,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
       const vendors = await storage.getVendorCoordination(req.params.tripId);
@@ -11899,7 +11899,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
       const vendorInput = z.object({
@@ -11931,7 +11931,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
       const vendorUpdateInput = z.object({
@@ -11959,7 +11959,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
       await storage.deleteVendorCoordination(req.params.vendorId);
@@ -13052,7 +13052,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const results = [
         ...matchedUsers.map(u => ({
           id: u.id,
-          type: u.role === "expert" ? "expert" as const : u.role === "provider" ? "provider" as const : "user" as const,
+          type: ["expert", "local_expert"].includes(u.role ?? "") ? "expert" as const : ["provider", "service_provider"].includes(u.role ?? "") ? "provider" as const : "user" as const,
           name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "Unknown",
           description: u.email || "",
           meta: `Role: ${u.role || "user"}`,
