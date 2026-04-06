@@ -116,7 +116,7 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="p-6" data-testid="dashboard-content">
+      <div className="p-6" data-testid="traveler-dashboard">
         {/* Greeting — full width above panels */}
         <div className="pt-4 mb-4">
           <div
