@@ -13461,6 +13461,8 @@ export async function registerDiscoveryRoutes(app: Express) {
           },
           totalCost: variant.totalCost,
           optimizationScore: variant.optimizationScore,
+          budget: comparison?.budget ? parseFloat(comparison.budget as any) : null,
+          travelers: comparison?.travelers ?? 1,
           days,
           transportSummary: {
             totalLegs: legs.length,

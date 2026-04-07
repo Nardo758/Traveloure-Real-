@@ -13,6 +13,7 @@ import {
   FileText, Copy, Phone, Globe, ChevronDown, ChevronUp,
   BarChart3, Calendar, Activity as ActivityIcon,
   Printer, Download, Send, MessageSquare, Lightbulb, Repeat, Star, ArrowRight,
+  Leaf, TrendingUp, Heart, Users,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,8 @@ interface SharedItineraryResponse {
     dateRange?: { start?: string | null; end?: string | null };
     totalCost?: string | number | null;
     optimizationScore?: number | null;
+    budget?: number | null;
+    travelers?: number | null;
     days: ApiDay[];
     transportSummary?: {
       totalLegs: number;
@@ -1729,32 +1732,77 @@ export function TripStatsPage() {
   const { variant } = data;
   const allActivities = variant.days.flatMap(d => d.activities);
   const allTransports = variant.days.flatMap(d => d.transportLegs);
+
+  // ── Cost calculations ──────────────────────────────
+  const totalTransportCost = variant.transportSummary?.totalCostUsd ??
+    allTransports.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
   const totalActivityCost = allActivities.reduce((s, a) => s + (a.cost ?? 0), 0);
-  const totalTransportCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
-  const totalCost =
-    parseFloat(String(variant.totalCost ?? 0)) || (totalActivityCost + totalTransportCost);
-  const totalTransitMins =
-    variant.transportSummary?.totalMinutes ??
+  const totalCost = parseFloat(String(variant.totalCost ?? 0)) || (totalActivityCost + totalTransportCost);
+  const budget = variant.budget ?? null;
+  const travelers = Math.max(variant.travelers ?? 1, 1);
+  const perPerson = travelers > 0 ? Math.round(totalCost / travelers) : totalCost;
+  const perDay = variant.days.length > 0 ? Math.round(totalCost / variant.days.length) : totalCost;
+  const savings = budget ? Math.max(budget - totalCost, 0) : 0;
+  const budgetPct = budget && budget > 0 ? Math.min(Math.round((totalCost / budget) * 100), 100) : 100;
+  const isUnderBudget = budget != null && totalCost < budget;
+
+  // ── Category breakdown ─────────────────────────────
+  const ACCOMMODATION_CATS = ["hotel", "accommodation", "lodge", "hostel", "resort", "airbnb"];
+  const DINING_CATS = ["dining", "restaurant", "food", "cafe", "bar", "lunch", "dinner", "breakfast"];
+  const activityCatCost = (cats: string[]) =>
+    allActivities
+      .filter(a => cats.some(c => (a.category ?? "").toLowerCase().includes(c)))
+      .reduce((s, a) => s + (a.cost ?? 0), 0);
+  const accommodationCost = activityCatCost(ACCOMMODATION_CATS);
+  const diningCost = activityCatCost(DINING_CATS);
+  const activitiesCost = Math.max(totalActivityCost - accommodationCost - diningCost, 0);
+  const budgetCategories = [
+    { label: "Accommodation", amount: accommodationCost, color: "#3b82f6" },
+    { label: "Activities", amount: activitiesCost, color: "#8b5cf6" },
+    { label: "Transport", amount: totalTransportCost, color: "#f59e0b" },
+    { label: "Dining", amount: diningCost, color: "#ef4444" },
+  ].filter(c => c.amount > 0);
+  const budgetCatsTotal = Math.max(budgetCategories.reduce((s, c) => s + c.amount, 0), 1);
+
+  // ── Time calculations ──────────────────────────────
+  const totalTransitMins = variant.transportSummary?.totalMinutes ??
     allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
   const totalActivityMins = allActivities.reduce((s, a) => s + (a.duration ?? 60), 0);
   const freeMins = Math.max(variant.days.length * 14 * 60 - totalActivityMins - totalTransitMins, 0);
-  const score = variant.optimizationScore ?? 85;
-  const destination = variant.destination ?? variant.name;
-
-  const dayCosts = variant.days.map(d => ({
-    day: d.dayNumber,
-    cost: d.activities.reduce((s, a) => s + (a.cost ?? 0), 0) +
-      d.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0),
-  }));
-  const maxDayCost = Math.max(...dayCosts.map(d => d.cost), 1);
   const totalTime = totalActivityMins + totalTransitMins + freeMins;
 
+  // ── Wellness ───────────────────────────────────────
+  const NATURE_CATS = ["beach", "park", "nature", "outdoor", "hike", "trail", "garden", "walk", "coast"];
+  const REST_CATS = ["wellness", "yoga", "spa", "massage", "meditation", "rest", "relax"];
+  const walkingMins = allTransports
+    .filter(t => (t.userSelectedMode ?? t.recommendedMode ?? "") === "walk")
+    .reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
+  const natureCount = allActivities.filter(a =>
+    NATURE_CATS.some(c => (a.category ?? "").toLowerCase().includes(c) || (a.name ?? "").toLowerCase().includes(c))
+  ).length;
+  const restCount = allActivities.filter(a =>
+    REST_CATS.some(c => (a.category ?? "").toLowerCase().includes(c) || (a.name ?? "").toLowerCase().includes(c))
+  ).length;
+  const hasWellness = walkingMins > 0 || natureCount > 0 || restCount > 0;
+
+  // ── Score ──────────────────────────────────────────
+  const score = variant.optimizationScore ?? 85;
+  const destination = variant.destination ?? variant.name;
   const SCORE_CATEGORIES = [
     { label: "Planning", score: Math.min(score + 5, 100), color: "#3b82f6" },
     { label: "Budget", score: Math.max(score - 2, 0), color: "#22c55e" },
     { label: "Timing", score: Math.min(score + 3, 100), color: "#f59e0b" },
     { label: "Wellness", score: Math.max(score - 3, 0), color: "#ec4899" },
   ];
+
+  // ── Day costs ──────────────────────────────────────
+  const dayCosts = variant.days.map(d => ({
+    day: d.dayNumber,
+    date: d.date,
+    cost: d.activities.reduce((s, a) => s + (a.cost ?? 0), 0) +
+      d.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0),
+  }));
+  const maxDayCost = Math.max(...dayCosts.map(d => d.cost), 1);
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="trip-stats-page">
@@ -1773,13 +1821,15 @@ export function TripStatsPage() {
       </div>
 
       <div className="p-4 space-y-4">
+
+        {/* ── Overall Trip Score ── */}
         <Card className="p-4">
           <div className="flex items-center gap-4">
             <ScoreRing score={score} />
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 space-y-1">
               <div className="text-[13px] font-bold text-gray-900">Overall Trip Score</div>
               <div className="text-[11px] text-gray-500">
-                Based on planning completeness, budget efficiency, and timing optimization.
+                Based on planning completeness, budget efficiency, timing optimization, and wellness balance.
               </div>
             </div>
           </div>
@@ -1789,16 +1839,14 @@ export function TripStatsPage() {
                 <div
                   className="w-9 h-9 rounded-lg flex items-center justify-center text-[13px] font-bold text-white"
                   style={{ backgroundColor: cat.color }}
+                  data-testid={`score-${cat.label.toLowerCase()}`}
                 >
                   {cat.score}
                 </div>
                 <div>
                   <div className="text-[12px] font-semibold text-gray-800">{cat.label}</div>
                   <div className="h-1.5 w-16 bg-gray-100 rounded-full mt-0.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${cat.score}%`, backgroundColor: cat.color }}
-                    />
+                    <div className="h-full rounded-full" style={{ width: `${cat.score}%`, backgroundColor: cat.color }} />
                   </div>
                 </div>
               </div>
@@ -1806,51 +1854,83 @@ export function TripStatsPage() {
           </div>
         </Card>
 
+        {/* ── Budget Analysis ── */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <DollarSign className="w-4 h-4 text-green-600" />
             <span className="text-[13px] font-bold text-gray-900">Budget Analysis</span>
           </div>
-          <div className="grid grid-cols-2 gap-3 mb-4">
+
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-green-50 rounded-lg p-2.5 text-center">
-              <div className="text-[18px] font-bold text-green-700">${totalCost.toLocaleString()}</div>
-              <div className="text-[10px] text-green-600 font-medium">Total Cost</div>
+              <div className="text-[16px] font-bold text-green-700" data-testid="text-total-spent">
+                ${totalCost.toLocaleString()}
+              </div>
+              <div className="text-[10px] text-green-600 font-medium">Total Spent</div>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-2.5 text-center">
+              <div className="text-[16px] font-bold text-blue-700" data-testid="text-per-person">
+                ${perPerson.toLocaleString()}
+              </div>
+              <div className="text-[10px] text-blue-600 font-medium">Per Person</div>
             </div>
             <div className="bg-amber-50 rounded-lg p-2.5 text-center">
-              <div className="text-[18px] font-bold text-amber-700">
-                ${variant.days.length > 0 ? Math.round(totalCost / variant.days.length) : 0}
+              <div className="text-[16px] font-bold text-amber-700" data-testid="text-per-day">
+                ${perDay.toLocaleString()}
               </div>
               <div className="text-[10px] text-amber-600 font-medium">Per Day</div>
             </div>
           </div>
+
+          {budget != null && budget > 0 && (
+            <>
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-gray-500">Budget Progress</span>
+                  <span className="text-[11px] font-semibold text-gray-700">
+                    ${totalCost.toLocaleString()} / ${budget.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all"
+                    style={{ width: `${budgetPct}%` }}
+                    data-testid="budget-progress-bar"
+                  />
+                </div>
+              </div>
+              {isUnderBudget && (
+                <div className="bg-emerald-50 border border-emerald-200/60 rounded-lg px-3 py-2 flex items-center gap-2 mb-4">
+                  <TrendingUp className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span className="text-[12px] font-semibold text-emerald-700">
+                    Savings: ${savings.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-emerald-600 ml-auto">Under budget</span>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="text-[11px] font-semibold text-gray-700 mb-2">Category Breakdown</div>
           <div className="space-y-2.5">
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] text-gray-700">Activities</span>
-                <span className="text-[12px] font-semibold text-gray-800">${totalActivityCost}</span>
+            {budgetCategories.map(cat => (
+              <div key={cat.label} className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] text-gray-700">{cat.label}</span>
+                  <span className="text-[12px] font-semibold text-gray-800">${cat.amount.toLocaleString()}</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${Math.round((cat.amount / budgetCatsTotal) * 100)}%`, backgroundColor: cat.color }}
+                  />
+                </div>
               </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-purple-500"
-                  style={{ width: totalCost > 0 ? `${Math.round((totalActivityCost / totalCost) * 100)}%` : "0%" }}
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] text-gray-700">Transport</span>
-                <span className="text-[12px] font-semibold text-gray-800">${totalTransportCost}</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-amber-500"
-                  style={{ width: totalCost > 0 ? `${Math.round((totalTransportCost / totalCost) * 100)}%` : "0%" }}
-                />
-              </div>
-            </div>
+            ))}
           </div>
         </Card>
 
+        {/* ── Time Allocation ── */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4 text-blue-600" />
@@ -1858,15 +1938,21 @@ export function TripStatsPage() {
           </div>
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="bg-blue-50 rounded-lg p-2.5 text-center">
-              <div className="text-[14px] font-bold text-blue-700">{formatDuration(totalActivityMins)}</div>
+              <div className="text-[14px] font-bold text-blue-700" data-testid="text-activity-time">
+                {formatDuration(totalActivityMins)}
+              </div>
               <div className="text-[10px] text-blue-600 font-medium">Activities</div>
             </div>
             <div className="bg-amber-50 rounded-lg p-2.5 text-center">
-              <div className="text-[14px] font-bold text-amber-700">{formatDuration(totalTransitMins)}</div>
+              <div className="text-[14px] font-bold text-amber-700" data-testid="text-transit-time">
+                {formatDuration(totalTransitMins)}
+              </div>
               <div className="text-[10px] text-amber-600 font-medium">Transit</div>
             </div>
             <div className="bg-green-50 rounded-lg p-2.5 text-center">
-              <div className="text-[14px] font-bold text-green-700">{formatDuration(freeMins)}</div>
+              <div className="text-[14px] font-bold text-green-700" data-testid="text-free-time">
+                {formatDuration(freeMins)}
+              </div>
               <div className="text-[10px] text-green-600 font-medium">Free Time</div>
             </div>
           </div>
@@ -1877,39 +1963,91 @@ export function TripStatsPage() {
           </div>
         </Card>
 
+        {/* ── Wellness Metrics ── */}
+        {(hasWellness || true) && (
+          <Card className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Heart className="w-4 h-4 text-pink-600" />
+              <span className="text-[13px] font-bold text-gray-900">Wellness Metrics</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-pink-50 rounded-lg p-2.5 text-center">
+                <Footprints className="w-5 h-5 text-pink-500 mx-auto mb-1" />
+                <div className="text-[14px] font-bold text-pink-700" data-testid="text-walking">
+                  {walkingMins > 0 ? `${walkingMins}m` : "—"}
+                </div>
+                <div className="text-[10px] text-pink-600 font-medium">Walking</div>
+              </div>
+              <div className="bg-green-50 rounded-lg p-2.5 text-center">
+                <Leaf className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                <div className="text-[14px] font-bold text-green-700" data-testid="text-nature">
+                  {natureCount}
+                </div>
+                <div className="text-[10px] text-green-600 font-medium">Nature Activities</div>
+              </div>
+              <div className="bg-indigo-50 rounded-lg p-2.5 text-center">
+                <Clock className="w-5 h-5 text-indigo-500 mx-auto mb-1" />
+                <div className="text-[14px] font-bold text-indigo-700" data-testid="text-rest">
+                  {restCount}
+                </div>
+                <div className="text-[10px] text-indigo-600 font-medium">Rest Periods</div>
+              </div>
+            </div>
+            <div className="mt-3 bg-pink-50/50 border border-pink-200/40 rounded-lg px-3 py-2">
+              <div className="text-[11px] text-pink-700">
+                <span className="font-semibold">Wellness tip: </span>
+                {walkingMins > 0
+                  ? `You have ${walkingMins} minutes of walking planned.`
+                  : natureCount > 0
+                  ? `${natureCount} nature ${natureCount === 1 ? "activity" : "activities"} planned.`
+                  : "Consider adding outdoor activities for better wellness balance."}
+                {" "}Balance active sightseeing with rest days to stay energized throughout the trip.
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* ── Day-by-Day Cost ── */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="w-4 h-4 text-indigo-600" />
             <span className="text-[13px] font-bold text-gray-900">Day-by-Day Cost</span>
           </div>
           <div className="space-y-2">
-            {dayCosts.map(d => (
-              <div key={d.day} className="flex items-center gap-2">
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }}
-                >
-                  D{d.day}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[11px] text-gray-600">Day {d.day}</span>
-                    <span className="text-[11px] font-semibold text-gray-800">${d.cost}</span>
+            {dayCosts.map(d => {
+              const dayColor = DAY_COLORS[(d.day - 1) % DAY_COLORS.length];
+              const dayLabel = d.date
+                ? new Date(d.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+                : `Day ${d.day}`;
+              return (
+                <div key={d.day} className="flex items-center gap-2" data-testid={`day-cost-${d.day}`}>
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+                    style={{ backgroundColor: dayColor }}
+                  >
+                    D{d.day}
                   </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${Math.round((d.cost / maxDayCost) * 100)}%`,
-                        backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length],
-                      }}
-                    />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-[11px] text-gray-600 truncate">{dayLabel}</span>
+                      <span className="text-[11px] font-semibold text-gray-800">${d.cost.toFixed(0)}</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.round((d.cost / maxDayCost) * 100)}%`,
+                          backgroundColor: dayColor,
+                        }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
+
       </div>
     </div>
   );
