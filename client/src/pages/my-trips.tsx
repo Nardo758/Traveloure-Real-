@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
 import {
@@ -334,6 +335,9 @@ export default function MyTrips() {
             </div>
           </section>
         )}
+
+        {/* Saved for Later */}
+        <SavedTripsSection />
 
         {/* Empty State */}
         {filteredTrips.length === 0 && (
