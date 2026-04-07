@@ -1,12 +1,11 @@
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Calendar } from "lucide-react";
+import { Plus, Loader2, Calendar, Bookmark } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { Bookmark } from "lucide-react";
 import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";

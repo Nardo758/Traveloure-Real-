@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
+import { useQuery } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
 import {
@@ -47,6 +48,10 @@ const statusOptions = [
 
 export default function MyTrips() {
   const { data: trips, isLoading, isError } = useTrips();
+  const { data: savedTrips } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/saved-trips"],
+  });
+  const hasSavedTrips = (savedTrips?.length ?? 0) > 0;
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -355,7 +360,7 @@ export default function MyTrips() {
             </CardContent>
           </Card>
         )}
-        {filteredTrips.length === 0 && !searchQuery && typeFilter === "all" && statusFilter === "all" && (
+        {filteredTrips.length === 0 && !searchQuery && typeFilter === "all" && statusFilter === "all" && !hasSavedTrips && (
           <Card className="border-2 border-dashed border-[#E5E7EB]">
             <CardContent className="p-12 text-center">
               <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
