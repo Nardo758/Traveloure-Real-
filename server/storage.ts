@@ -764,12 +764,12 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(users, eq(providerServices.userId, users.id))
       .where(eq(providerServices.status, 'active'));
 
-    return rows.map(r => ({
-      ...r,
-      category: r.categoryName ? { name: r.categoryName, slug: r.categorySlug } : null,
+    return rows.map(({ categoryName, categorySlug, providerFirstName, providerLastName, ...rest }) => ({
+      ...rest,
+      category: categoryName ? { name: categoryName, slug: categorySlug } : null,
       provider: {
-        firstName: r.providerFirstName || '',
-        lastName: r.providerLastName || '',
+        firstName: providerFirstName || '',
+        lastName: providerLastName || '',
         businessName: '',
       },
     }));
