@@ -1095,9 +1095,11 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
 
                   {section === "transport" && (
                     <div className="px-3 pb-3">
-                      <div className="px-2.5 py-3 border-b border-border mb-2">
+                      <div className="mb-3 bg-gradient-to-r from-muted/60 to-muted/30 rounded-xl border border-border p-2.5" data-testid="trip-wide-mode-selector">
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">Trip-wide transit mode</span>
+                          <span className="text-[11px] font-bold text-foreground flex items-center gap-1">
+                            <Route className="w-3 h-3 text-muted-foreground" /> Set for entire trip
+                          </span>
                           {tripWideMode && (
                             <button
                               onClick={resetTransitModes}
@@ -1142,9 +1144,12 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                           })}
                         </div>
                         {tripWideMode && (
-                          <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1">
+                          <div className="mt-2 text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
                             <Check className="w-3 h-3 text-green-600" />
                             Applied <span className="font-semibold text-foreground">{MODE_LABELS[tripWideMode] || tripWideMode}</span> to all compatible legs.
+                            {days.some(d => d.transports?.some(t => !t.transitOptions?.some(o => o.mode === tripWideMode))) && (
+                              <span className="text-amber-600 ml-1">Some legs don't support this mode.</span>
+                            )}
                           </div>
                         )}
                       </div>
