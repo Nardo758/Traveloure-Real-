@@ -639,6 +639,7 @@ export function PlanCardFinal() {
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [itineraryOpen, setItineraryOpen] = useState(false);
   const [transitPickerOpen, setTransitPickerOpen] = useState<string | null>(null);
+  const [tripWideMode, setTripWideMode] = useState<string | null>(null);
   const [selectedModes, setSelectedModes] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     DAYS.forEach(d => d.transports.forEach(t => {
@@ -647,6 +648,16 @@ export function PlanCardFinal() {
     }));
     return initial;
   });
+
+  const applyTripWideMode = (mode: string) => {
+    setTripWideMode(mode);
+    const updated: Record<string, string> = { ...selectedModes };
+    DAYS.forEach(d => d.transports.forEach(t => {
+      const hasOption = t.transitOptions?.some((o: any) => o.mode === mode);
+      if (hasOption) updated[t.id] = mode;
+    }));
+    setSelectedModes(updated);
+  };
 
   const day = DAYS[selectedDay];
   const totalActivities = DAYS.reduce((s, d) => s + d.activities.length, 0);
@@ -961,6 +972,71 @@ export function PlanCardFinal() {
 
                     {section === "transport" && (
                       <div className="px-3 pb-3">
+                        <div className="mb-3 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl border border-gray-200 p-2.5" data-testid="trip-wide-mode-selector">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
+                              <Route className="w-3 h-3 text-gray-500" /> Set for entire trip
+                            </span>
+                            {tripWideMode && (
+                              <button
+                                onClick={() => {
+                                  setTripWideMode(null);
+                                  const reset: Record<string, string> = {};
+                                  DAYS.forEach(d => d.transports.forEach(t => {
+                                    reset[t.id] = t.selectedMode || t.mode;
+                                  }));
+                                  setSelectedModes(reset);
+                                }}
+                                className="text-[9px] text-gray-400 hover:text-gray-600 underline"
+                                data-testid="reset-trip-mode"
+                              >
+                                Reset to defaults
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {([
+                              { mode: "private_car", label: "Private Car", icon: "🚘", color: "#0ea5e9", tag: "TRAVELOURE" },
+                              { mode: "rental_car", label: "Rental Car", icon: "🔑", color: "#14b8a6", tag: "TRAVELOURE" },
+                              { mode: "rideshare", label: "Rideshare", icon: "🚙", color: "#f59e0b", tag: null },
+                              { mode: "bus", label: "Public Transit", icon: "🚌", color: "#8b5cf6", tag: null },
+                              { mode: "walk", label: "Walk", icon: "🚶", color: "#22c55e", tag: null },
+                            ] as const).map(opt => {
+                              const isActive = tripWideMode === opt.mode;
+                              const legCount = DAYS.reduce((s, d) => s + d.transports.filter(t => t.transitOptions?.some((o: any) => o.mode === opt.mode)).length, 0);
+                              return (
+                                <button
+                                  key={opt.mode}
+                                  onClick={() => applyTripWideMode(opt.mode)}
+                                  className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold transition-all border ${
+                                    isActive
+                                      ? "border-gray-900 bg-gray-900 text-white shadow-md"
+                                      : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:shadow-sm"
+                                  }`}
+                                  data-testid={`trip-mode-${opt.mode}`}
+                                >
+                                  <ModeIcon mode={opt.mode} className="w-3 h-3" />
+                                  <span>{opt.label}</span>
+                                  {opt.tag && !isActive && (
+                                    <span className="text-[7px] bg-sky-100 text-sky-700 px-1 rounded font-bold ml-0.5">{opt.tag}</span>
+                                  )}
+                                  {isActive && (
+                                    <span className="text-[8px] bg-white/20 px-1 rounded">{legCount} legs</span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {tripWideMode && (
+                            <div className="mt-2 text-[10px] text-gray-500 flex items-center gap-1">
+                              <Check className="w-3 h-3 text-green-600" />
+                              Applied <span className="font-semibold text-gray-700">{MODE_LABELS[tripWideMode]}</span> to all compatible legs.
+                              {DAYS.some(d => d.transports.some(t => !t.transitOptions?.some((o: any) => o.mode === tripWideMode))) && (
+                                <span className="text-amber-600 ml-1">Some legs don't support this mode.</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         {DAYS.map((d, dayIdx) => {
                           if (d.transports.length === 0) return null;
                           const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
