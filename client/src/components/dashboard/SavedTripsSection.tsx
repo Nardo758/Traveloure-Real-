@@ -76,7 +76,7 @@ export function SavedTripsSection() {
   if (isLoading || !savedTrips || savedTrips.length === 0) return null;
 
   return (
-    <section className="mb-[22px]" data-testid="saved-trips-section">
+    <section data-testid="saved-trips-section">
       <div className="text-[13px] font-medium mb-2.5 flex items-center gap-1.5" style={{ color: "#1A1A18" }}>
         <Bookmark className="w-4 h-4" style={{ color: "#E85D55" }} />
         <span>Saved for later</span>
