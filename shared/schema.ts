@@ -4451,6 +4451,8 @@ export const transportLegs = pgTable("transport_legs", {
   linkedProductUrl: text("linked_product_url"),
   calculatedAt: timestamp("calculated_at").defaultNow(),
   destinationProfile: text("destination_profile"),
+  bookingTiming: text("booking_timing").$type<"in_advance" | "real_time">(),
+  providerSource: text("provider_source").$type<"traveloure" | "external">(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
