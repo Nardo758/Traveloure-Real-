@@ -347,6 +347,35 @@ function ExpertNotesPanel({ advisor, expertMsgText, avatarColor, pendingSuggesti
   );
 }
 
+function getDiffTypeLabel(type: string): string {
+  if (type === "activity" || type === "replace") return "Swap";
+  if (type === "time" || type === "schedule") return "Time change";
+  if (type === "transport") return "Transport";
+  if (type === "accommodation") return "Hotel";
+  return "New";
+}
+
+function buildDiffLines(s: ExpertSuggestion): { removeLine: string | null; addLine: string } {
+  const costStr = s.estimated_cost != null && s.estimated_cost > 0 ? ` · $${s.estimated_cost}` : "";
+  const dayStr = s.day_number ? ` · Day ${s.day_number}` : "";
+  if (s.type === "replace" || s.type === "activity" || s.type === "accommodation") {
+    return {
+      removeLine: s.description ? s.description.split("→")[0]?.trim() || `Previous ${s.type}` : `Previous ${s.type}`,
+      addLine: `${s.title}${costStr}${dayStr}`,
+    };
+  }
+  if (s.type === "time" || s.type === "schedule") {
+    return {
+      removeLine: s.description ? s.description.split("→")[0]?.trim() || "Previous time" : "Previous time",
+      addLine: `${s.title}${dayStr}`,
+    };
+  }
+  return {
+    removeLine: null,
+    addLine: `${s.title}${costStr}${dayStr}`,
+  };
+}
+
 function ReviewChangesBanner({ tripId, suggestions, onRespond, onBulk, respondingId }: {
   tripId: string;
   suggestions: ExpertSuggestion[];
@@ -409,12 +438,13 @@ function ReviewChangesBanner({ tripId, suggestions, onRespond, onBulk, respondin
           )}
 
           {suggestions.map(s => {
+            const diff = buildDiffLines(s);
             if (s.status === "approved") {
               return (
                 <div key={s.id} className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200/60 dark:border-green-800/40 px-3 py-2 flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
                   <span className="text-[12px] text-green-800 dark:text-green-300 font-medium flex-1">{s.title}</span>
-                  <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">Approved</span>
+                  <span className="text-[10px] text-green-600 dark:text-green-400 font-medium">Accepted</span>
                 </div>
               );
             }
@@ -431,20 +461,27 @@ function ReviewChangesBanner({ tripId, suggestions, onRespond, onBulk, respondin
               <div key={s.id} className="rounded-xl bg-card border border-border shadow-sm overflow-hidden">
                 <div className="px-3 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
                   <span className="text-[12px] font-bold text-foreground">{s.title}</span>
-                  <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full font-medium capitalize">
-                    {s.type}
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full font-medium">
+                    {getDiffTypeLabel(s.type)}
                   </span>
                 </div>
                 <div className="px-3 py-2.5 space-y-1.5">
+                  {diff.removeLine && (
+                    <div className="flex items-start gap-2">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                      <span className="text-[12px] text-red-700 dark:text-red-400 line-through">{diff.removeLine}</span>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 flex-shrink-0" />
+                    <span className="text-[12px] text-green-700 dark:text-green-400 font-medium">{diff.addLine}</span>
+                  </div>
                   {s.description && (
-                    <div className="text-[12px] text-muted-foreground">{s.description}</div>
+                    <div className="text-[11px] text-muted-foreground italic ml-3.5 mt-1">"{s.description}"</div>
                   )}
-                  {s.estimated_cost != null && s.estimated_cost > 0 && (
-                    <div className="text-[11px] text-green-600 dark:text-green-400 font-semibold">${s.estimated_cost}</div>
-                  )}
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-[10px] text-muted-foreground ml-3.5">
                     by {s.expert_first_name} {s.expert_last_name}
-                    {s.day_number && ` · Day ${s.day_number}`}
+                    {s.day_number != null && ` · Day ${s.day_number}`}
                   </div>
                 </div>
                 <div className="px-3 py-2 border-t border-border bg-muted/30 flex gap-2 justify-end">
