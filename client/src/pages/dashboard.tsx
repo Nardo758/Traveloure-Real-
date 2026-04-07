@@ -1,9 +1,7 @@
 import { useTrips } from "@/hooks/use-trips";
-import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Calendar, Bookmark } from "lucide-react";
+import { Plus, Loader2, Bookmark } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
 import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
@@ -227,58 +225,51 @@ export default function Dashboard() {
               )}
             </div>
 
-            {activePlans.length > 0 ? (
-              <div
-                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
-                data-testid="active-plans-grid"
-              >
-                {activePlans.slice(0, 6).map((trip, i) => (
-                  <DashboardPlanCard
-                    key={trip.id}
-                    trip={trip}
-                    index={i}
-                    conversations={convList}
-                    notifications={notifications}
-                  />
-                ))}
-              </div>
-            ) : (
-              <Card
-                className="border-2 border-dashed mb-6"
-                style={{ borderColor: "#E8E8E2" }}
-              >
-                <CardContent className="p-8 text-center">
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
+              data-testid="active-plans-grid"
+            >
+              {activePlans.slice(0, 6).map((trip, i) => (
+                <DashboardPlanCard
+                  key={trip.id}
+                  trip={trip}
+                  index={i}
+                  conversations={convList}
+                  notifications={notifications}
+                />
+              ))}
+              {activePlans.length < 2 && (
+                <Link href="/experiences">
                   <div
-                    className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
-                    style={{ background: "#FFE3E8" }}
+                    className="rounded-[14px] flex flex-col items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors min-h-[220px]"
+                    style={{
+                      border: "2px dashed #E8E8E2",
+                      background: "transparent",
+                    }}
+                    data-testid="create-new-plan-card"
                   >
-                    <Calendar
-                      className="w-8 h-8"
-                      style={{ color: "#E85D55" }}
-                    />
-                  </div>
-                  <h3
-                    className="text-lg font-semibold mb-2"
-                    style={{ color: "#1A1A18" }}
-                  >
-                    No active plans
-                  </h3>
-                  <p className="mb-4" style={{ color: "#7A7A72" }}>
-                    Start planning your next adventure!
-                  </p>
-                  <Link href="/experiences">
-                    <Button
-                      className="text-white"
-                      style={{ background: "#E85D55" }}
-                      data-testid="button-first-plan"
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
+                      style={{ background: "#FFE3E8" }}
                     >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Plan
-                    </Button>
-                  </Link>
-                </CardContent>
-              </Card>
-            )}
+                      <Plus className="w-6 h-6" style={{ color: "#E85D55" }} />
+                    </div>
+                    <div
+                      className="text-sm font-medium mb-1"
+                      style={{ color: "#1A1A18" }}
+                    >
+                      Create new plan
+                    </div>
+                    <div
+                      className="text-xs"
+                      style={{ color: "#7A7A72" }}
+                    >
+                      Start a new adventure
+                    </div>
+                  </div>
+                </Link>
+              )}
+            </div>
 
             <RecommendedServices destinations={destinations} />
           </div>
