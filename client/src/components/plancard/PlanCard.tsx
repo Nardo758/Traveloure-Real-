@@ -217,54 +217,54 @@ function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, 
         data-testid={`img-hero-${trip.id}`}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-      <div className="absolute top-3 left-3 flex gap-2 items-center">
-        <Badge className="bg-primary text-primary-foreground border-0 text-[11px] font-bold gap-1 px-2.5 py-1 uppercase tracking-wide" data-testid={`badge-status-${trip.id}`}>
-          <Zap className="w-3 h-3" />
+      <div className="absolute top-2.5 left-2.5 flex gap-1.5 items-center">
+        <Badge className="bg-primary text-primary-foreground border-0 text-[10px] font-bold gap-1 px-2 py-0.5 uppercase tracking-wide" data-testid={`badge-status-${trip.id}`}>
+          <Zap className="w-2.5 h-2.5" />
           {statusLabel}
         </Badge>
         {trip.numberOfTravelers && trip.numberOfTravelers > 1 && (
-          <Badge className="bg-white/20 text-white border-0 text-[11px] backdrop-blur-sm gap-1 px-2.5 py-1" data-testid={`badge-travelers-${trip.id}`}>
-            <Users className="w-3 h-3" />
+          <Badge className="bg-white/20 text-white border-0 text-[10px] backdrop-blur-sm gap-1 px-2 py-0.5" data-testid={`badge-travelers-${trip.id}`}>
+            <Users className="w-2.5 h-2.5" />
             {trip.numberOfTravelers}
           </Badge>
         )}
       </div>
-      <div className="absolute top-3 right-3 flex gap-2">
+      <div className="absolute top-2.5 right-2.5 flex gap-1.5">
         {traveloureScore != null && (
-          <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center shadow-lg" data-testid={`badge-score-${trip.id}`}>
-            <span className="text-sm font-bold text-foreground">{traveloureScore}</span>
+          <div className="w-8 h-8 rounded-lg bg-card flex items-center justify-center shadow-lg" data-testid={`badge-score-${trip.id}`}>
+            <span className="text-xs font-bold text-foreground">{traveloureScore}</span>
           </div>
         )}
         <button
           onClick={handleShare}
-          className="bg-white/20 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-white/30 transition-colors"
+          className="bg-white/20 backdrop-blur-sm text-white px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 hover:bg-white/30 transition-colors"
           data-testid={`button-share-${trip.id}`}
         >
-          <Share2 className="w-3.5 h-3.5" /> Share
+          <Share2 className="w-3 h-3" /> Share
         </button>
         <Link href={`/itinerary/${trip.id}`}>
           <button
-            className="bg-white/20 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-white/30 transition-colors"
+            className="bg-white/20 backdrop-blur-sm text-white px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 hover:bg-white/30 transition-colors"
             data-testid={`button-export-${trip.id}`}
           >
-            <Download className="w-3.5 h-3.5" /> Export
+            <Download className="w-3 h-3" /> Export
           </button>
         </Link>
       </div>
-      <div className="absolute bottom-4 left-5 right-5">
-        <h3 className="font-['DM_Serif_Display',serif] text-[22px] text-white leading-tight drop-shadow-sm" data-testid={`text-plan-title-${trip.id}`}>
+      <div className="absolute bottom-3 left-3 right-3">
+        <h3 className="font-['DM_Serif_Display',serif] text-[18px] text-white leading-tight drop-shadow-sm truncate" data-testid={`text-plan-title-${trip.id}`}>
           {trip.title}
         </h3>
-        <div className="flex flex-wrap gap-4 mt-2">
-          <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-destination-${trip.id}`}>
-            <MapPin className="w-3.5 h-3.5" /> {city}{country && `, ${country}`}
+        <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
+          <span className="text-[11px] text-white/85 flex items-center gap-1" data-testid={`text-destination-${trip.id}`}>
+            <MapPin className="w-3 h-3" /> {city}{country && `, ${country}`}
           </span>
-          <span className="text-[13px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
-            <Calendar className="w-3.5 h-3.5" />
+          <span className="text-[11px] text-white/85 flex items-center gap-1" data-testid={`text-dates-${trip.id}`}>
+            <Calendar className="w-3 h-3" />
             {format(new Date(trip.startDate ?? Date.now()), "MMM d")} – {format(new Date(trip.endDate ?? Date.now()), "MMM d, yyyy")}
           </span>
           {displayCost && (
-            <span className="text-[13px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
+            <span className="text-[11px] text-emerald-300 font-semibold" data-testid={`text-budget-${trip.id}`}>
               {displayCost}
               {perPerson && <span className="text-white/60 font-normal ml-1">– {perPerson}</span>}
             </span>
@@ -285,10 +285,10 @@ function ExpertNotesPanel({ advisor, expertMsgText, avatarColor, pendingSuggesti
   if (!expertMsgText) return null;
 
   return (
-    <div className="mx-4 mb-3">
+    <div className="mx-3 mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center gap-2.5 px-3 py-2.5 ${open ? "rounded-t-xl" : "rounded-xl"} border border-purple-200/60 dark:border-purple-800/40 bg-card hover:bg-purple-50/50 dark:hover:bg-purple-950/20 transition-colors text-left`}
+        className={`w-full flex items-center gap-2 px-2.5 py-2 ${open ? "rounded-t-xl" : "rounded-xl"} border border-purple-200/60 dark:border-purple-800/40 bg-card hover:bg-purple-50/50 dark:hover:bg-purple-950/20 transition-colors text-left`}
         data-testid="btn-toggle-expert-notes"
       >
         {advisor ? (
@@ -388,10 +388,10 @@ function ReviewChangesBanner({ tripId, suggestions, onRespond, onBulk, respondin
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="mx-4 mb-3">
+    <div className="mx-3 mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center gap-2.5 px-3 py-2.5 ${open ? "rounded-t-xl" : "rounded-xl"} border border-blue-200/60 dark:border-blue-800/40 bg-card hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors text-left`}
+        className={`w-full flex items-center gap-2 px-2.5 py-2 ${open ? "rounded-t-xl" : "rounded-xl"} border border-blue-200/60 dark:border-blue-800/40 bg-card hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors text-left`}
         data-testid={`btn-review-changes-${tripId}`}
       >
         <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
@@ -526,8 +526,8 @@ function MapControlCenter({ tripId, days, selectedDay, onSelectDay }: {
     : "#";
 
   return (
-    <div className="px-4 pb-4">
-      <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
+    <div className="px-3 pb-3">
+      <div className="flex items-center gap-1 mb-3 overflow-x-auto pb-1">
         {days.map((d, i) => (
           <button
             key={d.dayNum}
@@ -836,7 +836,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           budget={budgetDisplay}
         />
 
-        <div className="px-4 pt-3" data-testid={`view-mode-toggle-${trip.id}`}>
+        <div className="px-3 pt-2.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <div className="relative bg-muted rounded-xl p-1 flex gap-0.5">
             <div
               className="absolute top-1 bottom-1 rounded-lg transition-all duration-300 ease-in-out shadow-md"
@@ -848,21 +848,21 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
             />
             <button
               onClick={() => setViewMode("card")}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors duration-300 ${
+              className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold transition-colors duration-300 ${
                 viewMode === "card" ? "text-background" : "text-muted-foreground hover:text-foreground"
               }`}
               data-testid={`view-card-${trip.id}`}
             >
-              <LayoutList className="w-4 h-4" /> Dashboard
+              <LayoutList className="w-3.5 h-3.5" /> Dashboard
             </button>
             <button
               onClick={() => setViewMode("map")}
-              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors duration-300 ${
+              className={`relative z-10 flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold transition-colors duration-300 ${
                 viewMode === "map" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
               data-testid={`view-map-${trip.id}`}
             >
-              <Map className="w-4 h-4" /> Map Control Center
+              <Map className="w-3.5 h-3.5" /> Map Center
               {viewMode !== "map" && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
             </button>
           </div>
@@ -873,18 +873,18 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
             { label: "Days", value: `${days.length || "–"}`, icon: Calendar },
             { label: "Activities", value: `${totalActivities}`, icon: Star },
             { label: "Transit", value: `${totalLegs}`, icon: TrainFront },
-            { label: "Transit Time", value: totalMinutes > 0 ? formatDuration(totalMinutes) : "–", icon: Clock },
+            { label: "Time", value: totalMinutes > 0 ? formatDuration(totalMinutes) : "–", icon: Clock },
           ].map((s, i) => (
-            <div key={i} className={`py-3 px-2 text-center ${i < 3 ? "border-r border-border" : ""}`}>
-              <div className="text-[10px] text-muted-foreground mb-1 flex items-center justify-center gap-1">
-                <s.icon className="w-3 h-3" /> {s.label}
+            <div key={i} className={`py-2.5 px-1.5 text-center ${i < 3 ? "border-r border-border" : ""}`}>
+              <div className="text-[9px] text-muted-foreground mb-0.5 flex items-center justify-center gap-0.5">
+                <s.icon className="w-2.5 h-2.5" /> {s.label}
               </div>
-              <div className="text-lg font-bold text-foreground">{s.value}</div>
+              <div className="text-base font-bold text-foreground">{s.value}</div>
             </div>
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-border bg-muted/30">
+        <div className="flex flex-wrap gap-1 px-3 py-2 border-b border-border bg-muted/30">
           {traveloureScore != null && (
             <Badge className="text-[10px] gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-0">
               <Star className="w-3 h-3" /> {traveloureScore} Score
@@ -948,7 +948,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           </div>
         ) : (
           <>
-            <div className="mx-4 mb-3">
+            <div className="mx-3 mb-3">
               <button
                 onClick={() => setItineraryOpen(!itineraryOpen)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2.5 ${itineraryOpen ? "rounded-t-xl" : "rounded-xl"} border border-border bg-card hover:bg-muted/50 transition-colors text-left`}
@@ -1011,7 +1011,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                   </div>
 
                   {showChanges && changeLog.length > 0 && (
-                    <div className="bg-amber-50/50 dark:bg-amber-950/10 border-b border-amber-200/30 dark:border-amber-800/30 px-4 py-3">
+                    <div className="bg-amber-50/50 dark:bg-amber-950/10 border-b border-amber-200/30 dark:border-amber-800/30 px-3 py-2.5">
                       <div className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mb-2 uppercase tracking-wider">Change History</div>
                       {changeLog.map((c, i) => (
                         <div key={c.id} className={`flex items-start gap-2 py-1.5 ${i < changeLog.length - 1 ? "border-b border-border/30" : ""}`}>
@@ -1274,7 +1274,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           </>
         )}
 
-        <div className="px-4 pb-3 pt-2 flex gap-2">
+        <div className="px-3 pb-3 pt-2 flex gap-2">
           {viewMode === "card" ? (
             <Button
               variant="outline"
@@ -1306,7 +1306,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
         </div>
 
         {actionItems.length > 0 && (
-          <div className="mx-4 mb-4 rounded-xl bg-muted/40 border border-border px-3 py-2" data-testid={`action-items-${trip.id}`}>
+          <div className="mx-3 mb-4 rounded-xl bg-muted/40 border border-border px-3 py-2" data-testid={`action-items-${trip.id}`}>
             {actionItems.map((n, i) => (
               <div key={n.id ?? i} className="flex items-start gap-2 py-0.5">
                 <div
