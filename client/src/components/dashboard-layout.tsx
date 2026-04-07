@@ -11,8 +11,8 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const style = {
-    "--sidebar-width": "220px",
-    "--sidebar-width-icon": "56px",
+    "--sidebar-width": "190px",
+    "--sidebar-width-icon": "52px",
   };
 
   return (
