@@ -327,9 +327,34 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           />
         )}
 
-        {/* Enrichment pills row */}
+        {/* Footer buttons */}
+        <div className="px-5 pb-3 pt-2 flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-shrink-0"
+            onClick={openInMaps}
+            data-testid={`button-open-maps-${trip.id}`}
+          >
+            <MapPin className="w-3.5 h-3.5 mr-1" />
+            Maps
+          </Button>
+          <Link href={`/itinerary/${trip.id}`} className="flex-1">
+            <Button
+              size="sm"
+              className="w-full text-xs font-semibold"
+              data-testid={`button-view-itinerary-${trip.id}`}
+            >
+              <Calendar className="w-3.5 h-3.5 mr-1" />
+              View Itinerary
+              <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+            </Button>
+          </Link>
+        </div>
+
+        {/* Enrichment pills row — below footer buttons */}
         {(tripServiceCount > 0 || totalLegs > 0 || advisor) && (
-          <div className="flex gap-1.5 flex-wrap px-5 pt-1 pb-0" data-testid={`pills-row-${trip.id}`}>
+          <div className="flex gap-1.5 flex-wrap px-5 pb-2" data-testid={`pills-row-${trip.id}`}>
             {tripServiceCount > 0 && (
               <button
                 type="button"
@@ -366,11 +391,11 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           </div>
         )}
 
-        {/* Expert advisor strip */}
+        {/* Expert advisor strip — below footer buttons */}
         {advisor && (
           <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`}>
             <div
-              className="flex items-center gap-2.5 cursor-pointer hover:bg-muted/40 transition-colors mx-5 my-2 rounded-xl border border-border px-3 py-2"
+              className="flex items-center gap-2.5 cursor-pointer hover:bg-muted/40 transition-colors mx-5 mb-3 rounded-xl border border-border px-3 py-2"
               data-testid={`advisor-strip-${trip.id}`}
             >
               {advisor.profile_image_url ? (
@@ -415,9 +440,9 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           </Link>
         )}
 
-        {/* Action items from notifications */}
+        {/* Action items from notifications — below footer buttons */}
         {actionItems.length > 0 && (
-          <div className="mx-5 mb-2 rounded-xl bg-muted/40 border border-border px-3 py-2" data-testid={`action-items-${trip.id}`}>
+          <div className="mx-5 mb-4 rounded-xl bg-muted/40 border border-border px-3 py-2" data-testid={`action-items-${trip.id}`}>
             {actionItems.map((n, i) => (
               <div key={n.id ?? i} className="flex items-start gap-2 py-0.5">
                 <div
@@ -429,31 +454,6 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
             ))}
           </div>
         )}
-
-        {/* Footer buttons */}
-        <div className="px-5 pb-5 pt-2 flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-shrink-0"
-            onClick={openInMaps}
-            data-testid={`button-open-maps-${trip.id}`}
-          >
-            <MapPin className="w-3.5 h-3.5 mr-1" />
-            Maps
-          </Button>
-          <Link href={`/itinerary/${trip.id}`} className="flex-1">
-            <Button
-              size="sm"
-              className="w-full text-xs font-semibold"
-              data-testid={`button-view-itinerary-${trip.id}`}
-            >
-              <Calendar className="w-3.5 h-3.5 mr-1" />
-              View Itinerary
-              <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-            </Button>
-          </Link>
-        </div>
       </Card>
     </motion.div>
   );

@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import type { PlanCardTrip } from "@/components/plancard/plancard-types";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
@@ -228,15 +229,27 @@ export default function Dashboard() {
               className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
               data-testid="active-plans-grid"
             >
-              {activePlans.slice(0, 6).map((trip, i) => (
-                <PlanCard
-                  key={trip.id}
-                  trip={trip as any}
-                  index={i}
-                  conversations={convList}
-                  notifications={notifications}
-                />
-              ))}
+              {activePlans.slice(0, 6).map((trip, i) => {
+                const planCardTrip: PlanCardTrip = {
+                  id: trip.id,
+                  destination: trip.destination ?? "",
+                  title: trip.title ?? undefined,
+                  startDate: trip.startDate ?? undefined,
+                  endDate: trip.endDate ?? undefined,
+                  numberOfTravelers: trip.numberOfTravelers ?? 1,
+                  budget: trip.budget ?? undefined,
+                  eventType: trip.eventType ?? undefined,
+                };
+                return (
+                  <PlanCard
+                    key={trip.id}
+                    trip={planCardTrip}
+                    index={i}
+                    conversations={convList}
+                    notifications={notifications}
+                  />
+                );
+              })}
               {activePlans.length < 2 && (
                 <Link href="/experiences">
                   <div
