@@ -175,10 +175,22 @@ export interface PlanCardTrip {
   eventType?: string;
 }
 
+export interface NotificationItem {
+  id: string | number;
+  title?: string;
+  message?: string;
+  type?: string;
+  createdAt?: string;
+  tripId?: string | null;
+  read?: boolean;
+}
+
 export interface PlanCardProps {
   trip: PlanCardTrip;
   score?: { tripId: string; optimizationScore: number | null; shareToken: string | null };
   index?: number;
+  conversations?: Array<{ id: number; title: string }>;
+  notifications?: NotificationItem[];
 }
 
 export interface PlanCardScore {
