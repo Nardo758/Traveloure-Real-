@@ -1,0 +1,1837 @@
+import { useState } from "react";
+import { useParams, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowLeft, Clock, MapPin, Star, Navigation, ExternalLink, Map,
+  Route, Phone, Globe, Lightbulb, MessageSquare, DollarSign, Hash,
+  CheckCircle2, XCircle, AlertCircle, Filter, History, ChevronRight,
+  Footprints, Car, TrainFront, Ship, Bus, Train, CarTaxiFront, KeyRound,
+  Repeat, Sparkles, Building2, Ticket, Check, X,
+  Hotel, Compass, Shield, UtensilsCrossed, FileText,
+  Copy, Phone as PhoneIcon, ChevronDown, ChevronUp,
+  TrendingUp, Heart, BarChart3, Leaf, Users, Calendar, Activity as ActivityIcon,
+  Printer, Download, Send, Globe2,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// ─────────────────────────────────────────────
+// Shared types derived from the API response
+// ─────────────────────────────────────────────
+interface ApiActivity {
+  id: string;
+  name: string;
+  startTime?: string | null;
+  endTime?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  category?: string | null;
+  cost?: number;
+  description?: string | null;
+  location?: string | null;
+  duration?: number | null;
+}
+
+interface ApiTransportLeg {
+  id: string;
+  legOrder: number;
+  userSelectedMode?: string | null;
+  recommendedMode?: string | null;
+  estimatedDurationMinutes?: number | null;
+  estimatedCostUsd?: number | null;
+  fromLabel?: string | null;
+  toLabel?: string | null;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
+  distanceKm?: number | null;
+  operatorName?: string | null;
+  bookingRef?: string | null;
+  notes?: string | null;
+}
+
+interface ApiDay {
+  dayNumber: number;
+  date?: string;
+  activities: ApiActivity[];
+  transportLegs: ApiTransportLeg[];
+}
+
+interface SharedItineraryResponse {
+  variant: {
+    id: string;
+    name: string;
+    description?: string | null;
+    destination?: string | null;
+    dateRange?: { start?: string | null; end?: string | null };
+    totalCost?: string | number | null;
+    optimizationScore?: number | null;
+    days: ApiDay[];
+    transportSummary?: {
+      totalLegs: number;
+      totalMinutes: number;
+      totalCostUsd: number;
+    };
+  };
+  sharedBy?: { name: string; avatarUrl?: string | null; userId?: string };
+  permissions?: string;
+  shareToken?: string;
+  expertStatus?: string;
+  expertNotes?: string | null;
+  isOwner?: boolean;
+}
+
+// ─────────────────────────────────────────────
+// Shared helpers
+// ─────────────────────────────────────────────
+const DAY_COLORS = [
+  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b",
+  "#8b5cf6", "#ec4899", "#06b6d4", "#f97316",
+];
+
+const TYPE_COLORS: Record<string, { bg: string; fg: string; dot: string }> = {
+  dining: { bg: "bg-amber-100", fg: "text-amber-800", dot: "#f59e0b" },
+  attraction: { bg: "bg-blue-100", fg: "text-blue-800", dot: "#3b82f6" },
+  shopping: { bg: "bg-pink-100", fg: "text-pink-800", dot: "#ec4899" },
+  activity: { bg: "bg-green-100", fg: "text-green-800", dot: "#22c55e" },
+  transport: { bg: "bg-gray-100", fg: "text-gray-800", dot: "#6b7280" },
+};
+
+const MODE_COLORS: Record<string, string> = {
+  walk: "#22c55e", taxi: "#f59e0b", ferry: "#06b6d4", bus: "#8b5cf6",
+  car: "#3b82f6", train: "#6366f1", subway: "#a855f7", rideshare: "#f59e0b",
+  private_car: "#0ea5e9", rental_car: "#14b8a6", transit: "#6b7280",
+};
+
+const MODE_LABELS: Record<string, string> = {
+  walk: "Walk", taxi: "Taxi", bus: "Bus", ferry: "Ferry", car: "Car",
+  train: "Train", subway: "Subway", rideshare: "Rideshare",
+  private_car: "Private Car", rental_car: "Rental Car", transit: "Transit",
+};
+
+const STATUS_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
+  confirmed: { bg: "bg-green-100", fg: "text-green-800", label: "Confirmed" },
+  pending: { bg: "bg-yellow-100", fg: "text-yellow-800", label: "Pending" },
+  suggested: { bg: "bg-indigo-100", fg: "text-indigo-800", label: "Suggested" },
+  cancelled: { bg: "bg-red-100", fg: "text-red-800", label: "Cancelled" },
+};
+
+function formatDuration(mins: number) {
+  if (!mins || mins <= 0) return "—";
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h ${mins % 60 > 0 ? `${mins % 60}m` : ""}`.trim();
+}
+
+function formatTime(timeStr?: string | null): string {
+  if (!timeStr) return "";
+  try {
+    return new Date(timeStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch {
+    return timeStr;
+  }
+}
+
+function buildMapsUrl(location: string, lat?: number | null, lng?: number | null) {
+  if (lat && lng) return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location)}`;
+}
+
+function buildAppleMapsUrl(location: string, lat?: number | null, lng?: number | null) {
+  if (lat && lng) return `https://maps.apple.com/?daddr=${lat},${lng}`;
+  return `https://maps.apple.com/?daddr=${encodeURIComponent(location)}`;
+}
+
+function buildWazeUrl(lat?: number | null, lng?: number | null) {
+  if (lat && lng) return `https://www.waze.com/ul?ll=${lat},${lng}&navigate=yes`;
+  return null;
+}
+
+function ModIcon({ mode, className = "w-4 h-4", style }: { mode: string; className?: string; style?: React.CSSProperties }) {
+  if (mode === "walk") return <Footprints className={className} style={style} />;
+  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} style={style} />;
+  if (mode === "car" || mode === "private_car") return <Car className={className} style={style} />;
+  if (mode === "ferry") return <Ship className={className} style={style} />;
+  if (mode === "bus") return <Bus className={className} style={style} />;
+  if (mode === "train") return <Train className={className} style={style} />;
+  if (mode === "subway") return <TrainFront className={className} style={style} />;
+  if (mode === "rental_car") return <KeyRound className={className} style={style} />;
+  return <Footprints className={className} style={style} />;
+}
+
+function NavigateDropdown({ location, lat, lng }: { location: string; lat?: number | null; lng?: number | null }) {
+  const [open, setOpen] = useState(false);
+  const wazeUrl = buildWazeUrl(lat, lng);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors"
+        data-testid="navigate-button"
+      >
+        <Navigation className="w-3 h-3" /> Navigate
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 w-44">
+            <a href={buildMapsUrl(location, lat, lng)} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium">
+              <div className="w-5 h-5 rounded bg-blue-100 flex items-center justify-center"><MapPin className="w-3 h-3 text-blue-600" /></div>
+              Google Maps <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
+            </a>
+            <a href={buildAppleMapsUrl(location, lat, lng)} target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium">
+              <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center"><Map className="w-3 h-3 text-gray-600" /></div>
+              Apple Maps <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
+            </a>
+            {wazeUrl && (
+              <a href={wazeUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium">
+                <div className="w-5 h-5 rounded bg-cyan-100 flex items-center justify-center"><Route className="w-3 h-3 text-cyan-600" /></div>
+                Waze <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
+              </a>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Shared loading / error screens
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 space-y-3">
+      <Skeleton className="h-14 w-full" />
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  );
+}
+
+function ErrorScreen({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <div className="text-center">
+        <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+        <p className="text-[14px] font-semibold text-gray-800 mb-2">Failed to load itinerary</p>
+        <p className="text-[12px] text-gray-500 mb-4">{message}</p>
+        <Button size="sm" variant="outline" onClick={() => window.history.back()}>Go Back</Button>
+      </div>
+    </div>
+  );
+}
+
+// Shared data hook
+function useItineraryData(token: string) {
+  return useQuery<SharedItineraryResponse>({
+    queryKey: ["/api/itinerary-share", token],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-share/${token}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to load" }));
+        throw new Error(err.error || "Failed to load itinerary");
+      }
+      return res.json();
+    },
+    enabled: !!token,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// ─────────────────────────────────────────────
+// 1. FULL ITINERARY PAGE (main /itinerary-view/:token)
+// ─────────────────────────────────────────────
+function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransport }: {
+  day: ApiDay;
+  dayIndex: number;
+  token: string;
+  onNavigateActivity: (id: string) => void;
+  onNavigateTransport: (id: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
+  const dayCost = day.activities.reduce((s, a) => s + (a.cost || 0), 0);
+  const transitTime = day.transportLegs.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
+  const transitCost = day.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
+
+  const dateLabel = day.date
+    ? new Date(day.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+    : `Day ${day.dayNumber}`;
+
+  // Interleave activities + transports
+  type Entry =
+    | { type: "activity"; item: ApiActivity; idx: number }
+    | { type: "transport"; item: ApiTransportLeg };
+
+  const interleaved: Entry[] = [];
+  day.activities.forEach((a, i) => {
+    if (i > 0 && day.transportLegs[i - 1]) {
+      interleaved.push({ type: "transport", item: day.transportLegs[i - 1] });
+    }
+    interleaved.push({ type: "activity", item: a, idx: i });
+  });
+
+  return (
+    <div className="mb-4" data-testid={`day-section-${day.dayNumber}`}>
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors"
+        style={{ backgroundColor: dayColor + "12" }}
+        data-testid={`button-collapse-day-${day.dayNumber}`}
+      >
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[13px] font-bold" style={{ backgroundColor: dayColor }}>
+          D{day.dayNumber}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[14px] font-bold text-gray-900">{dateLabel}</span>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
+            <span>{day.activities.length} activities</span>
+            {dayCost > 0 && <span className="text-emerald-700 font-semibold">${(dayCost + transitCost).toLocaleString()}</span>}
+            {transitTime > 0 && <span>{formatDuration(transitTime)} transit</span>}
+          </div>
+        </div>
+        {collapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+      </button>
+
+      {!collapsed && (
+        <div className="mt-2 space-y-1">
+          {interleaved.map((entry, idx) => {
+            if (entry.type === "activity") {
+              const a = entry.item;
+              const tc = TYPE_COLORS[a.category || "activity"] || TYPE_COLORS.activity;
+              return (
+                <button
+                  key={a.id}
+                  onClick={() => onNavigateActivity(a.id)}
+                  className="w-full bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-left hover:shadow-md transition-shadow"
+                  data-testid={`activity-row-${a.id}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-gray-50 border-2 border-gray-200 flex items-center justify-center text-[11px] font-bold text-gray-600">
+                        {entry.idx + 1}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[13px] font-bold text-gray-900">{a.name}</span>
+                        {a.category && (
+                          <Badge className={`text-[9px] px-1.5 py-0 border-0 ${tc.bg} ${tc.fg}`}>{a.category}</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        {a.startTime && (
+                          <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> {formatTime(a.startTime)}
+                          </span>
+                        )}
+                        {a.location && (
+                          <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" /> {a.location}
+                          </span>
+                        )}
+                      </div>
+                      {(a.cost || 0) > 0 && (
+                        <div className="text-[12px] font-semibold text-emerald-700 mt-1">${a.cost}</div>
+                      )}
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
+                  </div>
+                </button>
+              );
+            } else {
+              const t = entry.item;
+              const mode = t.userSelectedMode || t.recommendedMode || "transit";
+              const modeColor = MODE_COLORS[mode] || "#6b7280";
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onNavigateTransport(t.id)}
+                  className="flex items-center gap-2 py-1.5 px-3 ml-6 border-l-2 border-dashed w-full text-left hover:bg-gray-50 transition-colors rounded-r-lg"
+                  style={{ borderColor: modeColor + "60" }}
+                  data-testid={`transport-row-${t.id}`}
+                >
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: modeColor + "20" }}>
+                    <ModIcon mode={mode} className="w-3 h-3" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[11px] text-gray-600 font-semibold">{MODE_LABELS[mode] || mode}</span>
+                    {t.fromLabel && t.toLabel && (
+                      <span className="text-[10px] text-gray-400 ml-1.5">{t.fromLabel} → {t.toLabel}</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-gray-500 flex-shrink-0">
+                    {formatDuration(t.estimatedDurationMinutes || 0)}
+                    {(t.estimatedCostUsd || 0) > 0 && ` · $${t.estimatedCostUsd}`}
+                  </span>
+                  <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                </button>
+              );
+            }
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FullItineraryPage() {
+  const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  const { variant } = data;
+  const allActivities = variant.days.flatMap(d => d.activities);
+  const allTransports = variant.days.flatMap(d => d.transportLegs);
+  const totalCost = parseFloat(String(variant.totalCost || 0)) ||
+    allActivities.reduce((s, a) => s + (a.cost || 0), 0) +
+    allTransports.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
+  const totalTransitTime = variant.transportSummary?.totalMinutes ||
+    allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
+
+  const destination = variant.destination || variant.name;
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="full-itinerary-page">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => window.history.back()}
+          className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-700" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-[15px] font-bold text-gray-900 truncate">{destination}</h1>
+          <p className="text-[11px] text-gray-500">Full Itinerary</p>
+        </div>
+        <div className="flex gap-1">
+          <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => window.print()} data-testid="button-print">
+            <Printer className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="p-4">
+        {/* Summary stats */}
+        <div className="grid grid-cols-2 gap-2 mb-5">
+          <Card className="p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+              <ActivityIcon className="w-4 h-4 text-blue-600" />
+            </div>
+            <div>
+              <div className="text-[18px] font-bold text-gray-900">{allActivities.length}</div>
+              <div className="text-[10px] text-gray-500">Activities</div>
+            </div>
+          </Card>
+          <Card className="p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div>
+              <div className="text-[18px] font-bold text-gray-900">${totalCost.toLocaleString()}</div>
+              <div className="text-[10px] text-gray-500">Total Cost</div>
+            </div>
+          </Card>
+          <Card className="p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+              <Clock className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <div className="text-[18px] font-bold text-gray-900">{formatDuration(totalTransitTime)}</div>
+              <div className="text-[10px] text-gray-500">Transit Time</div>
+            </div>
+          </Card>
+          <Card className="p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+              <Calendar className="w-4 h-4 text-purple-600" />
+            </div>
+            <div>
+              <div className="text-[18px] font-bold text-gray-900">{variant.days.length}</div>
+              <div className="text-[10px] text-gray-500">Days</div>
+            </div>
+          </Card>
+        </div>
+
+        {variant.days.map((day, i) => (
+          <DaySection
+            key={day.dayNumber}
+            day={day}
+            dayIndex={i}
+            token={token}
+            onNavigateActivity={(id) => navigate(`/itinerary-view/${token}/activity/${id}`)}
+            onNavigateTransport={(id) => navigate(`/itinerary-view/${token}/transport/${id}`)}
+          />
+        ))}
+
+        {/* Bottom nav */}
+        <div className="mt-6 grid grid-cols-3 gap-2">
+          {[
+            { label: "Map", path: `/itinerary-view/${token}/map`, icon: <MapPin className="w-4 h-4" /> },
+            { label: "Stats", path: `/itinerary-view/${token}/stats`, icon: <BarChart3 className="w-4 h-4" /> },
+            { label: "Services", path: `/itinerary-view/${token}/services`, icon: <FileText className="w-4 h-4" /> },
+            { label: "Expert Chat", path: `/itinerary-view/${token}/chat`, icon: <MessageSquare className="w-4 h-4" /> },
+            { label: "Review Changes", path: `/itinerary-view/${token}/changes`, icon: <History className="w-4 h-4" /> },
+            { label: "Back to Summary", path: `/itinerary-view/${token}`, icon: <ArrowLeft className="w-4 h-4" /> },
+          ].map(({ label, path, icon }) => (
+            <button
+              key={label}
+              onClick={() => navigate(path)}
+              className="flex flex-col items-center gap-1 p-3 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 transition-colors text-[11px] font-semibold text-gray-700"
+              data-testid={`nav-${label.toLowerCase().replace(/ /g, "-")}`}
+            >
+              {icon}
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 2. ACTIVITY DETAIL PAGE
+// ─────────────────────────────────────────────
+export function ActivityDetailPage() {
+  const { token, activityId } = useParams<{ token: string; activityId: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  // Find activity
+  let activity: ApiActivity | undefined;
+  let dayNumber = 0;
+  for (const day of data.variant.days) {
+    const found = day.activities.find(a => a.id === activityId);
+    if (found) { activity = found; dayNumber = day.dayNumber; break; }
+  }
+
+  if (!activity) {
+    return <ErrorScreen message="Activity not found." />;
+  }
+
+  const tc = TYPE_COLORS[activity.category || "activity"] || TYPE_COLORS.activity;
+  const wazeUrl = buildWazeUrl(activity.lat, activity.lng);
+  const destination = data.variant.destination || data.variant.name;
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="activity-detail-page">
+      {/* Hero */}
+      <div className="relative">
+        <div className="h-40 bg-gradient-to-br from-blue-500 to-indigo-600" />
+        <div className="absolute top-3 left-3">
+          <button
+            onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+            className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur-sm flex items-center justify-center hover:bg-white transition-colors shadow-sm"
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-700" />
+          </button>
+        </div>
+        <div className="absolute bottom-4 left-4 right-4">
+          <h1 className="text-[22px] font-bold text-white leading-tight drop-shadow-sm">{activity.name}</h1>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            {activity.category && (
+              <Badge className={`text-[10px] px-2 py-0.5 border-0 ${tc.bg} ${tc.fg}`}>{activity.category}</Badge>
+            )}
+            <Badge className="text-[10px] px-2 py-0.5 border-0 bg-green-100 text-green-800">Day {dayNumber}</Badge>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Quick stats */}
+        <Card className="p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {activity.startTime && (
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-gray-500">Time</div>
+                  <div className="text-[13px] font-bold text-gray-900">{formatTime(activity.startTime)}</div>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-500">Cost</div>
+                <div className="text-[13px] font-bold text-gray-900">
+                  {(activity.cost || 0) > 0 ? `$${activity.cost}` : "Free"}
+                </div>
+              </div>
+            </div>
+            {activity.duration && (
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-gray-500">Duration</div>
+                  <div className="text-[13px] font-bold text-gray-900">{formatDuration(activity.duration)}</div>
+                </div>
+              </div>
+            )}
+            {activity.location && (
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                  <MapPin className="w-4 h-4 text-purple-600" />
+                </div>
+                <div>
+                  <div className="text-[11px] text-gray-500">Location</div>
+                  <div className="text-[12px] font-semibold text-gray-900 truncate max-w-[120px]">{activity.location}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Description */}
+        {activity.description && (
+          <Card className="p-4">
+            <h3 className="text-[13px] font-bold text-gray-900 mb-2">Description</h3>
+            <p className="text-[12px] text-gray-600 leading-relaxed">{activity.description}</p>
+          </Card>
+        )}
+
+        {/* Navigate */}
+        {activity.location && (
+          <Card className="p-4" data-testid="navigate-section">
+            <h3 className="text-[13px] font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Navigation className="w-4 h-4 text-blue-600" /> Navigate
+            </h3>
+            <div className="space-y-2">
+              <a href={buildMapsUrl(activity.location, activity.lat, activity.lng)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors" data-testid="link-google-maps">
+                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                  <MapPin className="w-4 h-4 text-blue-600" />
+                </div>
+                <span className="text-[13px] font-semibold text-gray-800 flex-1">Google Maps</span>
+                <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+              </a>
+              <a href={buildAppleMapsUrl(activity.location, activity.lat, activity.lng)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors" data-testid="link-apple-maps">
+                <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                  <Map className="w-4 h-4 text-gray-600" />
+                </div>
+                <span className="text-[13px] font-semibold text-gray-800 flex-1">Apple Maps</span>
+                <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+              </a>
+              {wazeUrl && (
+                <a href={wazeUrl} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors" data-testid="link-waze">
+                  <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
+                    <Route className="w-4 h-4 text-cyan-600" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-gray-800 flex-1">Waze</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                </a>
+              )}
+            </div>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 3. TRANSPORT DETAIL PAGE
+// ─────────────────────────────────────────────
+export function TransportDetailPage() {
+  const { token, legId } = useParams<{ token: string; legId: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+  const [selectedMode, setSelectedMode] = useState<string | null>(null);
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  let leg: ApiTransportLeg | undefined;
+  let dayNumber = 0;
+  let fromActivity: ApiActivity | undefined;
+  let toActivity: ApiActivity | undefined;
+
+  for (const day of data.variant.days) {
+    const idx = day.transportLegs.findIndex(t => t.id === legId);
+    if (idx !== -1) {
+      leg = day.transportLegs[idx];
+      dayNumber = day.dayNumber;
+      fromActivity = day.activities[idx];
+      toActivity = day.activities[idx + 1];
+      break;
+    }
+  }
+
+  if (!leg) return <ErrorScreen message="Transport leg not found." />;
+
+  const mode = selectedMode || leg.userSelectedMode || leg.recommendedMode || "transit";
+  const modeColor = MODE_COLORS[mode] || "#6b7280";
+  const fromName = leg.fromLabel || fromActivity?.name || "—";
+  const toName = leg.toLabel || toActivity?.name || "—";
+  const destLocation = toActivity?.location || toName;
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="transport-detail-page">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+        </button>
+        <div className="flex-1">
+          <h1 className="text-[15px] font-bold text-gray-900">Transport Details</h1>
+          <p className="text-[11px] text-gray-500">Day {dayNumber}</p>
+        </div>
+      </div>
+
+      <div className="px-4 pt-4 pb-3">
+        <Card className="overflow-hidden">
+          <div className="p-4">
+            {/* Mode header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${modeColor}15` }}>
+                <ModIcon mode={mode} className="w-6 h-6" style={{ color: modeColor }} />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[mode] || mode}</span>
+                </div>
+                {leg.operatorName && (
+                  <div className="flex items-center gap-1.5 mt-0.5 text-[12px] text-gray-500">
+                    <Building2 className="w-3 h-3" /> via {leg.operatorName}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Route */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex flex-col items-center">
+                <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow" />
+                <div className="w-0.5 h-10 bg-gray-200" />
+                <div className="w-3 h-3 rounded-full bg-red-500 border-2 border-white shadow" />
+              </div>
+              <div className="flex-1 space-y-3">
+                <div>
+                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-from">{fromName}</div>
+                  {leg.departureTime && (
+                    <div className="text-[11px] text-gray-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Depart {formatTime(leg.departureTime)}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-to">{toName}</div>
+                  {leg.arrivalTime && (
+                    <div className="text-[11px] text-gray-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Arrive {formatTime(leg.arrivalTime)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-gray-50 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] text-gray-500 mb-0.5">Duration</div>
+                <div className="text-[14px] font-bold text-gray-900" data-testid="text-duration">
+                  {formatDuration(leg.estimatedDurationMinutes || 0)}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] text-gray-500 mb-0.5">Distance</div>
+                <div className="text-[14px] font-bold text-gray-900" data-testid="text-distance">
+                  {leg.distanceKm ? `${leg.distanceKm.toFixed(1)} km` : "—"}
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-2.5 text-center">
+                <div className="text-[10px] text-gray-500 mb-0.5">Cost</div>
+                <div className="text-[14px] font-bold text-gray-900" data-testid="text-cost">
+                  {(leg.estimatedCostUsd || 0) > 0 ? `$${leg.estimatedCostUsd}` : "Free"}
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            {leg.notes && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+                <Sparkles className="w-3 h-3 text-amber-600 mt-0.5 flex-shrink-0" />
+                {leg.notes}
+              </div>
+            )}
+
+            {/* Booking ref */}
+            {leg.bookingRef && (
+              <div className="flex items-center gap-2 mb-3 text-[12px] text-gray-600">
+                <Ticket className="w-3.5 h-3.5 text-gray-400" />
+                <span className="font-medium">Booking Ref:</span>
+                <span className="font-mono text-[11px] bg-gray-100 px-2 py-0.5 rounded" data-testid="text-booking-ref">{leg.bookingRef}</span>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Navigate */}
+      <div className="px-4 pb-6">
+        <NavigateDropdown location={destLocation} lat={toActivity?.lat} lng={toActivity?.lng} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 4. MAP PAGE
+// ─────────────────────────────────────────────
+function MapPlaceholder({ activities, dayColor }: { activities: ApiActivity[]; dayColor: string }) {
+  const validActs = activities.filter(a => a.lat != null && a.lng != null);
+  if (validActs.length === 0) {
+    return (
+      <div className="w-full h-64 rounded-xl bg-gray-100 flex items-center justify-center">
+        <p className="text-[12px] text-gray-500">No location data available</p>
+      </div>
+    );
+  }
+  const minLat = Math.min(...validActs.map(a => a.lat!));
+  const maxLat = Math.max(...validActs.map(a => a.lat!));
+  const minLng = Math.min(...validActs.map(a => a.lng!));
+  const maxLng = Math.max(...validActs.map(a => a.lng!));
+  const padLat = (maxLat - minLat) * 0.15 || 0.01;
+  const padLng = (maxLng - minLng) * 0.15 || 0.01;
+  const toX = (lng: number) => ((lng - (minLng - padLng)) / ((maxLng + padLng) - (minLng - padLng))) * 100;
+  const toY = (lat: number) => (1 - (lat - (minLat - padLat)) / ((maxLat + padLat) - (minLat - padLat))) * 100;
+
+  return (
+    <div className="relative w-full h-64 rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-br from-blue-50 via-cyan-50 to-emerald-50">
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {Array.from({ length: 11 }).map((_, i) => (
+          <line key={`h${i}`} x1="0" y1={i * 10} x2="100" y2={i * 10} stroke="#e5e7eb" strokeWidth="0.3" />
+        ))}
+        {Array.from({ length: 11 }).map((_, i) => (
+          <line key={`v${i}`} x1={i * 10} y1="0" x2={i * 10} y2="100" stroke="#e5e7eb" strokeWidth="0.3" />
+        ))}
+        {validActs.length > 1 && (
+          <polyline
+            points={validActs.map(a => `${toX(a.lng!)},${toY(a.lat!)}`).join(" ")}
+            fill="none" stroke={dayColor} strokeWidth="0.8" strokeDasharray="2,1.5" opacity="0.6"
+          />
+        )}
+      </svg>
+      {validActs.map((a, i) => (
+        <div key={a.id} className="absolute flex flex-col items-center"
+          style={{ left: `${toX(a.lng!)}%`, top: `${toY(a.lat!)}%`, transform: "translate(-50%, -100%)" }}>
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md border-2 border-white"
+            style={{ backgroundColor: dayColor }}>{i + 1}</div>
+          <div className="w-0.5 h-2" style={{ backgroundColor: dayColor }} />
+        </div>
+      ))}
+      <div className="absolute bottom-2 left-2 bg-white/80 backdrop-blur-sm rounded-lg px-2 py-1 text-[10px] text-gray-500 font-medium">
+        Map Preview
+      </div>
+    </div>
+  );
+}
+
+export function MapFullPage() {
+  const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+  const [selectedDay, setSelectedDay] = useState<number | null>(0);
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  const { variant } = data;
+  const isAllDays = selectedDay === null;
+  const currentDays = isAllDays ? variant.days : [variant.days[selectedDay!]].filter(Boolean);
+  const allActivities = currentDays.flatMap(d => d.activities);
+  const allTransports = currentDays.flatMap(d => d.transportLegs);
+  const dayColor = isAllDays ? "#3b82f6" : DAY_COLORS[selectedDay! % DAY_COLORS.length];
+
+  const fullRouteUrl = allActivities.filter(a => a.lat && a.lng).length > 0
+    ? `https://www.google.com/maps/dir/${allActivities.filter(a => a.lat && a.lng).map(a => `${a.lat},${a.lng}`).join("/")}`
+    : "#";
+
+  const totalTransitTime = allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
+  const totalTransitCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
+  const destination = variant.destination || variant.name;
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="map-full-page">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+        </button>
+        <div className="flex-1">
+          <h1 className="text-[15px] font-bold text-gray-900">Trip Map</h1>
+          <p className="text-[11px] text-gray-500">{destination}</p>
+        </div>
+        <a href={fullRouteUrl} target="_blank" rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-[11px] font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg"
+          data-testid="button-open-full-route">
+          <Route className="w-3.5 h-3.5" /> Open Route
+        </a>
+      </div>
+
+      {/* Day selector */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          <button
+            onClick={() => setSelectedDay(null)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${isAllDays ? "text-white shadow-md bg-gray-800" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+            data-testid="button-day-all"
+          >All Days</button>
+          {variant.days.map((d, i) => (
+            <button key={d.dayNumber}
+              onClick={() => setSelectedDay(i)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${selectedDay === i ? "text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+              style={selectedDay === i ? { backgroundColor: DAY_COLORS[i % DAY_COLORS.length] } : {}}
+              data-testid={`button-day-${d.dayNumber}`}
+            >D{d.dayNumber}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-4 pb-3">
+        <MapPlaceholder activities={allActivities} dayColor={dayColor} />
+      </div>
+
+      {/* Stats row */}
+      <div className="px-4 pb-3">
+        <div className="grid grid-cols-4 gap-2">
+          <Card className="p-2.5 text-center">
+            <div className="text-[10px] text-gray-500 mb-0.5">Stops</div>
+            <div className="text-[16px] font-bold text-gray-900" data-testid="text-total-stops">{allActivities.length}</div>
+          </Card>
+          <Card className="p-2.5 text-center">
+            <div className="text-[10px] text-gray-500 mb-0.5">Transit</div>
+            <div className="text-[14px] font-bold text-gray-900" data-testid="text-transit-time">{formatDuration(totalTransitTime)}</div>
+          </Card>
+          <Card className="p-2.5 text-center">
+            <div className="text-[10px] text-gray-500 mb-0.5">Cost</div>
+            <div className="text-[14px] font-bold text-gray-900" data-testid="text-transit-cost">${totalTransitCost}</div>
+          </Card>
+          <Card className="p-2.5 text-center">
+            <div className="text-[10px] text-gray-500 mb-0.5">Days</div>
+            <div className="text-[16px] font-bold text-gray-900">{currentDays.length}</div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Stop list */}
+      <div className="px-4 pb-6">
+        <h2 className="text-[13px] font-bold text-gray-900 mb-3">
+          {isAllDays ? "All Stops" : `Day ${currentDays[0]?.dayNumber} Stops`}
+        </h2>
+        {currentDays.map((day) => {
+          const dc = DAY_COLORS[(day.dayNumber - 1) % DAY_COLORS.length];
+          return (
+            <div key={day.dayNumber} className="mb-4">
+              {isAllDays && (
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: dc }}>
+                    {day.dayNumber}
+                  </div>
+                  <span className="text-[12px] font-bold text-gray-800">Day {day.dayNumber}</span>
+                </div>
+              )}
+              <div className="space-y-0">
+                {day.activities.map((act, ai) => (
+                  <div key={act.id}>
+                    <div className="flex items-start gap-3 py-2.5">
+                      <div className="flex flex-col items-center flex-shrink-0">
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold border-2 border-white shadow-sm" style={{ backgroundColor: dc }} data-testid={`pin-${act.id}`}>
+                          {ai + 1}
+                        </div>
+                        {ai < day.activities.length - 1 && <div className="w-0.5 h-6 bg-gray-200 mt-1" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-[12px] font-semibold text-gray-900">{act.name}</span>
+                        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500 flex-wrap">
+                          {act.startTime && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(act.startTime)}</span>}
+                          {act.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{act.location}</span>}
+                        </div>
+                      </div>
+                      {act.location && <NavigateDropdown location={act.location} lat={act.lat} lng={act.lng} />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        <div className="mt-4">
+          <a href={fullRouteUrl} target="_blank" rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 text-[13px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl py-3 hover:bg-blue-100 transition-colors"
+            data-testid="button-open-full-route-bottom">
+            <Map className="w-4 h-4" /> Open Full Route in Maps <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 5. TRIP STATS PAGE
+// ─────────────────────────────────────────────
+function ScoreRing({ score, size = 80 }: { score: number; size?: number }) {
+  const r = (size - 10) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - score / 100);
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={6} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#3b82f6" strokeWidth={6}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" />
+      <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="central"
+        className="fill-gray-900 font-bold" fontSize={size * 0.28} transform={`rotate(90, ${size / 2}, ${size / 2})`}>
+        {score}
+      </text>
+    </svg>
+  );
+}
+
+function BarRow({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] text-gray-700 font-medium">{label}</span>
+        <span className="text-[12px] text-gray-500 font-semibold">{pct}%</span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  );
+}
+
+export function TripStatsPage() {
+  const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  const { variant } = data;
+  const allActivities = variant.days.flatMap(d => d.activities);
+  const allTransports = variant.days.flatMap(d => d.transportLegs);
+  const totalActivityCost = allActivities.reduce((s, a) => s + (a.cost || 0), 0);
+  const totalTransportCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
+  const totalCost = parseFloat(String(variant.totalCost || 0)) || (totalActivityCost + totalTransportCost);
+  const totalTransitMins = variant.transportSummary?.totalMinutes ||
+    allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
+  const totalActivityMins = allActivities.reduce((s, a) => s + (a.duration || 60), 0);
+  const freeMins = Math.max(variant.days.length * 14 * 60 - totalActivityMins - totalTransitMins, 0);
+  const score = variant.optimizationScore || 85;
+  const destination = variant.destination || variant.name;
+
+  const dayCosts = variant.days.map(d => ({
+    day: d.dayNumber,
+    cost: d.activities.reduce((s, a) => s + (a.cost || 0), 0) + d.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0),
+  }));
+  const maxDayCost = Math.max(...dayCosts.map(d => d.cost), 1);
+
+  const SCORE_CATEGORIES = [
+    { label: "Planning", score: Math.min(score + 5, 100), color: "#3b82f6" },
+    { label: "Budget", score: Math.max(score - 2, 0), color: "#22c55e" },
+    { label: "Timing", score: Math.min(score + 3, 100), color: "#f59e0b" },
+    { label: "Wellness", score: Math.max(score - 3, 0), color: "#ec4899" },
+  ];
+
+  const totalTime = totalActivityMins + totalTransitMins + freeMins;
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="trip-stats-page">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+        </button>
+        <div>
+          <h1 className="text-[15px] font-bold text-gray-900">Trip Stats & Analytics</h1>
+          <p className="text-[11px] text-gray-500">{destination}</p>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Score card */}
+        <Card className="p-4">
+          <div className="flex items-center gap-4">
+            <ScoreRing score={score} />
+            <div className="flex-1 space-y-2">
+              <div className="text-[13px] font-bold text-gray-900">Overall Trip Score</div>
+              <div className="text-[11px] text-gray-500">Based on planning completeness, budget efficiency, and timing optimization.</div>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            {SCORE_CATEGORIES.map(cat => (
+              <div key={cat.label} className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[13px] font-bold text-white" style={{ backgroundColor: cat.color }}>
+                  {cat.score}
+                </div>
+                <div>
+                  <div className="text-[12px] font-semibold text-gray-800">{cat.label}</div>
+                  <div className="h-1.5 w-16 bg-gray-100 rounded-full mt-0.5 overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${cat.score}%`, backgroundColor: cat.color }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Budget */}
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <DollarSign className="w-4 h-4 text-green-600" />
+            <span className="text-[13px] font-bold text-gray-900">Budget Analysis</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-green-50 rounded-lg p-2.5 text-center">
+              <div className="text-[18px] font-bold text-green-700">${totalCost.toLocaleString()}</div>
+              <div className="text-[10px] text-green-600 font-medium">Total Cost</div>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-2.5 text-center">
+              <div className="text-[18px] font-bold text-amber-700">${variant.days.length > 0 ? Math.round(totalCost / variant.days.length) : 0}</div>
+              <div className="text-[10px] text-amber-600 font-medium">Per Day</div>
+            </div>
+          </div>
+          <div className="space-y-2.5">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] text-gray-700">Activities</span>
+                <span className="text-[12px] font-semibold text-gray-800">${totalActivityCost}</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-purple-500" style={{ width: totalCost > 0 ? `${Math.round((totalActivityCost / totalCost) * 100)}%` : "0%" }} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] text-gray-700">Transport</span>
+                <span className="text-[12px] font-semibold text-gray-800">${totalTransportCost}</span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-amber-500" style={{ width: totalCost > 0 ? `${Math.round((totalTransportCost / totalCost) * 100)}%` : "0%" }} />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Time */}
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Clock className="w-4 h-4 text-blue-600" />
+            <span className="text-[13px] font-bold text-gray-900">Time Allocation</span>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-blue-50 rounded-lg p-2.5 text-center">
+              <div className="text-[14px] font-bold text-blue-700">{formatDuration(totalActivityMins)}</div>
+              <div className="text-[10px] text-blue-600 font-medium">Activities</div>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-2.5 text-center">
+              <div className="text-[14px] font-bold text-amber-700">{formatDuration(totalTransitMins)}</div>
+              <div className="text-[10px] text-amber-600 font-medium">Transit</div>
+            </div>
+            <div className="bg-green-50 rounded-lg p-2.5 text-center">
+              <div className="text-[14px] font-bold text-green-700">{formatDuration(freeMins)}</div>
+              <div className="text-[10px] text-green-600 font-medium">Free Time</div>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <BarRow label="Activities" value={totalActivityMins} max={totalTime} color="#3b82f6" />
+            <BarRow label="Transit" value={totalTransitMins} max={totalTime} color="#f59e0b" />
+            <BarRow label="Free Time" value={freeMins} max={totalTime} color="#22c55e" />
+          </div>
+        </Card>
+
+        {/* Day-by-day */}
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <BarChart3 className="w-4 h-4 text-indigo-600" />
+            <span className="text-[13px] font-bold text-gray-900">Day-by-Day Cost</span>
+          </div>
+          <div className="space-y-2">
+            {dayCosts.map(d => (
+              <div key={d.day} className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+                  style={{ backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }}>
+                  D{d.day}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <span className="text-[11px] text-gray-600">Day {d.day}</span>
+                    <span className="text-[11px] font-semibold text-gray-800">${d.cost}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.round((d.cost / maxDayCost) * 100)}%`, backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 6. SERVICES PAGE
+// ─────────────────────────────────────────────
+const TYPE_CONFIG_SVC: Record<string, { icon: typeof Hotel; label: string; color: string; bg: string }> = {
+  hotel: { icon: Hotel, label: "Hotels", color: "text-blue-700", bg: "bg-blue-50" },
+  tour: { icon: Compass, label: "Tours & Activities", color: "text-purple-700", bg: "bg-purple-50" },
+  transport: { icon: Car, label: "Transport", color: "text-amber-700", bg: "bg-amber-50" },
+  restaurant: { icon: UtensilsCrossed, label: "Dining", color: "text-red-700", bg: "bg-red-50" },
+  insurance: { icon: Shield, label: "Insurance", color: "text-green-700", bg: "bg-green-50" },
+};
+
+interface ServiceBooking {
+  id: string;
+  name: string;
+  type: "hotel" | "tour" | "restaurant" | "transport" | "insurance";
+  provider: string;
+  status: "confirmed" | "pending" | "cancelled";
+  confirmationCode?: string;
+  checkIn?: string;
+  checkOut?: string;
+  date?: string;
+  cost: number;
+  contact?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+}
+
+function BookingCard({ booking }: { booking: ServiceBooking }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const statusStyle = STATUS_STYLES[booking.status] || STATUS_STYLES.pending;
+  const typeConf = TYPE_CONFIG_SVC[booking.type];
+  const Icon = typeConf?.icon || FileText;
+
+  const handleCopy = () => {
+    if (booking.confirmationCode) {
+      navigator.clipboard.writeText(booking.confirmationCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <Card className="overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3.5 py-3 flex items-start gap-3 text-left hover:bg-gray-50/50 transition-colors"
+        data-testid={`booking-card-${booking.id}`}
+      >
+        <div className={`w-9 h-9 rounded-lg ${typeConf?.bg || "bg-gray-50"} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+          <Icon className={`w-4 h-4 ${typeConf?.color || "text-gray-600"}`} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[13px] font-semibold text-gray-900">{booking.name}</span>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle.bg} ${statusStyle.fg}`}>
+              {statusStyle.label}
+            </span>
+          </div>
+          <div className="text-[11px] text-gray-500 mt-0.5">{booking.provider}</div>
+          {booking.confirmationCode && (
+            <div className="text-[11px] text-gray-400 mt-0.5 font-mono">{booking.confirmationCode}</div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className="text-[14px] font-bold text-gray-900">${booking.cost.toLocaleString()}</span>
+          {expanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-gray-100 px-3.5 py-3 space-y-3 bg-gray-50/30">
+          <div className="grid grid-cols-2 gap-2">
+            {booking.checkIn && booking.checkOut && (
+              <>
+                <div>
+                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Check-in</div>
+                  <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.checkIn}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Check-out</div>
+                  <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.checkOut}</div>
+                </div>
+              </>
+            )}
+            {booking.date && !booking.checkIn && (
+              <div>
+                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Date</div>
+                <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.date}</div>
+              </div>
+            )}
+          </div>
+          {booking.confirmationCode && (
+            <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+              <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+              <span className="text-[12px] text-gray-700 font-mono flex-1">{booking.confirmationCode}</span>
+              <button onClick={handleCopy} className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 hover:text-blue-700">
+                {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
+              </button>
+            </div>
+          )}
+          {booking.address && (
+            <div className="flex items-start gap-2">
+              <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+              <span className="text-[12px] text-gray-700">{booking.address}</span>
+            </div>
+          )}
+          {booking.notes && (
+            <div className="bg-amber-50/60 border border-amber-200/40 rounded-lg px-3 py-2">
+              <div className="text-[11px] text-amber-800">{booking.notes}</div>
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            {booking.phone && (
+              <a href={`tel:${booking.phone}`} className="flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
+                <Phone className="w-3 h-3" /> Call
+              </a>
+            )}
+            {booking.address && (
+              <a href={buildMapsUrl(booking.address)} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
+                <Navigation className="w-3 h-3" /> Navigate
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+export function ServicesPage() {
+  const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  const destination = data.variant.destination || data.variant.name;
+
+  // Derive bookings from activities that have booking refs
+  const derivedBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
+    day.activities
+      .filter(a => a.description || a.name)
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        type: a.category === "dining" ? "restaurant" as const : "tour" as const,
+        provider: "Traveloure",
+        status: "confirmed" as const,
+        cost: a.cost || 0,
+        date: day.date,
+      }))
+  );
+
+  const confirmedCount = derivedBookings.filter(b => b.status === "confirmed").length;
+  const pendingCount = derivedBookings.filter(b => b.status === "pending").length;
+  const totalCost = derivedBookings.reduce((s, b) => s + b.cost, 0);
+
+  const grouped = Object.entries(TYPE_CONFIG_SVC).reduce<Record<string, ServiceBooking[]>>((acc, [type]) => {
+    const items = derivedBookings.filter(b => b.type === type);
+    if (items.length > 0) acc[type] = items;
+    return acc;
+  }, {});
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="services-page">
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+        </button>
+        <div>
+          <h1 className="text-[15px] font-bold text-gray-900">Services & Bookings</h1>
+          <p className="text-[11px] text-gray-500">{destination}</p>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <Card className="p-3 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <span className="text-[18px] font-bold text-green-700">{confirmedCount}</span>
+            </div>
+            <div className="text-[10px] text-gray-500 font-medium">Confirmed</div>
+          </Card>
+          <Card className="p-3 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <Clock className="w-4 h-4 text-yellow-500" />
+              <span className="text-[18px] font-bold text-yellow-700">{pendingCount}</span>
+            </div>
+            <div className="text-[10px] text-gray-500 font-medium">Pending</div>
+          </Card>
+          <Card className="p-3 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <span className="text-[18px] font-bold text-gray-900">${totalCost.toLocaleString()}</span>
+            </div>
+            <div className="text-[10px] text-gray-500 font-medium">Total</div>
+          </Card>
+        </div>
+
+        {Object.entries(grouped).length === 0 ? (
+          <Card className="p-8 text-center">
+            <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-[13px] text-gray-500">No bookings found for this itinerary.</p>
+          </Card>
+        ) : (
+          Object.entries(grouped).map(([type, bookings]) => {
+            const conf = TYPE_CONFIG_SVC[type];
+            const Icon = conf?.icon || FileText;
+            return (
+              <div key={type}>
+                <div className="flex items-center gap-2 mb-2.5">
+                  <div className={`w-6 h-6 rounded-md ${conf?.bg || "bg-gray-50"} flex items-center justify-center`}>
+                    <Icon className={`w-3.5 h-3.5 ${conf?.color || "text-gray-600"}`} />
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-900">{conf?.label || type}</span>
+                  <span className="text-[11px] text-gray-400 font-medium">({bookings.length})</span>
+                </div>
+                <div className="space-y-2.5">
+                  {bookings.map(b => <BookingCard key={b.id} booking={b} />)}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 7. EXPERT CHAT PAGE
+// ─────────────────────────────────────────────
+export function ExpertChatPage() {
+  const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+  const [message, setMessage] = useState("");
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  const destination = data.variant.destination || data.variant.name;
+  const sharedBy = data.sharedBy;
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="expert-chat-page">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[14px] font-bold text-gray-900" data-testid="text-page-title">Expert Chat</h2>
+          <p className="text-[11px] text-gray-500 truncate">{destination}</p>
+        </div>
+        {sharedBy && (
+          <div className="w-8 h-8 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800">
+            {sharedBy.name?.[0]?.toUpperCase() || "E"}
+          </div>
+        )}
+      </div>
+
+      {/* Expert profile */}
+      {sharedBy && (
+        <Card className="mx-4 mt-4 mb-3 overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-14 h-14 rounded-full bg-purple-200 flex items-center justify-center text-lg font-bold text-purple-800 flex-shrink-0">
+                {sharedBy.name?.[0]?.toUpperCase() || "E"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[15px] font-bold text-gray-900" data-testid="text-expert-name">{sharedBy.name}</h3>
+                <p className="text-[12px] text-gray-500 mt-0.5">Travel Expert</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Expert notes from API */}
+      {data.expertNotes && (
+        <div className="mx-4 mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Lightbulb className="w-4 h-4 text-amber-500" />
+            <h4 className="text-[13px] font-bold text-gray-800">Expert Notes</h4>
+          </div>
+          <Card className="p-3">
+            <p className="text-[12px] text-gray-700 leading-relaxed italic">"{data.expertNotes}"</p>
+          </Card>
+        </div>
+      )}
+
+      {/* Chat placeholder */}
+      <div className="mx-4 mb-4">
+        <div className="flex items-center gap-2 mb-3">
+          <MessageSquare className="w-4 h-4 text-gray-500" />
+          <h4 className="text-[13px] font-bold text-gray-800">Messages</h4>
+        </div>
+
+        {!sharedBy ? (
+          <Card className="p-6 text-center">
+            <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-[13px] text-gray-500">No expert assigned to this itinerary yet.</p>
+          </Card>
+        ) : (
+          <>
+            <div className="flex items-start gap-2.5 mb-3">
+              <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800 flex-shrink-0">
+                {sharedBy.name?.[0]?.toUpperCase() || "E"}
+              </div>
+              <div className="max-w-[85%]">
+                <div className="rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[12px] bg-white border border-gray-200 text-gray-800 leading-relaxed">
+                  {data.expertNotes
+                    ? data.expertNotes
+                    : `Hi! I'm ${sharedBy.name}. I've reviewed your itinerary for ${destination}. Feel free to ask me any questions!`}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mt-4">
+              <input
+                type="text"
+                value={message}
+                onChange={e => setMessage(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none"
+                data-testid="input-chat-message"
+              />
+              <Button size="icon" variant="default" className="rounded-full w-8 h-8" data-testid="button-send-message"
+                onClick={() => setMessage("")}>
+                <Send className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 8. REVIEW CHANGES PAGE
+// ─────────────────────────────────────────────
+type FilterTab = "all" | "pending" | "accepted" | "rejected";
+
+const CHANGE_TYPE_LABELS: Record<string, { label: string; bg: string; fg: string }> = {
+  replace: { label: "Swap", bg: "bg-blue-100", fg: "text-blue-700" },
+  time: { label: "Time Change", bg: "bg-amber-100", fg: "text-amber-700" },
+  add: { label: "New", bg: "bg-green-100", fg: "text-green-700" },
+  remove: { label: "Remove", bg: "bg-red-100", fg: "text-red-700" },
+};
+
+const CHANGE_DOT: Record<string, string> = {
+  expert: "bg-blue-500",
+  ai: "bg-green-500",
+  owner: "bg-amber-500",
+};
+
+export function ReviewChangesPage() {
+  const { token } = useParams<{ token: string }>();
+  const [, navigate] = useLocation();
+  const { data, isLoading, error } = useItineraryData(token);
+  const [decisions, setDecisions] = useState<Record<string, "accepted" | "rejected">>({});
+  const [activeTab, setActiveTab] = useState<FilterTab>("all");
+
+  if (isLoading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={(error as Error).message} />;
+  if (!data) return null;
+
+  const destination = data.variant.destination || data.variant.name;
+
+  // Derive "expert changes" from expertDiff if available
+  type ExpertChangeItem = {
+    id: string;
+    type: "replace" | "time" | "add" | "remove";
+    title: string;
+    removeLine: string | null;
+    addLine: string;
+    reason: string;
+    dayNum?: number;
+    status?: "pending" | "accepted" | "rejected";
+  };
+
+  const expertChanges: ExpertChangeItem[] = [];
+
+  if ((data as any).expertDiff?.activityDiffs) {
+    const actDiffs = (data as any).expertDiff.activityDiffs as Record<string, any>;
+    Object.entries(actDiffs).forEach(([id, diff]: [string, any]) => {
+      if (diff.name && diff.name !== diff.originalName) {
+        expertChanges.push({
+          id: `act-name-${id}`,
+          type: "replace",
+          title: `Rename: ${diff.originalName}`,
+          removeLine: diff.originalName,
+          addLine: diff.name,
+          reason: diff.note || "Name updated by expert",
+        });
+      }
+      if (diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime) {
+        expertChanges.push({
+          id: `act-time-${id}`,
+          type: "time",
+          title: `Time Change: ${diff.originalName || "Activity"}`,
+          removeLine: `@ ${diff.originalStartTime}`,
+          addLine: `@ ${diff.startTime}`,
+          reason: diff.note || "Time updated by expert",
+        });
+      }
+    });
+  }
+
+  if ((data as any).expertDiff?.transportDiffs) {
+    const transDiffs = (data as any).expertDiff.transportDiffs as Record<string, any>;
+    Object.entries(transDiffs).forEach(([id, diff]: [string, any]) => {
+      expertChanges.push({
+        id: `trans-${id}`,
+        type: "replace",
+        title: `Transport Mode: Leg ${diff.legOrder}`,
+        removeLine: diff.originalMode,
+        addLine: diff.newMode,
+        reason: "Mode change suggested by expert",
+      });
+    });
+  }
+
+  const pendingCount = expertChanges.filter(c => !decisions[c.id] && c.status !== "accepted" && c.status !== "rejected").length;
+  const acceptedCount = expertChanges.filter(c => decisions[c.id] === "accepted" || c.status === "accepted").length;
+  const rejectedCount = expertChanges.filter(c => decisions[c.id] === "rejected" || c.status === "rejected").length;
+
+  const getEffectiveStatus = (c: ExpertChangeItem): "pending" | "accepted" | "rejected" => {
+    if (decisions[c.id]) return decisions[c.id];
+    if (c.status === "accepted" || c.status === "rejected") return c.status;
+    return "pending";
+  };
+
+  const filtered = expertChanges.filter(c => {
+    if (activeTab === "all") return true;
+    return getEffectiveStatus(c) === activeTab;
+  });
+
+  const tabs: { key: FilterTab; label: string; count: number }[] = [
+    { key: "all", label: "All", count: expertChanges.length },
+    { key: "pending", label: "Pending", count: pendingCount },
+    { key: "accepted", label: "Accepted", count: acceptedCount },
+    { key: "rejected", label: "Rejected", count: rejectedCount },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50" data-testid="review-changes-page">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
+        <button
+          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-4 h-4 text-gray-600" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-[14px] font-bold text-gray-900" data-testid="text-page-title">Review Changes</h2>
+          <p className="text-[11px] text-gray-500 truncate">{destination}</p>
+        </div>
+        <Filter className="w-4 h-4 text-gray-400" />
+      </div>
+
+      {/* Summary */}
+      <div className="mx-4 mt-4 mb-3 grid grid-cols-3 gap-2">
+        <Card className="p-3 text-center" data-testid="stat-pending">
+          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-1.5">
+            <Clock className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="text-[18px] font-bold text-gray-900">{pendingCount}</div>
+          <div className="text-[10px] text-gray-500 font-medium">Pending</div>
+        </Card>
+        <Card className="p-3 text-center" data-testid="stat-accepted">
+          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-1.5">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+          </div>
+          <div className="text-[18px] font-bold text-gray-900">{acceptedCount}</div>
+          <div className="text-[10px] text-gray-500 font-medium">Accepted</div>
+        </Card>
+        <Card className="p-3 text-center" data-testid="stat-rejected">
+          <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-1.5">
+            <XCircle className="w-4 h-4 text-red-600" />
+          </div>
+          <div className="text-[18px] font-bold text-gray-900">{rejectedCount}</div>
+          <div className="text-[10px] text-gray-500 font-medium">Rejected</div>
+        </Card>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="mx-4 mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
+        {tabs.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors flex items-center gap-1.5 ${activeTab === tab.key ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+            data-testid={`tab-${tab.key}`}>
+            {tab.label}
+            <span className={`text-[10px] ${activeTab === tab.key ? "text-gray-300" : "text-gray-400"}`}>{tab.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Accept/Reject all */}
+      {pendingCount > 0 && activeTab !== "accepted" && activeTab !== "rejected" && (
+        <div className="mx-4 mb-3 flex gap-2 justify-end">
+          <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-[11px] gap-1"
+            onClick={() => {
+              const d: Record<string, "accepted"> = {};
+              expertChanges.forEach(c => { if (!decisions[c.id]) d[c.id] = "accepted"; });
+              setDecisions(prev => ({ ...prev, ...d }));
+            }}
+            data-testid="button-accept-all">
+            <Check className="w-3.5 h-3.5" /> Accept All
+          </Button>
+          <Button size="sm" variant="outline" className="text-red-700 border-red-200 text-[11px] gap-1"
+            onClick={() => {
+              const d: Record<string, "rejected"> = {};
+              expertChanges.forEach(c => { if (!decisions[c.id]) d[c.id] = "rejected"; });
+              setDecisions(prev => ({ ...prev, ...d }));
+            }}
+            data-testid="button-reject-all">
+            <X className="w-3.5 h-3.5" /> Reject All
+          </Button>
+        </div>
+      )}
+
+      <div className="mx-4 mb-4 space-y-3">
+        {filtered.length === 0 ? (
+          <Card className="p-6 text-center">
+            <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+            <p className="text-[13px] text-gray-500">
+              {expertChanges.length === 0
+                ? "No expert changes have been submitted yet."
+                : "No changes in this category."}
+            </p>
+          </Card>
+        ) : (
+          filtered.map(change => {
+            const eff = getEffectiveStatus(change);
+            const typeInfo = CHANGE_TYPE_LABELS[change.type] || CHANGE_TYPE_LABELS.replace;
+
+            if (eff === "accepted") {
+              return (
+                <Card key={change.id} className="overflow-hidden opacity-90" data-testid={`change-card-${change.id}`}>
+                  <div className="px-4 py-3 bg-green-50 flex items-center gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <span className="text-[13px] text-green-800 font-semibold flex-1">{change.title}</span>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px]">Accepted</Badge>
+                  </div>
+                </Card>
+              );
+            }
+
+            if (eff === "rejected") {
+              return (
+                <Card key={change.id} className="overflow-hidden opacity-60" data-testid={`change-card-${change.id}`}>
+                  <div className="px-4 py-3 bg-red-50 flex items-center gap-3">
+                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                    <span className="text-[13px] text-red-800 font-semibold line-through flex-1">{change.title}</span>
+                    <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Rejected</Badge>
+                  </div>
+                </Card>
+              );
+            }
+
+            return (
+              <Card key={change.id} className="overflow-hidden" data-testid={`change-card-${change.id}`}>
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[13px] font-bold text-gray-800">{change.title}</span>
+                    <Badge variant="secondary" className={`${typeInfo.bg} ${typeInfo.fg} text-[10px] border-0`}>{typeInfo.label}</Badge>
+                  </div>
+                </div>
+                <div className="px-4 py-3 space-y-2">
+                  {change.removeLine && (
+                    <div className="flex items-start gap-2.5 bg-red-50/60 rounded-lg px-3 py-2">
+                      <div className="w-2 h-2 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                      <span className="text-[12px] text-red-700 line-through">{change.removeLine}</span>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2.5 bg-green-50/60 rounded-lg px-3 py-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 mt-1.5 flex-shrink-0" />
+                    <span className="text-[12px] text-green-700 font-medium">{change.addLine}</span>
+                  </div>
+                  {change.reason && (
+                    <div className="flex items-start gap-2 ml-1 mt-1">
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <span className="text-[11px] text-gray-500 italic">"{change.reason}"</span>
+                    </div>
+                  )}
+                </div>
+                <div className="px-4 py-3 border-t border-gray-100 flex justify-end gap-2">
+                  <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-[12px] gap-1"
+                    onClick={() => setDecisions(prev => ({ ...prev, [change.id]: "accepted" }))}
+                    data-testid={`button-accept-${change.id}`}>
+                    <Check className="w-3.5 h-3.5" /> Accept
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-red-700 border-red-200 text-[12px] gap-1"
+                    onClick={() => setDecisions(prev => ({ ...prev, [change.id]: "rejected" }))}
+                    data-testid={`button-reject-${change.id}`}>
+                    <X className="w-3.5 h-3.5" /> Reject
+                  </Button>
+                </div>
+              </Card>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
