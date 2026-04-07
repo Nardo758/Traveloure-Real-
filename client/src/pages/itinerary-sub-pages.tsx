@@ -12,7 +12,7 @@ import {
   Ticket, Check, X, Hotel, Compass, Shield, UtensilsCrossed,
   FileText, Copy, Phone, Globe, ChevronDown, ChevronUp,
   BarChart3, Calendar, Activity as ActivityIcon,
-  Printer, Download, Send, MessageSquare, Lightbulb, Repeat, Star,
+  Printer, Download, Send, MessageSquare, Lightbulb, Repeat, Star, ArrowRight,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -178,16 +178,16 @@ function buildWazeUrl(lat?: number | null, lng?: number | null) {
   return null;
 }
 
-function ModeIcon({ mode, className = "w-4 h-4" }: { mode: string; className?: string }) {
-  if (mode === "walk") return <Footprints className={className} />;
-  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} />;
-  if (mode === "car" || mode === "private_car") return <Car className={className} />;
-  if (mode === "ferry") return <Ship className={className} />;
-  if (mode === "bus") return <Bus className={className} />;
-  if (mode === "train") return <Train className={className} />;
-  if (mode === "subway") return <TrainFront className={className} />;
-  if (mode === "rental_car") return <KeyRound className={className} />;
-  return <Footprints className={className} />;
+function ModeIcon({ mode, className = "w-4 h-4", style }: { mode: string; className?: string; style?: React.CSSProperties }) {
+  if (mode === "walk") return <Footprints className={className} style={style} />;
+  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} style={style} />;
+  if (mode === "car" || mode === "private_car") return <Car className={className} style={style} />;
+  if (mode === "ferry") return <Ship className={className} style={style} />;
+  if (mode === "bus") return <Bus className={className} style={style} />;
+  if (mode === "train") return <Train className={className} style={style} />;
+  if (mode === "subway") return <TrainFront className={className} style={style} />;
+  if (mode === "rental_car") return <KeyRound className={className} style={style} />;
+  return <Footprints className={className} style={style} />;
 }
 
 function NavigateDropdown({
@@ -1104,6 +1104,7 @@ export function TransportDetailPage() {
   const { token, legId } = useParams<{ token: string; legId: string }>();
   const [, navigate] = useLocation();
   const { data, isLoading, error } = useItineraryData(token);
+  const [selectedMode, setSelectedMode] = useState<string | null>(null);
 
   if (isLoading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={(error as Error).message} />;
@@ -1111,6 +1112,7 @@ export function TransportDetailPage() {
 
   let leg: ApiTransportLeg | undefined;
   let dayNumber = 0;
+  let dayDate: string | undefined;
   let fromActivity: ApiActivity | undefined;
   let toActivity: ApiActivity | undefined;
 
@@ -1119,6 +1121,7 @@ export function TransportDetailPage() {
     if (idx !== -1) {
       leg = day.transportLegs[idx];
       dayNumber = day.dayNumber;
+      dayDate = day.date;
       fromActivity = day.activities[idx];
       toActivity = day.activities[idx + 1];
       break;
@@ -1127,11 +1130,19 @@ export function TransportDetailPage() {
 
   if (!leg) return <ErrorScreen message="Transport leg not found." />;
 
-  const mode = leg.userSelectedMode ?? leg.recommendedMode ?? "transit";
-  const modeColor = MODE_COLORS[mode] ?? "#6b7280";
+  const baseMode = leg.userSelectedMode ?? leg.recommendedMode ?? "transit";
+  const displayMode = selectedMode ?? baseMode;
+  const modeColor = MODE_COLORS[displayMode] ?? "#6b7280";
   const fromName = leg.fromLabel ?? fromActivity?.name ?? "—";
   const toName = leg.toLabel ?? toActivity?.name ?? "—";
   const destLocation = toActivity?.location ?? toName;
+
+  // Find expert suggested change for this leg
+  const expertTransportDiff = data.expertDiff?.transportDiffs?.[legId ?? ""];
+
+  const daySubtitle = dayDate
+    ? `Day ${dayNumber} — ${new Date(dayDate).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`
+    : `Day ${dayNumber}`;
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="transport-detail-page">
@@ -1145,7 +1156,7 @@ export function TransportDetailPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-[15px] font-bold text-gray-900">Transport Details</h1>
-          <p className="text-[11px] text-gray-500">Day {dayNumber}</p>
+          <p className="text-[11px] text-gray-500">{daySubtitle}</p>
         </div>
       </div>
 
@@ -1158,10 +1169,18 @@ export function TransportDetailPage() {
                 className="w-12 h-12 rounded-xl flex items-center justify-center"
                 style={{ backgroundColor: `${modeColor}15` }}
               >
-                <ModeIcon mode={mode} className="w-6 h-6" />
+                <ModeIcon mode={displayMode} className="w-6 h-6" style={{ color: modeColor }} />
               </div>
               <div className="flex-1">
-                <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[mode] ?? mode}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[displayMode] ?? displayMode}</span>
+                  {displayMode === baseMode && (
+                    <Badge className="bg-blue-100 text-blue-700 border-0 text-[10px]">Current</Badge>
+                  )}
+                  {selectedMode && selectedMode !== baseMode && (
+                    <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Preview</Badge>
+                  )}
+                </div>
                 {leg.operatorName && (
                   <div className="flex items-center gap-1.5 mt-0.5 text-[12px] text-gray-500">
                     <Building2 className="w-3 h-3" /> via {leg.operatorName}
@@ -1248,86 +1267,130 @@ export function TransportDetailPage() {
         </Card>
       </div>
 
-      {/* Route map placeholder */}
+      {/* Route map */}
       <div className="px-4 pb-3">
         <h3 className="text-[13px] font-bold text-gray-900 mb-2">Route Map</h3>
-        <RoutePlaceholder from={fromName} to={toName} mode={mode} />
+        <RoutePlaceholder from={fromName} to={toName} mode={displayMode} />
       </div>
 
-      {/* Traveloure services */}
+      {/* Transit Mode Options */}
       <div className="px-4 pb-3">
-        <Card className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-4 h-4 text-sky-600" />
-            <h3 className="text-[13px] font-bold text-gray-900">Traveloure Services</h3>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-sky-50 border border-sky-200">
-              <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center">
-                <Car className="w-4 h-4 text-sky-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-sky-900">Private Transfer</div>
-                <div className="text-[11px] text-sky-700">Comfortable door-to-door service</div>
-              </div>
-              <Badge className="bg-sky-200 text-sky-800 border-0 text-[10px]">Available</Badge>
-            </div>
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50">
-              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                <Repeat className="w-4 h-4 text-gray-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[12px] font-semibold text-gray-800">Request Alternative</div>
-                <div className="text-[11px] text-gray-500">Ask your expert to suggest options</div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-            </div>
-          </div>
-        </Card>
-      </div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-[13px] font-bold text-gray-900 flex items-center gap-1.5">
+            <Repeat className="w-3.5 h-3.5 text-gray-500" /> Transit Mode Options
+          </h3>
+          <span className="text-[11px] text-gray-400">{TRANSPORT_OPTIONS.length} available</span>
+        </div>
 
-      {/* Alternative modes */}
-      <div className="px-4 pb-3">
-        <h3 className="text-[13px] font-bold text-gray-900 mb-3">Alternative Options</h3>
-        <div className="grid grid-cols-3 gap-2">
-          {TRANSPORT_OPTIONS.map(opt => {
-            const isSelected = opt.mode === mode;
-            return (
-              <div
-                key={opt.mode}
-                className={`flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-xl border-2 transition-all ${
-                  isSelected
-                    ? "border-current bg-gray-50"
-                    : "border-gray-200 bg-white hover:border-gray-300"
-                }`}
-                style={isSelected ? { borderColor: opt.color, color: opt.color } : {}}
-                data-testid={`mode-option-${opt.mode}`}
-              >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: isSelected ? `${opt.color}20` : "#f3f4f6" }}
+        {/* Maps & Transit alternatives */}
+        <div className="mb-3">
+          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+            <MapPin className="w-3 h-3" /> Maps &amp; Transit
+          </div>
+          <div className="space-y-1.5">
+            {TRANSPORT_OPTIONS.map(opt => {
+              const isSelected = displayMode === opt.mode;
+              return (
+                <Card
+                  key={opt.mode}
+                  className={`p-3 cursor-pointer transition-all hover:shadow-md ${isSelected ? "ring-2 ring-blue-500 bg-blue-50/30" : ""}`}
+                  onClick={() => setSelectedMode(opt.mode === baseMode ? null : opt.mode)}
+                  data-testid={`mode-option-${opt.mode}`}
                 >
-                  <div style={{ color: isSelected ? opt.color : "#6b7280" }}>{opt.icon}</div>
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${opt.color}15` }}
+                    >
+                      <ModeIcon mode={opt.mode} className="w-4 h-4" style={{ color: opt.color }} />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[12px] font-semibold text-gray-900">{opt.label}</span>
+                        {opt.mode === baseMode && (
+                          <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">CURRENT</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        Tap to preview this mode
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {isSelected && <Check className="w-4 h-4 text-blue-600" />}
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Traveloure Services */}
+        <div>
+          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-sky-500" /> Traveloure Services
+          </div>
+          <div className="space-y-1.5">
+            <Card className="p-3 border-sky-100 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-private-transfer">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                  <Car className="w-4 h-4 text-sky-600" />
                 </div>
-                <span
-                  className="text-[10px] font-semibold"
-                  style={{ color: isSelected ? opt.color : "#6b7280" }}
-                >
-                  {opt.label}
-                </span>
-                {isSelected && (
-                  <Badge
-                    className="text-[8px] px-1 py-0 bg-current/10 border-0"
-                    style={{ color: opt.color }}
-                  >
-                    Current
-                  </Badge>
-                )}
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-semibold text-gray-900">Private Transfer</span>
+                    <span className="text-[8px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
+                  </div>
+                  <div className="text-[11px] text-gray-500 mt-0.5">Comfortable door-to-door service</div>
+                </div>
+                <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px]">Available</Badge>
               </div>
-            );
-          })}
+            </Card>
+            <Card className="p-3 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-request-alternative">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  <Repeat className="w-4 h-4 text-gray-500" />
+                </div>
+                <div className="flex-1">
+                  <span className="text-[12px] font-semibold text-gray-800">Request Alternative</span>
+                  <div className="text-[11px] text-gray-500 mt-0.5">Ask your expert to suggest options</div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </div>
+            </Card>
+          </div>
         </div>
       </div>
+
+      {/* Expert Suggested Change */}
+      {expertTransportDiff && (
+        <div className="px-4 pb-3">
+          <h3 className="text-[13px] font-bold text-gray-900 mb-2">Suggested Change</h3>
+          <Card className="p-3 border-indigo-200 bg-indigo-50/30">
+            <div className="flex items-start gap-2 mb-3">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Star className="w-3.5 h-3.5 text-indigo-600" />
+              </div>
+              <div className="flex-1">
+                <div className="text-[12px] font-semibold text-indigo-800 mb-1">Expert Recommendation</div>
+                <div className="flex items-center gap-2 text-[11px] text-gray-600 mb-1">
+                  <span className="line-through text-red-500">{MODE_LABELS[expertTransportDiff.originalMode] ?? expertTransportDiff.originalMode}</span>
+                  <ArrowRight className="w-3 h-3 text-gray-400" />
+                  <span className="text-green-700 font-semibold">{MODE_LABELS[expertTransportDiff.newMode] ?? expertTransportDiff.newMode}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white text-[12px] flex-1 gap-1" data-testid="button-accept-suggestion">
+                <Check className="w-3.5 h-3.5" /> Accept
+              </Button>
+              <Button size="sm" variant="outline" className="text-[12px] flex-1 gap-1" data-testid="button-dismiss-suggestion">
+                <X className="w-3.5 h-3.5" /> Dismiss
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Navigate */}
       <div className="px-4 pb-6">
