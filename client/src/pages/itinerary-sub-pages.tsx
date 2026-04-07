@@ -1207,6 +1207,37 @@ export function TransportDetailPage() {
     setPendingMode(null);
   }
 
+  function handleTimingChange(newTiming: "in_advance" | "real_time" | null) {
+    const nextTiming = savedTiming === newTiming ? null : newTiming;
+    setBookingTiming(nextTiming);
+    const body = {
+      selectedMode: displayMode,
+      bookingTiming: nextTiming,
+      providerSource: savedSource,
+    };
+    if (applyScope === "trip") {
+      bulkMutation.mutate(body);
+    } else {
+      legMutation.mutate({ ...body, shareToken: data?.shareToken });
+    }
+  }
+
+  function handleProviderSourceChange(newSource: "traveloure" | "external") {
+    setActiveProviderTab(newSource);
+    const nextSource = savedSource === newSource ? null : newSource;
+    setProviderSource(nextSource);
+    const body = {
+      selectedMode: displayMode,
+      bookingTiming: savedTiming,
+      providerSource: nextSource,
+    };
+    if (applyScope === "trip") {
+      bulkMutation.mutate(body);
+    } else {
+      legMutation.mutate({ ...body, shareToken: data?.shareToken });
+    }
+  }
+
   const OTHER_SOURCE_LINKS = [
     { label: "Google Maps", icon: <MapPin className="w-4 h-4 text-blue-600" />, bg: "bg-blue-50", url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(toName)}` },
     { label: "Apple Maps", icon: <Map className="w-4 h-4 text-gray-600" />, bg: "bg-gray-100", url: `https://maps.apple.com/?daddr=${encodeURIComponent(toName)}` },
@@ -1438,7 +1469,8 @@ export function TransportDetailPage() {
               </div>
               <div className="flex rounded-xl overflow-hidden border border-gray-200 p-0.5 bg-gray-50">
                 <button
-                  onClick={() => setBookingTiming(savedTiming === "in_advance" ? null : "in_advance")}
+                  onClick={() => handleTimingChange("in_advance")}
+                  disabled={isPending}
                   className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                     savedTiming === "in_advance" ? "bg-purple-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
                   }`}
@@ -1447,7 +1479,8 @@ export function TransportDetailPage() {
                   <Calendar className="w-3 h-3" /> Plan ahead
                 </button>
                 <button
-                  onClick={() => setBookingTiming(savedTiming === "real_time" ? null : "real_time")}
+                  onClick={() => handleTimingChange("real_time")}
+                  disabled={isPending}
                   className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                     savedTiming === "real_time" ? "bg-green-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
                   }`}
@@ -1470,7 +1503,8 @@ export function TransportDetailPage() {
               </div>
               <div className="flex rounded-xl overflow-hidden border border-gray-200 p-0.5 bg-gray-50 mb-3">
                 <button
-                  onClick={() => { setActiveProviderTab("traveloure"); setProviderSource("traveloure"); }}
+                  onClick={() => handleProviderSourceChange("traveloure")}
+                  disabled={isPending}
                   className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                     activeProviderTab === "traveloure" ? "bg-sky-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
                   }`}
@@ -1479,7 +1513,8 @@ export function TransportDetailPage() {
                   <Sparkles className="w-3 h-3" /> Traveloure Partners
                 </button>
                 <button
-                  onClick={() => { setActiveProviderTab("external"); setProviderSource("external"); }}
+                  onClick={() => handleProviderSourceChange("external")}
+                  disabled={isPending}
                   className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                     activeProviderTab === "external" ? "bg-gray-800 text-white shadow" : "text-gray-500 hover:text-gray-700"
                   }`}
@@ -1491,34 +1526,40 @@ export function TransportDetailPage() {
 
               {activeProviderTab === "traveloure" ? (
                 <div className="space-y-2">
-                  <Card className="p-3 border-sky-100 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-private-transfer">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                  <Card className="p-3 border-sky-100 hover:shadow-md transition-all" data-testid="platform-option-private-transfer">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <Car className="w-4 h-4 text-sky-600" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 mb-0.5">
                           <span className="text-[12px] font-semibold text-gray-900">Private Transfer</span>
                           <span className="text-[8px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">Door-to-door, pre-arranged service</div>
+                        <div className="text-[11px] text-gray-500 mb-2">Door-to-door, pre-arranged service</div>
+                        <Button size="sm" className="h-7 text-[11px] bg-sky-600 hover:bg-sky-700 text-white gap-1" data-testid="button-book-private-transfer">
+                          <Check className="w-3 h-3" /> Request booking
+                        </Button>
                       </div>
-                      <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px]">Available</Badge>
+                      <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px] flex-shrink-0">Available</Badge>
                     </div>
                   </Card>
-                  <Card className="p-3 border-indigo-100 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-guided-tour">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                  <Card className="p-3 border-indigo-100 hover:shadow-md transition-all" data-testid="platform-option-guided-tour">
+                    <div className="flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                         <Users className="w-4 h-4 text-indigo-600" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 mb-0.5">
                           <span className="text-[12px] font-semibold text-gray-900">Guided Transfer</span>
                           <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
                         </div>
-                        <div className="text-[11px] text-gray-500 mt-0.5">With local guide, shared or private</div>
+                        <div className="text-[11px] text-gray-500 mb-2">With local guide, shared or private</div>
+                        <Button size="sm" className="h-7 text-[11px] bg-indigo-600 hover:bg-indigo-700 text-white gap-1" data-testid="button-book-guided-transfer">
+                          <MessageSquare className="w-3 h-3" /> Request booking
+                        </Button>
                       </div>
-                      <Badge className="bg-indigo-100 text-indigo-700 border-0 text-[10px]">On request</Badge>
+                      <Badge className="bg-indigo-100 text-indigo-700 border-0 text-[10px] flex-shrink-0">On request</Badge>
                     </div>
                   </Card>
                   <Card className="p-3 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-request-alternative">
@@ -1527,7 +1568,7 @@ export function TransportDetailPage() {
                         <MessageSquare className="w-4 h-4 text-gray-500" />
                       </div>
                       <div className="flex-1">
-                        <span className="text-[12px] font-semibold text-gray-800">Request a quote</span>
+                        <span className="text-[12px] font-semibold text-gray-800">Request a custom quote</span>
                         <div className="text-[11px] text-gray-500 mt-0.5">Ask your expert to arrange options</div>
                       </div>
                       <ChevronRight className="w-4 h-4 text-gray-400" />

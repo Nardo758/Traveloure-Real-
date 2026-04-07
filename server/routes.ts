@@ -13553,6 +13553,51 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // PATCH /api/trips/:tripId/transport-mode
+  // Bulk-update transport mode (and optional bookingTiming/providerSource) for ALL legs in a trip
+  app.patch("/api/trips/:tripId/transport-mode", async (req, res) => {
+    try {
+      const { tripId } = req.params;
+      const { selectedMode, bookingTiming, providerSource } = req.body;
+      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+
+      if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      // Resolve selectedVariantId for this trip
+      const [comparison] = await db
+        .select({ id: itineraryComparisons.id, userId: itineraryComparisons.userId, selectedVariantId: itineraryComparisons.selectedVariantId })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.tripId, tripId));
+
+      if (!comparison) return res.status(404).json({ error: "Trip not found" });
+      if (comparison.userId !== userId) return res.status(403).json({ error: "Not authorized to update this trip" });
+      if (!comparison.selectedVariantId) return res.status(422).json({ error: "Trip has no selected variant" });
+
+      const bulkSet: Record<string, any> = {
+        userSelectedMode: selectedMode,
+        updatedAt: new Date(),
+      };
+      if (bookingTiming !== undefined) bulkSet.bookingTiming = bookingTiming;
+      if (providerSource !== undefined) bulkSet.providerSource = providerSource;
+
+      await db
+        .update(transportLegs)
+        .set(bulkSet)
+        .where(eq(transportLegs.variantId, comparison.selectedVariantId));
+
+      const updatedLegs = await db
+        .select({ id: transportLegs.id, userSelectedMode: transportLegs.userSelectedMode })
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, comparison.selectedVariantId));
+
+      res.json({ updated: updatedLegs.length, selectedMode, bookingTiming: bookingTiming ?? null, providerSource: providerSource ?? null });
+    } catch (err: any) {
+      console.error("Bulk trip transport mode error:", err);
+      res.status(500).json({ error: "Failed to update transport modes" });
+    }
+  });
+
   // PATCH /api/transport-legs/:legId/mode
   // Accepts either authenticated session (owner) or a suggest-permissions shareToken (expert without login)
   app.patch("/api/transport-legs/:legId/mode", async (req, res) => {
@@ -13636,6 +13681,12 @@ export async function registerDiscoveryRoutes(app: Express) {
         .set(updatePayload)
         .where(eq(transportLegs.id, legId));
 
+      // Re-fetch actual stored values so response reflects DB truth
+      const [storedLeg] = await db
+        .select()
+        .from(transportLegs)
+        .where(eq(transportLegs.id, legId));
+
       // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
       let updatedMapsUrls: { googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> } | null = null;
       try {
@@ -13663,13 +13714,13 @@ export async function registerDiscoveryRoutes(app: Express) {
 
       res.json({
         updatedLeg: {
-          id: legId,
-          userSelectedMode: selectedMode,
-          estimatedDurationMinutes: newDuration,
-          estimatedCostUsd: newCost,
-          energyCost: newEnergy,
-          bookingTiming: bookingTiming ?? null,
-          providerSource: providerSource ?? null,
+          id: storedLeg?.id ?? legId,
+          userSelectedMode: storedLeg?.userSelectedMode,
+          estimatedDurationMinutes: storedLeg?.estimatedDurationMinutes,
+          estimatedCostUsd: storedLeg?.estimatedCostUsd,
+          energyCost: storedLeg?.energyCost,
+          bookingTiming: storedLeg?.bookingTiming ?? null,
+          providerSource: storedLeg?.providerSource ?? null,
         },
         downstreamImpact: {
           nextActivityStartTimeShift: -timeDiff,
