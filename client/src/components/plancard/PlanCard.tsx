@@ -165,8 +165,9 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
         .filter(m => m.role === "assistant")
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
     : null;
-  const expertMsgText = lastAssistantMsg
-    ? lastAssistantMsg.content.slice(0, 100) + (lastAssistantMsg.content.length > 100 ? "…" : "")
+  const expertMsgRaw = lastAssistantMsg?.content ?? trip.expertNotes ?? null;
+  const expertMsgText = expertMsgRaw
+    ? expertMsgRaw.slice(0, 100) + (expertMsgRaw.length > 100 ? "…" : "")
     : null;
 
   const actionItems = notifications
@@ -242,7 +243,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
   };
 
   const optimizationScore = score?.optimizationScore;
-  const shareToken = score?.shareToken;
+  const shareToken = trip.shareToken ?? score?.shareToken ?? null;
 
   const totalActivities = stats.totalActivities || days.reduce((s: number, d) => s + (d.activities?.length || 0), 0);
   const confirmedActivities = stats.confirmedActivities ?? days.reduce((s: number, d) => s + (d.activities?.filter((a) => a.status === "confirmed").length || 0), 0);
