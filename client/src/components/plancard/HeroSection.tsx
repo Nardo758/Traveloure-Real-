@@ -20,10 +20,15 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
   const now = new Date();
   const daysUntilStart = differenceInDays(new Date(trip.startDate ?? Date.now()), now);
   const daysUntilEnd = trip.endDate ? differenceInDays(new Date(trip.endDate), now) : daysUntilStart;
-  const statusLabel = daysUntilStart > 0
-    ? `${daysUntilStart}d away`
+  const tripStatus = trip.status;
+  const statusLabel = tripStatus === "completed" || tripStatus === "cancelled"
+    ? tripStatus.charAt(0).toUpperCase() + tripStatus.slice(1)
+    : tripStatus === "draft"
+    ? "Draft"
     : daysUntilEnd < 0
     ? "Completed"
+    : daysUntilStart > 0
+    ? `${daysUntilStart}d away`
     : daysUntilStart === 0
     ? "Today"
     : "Active";

@@ -397,7 +397,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
               changeLog={changeLog}
             />
 
-            {advisor && expertMsgText && (
+            {expertMsgText && (
               <div className="mx-4 mb-2" data-testid={`expert-notes-panel-${trip.id}`}>
                 <button
                   onClick={() => setShowExpertNotes(!showExpertNotes)}
@@ -413,15 +413,21 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                 {showExpertNotes && (
                   <div className="mt-1.5 px-3 py-2.5 rounded-lg bg-card border border-border text-xs text-muted-foreground" data-testid={`expert-notes-content-${trip.id}`}>
                     <div className="flex items-start gap-2">
-                      {advisor.profile_image_url ? (
-                        <img src={advisor.profile_image_url} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0 mt-0.5" />
+                      {advisor ? (
+                        advisor.profile_image_url ? (
+                          <img src={advisor.profile_image_url} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-semibold flex-shrink-0 mt-0.5" style={{ background: avatarColor.bg, color: avatarColor.text }}>
+                            {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
+                          </div>
+                        )
                       ) : (
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-semibold flex-shrink-0 mt-0.5" style={{ background: avatarColor.bg, color: avatarColor.text }}>
-                          {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
+                        <div className="w-6 h-6 rounded-full bg-purple-200 dark:bg-purple-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <MessageSquare className="w-3 h-3 text-purple-700 dark:text-purple-300" />
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <span className="font-semibold text-foreground">{advisor.first_name} {advisor.last_name}</span>
+                        {advisor && <span className="font-semibold text-foreground">{advisor.first_name} {advisor.last_name}</span>}
                         <p className="mt-0.5 leading-relaxed">"{expertMsgText}"</p>
                       </div>
                     </div>
