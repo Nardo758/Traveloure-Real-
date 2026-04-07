@@ -584,22 +584,6 @@ export function FullItineraryPage() {
               <MapPin className="w-4 h-4" />
             </button>
             <button
-              onClick={() => navigate(`/itinerary-view/${token}/stats`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
-              title="Stats"
-              data-testid="header-nav-stats"
-            >
-              <BarChart3 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/itinerary-view/${token}/services`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
-              title="Services"
-              data-testid="header-nav-services"
-            >
-              <FileText className="w-4 h-4" />
-            </button>
-            <button
               onClick={() => navigate(`/itinerary-view/${token}/chat`)}
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
               title="Expert Chat"
@@ -607,16 +591,14 @@ export function FullItineraryPage() {
             >
               <MessageSquare className="w-4 h-4" />
             </button>
-            {hasExpertDiff && (
-              <button
-                onClick={() => navigate(`/itinerary-view/${token}/changes`)}
-                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-blue-50 transition-colors text-blue-600"
-                title="Review Changes"
-                data-testid="header-nav-changes"
-              >
-                <History className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              onClick={() => navigate(`/itinerary-view/${token}/changes`)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-blue-50 transition-colors text-blue-600"
+              title="Review Changes"
+              data-testid="header-nav-changes"
+            >
+              <History className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
