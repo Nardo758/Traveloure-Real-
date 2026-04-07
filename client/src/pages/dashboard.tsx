@@ -239,6 +239,8 @@ export default function Dashboard() {
                   numberOfTravelers: trip.numberOfTravelers ?? 1,
                   budget: trip.budget ?? undefined,
                   eventType: trip.eventType ?? undefined,
+                  status: (trip as any).status ?? undefined,
+                  shareToken: (trip as any).shareToken ?? null,
                 };
                 return (
                   <PlanCard
