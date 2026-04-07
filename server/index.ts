@@ -205,37 +205,51 @@ async function runDatabaseSeeding() {
     setTimeout(() => process.exit(0), 5000);
   });
 
-  httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      logger.error({ port }, `Port ${port} is already in use. Exiting.`);
-      process.exit(1);
-    }
-    throw err;
-  });
+  async function tryListen(retriesLeft: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const onError = async (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE" && retriesLeft > 0) {
+          logger.warn({ port }, `Port ${port} in use — killing stale listener and retrying`);
+          httpServer.removeListener("error", onError);
+          try {
+            const { execSync } = await import("child_process");
+            execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: "ignore" });
+          } catch {}
+          await new Promise(r => setTimeout(r, 800));
+          resolve(tryListen(retriesLeft - 1));
+        } else if (err.code === "EADDRINUSE") {
+          logger.error({ port }, `Port ${port} still in use after retry — giving up`);
+          process.exit(1);
+        } else {
+          reject(err);
+        }
+      };
 
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-    },
-    () => {
-      logger.info({ port }, "Server started");
-      
-      // Start cache scheduler
-      cacheSchedulerService.start();
-      logger.info("Cache scheduler started");
-      
-      // One-time admin promotion
-      import("./db").then(({ pool }) => {
-        pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
-          .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
-          .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-      }).catch(() => {});
+      httpServer.once("error", onError);
+      httpServer.listen({ port, host: "0.0.0.0" }, () => {
+        httpServer.removeListener("error", onError);
+        logger.info({ port }, "Server started");
 
-      // Run database seeding in background AFTER server is listening
-      runDatabaseSeeding().catch(err => {
-        logger.error({ err }, "Background seeding failed");
+        // Start cache scheduler
+        cacheSchedulerService.start();
+        logger.info("Cache scheduler started");
+
+        // One-time admin promotion
+        import("./db").then(({ pool }) => {
+          pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
+            .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
+            .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
+        }).catch(() => {});
+
+        // Run database seeding in background AFTER server is listening
+        runDatabaseSeeding().catch(err => {
+          logger.error({ err }, "Background seeding failed");
+        });
+
+        resolve();
       });
-    },
-  );
+    });
+  }
+
+  await tryListen(3);
 })();
