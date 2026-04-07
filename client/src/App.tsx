@@ -240,8 +240,8 @@ function Router() {
       </Route>
 
       {/* Itinerary sub-pages (must be before /itinerary-view/:token catch-all) */}
-      <Route path="/itinerary-view/:token/itinerary">
-        <FullItineraryPage />
+      <Route path="/itinerary-view/:token/expert-review">
+        <ItineraryViewPage />
       </Route>
       <Route path="/itinerary-view/:token/activity/:activityId">
         <ActivityDetailPage />
@@ -266,7 +266,7 @@ function Router() {
       </Route>
 
       <Route path="/itinerary-view/:token">
-        <ItineraryViewPage />
+        <FullItineraryPage />
       </Route>
       <Route path="/trips/shared/:token">
         <SharedTripPage />

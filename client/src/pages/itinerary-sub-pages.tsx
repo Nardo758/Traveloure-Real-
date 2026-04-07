@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
 import {
-  ArrowLeft, Clock, MapPin, Star, Navigation, ExternalLink, Map,
-  Route, Phone, Globe, Lightbulb, MessageSquare, DollarSign, Hash,
-  CheckCircle2, XCircle, AlertCircle, Filter, History, ChevronRight,
-  Footprints, Car, TrainFront, Ship, Bus, Train, CarTaxiFront, KeyRound,
-  Repeat, Sparkles, Building2, Ticket, Check, X,
-  Hotel, Compass, Shield, UtensilsCrossed, FileText,
-  Copy, Phone as PhoneIcon, ChevronDown, ChevronUp,
-  TrendingUp, Heart, BarChart3, Leaf, Users, Calendar, Activity as ActivityIcon,
-  Printer, Download, Send, Globe2,
+  ArrowLeft, Clock, MapPin, Navigation, ExternalLink, Map,
+  Route, DollarSign, Hash, CheckCircle2, XCircle, AlertCircle,
+  Filter, History, ChevronRight, Footprints, Car, Ship, Bus,
+  Train, TrainFront, CarTaxiFront, KeyRound, Sparkles, Building2,
+  Ticket, Check, X, Hotel, Compass, Shield, UtensilsCrossed,
+  FileText, Copy, Phone, ChevronDown, ChevronUp, TrendingUp,
+  BarChart3, Leaf, Calendar, Activity as ActivityIcon,
+  Printer, Send, MessageSquare, Lightbulb,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // ─────────────────────────────────────────────
-// Shared types derived from the API response
+// Types (derived from itinerary-view.tsx structure)
 // ─────────────────────────────────────────────
 interface ApiActivity {
   id: string;
@@ -58,6 +58,12 @@ interface ApiDay {
   transportLegs: ApiTransportLeg[];
 }
 
+interface ExpertDiff {
+  activityDiffs?: Record<string, ActivityDiff>;
+  transportDiffs?: Record<string, TransportDiff>;
+  submittedAt?: string;
+}
+
 interface SharedItineraryResponse {
   variant: {
     id: string;
@@ -79,23 +85,25 @@ interface SharedItineraryResponse {
   shareToken?: string;
   expertStatus?: string;
   expertNotes?: string | null;
+  expertDiff?: ExpertDiff | null;
+  sharedWithExpert?: boolean;
   isOwner?: boolean;
 }
 
 // ─────────────────────────────────────────────
-// Shared helpers
+// Shared constants
 // ─────────────────────────────────────────────
 const DAY_COLORS = [
   "#3b82f6", "#ef4444", "#22c55e", "#f59e0b",
   "#8b5cf6", "#ec4899", "#06b6d4", "#f97316",
 ];
 
-const TYPE_COLORS: Record<string, { bg: string; fg: string; dot: string }> = {
-  dining: { bg: "bg-amber-100", fg: "text-amber-800", dot: "#f59e0b" },
-  attraction: { bg: "bg-blue-100", fg: "text-blue-800", dot: "#3b82f6" },
-  shopping: { bg: "bg-pink-100", fg: "text-pink-800", dot: "#ec4899" },
-  activity: { bg: "bg-green-100", fg: "text-green-800", dot: "#22c55e" },
-  transport: { bg: "bg-gray-100", fg: "text-gray-800", dot: "#6b7280" },
+const TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
+  dining: { bg: "bg-amber-100", fg: "text-amber-800" },
+  attraction: { bg: "bg-blue-100", fg: "text-blue-800" },
+  shopping: { bg: "bg-pink-100", fg: "text-pink-800" },
+  activity: { bg: "bg-green-100", fg: "text-green-800" },
+  transport: { bg: "bg-gray-100", fg: "text-gray-800" },
 };
 
 const MODE_COLORS: Record<string, string> = {
@@ -110,13 +118,18 @@ const MODE_LABELS: Record<string, string> = {
   private_car: "Private Car", rental_car: "Rental Car", transit: "Transit",
 };
 
-const STATUS_STYLES: Record<string, { bg: string; fg: string; label: string }> = {
-  confirmed: { bg: "bg-green-100", fg: "text-green-800", label: "Confirmed" },
-  pending: { bg: "bg-yellow-100", fg: "text-yellow-800", label: "Pending" },
-  suggested: { bg: "bg-indigo-100", fg: "text-indigo-800", label: "Suggested" },
-  cancelled: { bg: "bg-red-100", fg: "text-red-800", label: "Cancelled" },
-};
+const TRANSPORT_OPTIONS = [
+  { mode: "walk", label: "Walk", icon: <Footprints className="w-4 h-4" />, color: "#22c55e" },
+  { mode: "taxi", label: "Taxi", icon: <CarTaxiFront className="w-4 h-4" />, color: "#f59e0b" },
+  { mode: "bus", label: "Bus", icon: <Bus className="w-4 h-4" />, color: "#8b5cf6" },
+  { mode: "train", label: "Train", icon: <Train className="w-4 h-4" />, color: "#6366f1" },
+  { mode: "ferry", label: "Ferry", icon: <Ship className="w-4 h-4" />, color: "#06b6d4" },
+  { mode: "car", label: "Car", icon: <Car className="w-4 h-4" />, color: "#3b82f6" },
+];
 
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
 function formatDuration(mins: number) {
   if (!mins || mins <= 0) return "—";
   if (mins < 60) return `${mins}m`;
@@ -126,9 +139,22 @@ function formatDuration(mins: number) {
 function formatTime(timeStr?: string | null): string {
   if (!timeStr) return "";
   try {
-    return new Date(timeStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return new Date(timeStr).toLocaleTimeString("en-US", {
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    });
   } catch {
     return timeStr;
+  }
+}
+
+function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return "";
+  try {
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      weekday: "short", month: "short", day: "numeric",
+    });
+  } catch {
+    return dateStr;
   }
 }
 
@@ -147,19 +173,23 @@ function buildWazeUrl(lat?: number | null, lng?: number | null) {
   return null;
 }
 
-function ModIcon({ mode, className = "w-4 h-4", style }: { mode: string; className?: string; style?: React.CSSProperties }) {
-  if (mode === "walk") return <Footprints className={className} style={style} />;
-  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} style={style} />;
-  if (mode === "car" || mode === "private_car") return <Car className={className} style={style} />;
-  if (mode === "ferry") return <Ship className={className} style={style} />;
-  if (mode === "bus") return <Bus className={className} style={style} />;
-  if (mode === "train") return <Train className={className} style={style} />;
-  if (mode === "subway") return <TrainFront className={className} style={style} />;
-  if (mode === "rental_car") return <KeyRound className={className} style={style} />;
-  return <Footprints className={className} style={style} />;
+function ModeIcon({ mode, className = "w-4 h-4" }: { mode: string; className?: string }) {
+  if (mode === "walk") return <Footprints className={className} />;
+  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} />;
+  if (mode === "car" || mode === "private_car") return <Car className={className} />;
+  if (mode === "ferry") return <Ship className={className} />;
+  if (mode === "bus") return <Bus className={className} />;
+  if (mode === "train") return <Train className={className} />;
+  if (mode === "subway") return <TrainFront className={className} />;
+  if (mode === "rental_car") return <KeyRound className={className} />;
+  return <Footprints className={className} />;
 }
 
-function NavigateDropdown({ location, lat, lng }: { location: string; lat?: number | null; lng?: number | null }) {
+function NavigateDropdown({
+  location, lat, lng,
+}: {
+  location: string; lat?: number | null; lng?: number | null;
+}) {
   const [open, setOpen] = useState(false);
   const wazeUrl = buildWazeUrl(lat, lng);
   return (
@@ -175,20 +205,35 @@ function NavigateDropdown({ location, lat, lng }: { location: string; lat?: numb
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-xl py-1.5 w-44">
-            <a href={buildMapsUrl(location, lat, lng)} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium">
-              <div className="w-5 h-5 rounded bg-blue-100 flex items-center justify-center"><MapPin className="w-3 h-3 text-blue-600" /></div>
+            <a
+              href={buildMapsUrl(location, lat, lng)}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium"
+            >
+              <div className="w-5 h-5 rounded bg-blue-100 flex items-center justify-center">
+                <MapPin className="w-3 h-3 text-blue-600" />
+              </div>
               Google Maps <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
             </a>
-            <a href={buildAppleMapsUrl(location, lat, lng)} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium">
-              <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center"><Map className="w-3 h-3 text-gray-600" /></div>
+            <a
+              href={buildAppleMapsUrl(location, lat, lng)}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium"
+            >
+              <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center">
+                <Map className="w-3 h-3 text-gray-600" />
+              </div>
               Apple Maps <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
             </a>
             {wazeUrl && (
-              <a href={wazeUrl} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium">
-                <div className="w-5 h-5 rounded bg-cyan-100 flex items-center justify-center"><Route className="w-3 h-3 text-cyan-600" /></div>
+              <a
+                href={wazeUrl}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 text-[12px] text-gray-800 font-medium"
+              >
+                <div className="w-5 h-5 rounded bg-cyan-100 flex items-center justify-center">
+                  <Route className="w-3 h-3 text-cyan-600" />
+                </div>
                 Waze <ExternalLink className="w-3 h-3 text-gray-400 ml-auto" />
               </a>
             )}
@@ -199,7 +244,6 @@ function NavigateDropdown({ location, lat, lng }: { location: string; lat?: numb
   );
 }
 
-// Shared loading / error screens
 function LoadingScreen() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 space-y-3">
@@ -224,7 +268,6 @@ function ErrorScreen({ message }: { message: string }) {
   );
 }
 
-// Shared data hook
 function useItineraryData(token: string) {
   return useQuery<SharedItineraryResponse>({
     queryKey: ["/api/itinerary-share", token],
@@ -232,9 +275,9 @@ function useItineraryData(token: string) {
       const res = await fetch(`/api/itinerary-share/${token}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Failed to load" }));
-        throw new Error(err.error || "Failed to load itinerary");
+        throw new Error((err as { error?: string }).error || "Failed to load itinerary");
       }
-      return res.json();
+      return res.json() as Promise<SharedItineraryResponse>;
     },
     enabled: !!token,
     retry: false,
@@ -243,9 +286,11 @@ function useItineraryData(token: string) {
 }
 
 // ─────────────────────────────────────────────
-// 1. FULL ITINERARY PAGE (main /itinerary-view/:token)
+// Day section (used in FullItineraryPage)
 // ─────────────────────────────────────────────
-function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransport }: {
+function DaySection({
+  day, dayIndex, token, onNavigateActivity, onNavigateTransport,
+}: {
   day: ApiDay;
   dayIndex: number;
   token: string;
@@ -254,25 +299,21 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
-  const dayCost = day.activities.reduce((s, a) => s + (a.cost || 0), 0);
-  const transitTime = day.transportLegs.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
-  const transitCost = day.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
+  const dayCost = day.activities.reduce((s, a) => s + (a.cost ?? 0), 0);
+  const transitTime = day.transportLegs.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
+  const transitCost = day.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
+  const dateLabel = day.date ? formatDate(day.date) : `Day ${day.dayNumber}`;
 
-  const dateLabel = day.date
-    ? new Date(day.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
-    : `Day ${day.dayNumber}`;
-
-  // Interleave activities + transports
   type Entry =
-    | { type: "activity"; item: ApiActivity; idx: number }
-    | { type: "transport"; item: ApiTransportLeg };
+    | { kind: "activity"; item: ApiActivity; seq: number }
+    | { kind: "transport"; item: ApiTransportLeg };
 
-  const interleaved: Entry[] = [];
+  const entries: Entry[] = [];
   day.activities.forEach((a, i) => {
     if (i > 0 && day.transportLegs[i - 1]) {
-      interleaved.push({ type: "transport", item: day.transportLegs[i - 1] });
+      entries.push({ kind: "transport", item: day.transportLegs[i - 1] });
     }
-    interleaved.push({ type: "activity", item: a, idx: i });
+    entries.push({ kind: "activity", item: a, seq: i });
   });
 
   return (
@@ -280,19 +321,22 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
       <button
         onClick={() => setCollapsed(!collapsed)}
         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors"
-        style={{ backgroundColor: dayColor + "12" }}
+        style={{ backgroundColor: `${dayColor}12` }}
         data-testid={`button-collapse-day-${day.dayNumber}`}
       >
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[13px] font-bold" style={{ backgroundColor: dayColor }}>
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-[13px] font-bold"
+          style={{ backgroundColor: dayColor }}
+        >
           D{day.dayNumber}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-[14px] font-bold text-gray-900">{dateLabel}</span>
-          </div>
+          <span className="text-[14px] font-bold text-gray-900">{dateLabel}</span>
           <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
             <span>{day.activities.length} activities</span>
-            {dayCost > 0 && <span className="text-emerald-700 font-semibold">${(dayCost + transitCost).toLocaleString()}</span>}
+            {(dayCost + transitCost) > 0 && (
+              <span className="text-emerald-700 font-semibold">${(dayCost + transitCost).toLocaleString()}</span>
+            )}
             {transitTime > 0 && <span>{formatDuration(transitTime)} transit</span>}
           </div>
         </div>
@@ -301,10 +345,10 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
 
       {!collapsed && (
         <div className="mt-2 space-y-1">
-          {interleaved.map((entry, idx) => {
-            if (entry.type === "activity") {
+          {entries.map((entry, idx) => {
+            if (entry.kind === "activity") {
               const a = entry.item;
-              const tc = TYPE_COLORS[a.category || "activity"] || TYPE_COLORS.activity;
+              const tc = TYPE_COLORS[a.category ?? "activity"] ?? TYPE_COLORS.activity;
               return (
                 <button
                   key={a.id}
@@ -313,16 +357,16 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
                   data-testid={`activity-row-${a.id}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex flex-col items-center flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-gray-50 border-2 border-gray-200 flex items-center justify-center text-[11px] font-bold text-gray-600">
-                        {entry.idx + 1}
-                      </div>
+                    <div className="w-8 h-8 rounded-full bg-gray-50 border-2 border-gray-200 flex items-center justify-center text-[11px] font-bold text-gray-600 flex-shrink-0">
+                      {entry.seq + 1}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[13px] font-bold text-gray-900">{a.name}</span>
                         {a.category && (
-                          <Badge className={`text-[9px] px-1.5 py-0 border-0 ${tc.bg} ${tc.fg}`}>{a.category}</Badge>
+                          <Badge className={`text-[9px] px-1.5 py-0 border-0 ${tc.bg} ${tc.fg}`}>
+                            {a.category}
+                          </Badge>
                         )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -337,7 +381,7 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
                           </span>
                         )}
                       </div>
-                      {(a.cost || 0) > 0 && (
+                      {(a.cost ?? 0) > 0 && (
                         <div className="text-[12px] font-semibold text-emerald-700 mt-1">${a.cost}</div>
                       )}
                     </div>
@@ -347,28 +391,33 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
               );
             } else {
               const t = entry.item;
-              const mode = t.userSelectedMode || t.recommendedMode || "transit";
-              const modeColor = MODE_COLORS[mode] || "#6b7280";
+              const mode = t.userSelectedMode ?? t.recommendedMode ?? "transit";
+              const modeColor = MODE_COLORS[mode] ?? "#6b7280";
               return (
                 <button
                   key={t.id}
                   onClick={() => onNavigateTransport(t.id)}
                   className="flex items-center gap-2 py-1.5 px-3 ml-6 border-l-2 border-dashed w-full text-left hover:bg-gray-50 transition-colors rounded-r-lg"
-                  style={{ borderColor: modeColor + "60" }}
+                  style={{ borderColor: `${modeColor}60` }}
                   data-testid={`transport-row-${t.id}`}
                 >
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: modeColor + "20" }}>
-                    <ModIcon mode={mode} className="w-3 h-3" />
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: `${modeColor}20` }}
+                  >
+                    <ModeIcon mode={mode} className="w-3 h-3" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-gray-600 font-semibold">{MODE_LABELS[mode] || mode}</span>
+                    <span className="text-[11px] text-gray-600 font-semibold">{MODE_LABELS[mode] ?? mode}</span>
                     {t.fromLabel && t.toLabel && (
-                      <span className="text-[10px] text-gray-400 ml-1.5">{t.fromLabel} → {t.toLabel}</span>
+                      <span className="text-[10px] text-gray-400 ml-1.5">
+                        {t.fromLabel} → {t.toLabel}
+                      </span>
                     )}
                   </div>
                   <span className="text-[10px] text-gray-500 flex-shrink-0">
-                    {formatDuration(t.estimatedDurationMinutes || 0)}
-                    {(t.estimatedCostUsd || 0) > 0 && ` · $${t.estimatedCostUsd}`}
+                    {formatDuration(t.estimatedDurationMinutes ?? 0)}
+                    {(t.estimatedCostUsd ?? 0) > 0 && ` · $${t.estimatedCostUsd}`}
                   </span>
                   <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
                 </button>
@@ -381,6 +430,11 @@ function DaySection({ day, dayIndex, token, onNavigateActivity, onNavigateTransp
   );
 }
 
+// ─────────────────────────────────────────────
+// 1. FULL ITINERARY PAGE
+// Primary route: /itinerary-view/:token
+// Redirects experts to /itinerary-view/:token/expert-review
+// ─────────────────────────────────────────────
 export function FullItineraryPage() {
   const { token } = useParams<{ token: string }>();
   const [, navigate] = useLocation();
@@ -390,16 +444,27 @@ export function FullItineraryPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
+  // Expert users see the expert-review page
+  const isExpert = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert;
+  if (isExpert) {
+    navigate(`/itinerary-view/${token}/expert-review`, { replace: true });
+    return null;
+  }
+
   const { variant } = data;
   const allActivities = variant.days.flatMap(d => d.activities);
   const allTransports = variant.days.flatMap(d => d.transportLegs);
-  const totalCost = parseFloat(String(variant.totalCost || 0)) ||
-    allActivities.reduce((s, a) => s + (a.cost || 0), 0) +
-    allTransports.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
-  const totalTransitTime = variant.transportSummary?.totalMinutes ||
-    allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
+  const totalCost =
+    parseFloat(String(variant.totalCost ?? 0)) ||
+    allActivities.reduce((s, a) => s + (a.cost ?? 0), 0) +
+    allTransports.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
+  const totalTransitTime =
+    variant.transportSummary?.totalMinutes ??
+    allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
 
-  const destination = variant.destination || variant.name;
+  const destination = variant.destination ?? variant.name;
+  const hasExpertDiff = !!(data.expertDiff?.activityDiffs || data.expertDiff?.transportDiffs);
+  const hasPendingChanges = hasExpertDiff && data.expertStatus === "review_sent";
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="full-itinerary-page">
@@ -413,14 +478,37 @@ export function FullItineraryPage() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-[15px] font-bold text-gray-900 truncate">{destination}</h1>
-          <p className="text-[11px] text-gray-500">Full Itinerary</p>
+          <p className="text-[11px] text-gray-500">Full Itinerary · {variant.days.length} days</p>
         </div>
-        <div className="flex gap-1">
-          <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => window.print()} data-testid="button-print">
-            <Printer className="w-4 h-4" />
-          </Button>
-        </div>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="w-8 h-8"
+          onClick={() => window.print()}
+          data-testid="button-print"
+        >
+          <Printer className="w-4 h-4" />
+        </Button>
       </div>
+
+      {hasPendingChanges && (
+        <div
+          className="mx-4 mt-3 p-3 rounded-xl bg-blue-50 border border-blue-200 flex items-center gap-2.5"
+          data-testid="pending-changes-banner"
+        >
+          <History className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <p className="text-[12px] text-blue-800 flex-1">
+            Your travel expert suggested changes. <strong>Review them below.</strong>
+          </p>
+          <button
+            onClick={() => navigate(`/itinerary-view/${token}/changes`)}
+            className="text-[11px] font-bold text-blue-600 underline flex-shrink-0"
+            data-testid="button-view-changes"
+          >
+            View
+          </button>
+        </div>
+      )}
 
       <div className="p-4">
         {/* Summary stats */}
@@ -474,15 +562,16 @@ export function FullItineraryPage() {
           />
         ))}
 
-        {/* Bottom nav */}
+        {/* Navigation grid */}
         <div className="mt-6 grid grid-cols-3 gap-2">
           {[
             { label: "Map", path: `/itinerary-view/${token}/map`, icon: <MapPin className="w-4 h-4" /> },
             { label: "Stats", path: `/itinerary-view/${token}/stats`, icon: <BarChart3 className="w-4 h-4" /> },
             { label: "Services", path: `/itinerary-view/${token}/services`, icon: <FileText className="w-4 h-4" /> },
             { label: "Expert Chat", path: `/itinerary-view/${token}/chat`, icon: <MessageSquare className="w-4 h-4" /> },
-            { label: "Review Changes", path: `/itinerary-view/${token}/changes`, icon: <History className="w-4 h-4" /> },
-            { label: "Back to Summary", path: `/itinerary-view/${token}`, icon: <ArrowLeft className="w-4 h-4" /> },
+            ...(hasExpertDiff
+              ? [{ label: "Changes", path: `/itinerary-view/${token}/changes`, icon: <History className="w-4 h-4" /> }]
+              : []),
           ].map(({ label, path, icon }) => (
             <button
               key={label}
@@ -512,30 +601,43 @@ export function ActivityDetailPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  // Find activity
   let activity: ApiActivity | undefined;
   let dayNumber = 0;
+  let dayIndex = 0;
+  let activityIndex = 0;
+  let prevTransport: ApiTransportLeg | undefined;
+  let nextTransport: ApiTransportLeg | undefined;
+
   for (const day of data.variant.days) {
-    const found = day.activities.find(a => a.id === activityId);
-    if (found) { activity = found; dayNumber = day.dayNumber; break; }
+    const idx = day.activities.findIndex(a => a.id === activityId);
+    if (idx !== -1) {
+      activity = day.activities[idx];
+      dayNumber = day.dayNumber;
+      dayIndex = data.variant.days.indexOf(day);
+      activityIndex = idx;
+      prevTransport = idx > 0 ? day.transportLegs[idx - 1] : undefined;
+      nextTransport = day.transportLegs[idx];
+      break;
+    }
   }
 
-  if (!activity) {
-    return <ErrorScreen message="Activity not found." />;
-  }
+  if (!activity) return <ErrorScreen message="Activity not found." />;
 
-  const tc = TYPE_COLORS[activity.category || "activity"] || TYPE_COLORS.activity;
-  const wazeUrl = buildWazeUrl(activity.lat, activity.lng);
-  const destination = data.variant.destination || data.variant.name;
+  const tc = TYPE_COLORS[activity.category ?? "activity"] ?? TYPE_COLORS.activity;
+  const destination = data.variant.destination ?? data.variant.name;
+  const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="activity-detail-page">
       {/* Hero */}
       <div className="relative">
-        <div className="h-40 bg-gradient-to-br from-blue-500 to-indigo-600" />
+        <div
+          className="h-44"
+          style={{ background: `linear-gradient(135deg, ${dayColor}cc, ${dayColor}88)` }}
+        />
         <div className="absolute top-3 left-3">
           <button
-            onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+            onClick={() => navigate(`/itinerary-view/${token}`)}
             className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur-sm flex items-center justify-center hover:bg-white transition-colors shadow-sm"
             data-testid="button-back"
           >
@@ -543,12 +645,18 @@ export function ActivityDetailPage() {
           </button>
         </div>
         <div className="absolute bottom-4 left-4 right-4">
-          <h1 className="text-[22px] font-bold text-white leading-tight drop-shadow-sm">{activity.name}</h1>
+          <h1 className="text-[22px] font-bold text-white leading-tight drop-shadow-sm">
+            {activity.name}
+          </h1>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {activity.category && (
-              <Badge className={`text-[10px] px-2 py-0.5 border-0 ${tc.bg} ${tc.fg}`}>{activity.category}</Badge>
+              <Badge className={`text-[10px] px-2 py-0.5 border-0 ${tc.bg} ${tc.fg}`}>
+                {activity.category}
+              </Badge>
             )}
-            <Badge className="text-[10px] px-2 py-0.5 border-0 bg-green-100 text-green-800">Day {dayNumber}</Badge>
+            <Badge className="text-[10px] px-2 py-0.5 border-0 bg-white/20 text-white">
+              Day {dayNumber} · Stop {activityIndex + 1}
+            </Badge>
           </div>
         </div>
       </div>
@@ -564,7 +672,10 @@ export function ActivityDetailPage() {
                 </div>
                 <div>
                   <div className="text-[11px] text-gray-500">Time</div>
-                  <div className="text-[13px] font-bold text-gray-900">{formatTime(activity.startTime)}</div>
+                  <div className="text-[13px] font-bold text-gray-900">
+                    {formatTime(activity.startTime)}
+                    {activity.endTime && ` – ${formatTime(activity.endTime)}`}
+                  </div>
                 </div>
               </div>
             )}
@@ -575,7 +686,7 @@ export function ActivityDetailPage() {
               <div>
                 <div className="text-[11px] text-gray-500">Cost</div>
                 <div className="text-[13px] font-bold text-gray-900">
-                  {(activity.cost || 0) > 0 ? `$${activity.cost}` : "Free"}
+                  {(activity.cost ?? 0) > 0 ? `$${activity.cost}` : "Free"}
                 </div>
               </div>
             </div>
@@ -597,7 +708,9 @@ export function ActivityDetailPage() {
                 </div>
                 <div>
                   <div className="text-[11px] text-gray-500">Location</div>
-                  <div className="text-[12px] font-semibold text-gray-900 truncate max-w-[120px]">{activity.location}</div>
+                  <div className="text-[12px] font-semibold text-gray-900 truncate max-w-[120px]">
+                    {activity.location}
+                  </div>
                 </div>
               </div>
             )}
@@ -607,43 +720,100 @@ export function ActivityDetailPage() {
         {/* Description */}
         {activity.description && (
           <Card className="p-4">
-            <h3 className="text-[13px] font-bold text-gray-900 mb-2">Description</h3>
+            <h3 className="text-[13px] font-bold text-gray-900 mb-2">About</h3>
             <p className="text-[12px] text-gray-600 leading-relaxed">{activity.description}</p>
           </Card>
         )}
 
-        {/* Navigate */}
+        {/* Navigation */}
         {activity.location && (
           <Card className="p-4" data-testid="navigate-section">
             <h3 className="text-[13px] font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <Navigation className="w-4 h-4 text-blue-600" /> Navigate
+              <Navigation className="w-4 h-4 text-blue-600" /> Get Directions
             </h3>
             <div className="space-y-2">
-              <a href={buildMapsUrl(activity.location, activity.lat, activity.lng)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors" data-testid="link-google-maps">
+              <a
+                href={buildMapsUrl(activity.location, activity.lat, activity.lng)}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                data-testid="link-google-maps"
+              >
                 <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
                   <MapPin className="w-4 h-4 text-blue-600" />
                 </div>
                 <span className="text-[13px] font-semibold text-gray-800 flex-1">Google Maps</span>
                 <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
               </a>
-              <a href={buildAppleMapsUrl(activity.location, activity.lat, activity.lng)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors" data-testid="link-apple-maps">
+              <a
+                href={buildAppleMapsUrl(activity.location, activity.lat, activity.lng)}
+                target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                data-testid="link-apple-maps"
+              >
                 <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
                   <Map className="w-4 h-4 text-gray-600" />
                 </div>
                 <span className="text-[13px] font-semibold text-gray-800 flex-1">Apple Maps</span>
                 <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
               </a>
-              {wazeUrl && (
-                <a href={wazeUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors" data-testid="link-waze">
+              {buildWazeUrl(activity.lat, activity.lng) && (
+                <a
+                  href={buildWazeUrl(activity.lat, activity.lng)!}
+                  target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                  data-testid="link-waze"
+                >
                   <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center">
                     <Route className="w-4 h-4 text-cyan-600" />
                   </div>
                   <span className="text-[13px] font-semibold text-gray-800 flex-1">Waze</span>
                   <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
                 </a>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* Transport connections */}
+        {(prevTransport || nextTransport) && (
+          <Card className="p-4" data-testid="transport-connections">
+            <h3 className="text-[13px] font-bold text-gray-900 mb-3">Transport Connections</h3>
+            <div className="space-y-2">
+              {prevTransport && (
+                <button
+                  onClick={() => navigate(`/itinerary-view/${token}/transport/${prevTransport!.id}`)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                  data-testid={`prev-transport-${prevTransport.id}`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <ArrowLeft className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-gray-500">Arriving from</div>
+                    <div className="text-[12px] font-semibold text-gray-900">
+                      {prevTransport.fromLabel ?? "Previous stop"} via {MODE_LABELS[prevTransport.userSelectedMode ?? prevTransport.recommendedMode ?? "transit"] ?? "transit"}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
+              )}
+              {nextTransport && (
+                <button
+                  onClick={() => navigate(`/itinerary-view/${token}/transport/${nextTransport!.id}`)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                  data-testid={`next-transport-${nextTransport.id}`}
+                >
+                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                    <ChevronRight className="w-4 h-4 text-gray-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] text-gray-500">Continuing to</div>
+                    <div className="text-[12px] font-semibold text-gray-900">
+                      {nextTransport.toLabel ?? "Next stop"} via {MODE_LABELS[nextTransport.userSelectedMode ?? nextTransport.recommendedMode ?? "transit"] ?? "transit"}
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </button>
               )}
             </div>
           </Card>
@@ -660,7 +830,6 @@ export function TransportDetailPage() {
   const { token, legId } = useParams<{ token: string; legId: string }>();
   const [, navigate] = useLocation();
   const { data, isLoading, error } = useItineraryData(token);
-  const [selectedMode, setSelectedMode] = useState<string | null>(null);
 
   if (isLoading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={(error as Error).message} />;
@@ -684,17 +853,17 @@ export function TransportDetailPage() {
 
   if (!leg) return <ErrorScreen message="Transport leg not found." />;
 
-  const mode = selectedMode || leg.userSelectedMode || leg.recommendedMode || "transit";
-  const modeColor = MODE_COLORS[mode] || "#6b7280";
-  const fromName = leg.fromLabel || fromActivity?.name || "—";
-  const toName = leg.toLabel || toActivity?.name || "—";
-  const destLocation = toActivity?.location || toName;
+  const mode = leg.userSelectedMode ?? leg.recommendedMode ?? "transit";
+  const modeColor = MODE_COLORS[mode] ?? "#6b7280";
+  const fromName = leg.fromLabel ?? fromActivity?.name ?? "—";
+  const toName = leg.toLabel ?? toActivity?.name ?? "—";
+  const destLocation = toActivity?.location ?? toName;
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="transport-detail-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          onClick={() => navigate(`/itinerary-view/${token}`)}
           className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
           data-testid="button-back"
         >
@@ -711,13 +880,14 @@ export function TransportDetailPage() {
           <div className="p-4">
             {/* Mode header */}
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${modeColor}15` }}>
-                <ModIcon mode={mode} className="w-6 h-6" style={{ color: modeColor }} />
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: `${modeColor}15` }}
+              >
+                <ModeIcon mode={mode} className="w-6 h-6" />
               </div>
               <div className="flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[mode] || mode}</span>
-                </div>
+                <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[mode] ?? mode}</span>
                 {leg.operatorName && (
                   <div className="flex items-center gap-1.5 mt-0.5 text-[12px] text-gray-500">
                     <Building2 className="w-3 h-3" /> via {leg.operatorName}
@@ -735,7 +905,9 @@ export function TransportDetailPage() {
               </div>
               <div className="flex-1 space-y-3">
                 <div>
-                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-from">{fromName}</div>
+                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-from">
+                    {fromName}
+                  </div>
                   {leg.departureTime && (
                     <div className="text-[11px] text-gray-500 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Depart {formatTime(leg.departureTime)}
@@ -743,7 +915,9 @@ export function TransportDetailPage() {
                   )}
                 </div>
                 <div>
-                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-to">{toName}</div>
+                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-to">
+                    {toName}
+                  </div>
                   {leg.arrivalTime && (
                     <div className="text-[11px] text-gray-500 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Arrive {formatTime(leg.arrivalTime)}
@@ -758,7 +932,7 @@ export function TransportDetailPage() {
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] text-gray-500 mb-0.5">Duration</div>
                 <div className="text-[14px] font-bold text-gray-900" data-testid="text-duration">
-                  {formatDuration(leg.estimatedDurationMinutes || 0)}
+                  {formatDuration(leg.estimatedDurationMinutes ?? 0)}
                 </div>
               </div>
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
@@ -770,7 +944,7 @@ export function TransportDetailPage() {
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] text-gray-500 mb-0.5">Cost</div>
                 <div className="text-[14px] font-bold text-gray-900" data-testid="text-cost">
-                  {(leg.estimatedCostUsd || 0) > 0 ? `$${leg.estimatedCostUsd}` : "Free"}
+                  {(leg.estimatedCostUsd ?? 0) > 0 ? `$${leg.estimatedCostUsd}` : "Free"}
                 </div>
               </div>
             </div>
@@ -788,16 +962,67 @@ export function TransportDetailPage() {
               <div className="flex items-center gap-2 mb-3 text-[12px] text-gray-600">
                 <Ticket className="w-3.5 h-3.5 text-gray-400" />
                 <span className="font-medium">Booking Ref:</span>
-                <span className="font-mono text-[11px] bg-gray-100 px-2 py-0.5 rounded" data-testid="text-booking-ref">{leg.bookingRef}</span>
+                <span
+                  className="font-mono text-[11px] bg-gray-100 px-2 py-0.5 rounded"
+                  data-testid="text-booking-ref"
+                >
+                  {leg.bookingRef}
+                </span>
               </div>
             )}
           </div>
         </Card>
       </div>
 
+      {/* Alternative modes */}
+      <div className="px-4 pb-3">
+        <h3 className="text-[13px] font-bold text-gray-900 mb-3">Alternative Options</h3>
+        <div className="grid grid-cols-3 gap-2">
+          {TRANSPORT_OPTIONS.map(opt => {
+            const isSelected = opt.mode === mode;
+            return (
+              <div
+                key={opt.mode}
+                className={`flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-xl border-2 transition-all ${
+                  isSelected
+                    ? "border-current bg-gray-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+                style={isSelected ? { borderColor: opt.color, color: opt.color } : {}}
+                data-testid={`mode-option-${opt.mode}`}
+              >
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: isSelected ? `${opt.color}20` : "#f3f4f6" }}
+                >
+                  <div style={{ color: isSelected ? opt.color : "#6b7280" }}>{opt.icon}</div>
+                </div>
+                <span
+                  className="text-[10px] font-semibold"
+                  style={{ color: isSelected ? opt.color : "#6b7280" }}
+                >
+                  {opt.label}
+                </span>
+                {isSelected && (
+                  <Badge
+                    className="text-[8px] px-1 py-0 bg-current/10 border-0"
+                    style={{ color: opt.color }}
+                  >
+                    Current
+                  </Badge>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Navigate */}
       <div className="px-4 pb-6">
-        <NavigateDropdown location={destLocation} lat={toActivity?.lat} lng={toActivity?.lng} />
+        <Card className="p-4">
+          <h3 className="text-[13px] font-bold text-gray-900 mb-3">Navigate to Destination</h3>
+          <NavigateDropdown location={destLocation} lat={toActivity?.lat} lng={toActivity?.lng} />
+        </Card>
       </div>
     </div>
   );
@@ -815,10 +1040,10 @@ function MapPlaceholder({ activities, dayColor }: { activities: ApiActivity[]; d
       </div>
     );
   }
-  const minLat = Math.min(...validActs.map(a => a.lat!));
-  const maxLat = Math.max(...validActs.map(a => a.lat!));
-  const minLng = Math.min(...validActs.map(a => a.lng!));
-  const maxLng = Math.max(...validActs.map(a => a.lng!));
+  const lats = validActs.map(a => a.lat!);
+  const lngs = validActs.map(a => a.lng!);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
   const padLat = (maxLat - minLat) * 0.15 || 0.01;
   const padLng = (maxLng - minLng) * 0.15 || 0.01;
   const toX = (lng: number) => ((lng - (minLng - padLng)) / ((maxLng + padLng) - (minLng - padLng))) * 100;
@@ -841,10 +1066,17 @@ function MapPlaceholder({ activities, dayColor }: { activities: ApiActivity[]; d
         )}
       </svg>
       {validActs.map((a, i) => (
-        <div key={a.id} className="absolute flex flex-col items-center"
-          style={{ left: `${toX(a.lng!)}%`, top: `${toY(a.lat!)}%`, transform: "translate(-50%, -100%)" }}>
-          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md border-2 border-white"
-            style={{ backgroundColor: dayColor }}>{i + 1}</div>
+        <div
+          key={a.id}
+          className="absolute flex flex-col items-center"
+          style={{ left: `${toX(a.lng!)}%`, top: `${toY(a.lat!)}%`, transform: "translate(-50%, -100%)" }}
+        >
+          <div
+            className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-md border-2 border-white"
+            style={{ backgroundColor: dayColor }}
+          >
+            {i + 1}
+          </div>
           <div className="w-0.5 h-2" style={{ backgroundColor: dayColor }} />
         </div>
       ))}
@@ -871,20 +1103,20 @@ export function MapFullPage() {
   const allActivities = currentDays.flatMap(d => d.activities);
   const allTransports = currentDays.flatMap(d => d.transportLegs);
   const dayColor = isAllDays ? "#3b82f6" : DAY_COLORS[selectedDay! % DAY_COLORS.length];
+  const destination = variant.destination ?? variant.name;
 
   const fullRouteUrl = allActivities.filter(a => a.lat && a.lng).length > 0
     ? `https://www.google.com/maps/dir/${allActivities.filter(a => a.lat && a.lng).map(a => `${a.lat},${a.lng}`).join("/")}`
     : "#";
 
-  const totalTransitTime = allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
-  const totalTransitCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
-  const destination = variant.destination || variant.name;
+  const totalTransitTime = allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
+  const totalTransitCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="map-full-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          onClick={() => navigate(`/itinerary-view/${token}`)}
           className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
           data-testid="button-back"
         >
@@ -894,28 +1126,39 @@ export function MapFullPage() {
           <h1 className="text-[15px] font-bold text-gray-900">Trip Map</h1>
           <p className="text-[11px] text-gray-500">{destination}</p>
         </div>
-        <a href={fullRouteUrl} target="_blank" rel="noopener noreferrer"
+        <a
+          href={fullRouteUrl}
+          target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-[11px] font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg"
-          data-testid="button-open-full-route">
+          data-testid="button-open-full-route"
+        >
           <Route className="w-3.5 h-3.5" /> Open Route
         </a>
       </div>
 
-      {/* Day selector */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
           <button
             onClick={() => setSelectedDay(null)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${isAllDays ? "text-white shadow-md bg-gray-800" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
+              isAllDays ? "text-white shadow-md bg-gray-800" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            }`}
             data-testid="button-day-all"
-          >All Days</button>
+          >
+            All Days
+          </button>
           {variant.days.map((d, i) => (
-            <button key={d.dayNumber}
+            <button
+              key={d.dayNumber}
               onClick={() => setSelectedDay(i)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${selectedDay === i ? "text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all ${
+                selectedDay === i ? "text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
               style={selectedDay === i ? { backgroundColor: DAY_COLORS[i % DAY_COLORS.length] } : {}}
               data-testid={`button-day-${d.dayNumber}`}
-            >D{d.dayNumber}</button>
+            >
+              D{d.dayNumber}
+            </button>
           ))}
         </div>
       </div>
@@ -924,20 +1167,25 @@ export function MapFullPage() {
         <MapPlaceholder activities={allActivities} dayColor={dayColor} />
       </div>
 
-      {/* Stats row */}
       <div className="px-4 pb-3">
         <div className="grid grid-cols-4 gap-2">
           <Card className="p-2.5 text-center">
             <div className="text-[10px] text-gray-500 mb-0.5">Stops</div>
-            <div className="text-[16px] font-bold text-gray-900" data-testid="text-total-stops">{allActivities.length}</div>
+            <div className="text-[16px] font-bold text-gray-900" data-testid="text-total-stops">
+              {allActivities.length}
+            </div>
           </Card>
           <Card className="p-2.5 text-center">
             <div className="text-[10px] text-gray-500 mb-0.5">Transit</div>
-            <div className="text-[14px] font-bold text-gray-900" data-testid="text-transit-time">{formatDuration(totalTransitTime)}</div>
+            <div className="text-[14px] font-bold text-gray-900" data-testid="text-transit-time">
+              {formatDuration(totalTransitTime)}
+            </div>
           </Card>
           <Card className="p-2.5 text-center">
             <div className="text-[10px] text-gray-500 mb-0.5">Cost</div>
-            <div className="text-[14px] font-bold text-gray-900" data-testid="text-transit-cost">${totalTransitCost}</div>
+            <div className="text-[14px] font-bold text-gray-900" data-testid="text-transit-cost">
+              ${totalTransitCost}
+            </div>
           </Card>
           <Card className="p-2.5 text-center">
             <div className="text-[10px] text-gray-500 mb-0.5">Days</div>
@@ -946,7 +1194,6 @@ export function MapFullPage() {
         </div>
       </div>
 
-      {/* Stop list */}
       <div className="px-4 pb-6">
         <h2 className="text-[13px] font-bold text-gray-900 mb-3">
           {isAllDays ? "All Stops" : `Day ${currentDays[0]?.dayNumber} Stops`}
@@ -957,7 +1204,10 @@ export function MapFullPage() {
             <div key={day.dayNumber} className="mb-4">
               {isAllDays && (
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold" style={{ backgroundColor: dc }}>
+                  <div
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold"
+                    style={{ backgroundColor: dc }}
+                  >
                     {day.dayNumber}
                   </div>
                   <span className="text-[12px] font-bold text-gray-800">Day {day.dayNumber}</span>
@@ -968,7 +1218,11 @@ export function MapFullPage() {
                   <div key={act.id}>
                     <div className="flex items-start gap-3 py-2.5">
                       <div className="flex flex-col items-center flex-shrink-0">
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold border-2 border-white shadow-sm" style={{ backgroundColor: dc }} data-testid={`pin-${act.id}`}>
+                        <div
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold border-2 border-white shadow-sm"
+                          style={{ backgroundColor: dc }}
+                          data-testid={`pin-${act.id}`}
+                        >
                           {ai + 1}
                         </div>
                         {ai < day.activities.length - 1 && <div className="w-0.5 h-6 bg-gray-200 mt-1" />}
@@ -976,11 +1230,21 @@ export function MapFullPage() {
                       <div className="flex-1 min-w-0">
                         <span className="text-[12px] font-semibold text-gray-900">{act.name}</span>
                         <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500 flex-wrap">
-                          {act.startTime && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatTime(act.startTime)}</span>}
-                          {act.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{act.location}</span>}
+                          {act.startTime && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> {formatTime(act.startTime)}
+                            </span>
+                          )}
+                          {act.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3" /> {act.location}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      {act.location && <NavigateDropdown location={act.location} lat={act.lat} lng={act.lng} />}
+                      {act.location && (
+                        <NavigateDropdown location={act.location} lat={act.lat} lng={act.lng} />
+                      )}
                     </div>
                   </div>
                 ))}
@@ -988,13 +1252,14 @@ export function MapFullPage() {
             </div>
           );
         })}
-        <div className="mt-4">
-          <a href={fullRouteUrl} target="_blank" rel="noopener noreferrer"
-            className="w-full flex items-center justify-center gap-2 text-[13px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl py-3 hover:bg-blue-100 transition-colors"
-            data-testid="button-open-full-route-bottom">
-            <Map className="w-4 h-4" /> Open Full Route in Maps <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        </div>
+        <a
+          href={fullRouteUrl}
+          target="_blank" rel="noopener noreferrer"
+          className="w-full flex items-center justify-center gap-2 text-[13px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-xl py-3 hover:bg-blue-100 transition-colors"
+          data-testid="button-open-full-route-bottom"
+        >
+          <Map className="w-4 h-4" /> Open Full Route in Maps <ExternalLink className="w-3.5 h-3.5" />
+        </a>
       </div>
     </div>
   );
@@ -1012,8 +1277,13 @@ function ScoreRing({ score, size = 80 }: { score: number; size?: number }) {
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={6} />
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#3b82f6" strokeWidth={6}
         strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" />
-      <text x={size / 2} y={size / 2 + 1} textAnchor="middle" dominantBaseline="central"
-        className="fill-gray-900 font-bold" fontSize={size * 0.28} transform={`rotate(90, ${size / 2}, ${size / 2})`}>
+      <text
+        x={size / 2} y={size / 2 + 1}
+        textAnchor="middle" dominantBaseline="central"
+        className="fill-gray-900 font-bold"
+        fontSize={size * 0.28}
+        transform={`rotate(90, ${size / 2}, ${size / 2})`}
+      >
         {score}
       </text>
     </svg>
@@ -1047,21 +1317,25 @@ export function TripStatsPage() {
   const { variant } = data;
   const allActivities = variant.days.flatMap(d => d.activities);
   const allTransports = variant.days.flatMap(d => d.transportLegs);
-  const totalActivityCost = allActivities.reduce((s, a) => s + (a.cost || 0), 0);
-  const totalTransportCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0);
-  const totalCost = parseFloat(String(variant.totalCost || 0)) || (totalActivityCost + totalTransportCost);
-  const totalTransitMins = variant.transportSummary?.totalMinutes ||
-    allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes || 0), 0);
-  const totalActivityMins = allActivities.reduce((s, a) => s + (a.duration || 60), 0);
+  const totalActivityCost = allActivities.reduce((s, a) => s + (a.cost ?? 0), 0);
+  const totalTransportCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
+  const totalCost =
+    parseFloat(String(variant.totalCost ?? 0)) || (totalActivityCost + totalTransportCost);
+  const totalTransitMins =
+    variant.transportSummary?.totalMinutes ??
+    allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
+  const totalActivityMins = allActivities.reduce((s, a) => s + (a.duration ?? 60), 0);
   const freeMins = Math.max(variant.days.length * 14 * 60 - totalActivityMins - totalTransitMins, 0);
-  const score = variant.optimizationScore || 85;
-  const destination = variant.destination || variant.name;
+  const score = variant.optimizationScore ?? 85;
+  const destination = variant.destination ?? variant.name;
 
   const dayCosts = variant.days.map(d => ({
     day: d.dayNumber,
-    cost: d.activities.reduce((s, a) => s + (a.cost || 0), 0) + d.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd || 0), 0),
+    cost: d.activities.reduce((s, a) => s + (a.cost ?? 0), 0) +
+      d.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0),
   }));
   const maxDayCost = Math.max(...dayCosts.map(d => d.cost), 1);
+  const totalTime = totalActivityMins + totalTransitMins + freeMins;
 
   const SCORE_CATEGORIES = [
     { label: "Planning", score: Math.min(score + 5, 100), color: "#3b82f6" },
@@ -1070,13 +1344,11 @@ export function TripStatsPage() {
     { label: "Wellness", score: Math.max(score - 3, 0), color: "#ec4899" },
   ];
 
-  const totalTime = totalActivityMins + totalTransitMins + freeMins;
-
   return (
     <div className="min-h-screen bg-gray-50" data-testid="trip-stats-page">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          onClick={() => navigate(`/itinerary-view/${token}`)}
           className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
           data-testid="button-back"
         >
@@ -1089,25 +1361,32 @@ export function TripStatsPage() {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Score card */}
         <Card className="p-4">
           <div className="flex items-center gap-4">
             <ScoreRing score={score} />
             <div className="flex-1 space-y-2">
               <div className="text-[13px] font-bold text-gray-900">Overall Trip Score</div>
-              <div className="text-[11px] text-gray-500">Based on planning completeness, budget efficiency, and timing optimization.</div>
+              <div className="text-[11px] text-gray-500">
+                Based on planning completeness, budget efficiency, and timing optimization.
+              </div>
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
             {SCORE_CATEGORIES.map(cat => (
               <div key={cat.label} className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[13px] font-bold text-white" style={{ backgroundColor: cat.color }}>
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-[13px] font-bold text-white"
+                  style={{ backgroundColor: cat.color }}
+                >
                   {cat.score}
                 </div>
                 <div>
                   <div className="text-[12px] font-semibold text-gray-800">{cat.label}</div>
                   <div className="h-1.5 w-16 bg-gray-100 rounded-full mt-0.5 overflow-hidden">
-                    <div className="h-full rounded-full" style={{ width: `${cat.score}%`, backgroundColor: cat.color }} />
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${cat.score}%`, backgroundColor: cat.color }}
+                    />
                   </div>
                 </div>
               </div>
@@ -1115,7 +1394,6 @@ export function TripStatsPage() {
           </div>
         </Card>
 
-        {/* Budget */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <DollarSign className="w-4 h-4 text-green-600" />
@@ -1127,7 +1405,9 @@ export function TripStatsPage() {
               <div className="text-[10px] text-green-600 font-medium">Total Cost</div>
             </div>
             <div className="bg-amber-50 rounded-lg p-2.5 text-center">
-              <div className="text-[18px] font-bold text-amber-700">${variant.days.length > 0 ? Math.round(totalCost / variant.days.length) : 0}</div>
+              <div className="text-[18px] font-bold text-amber-700">
+                ${variant.days.length > 0 ? Math.round(totalCost / variant.days.length) : 0}
+              </div>
               <div className="text-[10px] text-amber-600 font-medium">Per Day</div>
             </div>
           </div>
@@ -1138,7 +1418,10 @@ export function TripStatsPage() {
                 <span className="text-[12px] font-semibold text-gray-800">${totalActivityCost}</span>
               </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-purple-500" style={{ width: totalCost > 0 ? `${Math.round((totalActivityCost / totalCost) * 100)}%` : "0%" }} />
+                <div
+                  className="h-full rounded-full bg-purple-500"
+                  style={{ width: totalCost > 0 ? `${Math.round((totalActivityCost / totalCost) * 100)}%` : "0%" }}
+                />
               </div>
             </div>
             <div className="space-y-1">
@@ -1147,13 +1430,15 @@ export function TripStatsPage() {
                 <span className="text-[12px] font-semibold text-gray-800">${totalTransportCost}</span>
               </div>
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full bg-amber-500" style={{ width: totalCost > 0 ? `${Math.round((totalTransportCost / totalCost) * 100)}%` : "0%" }} />
+                <div
+                  className="h-full rounded-full bg-amber-500"
+                  style={{ width: totalCost > 0 ? `${Math.round((totalTransportCost / totalCost) * 100)}%` : "0%" }}
+                />
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Time */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <Clock className="w-4 h-4 text-blue-600" />
@@ -1180,7 +1465,6 @@ export function TripStatsPage() {
           </div>
         </Card>
 
-        {/* Day-by-day */}
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="w-4 h-4 text-indigo-600" />
@@ -1189,8 +1473,10 @@ export function TripStatsPage() {
           <div className="space-y-2">
             {dayCosts.map(d => (
               <div key={d.day} className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
-                  style={{ backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }}>
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0"
+                  style={{ backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }}
+                >
                   D{d.day}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1199,8 +1485,13 @@ export function TripStatsPage() {
                     <span className="text-[11px] font-semibold text-gray-800">${d.cost}</span>
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all"
-                      style={{ width: `${Math.round((d.cost / maxDayCost) * 100)}%`, backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length] }} />
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.round((d.cost / maxDayCost) * 100)}%`,
+                        backgroundColor: DAY_COLORS[(d.day - 1) % DAY_COLORS.length],
+                      }}
+                    />
                   </div>
                 </div>
               </div>
@@ -1215,7 +1506,9 @@ export function TripStatsPage() {
 // ─────────────────────────────────────────────
 // 6. SERVICES PAGE
 // ─────────────────────────────────────────────
-const TYPE_CONFIG_SVC: Record<string, { icon: typeof Hotel; label: string; color: string; bg: string }> = {
+const TYPE_CONFIG_SVC: Record<string, {
+  icon: typeof Hotel; label: string; color: string; bg: string;
+}> = {
   hotel: { icon: Hotel, label: "Hotels", color: "text-blue-700", bg: "bg-blue-50" },
   tour: { icon: Compass, label: "Tours & Activities", color: "text-purple-700", bg: "bg-purple-50" },
   transport: { icon: Car, label: "Transport", color: "text-amber-700", bg: "bg-amber-50" },
@@ -1230,12 +1523,8 @@ interface ServiceBooking {
   provider: string;
   status: "confirmed" | "pending" | "cancelled";
   confirmationCode?: string;
-  checkIn?: string;
-  checkOut?: string;
   date?: string;
   cost: number;
-  contact?: string;
-  phone?: string;
   address?: string;
   notes?: string;
 }
@@ -1243,9 +1532,15 @@ interface ServiceBooking {
 function BookingCard({ booking }: { booking: ServiceBooking }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
-  const statusStyle = STATUS_STYLES[booking.status] || STATUS_STYLES.pending;
   const typeConf = TYPE_CONFIG_SVC[booking.type];
-  const Icon = typeConf?.icon || FileText;
+  const Icon = typeConf?.icon ?? FileText;
+
+  const statusStyles = {
+    confirmed: { bg: "bg-green-100", fg: "text-green-800", label: "Confirmed" },
+    pending: { bg: "bg-yellow-100", fg: "text-yellow-800", label: "Pending" },
+    cancelled: { bg: "bg-red-100", fg: "text-red-800", label: "Cancelled" },
+  };
+  const ss = statusStyles[booking.status];
 
   const handleCopy = () => {
     if (booking.confirmationCode) {
@@ -1262,14 +1557,14 @@ function BookingCard({ booking }: { booking: ServiceBooking }) {
         className="w-full px-3.5 py-3 flex items-start gap-3 text-left hover:bg-gray-50/50 transition-colors"
         data-testid={`booking-card-${booking.id}`}
       >
-        <div className={`w-9 h-9 rounded-lg ${typeConf?.bg || "bg-gray-50"} flex items-center justify-center flex-shrink-0 mt-0.5`}>
-          <Icon className={`w-4 h-4 ${typeConf?.color || "text-gray-600"}`} />
+        <div className={`w-9 h-9 rounded-lg ${typeConf?.bg ?? "bg-gray-50"} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+          <Icon className={`w-4 h-4 ${typeConf?.color ?? "text-gray-600"}`} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[13px] font-semibold text-gray-900">{booking.name}</span>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusStyle.bg} ${statusStyle.fg}`}>
-              {statusStyle.label}
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ss.bg} ${ss.fg}`}>
+              {ss.label}
             </span>
           </div>
           <div className="text-[11px] text-gray-500 mt-0.5">{booking.provider}</div>
@@ -1284,32 +1579,21 @@ function BookingCard({ booking }: { booking: ServiceBooking }) {
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-100 px-3.5 py-3 space-y-3 bg-gray-50/30">
-          <div className="grid grid-cols-2 gap-2">
-            {booking.checkIn && booking.checkOut && (
-              <>
-                <div>
-                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Check-in</div>
-                  <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.checkIn}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Check-out</div>
-                  <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.checkOut}</div>
-                </div>
-              </>
-            )}
-            {booking.date && !booking.checkIn && (
-              <div>
-                <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Date</div>
-                <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.date}</div>
-              </div>
-            )}
-          </div>
+        <div className="border-t border-gray-100 px-3.5 py-3 space-y-2 bg-gray-50/30">
+          {booking.date && (
+            <div>
+              <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Date</div>
+              <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.date}</div>
+            </div>
+          )}
           {booking.confirmationCode && (
             <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
               <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
               <span className="text-[12px] text-gray-700 font-mono flex-1">{booking.confirmationCode}</span>
-              <button onClick={handleCopy} className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 hover:text-blue-700">
+              <button
+                onClick={handleCopy}
+                className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 hover:text-blue-700"
+              >
                 {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
               </button>
             </div>
@@ -1325,19 +1609,6 @@ function BookingCard({ booking }: { booking: ServiceBooking }) {
               <div className="text-[11px] text-amber-800">{booking.notes}</div>
             </div>
           )}
-          <div className="flex gap-2 pt-1">
-            {booking.phone && (
-              <a href={`tel:${booking.phone}`} className="flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors">
-                <Phone className="w-3 h-3" /> Call
-              </a>
-            )}
-            {booking.address && (
-              <a href={buildMapsUrl(booking.address)} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors">
-                <Navigation className="w-3 h-3" /> Navigate
-              </a>
-            )}
-          </div>
         </div>
       )}
     </Card>
@@ -1353,38 +1624,29 @@ export function ServicesPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  const destination = data.variant.destination || data.variant.name;
+  const destination = data.variant.destination ?? data.variant.name;
 
-  // Derive bookings from activities that have booking refs
   const derivedBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
-    day.activities
-      .filter(a => a.description || a.name)
-      .map(a => ({
-        id: a.id,
-        name: a.name,
-        type: a.category === "dining" ? "restaurant" as const : "tour" as const,
-        provider: "Traveloure",
-        status: "confirmed" as const,
-        cost: a.cost || 0,
-        date: day.date,
-      }))
+    day.activities.map(a => ({
+      id: a.id,
+      name: a.name,
+      type: a.category === "dining" ? "restaurant" as const : "tour" as const,
+      provider: "Traveloure",
+      status: "confirmed" as const,
+      cost: a.cost ?? 0,
+      date: day.date ? formatDate(day.date) : undefined,
+    }))
   );
 
   const confirmedCount = derivedBookings.filter(b => b.status === "confirmed").length;
   const pendingCount = derivedBookings.filter(b => b.status === "pending").length;
   const totalCost = derivedBookings.reduce((s, b) => s + b.cost, 0);
 
-  const grouped = Object.entries(TYPE_CONFIG_SVC).reduce<Record<string, ServiceBooking[]>>((acc, [type]) => {
-    const items = derivedBookings.filter(b => b.type === type);
-    if (items.length > 0) acc[type] = items;
-    return acc;
-  }, {});
-
   return (
     <div className="min-h-screen bg-gray-50" data-testid="services-page">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          onClick={() => navigate(`/itinerary-view/${token}`)}
           className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
           data-testid="button-back"
         >
@@ -1420,30 +1682,15 @@ export function ServicesPage() {
           </Card>
         </div>
 
-        {Object.entries(grouped).length === 0 ? (
+        {derivedBookings.length === 0 ? (
           <Card className="p-8 text-center">
             <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
             <p className="text-[13px] text-gray-500">No bookings found for this itinerary.</p>
           </Card>
         ) : (
-          Object.entries(grouped).map(([type, bookings]) => {
-            const conf = TYPE_CONFIG_SVC[type];
-            const Icon = conf?.icon || FileText;
-            return (
-              <div key={type}>
-                <div className="flex items-center gap-2 mb-2.5">
-                  <div className={`w-6 h-6 rounded-md ${conf?.bg || "bg-gray-50"} flex items-center justify-center`}>
-                    <Icon className={`w-3.5 h-3.5 ${conf?.color || "text-gray-600"}`} />
-                  </div>
-                  <span className="text-[13px] font-bold text-gray-900">{conf?.label || type}</span>
-                  <span className="text-[11px] text-gray-400 font-medium">({bookings.length})</span>
-                </div>
-                <div className="space-y-2.5">
-                  {bookings.map(b => <BookingCard key={b.id} booking={b} />)}
-                </div>
-              </div>
-            );
-          })
+          <div className="space-y-2.5">
+            {derivedBookings.map(b => <BookingCard key={b.id} booking={b} />)}
+          </div>
         )}
       </div>
     </div>
@@ -1463,14 +1710,14 @@ export function ExpertChatPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  const destination = data.variant.destination || data.variant.name;
+  const destination = data.variant.destination ?? data.variant.name;
   const sharedBy = data.sharedBy;
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="expert-chat-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          onClick={() => navigate(`/itinerary-view/${token}`)}
           className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
           data-testid="button-back"
         >
@@ -1482,21 +1729,25 @@ export function ExpertChatPage() {
         </div>
         {sharedBy && (
           <div className="w-8 h-8 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800">
-            {sharedBy.name?.[0]?.toUpperCase() || "E"}
+            {sharedBy.name?.[0]?.toUpperCase() ?? "E"}
           </div>
         )}
       </div>
 
-      {/* Expert profile */}
       {sharedBy && (
         <Card className="mx-4 mt-4 mb-3 overflow-hidden">
           <div className="p-4">
             <div className="flex items-start gap-3">
               <div className="w-14 h-14 rounded-full bg-purple-200 flex items-center justify-center text-lg font-bold text-purple-800 flex-shrink-0">
-                {sharedBy.name?.[0]?.toUpperCase() || "E"}
+                {sharedBy.name?.[0]?.toUpperCase() ?? "E"}
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-[15px] font-bold text-gray-900" data-testid="text-expert-name">{sharedBy.name}</h3>
+                <h3
+                  className="text-[15px] font-bold text-gray-900"
+                  data-testid="text-expert-name"
+                >
+                  {sharedBy.name}
+                </h3>
                 <p className="text-[12px] text-gray-500 mt-0.5">Travel Expert</p>
               </div>
             </div>
@@ -1504,7 +1755,6 @@ export function ExpertChatPage() {
         </Card>
       )}
 
-      {/* Expert notes from API */}
       {data.expertNotes && (
         <div className="mx-4 mb-3">
           <div className="flex items-center gap-2 mb-2">
@@ -1517,7 +1767,6 @@ export function ExpertChatPage() {
         </div>
       )}
 
-      {/* Chat placeholder */}
       <div className="mx-4 mb-4">
         <div className="flex items-center gap-2 mb-3">
           <MessageSquare className="w-4 h-4 text-gray-500" />
@@ -1533,7 +1782,7 @@ export function ExpertChatPage() {
           <>
             <div className="flex items-start gap-2.5 mb-3">
               <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800 flex-shrink-0">
-                {sharedBy.name?.[0]?.toUpperCase() || "E"}
+                {sharedBy.name?.[0]?.toUpperCase() ?? "E"}
               </div>
               <div className="max-w-[85%]">
                 <div className="rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[12px] bg-white border border-gray-200 text-gray-800 leading-relaxed">
@@ -1553,8 +1802,13 @@ export function ExpertChatPage() {
                 className="flex-1 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none"
                 data-testid="input-chat-message"
               />
-              <Button size="icon" variant="default" className="rounded-full w-8 h-8" data-testid="button-send-message"
-                onClick={() => setMessage("")}>
+              <Button
+                size="icon"
+                variant="default"
+                className="rounded-full w-8 h-8"
+                data-testid="button-send-message"
+                onClick={() => setMessage("")}
+              >
                 <Send className="w-3.5 h-3.5" />
               </Button>
             </div>
@@ -1567,8 +1821,18 @@ export function ExpertChatPage() {
 
 // ─────────────────────────────────────────────
 // 8. REVIEW CHANGES PAGE
+// Only accessible when expertDiff exists
 // ─────────────────────────────────────────────
 type FilterTab = "all" | "pending" | "accepted" | "rejected";
+
+interface ChangeItem {
+  id: string;
+  type: "replace" | "time" | "add" | "remove";
+  title: string;
+  removeLine: string | null;
+  addLine: string;
+  reason: string;
+}
 
 const CHANGE_TYPE_LABELS: Record<string, { label: string; bg: string; fg: string }> = {
   replace: { label: "Swap", bg: "bg-blue-100", fg: "text-blue-700" },
@@ -1577,11 +1841,49 @@ const CHANGE_TYPE_LABELS: Record<string, { label: string; bg: string; fg: string
   remove: { label: "Remove", bg: "bg-red-100", fg: "text-red-700" },
 };
 
-const CHANGE_DOT: Record<string, string> = {
-  expert: "bg-blue-500",
-  ai: "bg-green-500",
-  owner: "bg-amber-500",
-};
+function buildChangesFromDiff(diff: ExpertDiff): ChangeItem[] {
+  const changes: ChangeItem[] = [];
+
+  if (diff.activityDiffs) {
+    for (const [id, d] of Object.entries(diff.activityDiffs)) {
+      if (d.name && d.name !== d.originalName) {
+        changes.push({
+          id: `act-name-${id}`,
+          type: "replace",
+          title: `Rename: ${d.originalName}`,
+          removeLine: d.originalName,
+          addLine: d.name,
+          reason: d.note ?? "Name updated by expert",
+        });
+      }
+      if (d.startTime && d.originalStartTime && d.startTime !== d.originalStartTime) {
+        changes.push({
+          id: `act-time-${id}`,
+          type: "time",
+          title: `Time Change: ${d.originalName}`,
+          removeLine: `@ ${d.originalStartTime}`,
+          addLine: `@ ${d.startTime}`,
+          reason: d.note ?? "Time updated by expert",
+        });
+      }
+    }
+  }
+
+  if (diff.transportDiffs) {
+    for (const [id, d] of Object.entries(diff.transportDiffs)) {
+      changes.push({
+        id: `trans-${id}`,
+        type: "replace",
+        title: `Transport: Leg ${d.legOrder}`,
+        removeLine: d.originalMode,
+        addLine: d.newMode,
+        reason: "Mode change suggested by expert",
+      });
+    }
+  }
+
+  return changes;
+}
 
 export function ReviewChangesPage() {
   const { token } = useParams<{ token: string }>();
@@ -1594,157 +1896,141 @@ export function ReviewChangesPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  const destination = data.variant.destination || data.variant.name;
+  const destination = data.variant.destination ?? data.variant.name;
 
-  // Derive "expert changes" from expertDiff if available
-  type ExpertChangeItem = {
-    id: string;
-    type: "replace" | "time" | "add" | "remove";
-    title: string;
-    removeLine: string | null;
-    addLine: string;
-    reason: string;
-    dayNum?: number;
-    status?: "pending" | "accepted" | "rejected";
-  };
-
-  const expertChanges: ExpertChangeItem[] = [];
-
-  if ((data as any).expertDiff?.activityDiffs) {
-    const actDiffs = (data as any).expertDiff.activityDiffs as Record<string, any>;
-    Object.entries(actDiffs).forEach(([id, diff]: [string, any]) => {
-      if (diff.name && diff.name !== diff.originalName) {
-        expertChanges.push({
-          id: `act-name-${id}`,
-          type: "replace",
-          title: `Rename: ${diff.originalName}`,
-          removeLine: diff.originalName,
-          addLine: diff.name,
-          reason: diff.note || "Name updated by expert",
-        });
-      }
-      if (diff.startTime && diff.originalStartTime && diff.startTime !== diff.originalStartTime) {
-        expertChanges.push({
-          id: `act-time-${id}`,
-          type: "time",
-          title: `Time Change: ${diff.originalName || "Activity"}`,
-          removeLine: `@ ${diff.originalStartTime}`,
-          addLine: `@ ${diff.startTime}`,
-          reason: diff.note || "Time updated by expert",
-        });
-      }
-    });
+  if (!data.expertDiff) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="text-center">
+          <History className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+          <p className="text-[14px] font-semibold text-gray-700 mb-2">No changes to review</p>
+          <p className="text-[12px] text-gray-500 mb-4">
+            Your travel expert has not submitted any changes yet.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => navigate(`/itinerary-view/${token}`)}>
+            Back to Itinerary
+          </Button>
+        </div>
+      </div>
+    );
   }
 
-  if ((data as any).expertDiff?.transportDiffs) {
-    const transDiffs = (data as any).expertDiff.transportDiffs as Record<string, any>;
-    Object.entries(transDiffs).forEach(([id, diff]: [string, any]) => {
-      expertChanges.push({
-        id: `trans-${id}`,
-        type: "replace",
-        title: `Transport Mode: Leg ${diff.legOrder}`,
-        removeLine: diff.originalMode,
-        addLine: diff.newMode,
-        reason: "Mode change suggested by expert",
-      });
-    });
-  }
+  const changes = buildChangesFromDiff(data.expertDiff);
 
-  const pendingCount = expertChanges.filter(c => !decisions[c.id] && c.status !== "accepted" && c.status !== "rejected").length;
-  const acceptedCount = expertChanges.filter(c => decisions[c.id] === "accepted" || c.status === "accepted").length;
-  const rejectedCount = expertChanges.filter(c => decisions[c.id] === "rejected" || c.status === "rejected").length;
+  const getStatus = (c: ChangeItem): "pending" | "accepted" | "rejected" =>
+    decisions[c.id] ?? "pending";
 
-  const getEffectiveStatus = (c: ExpertChangeItem): "pending" | "accepted" | "rejected" => {
-    if (decisions[c.id]) return decisions[c.id];
-    if (c.status === "accepted" || c.status === "rejected") return c.status;
-    return "pending";
+  const counts = {
+    pending: changes.filter(c => getStatus(c) === "pending").length,
+    accepted: changes.filter(c => getStatus(c) === "accepted").length,
+    rejected: changes.filter(c => getStatus(c) === "rejected").length,
   };
 
-  const filtered = expertChanges.filter(c => {
-    if (activeTab === "all") return true;
-    return getEffectiveStatus(c) === activeTab;
-  });
+  const filtered = changes.filter(c => activeTab === "all" || getStatus(c) === activeTab);
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
-    { key: "all", label: "All", count: expertChanges.length },
-    { key: "pending", label: "Pending", count: pendingCount },
-    { key: "accepted", label: "Accepted", count: acceptedCount },
-    { key: "rejected", label: "Rejected", count: rejectedCount },
+    { key: "all", label: "All", count: changes.length },
+    { key: "pending", label: "Pending", count: counts.pending },
+    { key: "accepted", label: "Accepted", count: counts.accepted },
+    { key: "rejected", label: "Rejected", count: counts.rejected },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="review-changes-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
-          onClick={() => navigate(`/itinerary-view/${token}/itinerary`)}
+          onClick={() => navigate(`/itinerary-view/${token}`)}
           className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
           data-testid="button-back"
         >
           <ArrowLeft className="w-4 h-4 text-gray-600" />
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="text-[14px] font-bold text-gray-900" data-testid="text-page-title">Review Changes</h2>
+          <h2 className="text-[14px] font-bold text-gray-900" data-testid="text-page-title">
+            Review Changes
+          </h2>
           <p className="text-[11px] text-gray-500 truncate">{destination}</p>
         </div>
         <Filter className="w-4 h-4 text-gray-400" />
       </div>
 
-      {/* Summary */}
-      <div className="mx-4 mt-4 mb-3 grid grid-cols-3 gap-2">
+      {data.expertDiff.submittedAt && (
+        <div className="mx-4 mt-3 mb-2 text-[11px] text-gray-500 flex items-center gap-1.5">
+          <History className="w-3.5 h-3.5" />
+          Submitted {formatDate(data.expertDiff.submittedAt)}
+        </div>
+      )}
+
+      <div className="mx-4 mt-3 mb-3 grid grid-cols-3 gap-2">
         <Card className="p-3 text-center" data-testid="stat-pending">
           <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-1.5">
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
-          <div className="text-[18px] font-bold text-gray-900">{pendingCount}</div>
+          <div className="text-[18px] font-bold text-gray-900">{counts.pending}</div>
           <div className="text-[10px] text-gray-500 font-medium">Pending</div>
         </Card>
         <Card className="p-3 text-center" data-testid="stat-accepted">
           <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-1.5">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
           </div>
-          <div className="text-[18px] font-bold text-gray-900">{acceptedCount}</div>
+          <div className="text-[18px] font-bold text-gray-900">{counts.accepted}</div>
           <div className="text-[10px] text-gray-500 font-medium">Accepted</div>
         </Card>
         <Card className="p-3 text-center" data-testid="stat-rejected">
           <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-1.5">
             <XCircle className="w-4 h-4 text-red-600" />
           </div>
-          <div className="text-[18px] font-bold text-gray-900">{rejectedCount}</div>
+          <div className="text-[18px] font-bold text-gray-900">{counts.rejected}</div>
           <div className="text-[10px] text-gray-500 font-medium">Rejected</div>
         </Card>
       </div>
 
-      {/* Filter tabs */}
       <div className="mx-4 mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
         {tabs.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors flex items-center gap-1.5 ${activeTab === tab.key ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
-            data-testid={`tab-${tab.key}`}>
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-colors flex items-center gap-1.5 ${
+              activeTab === tab.key
+                ? "bg-gray-800 text-white"
+                : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+            }`}
+            data-testid={`tab-${tab.key}`}
+          >
             {tab.label}
-            <span className={`text-[10px] ${activeTab === tab.key ? "text-gray-300" : "text-gray-400"}`}>{tab.count}</span>
+            <span className={`text-[10px] ${activeTab === tab.key ? "text-gray-300" : "text-gray-400"}`}>
+              {tab.count}
+            </span>
           </button>
         ))}
       </div>
 
-      {/* Accept/Reject all */}
-      {pendingCount > 0 && activeTab !== "accepted" && activeTab !== "rejected" && (
+      {counts.pending > 0 && (activeTab === "all" || activeTab === "pending") && (
         <div className="mx-4 mb-3 flex gap-2 justify-end">
-          <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-[11px] gap-1"
+          <Button
+            size="sm"
+            variant="default"
+            className="bg-green-600 hover:bg-green-700 text-[11px] gap-1"
             onClick={() => {
               const d: Record<string, "accepted"> = {};
-              expertChanges.forEach(c => { if (!decisions[c.id]) d[c.id] = "accepted"; });
+              changes.filter(c => !decisions[c.id]).forEach(c => { d[c.id] = "accepted"; });
               setDecisions(prev => ({ ...prev, ...d }));
             }}
-            data-testid="button-accept-all">
+            data-testid="button-accept-all"
+          >
             <Check className="w-3.5 h-3.5" /> Accept All
           </Button>
-          <Button size="sm" variant="outline" className="text-red-700 border-red-200 text-[11px] gap-1"
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-red-700 border-red-200 text-[11px] gap-1"
             onClick={() => {
               const d: Record<string, "rejected"> = {};
-              expertChanges.forEach(c => { if (!decisions[c.id]) d[c.id] = "rejected"; });
+              changes.filter(c => !decisions[c.id]).forEach(c => { d[c.id] = "rejected"; });
               setDecisions(prev => ({ ...prev, ...d }));
             }}
-            data-testid="button-reject-all">
+            data-testid="button-reject-all"
+          >
             <X className="w-3.5 h-3.5" /> Reject All
           </Button>
         </div>
@@ -1754,36 +2040,36 @@ export function ReviewChangesPage() {
         {filtered.length === 0 ? (
           <Card className="p-6 text-center">
             <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-[13px] text-gray-500">
-              {expertChanges.length === 0
-                ? "No expert changes have been submitted yet."
-                : "No changes in this category."}
-            </p>
+            <p className="text-[13px] text-gray-500">No changes in this category.</p>
           </Card>
         ) : (
           filtered.map(change => {
-            const eff = getEffectiveStatus(change);
-            const typeInfo = CHANGE_TYPE_LABELS[change.type] || CHANGE_TYPE_LABELS.replace;
+            const status = getStatus(change);
+            const typeInfo = CHANGE_TYPE_LABELS[change.type] ?? CHANGE_TYPE_LABELS.replace;
 
-            if (eff === "accepted") {
+            if (status === "accepted") {
               return (
                 <Card key={change.id} className="overflow-hidden opacity-90" data-testid={`change-card-${change.id}`}>
                   <div className="px-4 py-3 bg-green-50 flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
                     <span className="text-[13px] text-green-800 font-semibold flex-1">{change.title}</span>
-                    <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px]">Accepted</Badge>
+                    <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px]">
+                      Accepted
+                    </Badge>
                   </div>
                 </Card>
               );
             }
 
-            if (eff === "rejected") {
+            if (status === "rejected") {
               return (
                 <Card key={change.id} className="overflow-hidden opacity-60" data-testid={`change-card-${change.id}`}>
                   <div className="px-4 py-3 bg-red-50 flex items-center gap-3">
                     <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
                     <span className="text-[13px] text-red-800 font-semibold line-through flex-1">{change.title}</span>
-                    <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">Rejected</Badge>
+                    <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">
+                      Rejected
+                    </Badge>
                   </div>
                 </Card>
               );
@@ -1794,7 +2080,12 @@ export function ReviewChangesPage() {
                 <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[13px] font-bold text-gray-800">{change.title}</span>
-                    <Badge variant="secondary" className={`${typeInfo.bg} ${typeInfo.fg} text-[10px] border-0`}>{typeInfo.label}</Badge>
+                    <Badge
+                      variant="secondary"
+                      className={`${typeInfo.bg} ${typeInfo.fg} text-[10px] border-0`}
+                    >
+                      {typeInfo.label}
+                    </Badge>
                   </div>
                 </div>
                 <div className="px-4 py-3 space-y-2">
@@ -1816,14 +2107,22 @@ export function ReviewChangesPage() {
                   )}
                 </div>
                 <div className="px-4 py-3 border-t border-gray-100 flex justify-end gap-2">
-                  <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700 text-[12px] gap-1"
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="bg-green-600 hover:bg-green-700 text-[12px] gap-1"
                     onClick={() => setDecisions(prev => ({ ...prev, [change.id]: "accepted" }))}
-                    data-testid={`button-accept-${change.id}`}>
+                    data-testid={`button-accept-${change.id}`}
+                  >
                     <Check className="w-3.5 h-3.5" /> Accept
                   </Button>
-                  <Button size="sm" variant="outline" className="text-red-700 border-red-200 text-[12px] gap-1"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-700 border-red-200 text-[12px] gap-1"
                     onClick={() => setDecisions(prev => ({ ...prev, [change.id]: "rejected" }))}
-                    data-testid={`button-reject-${change.id}`}>
+                    data-testid={`button-reject-${change.id}`}
+                  >
                     <X className="w-3.5 h-3.5" /> Reject
                   </Button>
                 </div>
