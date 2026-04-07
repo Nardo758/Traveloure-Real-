@@ -2059,12 +2059,26 @@ export function TripStatsPage() {
 const TYPE_CONFIG_SVC: Record<string, {
   icon: typeof Hotel; label: string; color: string; bg: string;
 }> = {
-  hotel: { icon: Hotel, label: "Hotels", color: "text-blue-700", bg: "bg-blue-50" },
-  tour: { icon: Compass, label: "Tours & Activities", color: "text-purple-700", bg: "bg-purple-50" },
-  transport: { icon: Car, label: "Transport", color: "text-amber-700", bg: "bg-amber-50" },
-  restaurant: { icon: UtensilsCrossed, label: "Dining", color: "text-red-700", bg: "bg-red-50" },
-  insurance: { icon: Shield, label: "Insurance", color: "text-green-700", bg: "bg-green-50" },
+  hotel:     { icon: Hotel,          label: "Hotels",             color: "text-blue-700",   bg: "bg-blue-50" },
+  tour:      { icon: Compass,        label: "Tours & Activities", color: "text-purple-700", bg: "bg-purple-50" },
+  transport: { icon: Car,            label: "Transport",          color: "text-amber-700",  bg: "bg-amber-50" },
+  restaurant:{ icon: UtensilsCrossed,label: "Dining",             color: "text-red-700",    bg: "bg-red-50" },
+  insurance: { icon: Shield,         label: "Insurance",          color: "text-green-700",  bg: "bg-green-50" },
 };
+
+const SVC_TYPE_ORDER = ["hotel", "tour", "transport", "restaurant", "insurance"] as const;
+
+const HOTEL_KEYWORDS = ["hotel", "accommodation", "lodge", "hostel", "resort", "airbnb", "villa", "inn", "motel", "bnb", "guesthouse", "stay", "check-in", "checkin"];
+const DINING_KEYWORDS = ["dining", "restaurant", "food", "cafe", "bar", "lunch", "dinner", "breakfast", "bistro", "eatery", "brunch", "meal"];
+const TRANSPORT_KEYWORDS = ["transport", "transit", "transfer", "airport", "taxi", "bus", "train", "ferry", "car", "rental", "shuttle", "uber", "lyft", "metro", "subway"];
+
+function inferBookingType(category: string | null | undefined): ServiceBooking["type"] {
+  const c = (category ?? "").toLowerCase();
+  if (HOTEL_KEYWORDS.some(k => c.includes(k))) return "hotel";
+  if (DINING_KEYWORDS.some(k => c.includes(k))) return "restaurant";
+  if (TRANSPORT_KEYWORDS.some(k => c.includes(k))) return "transport";
+  return "tour";
+}
 
 interface ServiceBooking {
   id: string;
@@ -2073,9 +2087,12 @@ interface ServiceBooking {
   provider: string;
   status: "confirmed" | "pending" | "cancelled";
   confirmationCode?: string;
+  checkIn?: string;
+  checkOut?: string;
   date?: string;
   cost: number;
   address?: string;
+  phone?: string;
   notes?: string;
 }
 
@@ -2087,12 +2104,17 @@ function BookingCard({ booking }: { booking: ServiceBooking }) {
 
   const statusStyles = {
     confirmed: { bg: "bg-green-100", fg: "text-green-800", label: "Confirmed" },
-    pending: { bg: "bg-yellow-100", fg: "text-yellow-800", label: "Pending" },
-    cancelled: { bg: "bg-red-100", fg: "text-red-800", label: "Cancelled" },
+    pending:   { bg: "bg-yellow-100", fg: "text-yellow-800", label: "Pending" },
+    cancelled: { bg: "bg-red-100",    fg: "text-red-800",    label: "Cancelled" },
   };
   const ss = statusStyles[booking.status];
 
-  const handleCopy = () => {
+  const mapsUrl = booking.address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(booking.address)}`
+    : null;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (booking.confirmationCode) {
       navigator.clipboard.writeText(booking.confirmationCode);
       setCopied(true);
@@ -2112,7 +2134,7 @@ function BookingCard({ booking }: { booking: ServiceBooking }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[13px] font-semibold text-gray-900">{booking.name}</span>
+            <span className="text-[13px] font-semibold text-gray-900 leading-tight">{booking.name}</span>
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${ss.bg} ${ss.fg}`}>
               {ss.label}
             </span>
@@ -2123,42 +2145,95 @@ function BookingCard({ booking }: { booking: ServiceBooking }) {
           )}
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          <span className="text-[14px] font-bold text-gray-900">${booking.cost.toLocaleString()}</span>
+          {booking.cost > 0 && (
+            <span className="text-[14px] font-bold text-gray-900">${booking.cost.toLocaleString()}</span>
+          )}
           {expanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-gray-100 px-3.5 py-3 space-y-2 bg-gray-50/30">
-          {booking.date && (
+        <div className="border-t border-gray-100 px-3.5 py-3 space-y-3 bg-gray-50/30">
+          {(booking.checkIn || booking.checkOut) ? (
+            <div className="grid grid-cols-2 gap-2">
+              {booking.checkIn && (
+                <div>
+                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Check-in</div>
+                  <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.checkIn}</div>
+                </div>
+              )}
+              {booking.checkOut && (
+                <div>
+                  <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Check-out</div>
+                  <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.checkOut}</div>
+                </div>
+              )}
+            </div>
+          ) : booking.date ? (
             <div>
               <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Date</div>
               <div className="text-[12px] text-gray-800 font-medium mt-0.5">{booking.date}</div>
             </div>
-          )}
+          ) : null}
+
           {booking.confirmationCode && (
             <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
               <FileText className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-              <span className="text-[12px] text-gray-700 font-mono flex-1">{booking.confirmationCode}</span>
+              <span className="text-[12px] text-gray-700 font-mono flex-1 truncate">{booking.confirmationCode}</span>
               <button
                 onClick={handleCopy}
-                className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 hover:text-blue-700"
+                className="text-[10px] font-semibold text-blue-600 flex items-center gap-1 hover:text-blue-700 flex-shrink-0"
+                data-testid={`copy-code-${booking.id}`}
               >
                 {copied ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy</>}
               </button>
             </div>
           )}
+
           {booking.address && (
             <div className="flex items-start gap-2">
               <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
               <span className="text-[12px] text-gray-700">{booking.address}</span>
             </div>
           )}
+
           {booking.notes && (
             <div className="bg-amber-50/60 border border-amber-200/40 rounded-lg px-3 py-2">
               <div className="text-[11px] text-amber-800">{booking.notes}</div>
             </div>
           )}
+
+          <div className="flex gap-2 pt-1 flex-wrap">
+            {booking.phone && (
+              <a
+                href={`tel:${booking.phone}`}
+                onClick={e => e.stopPropagation()}
+                className="flex items-center gap-1.5 text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg hover:bg-green-100 transition-colors"
+                data-testid={`call-${booking.id}`}
+              >
+                <Phone className="w-3 h-3" /> Call
+              </a>
+            )}
+            {mapsUrl && (
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
+                data-testid={`navigate-${booking.id}`}
+              >
+                <Navigation className="w-3 h-3" /> Navigate
+              </a>
+            )}
+            <button
+              onClick={e => e.stopPropagation()}
+              className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-700 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors ml-auto"
+              data-testid={`view-booking-${booking.id}`}
+            >
+              <ExternalLink className="w-3 h-3" /> View Booking
+            </button>
+          </div>
         </div>
       )}
     </Card>
@@ -2174,48 +2249,95 @@ export function ServicesPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  const destination = data.variant.destination ?? data.variant.name;
+  const { variant } = data;
+  const destination = variant.destination ?? variant.name;
 
-  const activityBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
+  // ── Hotel activities: detect multi-day span from consecutive days ──────────
+  const hotelDaysByName: Record<string, { firstDay: (typeof variant.days)[0]; lastDay: (typeof variant.days)[0] }> = {};
+  variant.days.forEach(day => {
+    day.activities.forEach(a => {
+      if (inferBookingType(a.category) === "hotel") {
+        const key = a.name;
+        if (!hotelDaysByName[key]) {
+          hotelDaysByName[key] = { firstDay: day, lastDay: day };
+        } else {
+          hotelDaysByName[key].lastDay = day;
+        }
+      }
+    });
+  });
+
+  const seenHotelNames = new Set<string>();
+
+  const activityBookings: ServiceBooking[] = variant.days.flatMap(day =>
     day.activities.map(a => {
-      let type: ServiceBooking["type"] = "tour";
-      if (a.category === "dining") type = "restaurant";
-      else if (a.category === "shopping") type = "tour";
-      else if (a.category === "attraction") type = "tour";
+      const type = inferBookingType(a.category);
+      const isHotel = type === "hotel";
+
+      if (isHotel) {
+        if (seenHotelNames.has(a.name)) return null;
+        seenHotelNames.add(a.name);
+      }
+
+      let checkIn: string | undefined;
+      let checkOut: string | undefined;
+      if (isHotel && hotelDaysByName[a.name]) {
+        const { firstDay, lastDay } = hotelDaysByName[a.name];
+        if (firstDay.date) {
+          checkIn = new Date(firstDay.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        }
+        if (lastDay.date) {
+          const co = new Date(lastDay.date);
+          co.setDate(co.getDate() + 1);
+          checkOut = co.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        }
+      }
+
       return {
         id: a.id,
         name: a.name,
         type,
-        provider: "Traveloure",
+        provider: a.description ? a.description.split(/[.,]/)[0].trim().substring(0, 40) : "Traveloure",
         status: "confirmed" as const,
         cost: a.cost ?? 0,
         date: day.date ? formatDate(day.date) : `Day ${day.dayNumber}`,
+        checkIn,
+        checkOut,
         address: a.location ?? undefined,
-      };
-    })
+      } satisfies ServiceBooking;
+    }).filter((b): b is ServiceBooking => b !== null)
   );
 
-  const transportBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
+  const transportBookings: ServiceBooking[] = variant.days.flatMap(day =>
     day.transportLegs
-      .filter(t => t.bookingRef || (t.estimatedCostUsd ?? 0) > 0)
-      .map(t => ({
-        id: t.id,
-        name: `${MODE_LABELS[t.userSelectedMode ?? t.recommendedMode ?? "transit"] ?? "Transit"}: ${t.fromLabel ?? "From"} → ${t.toLabel ?? "To"}`,
-        type: "transport" as const,
-        provider: t.operatorName ?? "Transport",
-        status: "confirmed" as const,
-        cost: t.estimatedCostUsd ?? 0,
-        date: day.date ? formatDate(day.date) : `Day ${day.dayNumber}`,
-        confirmationCode: t.bookingRef ?? undefined,
-        notes: t.notes ?? undefined,
-      }))
+      .filter(t => (t.estimatedCostUsd ?? 0) > 0)
+      .map(t => {
+        const modeLabel = MODE_LABELS[t.userSelectedMode ?? t.recommendedMode ?? "transit"] ?? "Transit";
+        const from = t.fromName ?? "Origin";
+        const to = t.toName ?? "Destination";
+        return {
+          id: t.id,
+          name: `${modeLabel}: ${from} → ${to}`,
+          type: "transport" as const,
+          provider: "Transport Service",
+          status: "confirmed" as const,
+          cost: t.estimatedCostUsd ?? 0,
+          date: day.date ? formatDate(day.date) : `Day ${day.dayNumber}`,
+          address: to !== "Destination" ? to : undefined,
+        };
+      })
   );
 
-  const derivedBookings: ServiceBooking[] = [...activityBookings, ...transportBookings];
+  const allBookings: ServiceBooking[] = [...activityBookings, ...transportBookings];
+  const confirmedCount = allBookings.filter(b => b.status === "confirmed").length;
+  const pendingCount = allBookings.filter(b => b.status === "pending").length;
+  const totalCost = allBookings.reduce((s, b) => s + b.cost, 0);
 
-  const confirmedCount = derivedBookings.filter(b => b.status === "confirmed").length;
-  const pendingCount = derivedBookings.filter(b => b.status === "pending").length;
-  const totalCost = derivedBookings.reduce((s, b) => s + b.cost, 0);
+  const grouped = SVC_TYPE_ORDER.reduce<Record<string, ServiceBooking[]>>((acc, type) => {
+    const items = allBookings.filter(b => b.type === type);
+    if (items.length > 0) acc[type] = items;
+    return acc;
+  }, {});
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="services-page">
@@ -2234,38 +2356,55 @@ export function ServicesPage() {
       </div>
 
       <div className="p-4 space-y-4">
+        {/* ── Summary bar ── */}
         <div className="grid grid-cols-3 gap-3">
           <Card className="p-3 text-center">
             <div className="flex items-center justify-center gap-1.5 mb-1">
               <CheckCircle2 className="w-4 h-4 text-green-500" />
-              <span className="text-[18px] font-bold text-green-700">{confirmedCount}</span>
+              <span className="text-[18px] font-bold text-green-700" data-testid="text-confirmed-count">{confirmedCount}</span>
             </div>
             <div className="text-[10px] text-gray-500 font-medium">Confirmed</div>
           </Card>
           <Card className="p-3 text-center">
             <div className="flex items-center justify-center gap-1.5 mb-1">
               <Clock className="w-4 h-4 text-yellow-500" />
-              <span className="text-[18px] font-bold text-yellow-700">{pendingCount}</span>
+              <span className="text-[18px] font-bold text-yellow-700" data-testid="text-pending-count">{pendingCount}</span>
             </div>
             <div className="text-[10px] text-gray-500 font-medium">Pending</div>
           </Card>
           <Card className="p-3 text-center">
             <div className="flex items-center justify-center gap-1.5 mb-1">
-              <span className="text-[18px] font-bold text-gray-900">${totalCost.toLocaleString()}</span>
+              <span className="text-[18px] font-bold text-gray-900" data-testid="text-total-cost">${totalCost.toLocaleString()}</span>
             </div>
-            <div className="text-[10px] text-gray-500 font-medium">Total</div>
+            <div className="text-[10px] text-gray-500 font-medium">Total Cost</div>
           </Card>
         </div>
 
-        {derivedBookings.length === 0 ? (
+        {/* ── Grouped sections ── */}
+        {allBookings.length === 0 ? (
           <Card className="p-8 text-center">
             <FileText className="w-8 h-8 text-gray-300 mx-auto mb-2" />
             <p className="text-[13px] text-gray-500">No bookings found for this itinerary.</p>
           </Card>
         ) : (
-          <div className="space-y-2.5">
-            {derivedBookings.map(b => <BookingCard key={b.id} booking={b} />)}
-          </div>
+          Object.entries(grouped).map(([type, bookings]) => {
+            const conf = TYPE_CONFIG_SVC[type];
+            const SectionIcon = conf?.icon ?? FileText;
+            return (
+              <div key={type} data-testid={`section-${type}`}>
+                <div className="flex items-center gap-2 mb-2.5">
+                  <div className={`w-6 h-6 rounded-md ${conf?.bg ?? "bg-gray-50"} flex items-center justify-center`}>
+                    <SectionIcon className={`w-3.5 h-3.5 ${conf?.color ?? "text-gray-600"}`} />
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-900">{conf?.label ?? type}</span>
+                  <span className="text-[11px] text-gray-400 font-medium">({bookings.length})</span>
+                </div>
+                <div className="space-y-2.5">
+                  {bookings.map(b => <BookingCard key={b.id} booking={b} />)}
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
