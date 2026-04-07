@@ -19,6 +19,19 @@ export interface Activity {
   duration?: number;
 }
 
+export type TransitMode = "walk" | "taxi" | "bus" | "ferry" | "car" | "train" | "subway" | "private_car" | "rental_car" | "rideshare";
+
+export interface TransitOption {
+  mode: TransitMode;
+  duration: number;
+  cost: number;
+  provider?: string;
+  source: "google" | "apple" | "waze" | "platform";
+  recommended?: boolean;
+  label?: string;
+  notes?: string;
+}
+
 export interface Transport {
   id: string;
   mode: string;
@@ -34,7 +47,9 @@ export interface Transport {
   departureTime?: string;
   arrivalTime?: string;
   distance?: string;
+  selectedMode?: TransitMode;
   alternatives?: { mode: string; duration: number; cost: number }[];
+  transitOptions?: TransitOption[];
 }
 
 export interface DayData {
@@ -119,10 +134,30 @@ export const DAYS: DayData[] = [
       { id: "a5", name: "North Beach Gelato", type: "dining", status: "suggested", time: "20:30", location: "Columbus Ave, North Beach", lat: 37.7998, lng: -122.4083, cost: 12, comments: 0, description: "Artisan gelato in San Francisco's Little Italy. Try the pistachio and stracciatella.", rating: 4.6, duration: 30 },
     ],
     transports: [
-      { id: "t1", mode: "walk", from: "Hotel Bohème", to: "Golden Gate Bridge", duration: 15, cost: 0, status: "confirmed", distance: "0.8 mi", departureTime: "08:45", arrivalTime: "09:00" },
-      { id: "t2", mode: "taxi", from: "Golden Gate Bridge", to: "Pier 39", duration: 20, cost: 18, status: "confirmed", operator: "Uber", distance: "4.2 mi", departureTime: "10:30", arrivalTime: "10:50", alternatives: [{ mode: "bus", duration: 35, cost: 3 }, { mode: "walk", duration: 55, cost: 0 }] },
-      { id: "t3", mode: "ferry", from: "Pier 33", to: "Alcatraz Island", duration: 15, cost: 0, status: "confirmed", line: "Alcatraz Cruises", operator: "Alcatraz Cruises", bookingRef: "ALC-FERRY-78432", departureTime: "13:40", arrivalTime: "13:55" },
-      { id: "t4", mode: "bus", from: "Pier 39", to: "Chinatown", duration: 12, cost: 3, status: "suggested", suggestedBy: "expert", line: "Muni Line 30", operator: "SFMTA", distance: "2.1 mi", departureTime: "18:00", arrivalTime: "18:12", alternatives: [{ mode: "taxi", duration: 8, cost: 12 }, { mode: "walk", duration: 25, cost: 0 }] },
+      { id: "t1", mode: "walk", from: "Hotel Bohème", to: "Golden Gate Bridge", duration: 15, cost: 0, status: "confirmed", distance: "0.8 mi", departureTime: "08:45", arrivalTime: "09:00", selectedMode: "walk", transitOptions: [
+        { mode: "walk", duration: 15, cost: 0, source: "google", recommended: true, label: "Walk", notes: "Scenic route through Marina District" },
+        { mode: "bus", duration: 12, cost: 3, provider: "SFMTA", source: "google", label: "Muni Bus 28" },
+        { mode: "rideshare", duration: 8, cost: 10, provider: "Uber/Lyft", source: "platform", label: "Rideshare" },
+        { mode: "private_car", duration: 8, cost: 35, provider: "Traveloure", source: "platform", label: "Private Car", notes: "Door-to-door with professional driver" },
+        { mode: "rental_car", duration: 8, cost: 0, provider: "Enterprise", source: "platform", label: "Rental Car", notes: "Already included in your rental" },
+      ] },
+      { id: "t2", mode: "taxi", from: "Golden Gate Bridge", to: "Pier 39", duration: 20, cost: 18, status: "confirmed", operator: "Uber", distance: "4.2 mi", departureTime: "10:30", arrivalTime: "10:50", selectedMode: "rideshare", transitOptions: [
+        { mode: "rideshare", duration: 20, cost: 18, provider: "Uber/Lyft", source: "platform", recommended: true, label: "Rideshare", notes: "Best balance of time & cost" },
+        { mode: "bus", duration: 35, cost: 3, provider: "SFMTA", source: "google", label: "Muni Bus 30 + 47" },
+        { mode: "walk", duration: 55, cost: 0, source: "google", label: "Walk" },
+        { mode: "private_car", duration: 18, cost: 42, provider: "Traveloure", source: "platform", label: "Private Car", notes: "Door-to-door with professional driver" },
+        { mode: "rental_car", duration: 22, cost: 0, provider: "Enterprise", source: "platform", label: "Rental Car", notes: "Parking at Pier 39: ~$10/hr" },
+      ], alternatives: [{ mode: "bus", duration: 35, cost: 3 }, { mode: "walk", duration: 55, cost: 0 }] },
+      { id: "t3", mode: "ferry", from: "Pier 33", to: "Alcatraz Island", duration: 15, cost: 0, status: "confirmed", line: "Alcatraz Cruises", operator: "Alcatraz Cruises", bookingRef: "ALC-FERRY-78432", departureTime: "13:40", arrivalTime: "13:55", selectedMode: "ferry", transitOptions: [
+        { mode: "ferry", duration: 15, cost: 0, provider: "Alcatraz Cruises", source: "google", recommended: true, label: "Alcatraz Ferry", notes: "Only way to reach the island" },
+      ] },
+      { id: "t4", mode: "bus", from: "Pier 39", to: "Chinatown", duration: 12, cost: 3, status: "suggested", suggestedBy: "expert", line: "Muni Line 30", operator: "SFMTA", distance: "2.1 mi", departureTime: "18:00", arrivalTime: "18:12", selectedMode: "bus", transitOptions: [
+        { mode: "bus", duration: 12, cost: 3, provider: "SFMTA", source: "google", recommended: true, label: "Muni Line 30", notes: "Expert recommended — scenic route through North Beach" },
+        { mode: "rideshare", duration: 8, cost: 12, provider: "Uber/Lyft", source: "platform", label: "Rideshare" },
+        { mode: "walk", duration: 25, cost: 0, source: "google", label: "Walk", notes: "Pleasant evening stroll" },
+        { mode: "private_car", duration: 7, cost: 28, provider: "Traveloure", source: "platform", label: "Private Car", notes: "Door-to-door luxury" },
+        { mode: "rental_car", duration: 10, cost: 0, provider: "Enterprise", source: "platform", label: "Rental Car", notes: "Street parking limited in Chinatown" },
+      ], alternatives: [{ mode: "taxi", duration: 8, cost: 12 }, { mode: "walk", duration: 25, cost: 0 }] },
     ],
   },
   {
@@ -133,8 +168,17 @@ export const DAYS: DayData[] = [
       { id: "a8", name: "Half Moon Bay Lunch", type: "dining", status: "confirmed", time: "12:30", location: "Half Moon Bay, CA", lat: 37.4636, lng: -122.4286, cost: 35, comments: 0, description: "Coastal seafood at Sam's Chowder House.", duration: 75, rating: 4.3, bookingRef: "HMB-LUNCH-0521" },
     ],
     transports: [
-      { id: "t5", mode: "car", from: "Hotel Bohème", to: "Baker Beach", duration: 10, cost: 0, status: "confirmed", distance: "3.5 mi" },
-      { id: "t6", mode: "car", from: "Baker Beach", to: "Pacifica", duration: 25, cost: 0, status: "confirmed", distance: "12 mi" },
+      { id: "t5", mode: "car", from: "Hotel Bohème", to: "Baker Beach", duration: 10, cost: 0, status: "confirmed", distance: "3.5 mi", selectedMode: "rental_car", transitOptions: [
+        { mode: "rental_car", duration: 10, cost: 0, provider: "Enterprise", source: "platform", recommended: true, label: "Rental Car", notes: "Free parking at Baker Beach lot" },
+        { mode: "rideshare", duration: 10, cost: 14, provider: "Uber/Lyft", source: "platform", label: "Rideshare" },
+        { mode: "bus", duration: 22, cost: 3, provider: "SFMTA", source: "google", label: "Muni Bus 29" },
+        { mode: "private_car", duration: 10, cost: 30, provider: "Traveloure", source: "platform", label: "Private Car" },
+      ] },
+      { id: "t6", mode: "car", from: "Baker Beach", to: "Pacifica", duration: 25, cost: 0, status: "confirmed", distance: "12 mi", selectedMode: "rental_car", transitOptions: [
+        { mode: "rental_car", duration: 25, cost: 0, provider: "Enterprise", source: "platform", recommended: true, label: "Rental Car", notes: "Scenic drive on Highway 1" },
+        { mode: "private_car", duration: 25, cost: 55, provider: "Traveloure", source: "platform", label: "Private Car" },
+        { mode: "rideshare", duration: 25, cost: 28, provider: "Uber/Lyft", source: "platform", label: "Rideshare" },
+      ] },
     ],
   },
   {
@@ -278,6 +322,20 @@ export const STATUS_STYLES: Record<string, { bg: string; fg: string; label: stri
 
 export const MODE_COLORS: Record<string, string> = {
   walk: "#22c55e", taxi: "#f59e0b", ferry: "#06b6d4", bus: "#8b5cf6", car: "#3b82f6",
+  train: "#6366f1", subway: "#a855f7", rideshare: "#f59e0b", private_car: "#0ea5e9", rental_car: "#14b8a6",
+};
+
+export const TRANSIT_MODE_META: Record<TransitMode, { icon: string; label: string; color: string }> = {
+  walk: { icon: "🚶", label: "Walk", color: "#22c55e" },
+  taxi: { icon: "🚕", label: "Taxi", color: "#f59e0b" },
+  bus: { icon: "🚌", label: "Bus", color: "#8b5cf6" },
+  ferry: { icon: "⛴️", label: "Ferry", color: "#06b6d4" },
+  car: { icon: "🚗", label: "Car", color: "#3b82f6" },
+  train: { icon: "🚆", label: "Train", color: "#6366f1" },
+  subway: { icon: "🚇", label: "Subway", color: "#a855f7" },
+  rideshare: { icon: "🚙", label: "Rideshare", color: "#f59e0b" },
+  private_car: { icon: "🚘", label: "Private Car", color: "#0ea5e9" },
+  rental_car: { icon: "🔑", label: "Rental Car", color: "#14b8a6" },
 };
 
 export const DAY_COLORS = [

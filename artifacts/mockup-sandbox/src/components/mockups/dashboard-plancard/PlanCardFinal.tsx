@@ -4,6 +4,7 @@ import {
   MessageSquare, Lightbulb, ChevronDown, ChevronUp, Check, X,
   Footprints, Car, TrainFront, Heart, TrendingDown,
   FileText, Eye, EyeOff, Navigation, ExternalLink, Phone,
+  Ship, Bus, Train, CarTaxiFront, KeyRound, Repeat,
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -32,10 +33,30 @@ const DAYS = [
       { id: "a5", name: "North Beach Gelato", type: "dining", status: "suggested", time: "20:30", location: "Columbus Ave, North Beach", lat: 37.7998, lng: -122.4083, cost: 12, comments: 0 },
     ],
     transports: [
-      { id: "t1", mode: "walk", from: "Hotel", to: "Golden Gate", duration: 15, cost: 0, status: "confirmed" },
-      { id: "t2", mode: "taxi", from: "Golden Gate", to: "Pier 39", duration: 20, cost: 18, status: "confirmed" },
-      { id: "t3", mode: "ferry", from: "Pier 33", to: "Alcatraz", duration: 15, cost: 0, status: "confirmed", line: "Alcatraz Cruises" },
-      { id: "t4", mode: "bus", from: "Pier 39", to: "Chinatown", duration: 12, cost: 3, status: "suggested", suggestedBy: "expert" },
+      { id: "t1", mode: "walk", from: "Hotel", to: "Golden Gate", duration: 15, cost: 0, status: "confirmed", selectedMode: "walk", transitOptions: [
+        { mode: "walk", duration: 15, cost: 0, source: "google", recommended: true, label: "Walk", notes: "Scenic route through Marina District" },
+        { mode: "bus", duration: 12, cost: 3, source: "google", label: "Muni Bus 28", provider: "SFMTA" },
+        { mode: "rideshare", duration: 8, cost: 10, source: "platform", label: "Rideshare", provider: "Uber/Lyft" },
+        { mode: "private_car", duration: 8, cost: 35, source: "platform", label: "Private Car", provider: "Traveloure", notes: "Door-to-door with professional driver" },
+        { mode: "rental_car", duration: 8, cost: 0, source: "platform", label: "Rental Car", provider: "Enterprise", notes: "Already included in your rental" },
+      ] },
+      { id: "t2", mode: "taxi", from: "Golden Gate", to: "Pier 39", duration: 20, cost: 18, status: "confirmed", selectedMode: "rideshare", transitOptions: [
+        { mode: "rideshare", duration: 20, cost: 18, source: "platform", recommended: true, label: "Rideshare", provider: "Uber/Lyft" },
+        { mode: "bus", duration: 35, cost: 3, source: "google", label: "Muni Bus 30 + 47", provider: "SFMTA" },
+        { mode: "walk", duration: 55, cost: 0, source: "google", label: "Walk" },
+        { mode: "private_car", duration: 18, cost: 42, source: "platform", label: "Private Car", provider: "Traveloure" },
+        { mode: "rental_car", duration: 22, cost: 0, source: "platform", label: "Rental Car", provider: "Enterprise" },
+      ] },
+      { id: "t3", mode: "ferry", from: "Pier 33", to: "Alcatraz", duration: 15, cost: 0, status: "confirmed", line: "Alcatraz Cruises", selectedMode: "ferry", transitOptions: [
+        { mode: "ferry", duration: 15, cost: 0, source: "google", recommended: true, label: "Alcatraz Ferry", provider: "Alcatraz Cruises", notes: "Only way to reach the island" },
+      ] },
+      { id: "t4", mode: "bus", from: "Pier 39", to: "Chinatown", duration: 12, cost: 3, status: "suggested", suggestedBy: "expert", selectedMode: "bus", transitOptions: [
+        { mode: "bus", duration: 12, cost: 3, source: "google", recommended: true, label: "Muni Line 30", provider: "SFMTA", notes: "Expert recommended — scenic route" },
+        { mode: "rideshare", duration: 8, cost: 12, source: "platform", label: "Rideshare", provider: "Uber/Lyft" },
+        { mode: "walk", duration: 25, cost: 0, source: "google", label: "Walk" },
+        { mode: "private_car", duration: 7, cost: 28, source: "platform", label: "Private Car", provider: "Traveloure" },
+        { mode: "rental_car", duration: 10, cost: 0, source: "platform", label: "Rental Car", provider: "Enterprise" },
+      ] },
     ],
   },
   {
@@ -46,8 +67,17 @@ const DAYS = [
       { id: "a8", name: "Half Moon Bay Lunch", type: "dining", status: "confirmed", time: "12:30", location: "Half Moon Bay, CA", lat: 37.4636, lng: -122.4286, cost: 35, comments: 0 },
     ],
     transports: [
-      { id: "t5", mode: "car", from: "Hotel", to: "Baker Beach", duration: 10, cost: 0, status: "confirmed" },
-      { id: "t6", mode: "car", from: "Baker Beach", to: "Pacifica", duration: 25, cost: 0, status: "confirmed" },
+      { id: "t5", mode: "car", from: "Hotel", to: "Baker Beach", duration: 10, cost: 0, status: "confirmed", selectedMode: "rental_car", transitOptions: [
+        { mode: "rental_car", duration: 10, cost: 0, source: "platform", recommended: true, label: "Rental Car", provider: "Enterprise" },
+        { mode: "rideshare", duration: 10, cost: 14, source: "platform", label: "Rideshare", provider: "Uber/Lyft" },
+        { mode: "bus", duration: 22, cost: 3, source: "google", label: "Muni Bus 29", provider: "SFMTA" },
+        { mode: "private_car", duration: 10, cost: 30, source: "platform", label: "Private Car", provider: "Traveloure" },
+      ] },
+      { id: "t6", mode: "car", from: "Baker Beach", to: "Pacifica", duration: 25, cost: 0, status: "confirmed", selectedMode: "rental_car", transitOptions: [
+        { mode: "rental_car", duration: 25, cost: 0, source: "platform", recommended: true, label: "Rental Car", provider: "Enterprise", notes: "Scenic Highway 1 drive" },
+        { mode: "private_car", duration: 25, cost: 55, source: "platform", label: "Private Car", provider: "Traveloure" },
+        { mode: "rideshare", duration: 25, cost: 28, source: "platform", label: "Rideshare", provider: "Uber/Lyft" },
+      ] },
     ],
   },
   {
@@ -57,7 +87,10 @@ const DAYS = [
       { id: "a10", name: "McWay Falls Trail", type: "attraction", status: "confirmed", time: "13:00", location: "Julia Pfeiffer Burns SP", lat: 36.1579, lng: -121.6722, cost: 10, comments: 0 },
     ],
     transports: [
-      { id: "t7", mode: "car", from: "Half Moon Bay", to: "Bixby Bridge", duration: 150, cost: 0, status: "confirmed" },
+      { id: "t7", mode: "car", from: "Half Moon Bay", to: "Bixby Bridge", duration: 150, cost: 0, status: "confirmed", selectedMode: "rental_car", transitOptions: [
+        { mode: "rental_car", duration: 150, cost: 0, source: "platform", recommended: true, label: "Rental Car", provider: "Enterprise", notes: "Highway 1 coastal drive — no viable transit alternatives" },
+        { mode: "private_car", duration: 150, cost: 120, source: "platform", label: "Private Car", provider: "Traveloure", notes: "Sit back and enjoy the views" },
+      ] },
     ],
   },
   { dayNum: 4, date: "2026-05-23", label: "Monterey", activities: [
@@ -121,6 +154,17 @@ const STATUS_STYLES: Record<string, { bg: string; fg: string; label: string }> =
 
 const MODE_COLORS: Record<string, string> = {
   walk: "#22c55e", taxi: "#f59e0b", ferry: "#06b6d4", bus: "#8b5cf6", car: "#3b82f6",
+  train: "#6366f1", subway: "#a855f7", rideshare: "#f59e0b", private_car: "#0ea5e9", rental_car: "#14b8a6",
+};
+
+const MODE_LABELS: Record<string, string> = {
+  walk: "Walk", taxi: "Taxi", bus: "Bus", ferry: "Ferry", car: "Car",
+  train: "Train", subway: "Subway", rideshare: "Rideshare",
+  private_car: "Private Car", rental_car: "Rental Car",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  google: "Google Maps", apple: "Apple Maps", waze: "Waze", platform: "Traveloure",
 };
 
 const CHANGE_DOT: Record<string, string> = {
@@ -133,9 +177,14 @@ const DAY_COLORS = [
 
 function ModeIcon({ mode, className = "w-4 h-4" }: { mode: string; className?: string }) {
   if (mode === "walk") return <Footprints className={className} />;
-  if (mode === "taxi" || mode === "car") return <Car className={className} />;
-  if (mode === "ferry") return <TrainFront className={className} />;
-  if (mode === "bus") return <TrainFront className={className} />;
+  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} />;
+  if (mode === "car") return <Car className={className} />;
+  if (mode === "ferry") return <Ship className={className} />;
+  if (mode === "bus") return <Bus className={className} />;
+  if (mode === "train") return <Train className={className} />;
+  if (mode === "subway") return <TrainFront className={className} />;
+  if (mode === "private_car") return <Car className={className} />;
+  if (mode === "rental_car") return <KeyRound className={className} />;
   return <Footprints className={className} />;
 }
 
@@ -589,6 +638,15 @@ export function PlanCardFinal() {
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
   const [itineraryOpen, setItineraryOpen] = useState(false);
+  const [transitPickerOpen, setTransitPickerOpen] = useState<string | null>(null);
+  const [selectedModes, setSelectedModes] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    DAYS.forEach(d => d.transports.forEach(t => {
+      if (t.selectedMode) initial[t.id] = t.selectedMode;
+      else initial[t.id] = t.mode;
+    }));
+    return initial;
+  });
 
   const day = DAYS[selectedDay];
   const totalActivities = DAYS.reduce((s, d) => s + d.activities.length, 0);
@@ -824,18 +882,72 @@ export function PlanCardFinal() {
                                             )}
                                           </div>
                                         </div>
-                                        {i < d.activities.length - 1 && d.transports[i] && (
-                                          <div className="flex gap-2.5 py-0.5 ml-10">
-                                            <div className="flex items-center gap-1.5 text-[10px] text-gray-400 py-0.5 px-2 rounded bg-gray-50">
-                                              <span style={{ color: MODE_COLORS[d.transports[i].mode] || "#94a3b8" }}>
-                                                <ModeIcon mode={d.transports[i].mode} className="w-2.5 h-2.5" />
-                                              </span>
-                                              <span className="font-medium text-gray-500 capitalize">{d.transports[i].mode}</span>
-                                              <span>{formatDuration(d.transports[i].duration)}</span>
-                                              {d.transports[i].cost > 0 && <span className="text-green-600">${d.transports[i].cost}</span>}
+                                        {i < d.activities.length - 1 && d.transports[i] && (() => {
+                                          const tr = d.transports[i];
+                                          const curMode = selectedModes[tr.id] || tr.mode;
+                                          const curOption = tr.transitOptions?.find((o: any) => o.mode === curMode);
+                                          const mColor = MODE_COLORS[curMode] || "#94a3b8";
+                                          const isPickerOpen = transitPickerOpen === tr.id;
+                                          return (
+                                            <div className="ml-10 my-0.5">
+                                              <button
+                                                onClick={() => setTransitPickerOpen(isPickerOpen ? null : tr.id)}
+                                                className="flex items-center gap-1.5 text-[10px] text-gray-400 py-1 px-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+                                                data-testid={`transit-toggle-${tr.id}`}
+                                              >
+                                                <span style={{ color: mColor }}>
+                                                  <ModeIcon mode={curMode} className="w-2.5 h-2.5" />
+                                                </span>
+                                                <span className="font-medium text-gray-600">{MODE_LABELS[curMode] || curMode}</span>
+                                                <span>{formatDuration(curOption?.duration ?? tr.duration)}</span>
+                                                {(curOption?.cost ?? tr.cost) > 0 && <span className="text-green-600">${curOption?.cost ?? tr.cost}</span>}
+                                                {tr.transitOptions && tr.transitOptions.length > 1 && (
+                                                  <Repeat className="w-2.5 h-2.5 text-gray-400 ml-0.5" />
+                                                )}
+                                              </button>
+                                              {isPickerOpen && tr.transitOptions && (
+                                                <div className="mt-1 ml-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden" data-testid={`transit-picker-${tr.id}`}>
+                                                  <div className="px-2.5 py-1.5 bg-gray-50 border-b border-gray-100">
+                                                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Choose transit mode</span>
+                                                  </div>
+                                                  {tr.transitOptions.map((opt: any) => {
+                                                    const optColor = MODE_COLORS[opt.mode] || "#94a3b8";
+                                                    const isSelected = curMode === opt.mode;
+                                                    return (
+                                                      <button
+                                                        key={opt.mode}
+                                                        onClick={() => {
+                                                          setSelectedModes(prev => ({ ...prev, [tr.id]: opt.mode }));
+                                                          setTransitPickerOpen(null);
+                                                        }}
+                                                        className={`w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 ${isSelected ? "bg-blue-50" : ""}`}
+                                                        data-testid={`transit-option-${tr.id}-${opt.mode}`}
+                                                      >
+                                                        <div className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${optColor}15`, color: optColor }}>
+                                                          <ModeIcon mode={opt.mode} className="w-3 h-3" />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                          <div className="flex items-center gap-1">
+                                                            <span className="text-[11px] font-semibold text-gray-900">{opt.label || MODE_LABELS[opt.mode]}</span>
+                                                            {opt.recommended && <span className="text-[8px] bg-green-100 text-green-700 px-1 rounded font-bold">REC</span>}
+                                                            {opt.source === "platform" && <span className="text-[8px] bg-sky-100 text-sky-700 px-1 rounded font-bold">TRAVELOURE</span>}
+                                                          </div>
+                                                          <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                                                            <span>{formatDuration(opt.duration)}</span>
+                                                            <span>{opt.cost === 0 ? "Free" : `$${opt.cost}`}</span>
+                                                            {opt.provider && <span className="text-gray-400">via {opt.provider}</span>}
+                                                          </div>
+                                                          {opt.notes && <div className="text-[9px] text-gray-400 mt-0.5">{opt.notes}</div>}
+                                                        </div>
+                                                        {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />}
+                                                      </button>
+                                                    );
+                                                  })}
+                                                </div>
+                                              )}
                                             </div>
-                                          </div>
-                                        )}
+                                          );
+                                        })()}
                                       </div>
                                     );
                                   })}
@@ -874,29 +986,88 @@ export function PlanCardFinal() {
                                 <div className="ml-[14px] pl-3 border-l-2 mt-1 mb-1.5" style={{ borderColor: `${dayColor}30` }}>
                                   {d.transports.map((tr, i) => {
                                     const ss = STATUS_STYLES[tr.status] || STATUS_STYLES.pending;
-                                    const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
+                                    const curMode = selectedModes[tr.id] || tr.mode;
+                                    const curOption = tr.transitOptions?.find((o: any) => o.mode === curMode);
+                                    const modeColor = MODE_COLORS[curMode] || "#94a3b8";
+                                    const isPickerOpen = transitPickerOpen === `tab-${tr.id}`;
+                                    const displayDuration = curOption?.duration ?? tr.duration;
+                                    const displayCost = curOption?.cost ?? tr.cost;
                                     return (
-                                      <div key={tr.id} className={`flex gap-2.5 py-2.5 ${i < d.transports.length - 1 ? "border-b border-gray-100" : ""}`}>
-                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${modeColor}15`, color: modeColor }}>
-                                          <ModeIcon mode={tr.mode} className="w-3.5 h-3.5" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-1.5 text-[11px]">
-                                            <span className="text-gray-500 truncate">{tr.from}</span>
-                                            <span className="text-gray-300">→</span>
-                                            <span className="text-gray-900 font-semibold truncate">{tr.to}</span>
+                                      <div key={tr.id} className={`py-2.5 ${i < d.transports.length - 1 ? "border-b border-gray-100" : ""}`}>
+                                        <div className="flex gap-2.5">
+                                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${modeColor}15`, color: modeColor }}>
+                                            <ModeIcon mode={curMode} className="w-3.5 h-3.5" />
                                           </div>
-                                          <div className="flex flex-wrap gap-1.5 mt-1 items-center">
-                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold capitalize" style={{ backgroundColor: `${modeColor}20`, color: modeColor }}>{tr.mode}</span>
-                                            <span className="text-[10px] text-gray-500 flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" /> {formatDuration(tr.duration)}</span>
-                                            {tr.cost > 0 && <span className="text-[10px] text-green-600 font-semibold">${tr.cost}</span>}
-                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${ss.bg} ${ss.fg}`}>{ss.label}</span>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 text-[11px]">
+                                              <span className="text-gray-500 truncate">{tr.from}</span>
+                                              <span className="text-gray-300">→</span>
+                                              <span className="text-gray-900 font-semibold truncate">{tr.to}</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5 mt-1 items-center">
+                                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ backgroundColor: `${modeColor}20`, color: modeColor }}>{MODE_LABELS[curMode] || curMode}</span>
+                                              <span className="text-[10px] text-gray-500 flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" /> {formatDuration(displayDuration)}</span>
+                                              {displayCost > 0 ? <span className="text-[10px] text-green-600 font-semibold">${displayCost}</span> : <span className="text-[10px] text-green-600 font-semibold">Free</span>}
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${ss.bg} ${ss.fg}`}>{ss.label}</span>
+                                              {curOption?.source === "platform" && <span className="px-1 py-0.5 rounded text-[8px] font-bold bg-sky-100 text-sky-700">TRAVELOURE</span>}
+                                            </div>
+                                          </div>
+                                          <div className="flex flex-col gap-1 flex-shrink-0 items-end">
+                                            {tr.transitOptions && tr.transitOptions.length > 1 && (
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-[9px] h-5 px-2"
+                                                onClick={() => setTransitPickerOpen(isPickerOpen ? null : `tab-${tr.id}`)}
+                                                data-testid={`transit-tab-toggle-${tr.id}`}
+                                              >
+                                                <Repeat className="w-2.5 h-2.5 mr-0.5" /> Mode
+                                              </Button>
+                                            )}
+                                            {tr.status === "suggested" && (
+                                              <Button size="sm" className="text-[9px] h-5 px-2 bg-gray-900 text-white hover:bg-gray-800">Accept</Button>
+                                            )}
                                           </div>
                                         </div>
-                                        {tr.status === "suggested" && (
-                                          <div className="flex flex-col gap-1 flex-shrink-0">
-                                            <Button size="sm" className="text-[9px] h-5 px-2 bg-gray-900 text-white hover:bg-gray-800">Accept</Button>
-                                            <Button size="sm" variant="outline" className="text-[9px] h-5 px-2">Change</Button>
+                                        {isPickerOpen && tr.transitOptions && (
+                                          <div className="mt-2 ml-10 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden" data-testid={`transit-tab-picker-${tr.id}`}>
+                                            <div className="px-2.5 py-1.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                                              <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Choose transit mode</span>
+                                              <span className="text-[9px] text-gray-400">{tr.transitOptions.length} options</span>
+                                            </div>
+                                            {tr.transitOptions.map((opt: any) => {
+                                              const optColor = MODE_COLORS[opt.mode] || "#94a3b8";
+                                              const isSelected = curMode === opt.mode;
+                                              return (
+                                                <button
+                                                  key={opt.mode}
+                                                  onClick={() => {
+                                                    setSelectedModes(prev => ({ ...prev, [tr.id]: opt.mode }));
+                                                    setTransitPickerOpen(null);
+                                                  }}
+                                                  className={`w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-b-0 ${isSelected ? "bg-blue-50" : ""}`}
+                                                  data-testid={`transit-tab-option-${tr.id}-${opt.mode}`}
+                                                >
+                                                  <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${optColor}15`, color: optColor }}>
+                                                    <ModeIcon mode={opt.mode} className="w-3.5 h-3.5" />
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1">
+                                                      <span className="text-[11px] font-semibold text-gray-900">{opt.label || MODE_LABELS[opt.mode]}</span>
+                                                      {opt.recommended && <span className="text-[8px] bg-green-100 text-green-700 px-1 rounded font-bold">REC</span>}
+                                                      {opt.source === "platform" && <span className="text-[8px] bg-sky-100 text-sky-700 px-1 rounded font-bold">TRAVELOURE</span>}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-[10px] text-gray-500">
+                                                      <span>{formatDuration(opt.duration)}</span>
+                                                      <span>{opt.cost === 0 ? "Free" : `$${opt.cost}`}</span>
+                                                      {opt.provider && <span className="text-gray-400">via {opt.provider}</span>}
+                                                    </div>
+                                                    {opt.notes && <div className="text-[9px] text-gray-400 mt-0.5">{opt.notes}</div>}
+                                                  </div>
+                                                  {isSelected && <Check className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />}
+                                                </button>
+                                              );
+                                            })}
                                           </div>
                                         )}
                                       </div>
