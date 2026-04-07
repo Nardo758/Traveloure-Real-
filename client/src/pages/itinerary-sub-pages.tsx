@@ -461,8 +461,8 @@ export function FullItineraryPage() {
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  // Expert users see the expert-review page
-  const isExpert = data.permissions === "suggest" || data.permissions === "edit" || data.sharedWithExpert;
+  // Only true expert roles get redirected — NOT trip owners who merely shared with an expert
+  const isExpert = data.permissions === "suggest" || data.permissions === "edit";
   if (isExpert) {
     navigate(`/itinerary-view/${token}/expert-review`, { replace: true });
     return null;
@@ -481,7 +481,8 @@ export function FullItineraryPage() {
 
   const destination = variant.destination ?? variant.name;
   const hasExpertDiff = !!(data.expertDiff?.activityDiffs || data.expertDiff?.transportDiffs);
-  const hasPendingChanges = hasExpertDiff && data.expertStatus === "review_sent";
+  // Show the review banner whenever there is any expert diff, regardless of status
+  const hasPendingChanges = hasExpertDiff;
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="full-itinerary-page">
