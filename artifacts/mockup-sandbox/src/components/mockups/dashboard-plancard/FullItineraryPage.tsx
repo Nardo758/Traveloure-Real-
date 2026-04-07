@@ -3,7 +3,8 @@ import {
   ArrowLeft, Printer, Download, Clock, CheckCircle2, DollarSign,
   MapPin, Navigation, ExternalLink, Map, Route, Lightbulb,
   Footprints, Car, TrainFront, ChevronDown, ChevronUp,
-  Activity as ActivityIcon,
+  Activity as ActivityIcon, Ship, Bus, Train, CarTaxiFront, KeyRound,
+  Repeat, Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,22 @@ import {
   type DayData, type Activity, type Transport,
 } from "./shared-data";
 
+const MODE_LABELS: Record<string, string> = {
+  walk: "Walk", taxi: "Taxi", bus: "Bus", ferry: "Ferry", car: "Car",
+  train: "Train", subway: "Subway", rideshare: "Rideshare",
+  private_car: "Private Car", rental_car: "Rental Car",
+};
+
 function ModeIcon({ mode, className = "w-4 h-4" }: { mode: string; className?: string }) {
   if (mode === "walk") return <Footprints className={className} />;
-  if (mode === "taxi" || mode === "car") return <Car className={className} />;
-  if (mode === "ferry") return <TrainFront className={className} />;
-  if (mode === "bus") return <TrainFront className={className} />;
+  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} />;
+  if (mode === "car") return <Car className={className} />;
+  if (mode === "ferry") return <Ship className={className} />;
+  if (mode === "bus") return <Bus className={className} />;
+  if (mode === "train") return <Train className={className} />;
+  if (mode === "subway") return <TrainFront className={className} />;
+  if (mode === "private_car") return <Car className={className} />;
+  if (mode === "rental_car") return <KeyRound className={className} />;
   return <Footprints className={className} />;
 }
 
@@ -69,23 +81,38 @@ function NavigateDropdown({ location, lat, lng }: { location: string; lat?: numb
 }
 
 function TransportConnector({ transport }: { transport: Transport }) {
-  const modeColor = MODE_COLORS[transport.mode] || "#6b7280";
+  const displayMode = transport.selectedMode || transport.mode;
+  const curOption = transport.transitOptions?.find(o => o.mode === displayMode);
+  const modeColor = MODE_COLORS[displayMode] || "#6b7280";
+  const displayDuration = curOption?.duration ?? transport.duration;
+  const displayCost = curOption?.cost ?? transport.cost;
 
   return (
     <div className="flex items-center gap-2 py-1.5 px-3 ml-6 border-l-2 border-dashed" style={{ borderColor: modeColor + "60" }}>
       <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ backgroundColor: modeColor + "20" }}>
-        <ModeIcon mode={transport.mode} className="w-3 h-3" />
+        <ModeIcon mode={displayMode} className="w-3 h-3" />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="text-[11px] text-gray-600 font-medium">
-          {transport.from} → {transport.to}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] text-gray-700 font-semibold">{MODE_LABELS[displayMode] || displayMode}</span>
+          <span className="text-[10px] text-gray-400">{transport.from} → {transport.to}</span>
+        </div>
       </div>
       <span className="text-[10px] text-gray-500 flex items-center gap-1">
-        <Clock className="w-2.5 h-2.5" /> {formatDuration(transport.duration)}
+        <Clock className="w-2.5 h-2.5" /> {formatDuration(displayDuration)}
       </span>
-      {transport.cost > 0 && (
-        <span className="text-[10px] font-semibold text-gray-700">${transport.cost}</span>
+      {displayCost > 0 ? (
+        <span className="text-[10px] font-semibold text-gray-700">${displayCost}</span>
+      ) : (
+        <span className="text-[10px] font-semibold text-green-600">Free</span>
+      )}
+      {curOption?.source === "platform" && (
+        <span className="text-[8px] bg-sky-100 text-sky-700 px-1 py-0.5 rounded font-bold">TRAVELOURE</span>
+      )}
+      {transport.transitOptions && transport.transitOptions.length > 1 && (
+        <span className="text-[9px] text-gray-400 flex items-center gap-0.5">
+          <Repeat className="w-2.5 h-2.5" /> {transport.transitOptions.length}
+        </span>
       )}
       {transport.status === "suggested" && (
         <Badge className="text-[9px] px-1.5 py-0 bg-indigo-100 text-indigo-800 border-0">Suggested</Badge>
