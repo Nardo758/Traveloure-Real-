@@ -55,7 +55,7 @@ interface ExpertSuggestion {
   title: string;
   description: string | null;
   estimated_cost: number | null;
-  status: "pending" | "accepted" | "rejected";
+  status: "pending" | "approved" | "rejected";
   expert_first_name: string;
   expert_last_name: string;
   created_at: string;
@@ -100,7 +100,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
   const [tripWideMode, setTripWideMode] = useState<string | null>(null);
   const [selectedModes, setSelectedModes] = useState<Record<string, string>>({});
   const [showExpertNotes, setShowExpertNotes] = useState(true);
-  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "accepted" | "rejected">("all");
+  const [reviewFilter, setReviewFilter] = useState<"all" | "pending" | "approved" | "rejected">("all");
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const { toast } = useToast();
   const deleteTrip = useDeleteTrip();
@@ -216,13 +216,13 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
     setSelectedModes(prev => ({ ...prev, [legId]: mode }));
   };
 
-  const handleSuggestionResponse = async (suggestionId: string, status: "accepted" | "rejected") => {
+  const handleSuggestionResponse = async (suggestionId: string, status: "approved" | "rejected") => {
     try {
       setRespondingId(suggestionId);
       await apiRequest("PATCH", `/api/trips/${trip.id}/suggestions/${suggestionId}`, { status });
       queryClient.invalidateQueries({ queryKey: ['/api/trips', trip.id, 'suggestions'] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${trip.id}/plancard`] });
-      toast({ title: status === "accepted" ? "Suggestion accepted" : "Suggestion rejected" });
+      toast({ title: status === "approved" ? "Suggestion approved" : "Suggestion rejected" });
     } catch {
       toast({ title: "Failed to update suggestion", variant: "destructive" });
     } finally {
@@ -230,7 +230,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
     }
   };
 
-  const handleBulkSuggestions = async (status: "accepted" | "rejected") => {
+  const handleBulkSuggestions = async (status: "approved" | "rejected") => {
     const pending = allSuggestions.filter(s => s.status === "pending");
     for (const s of pending) {
       try {
@@ -439,13 +439,13 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                         <Lightbulb className="w-3.5 h-3.5" />
                         {pendingSuggestions} pending
                       </span>
-                      <span className="text-[10px] text-green-700 dark:text-green-400">{allSuggestions.filter(s => s.status === "accepted").length} accepted</span>
+                      <span className="text-[10px] text-green-700 dark:text-green-400">{allSuggestions.filter(s => s.status === "approved").length} approved</span>
                       <span className="text-[10px] text-red-600 dark:text-red-400">{allSuggestions.filter(s => s.status === "rejected").length} rejected</span>
                     </div>
                     {pendingSuggestions > 0 && (
                       <div className="flex gap-1">
                         <button
-                          onClick={() => handleBulkSuggestions("accepted")}
+                          onClick={() => handleBulkSuggestions("approved")}
                           className="text-[9px] px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors font-medium"
                           data-testid={`btn-accept-all-${trip.id}`}
                         >
@@ -463,7 +463,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                   </div>
 
                   <div className="flex gap-1 px-2 pt-2 pb-1">
-                    {(["all", "pending", "accepted", "rejected"] as const).map(f => (
+                    {(["all", "pending", "approved", "rejected"] as const).map(f => (
                       <button
                         key={f}
                         onClick={() => setReviewFilter(f)}
@@ -495,7 +495,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                             {s.status === "pending" ? (
                               <div className="flex gap-1 flex-shrink-0">
                                 <button
-                                  onClick={() => handleSuggestionResponse(s.id, "accepted")}
+                                  onClick={() => handleSuggestionResponse(s.id, "approved")}
                                   disabled={respondingId === s.id}
                                   className="w-6 h-6 rounded-md bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50 flex items-center justify-center transition-colors"
                                   data-testid={`btn-accept-${s.id}`}
@@ -512,7 +512,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                                 </button>
                               </div>
                             ) : (
-                              <Badge className={`text-[9px] px-1.5 py-0 h-4 ${s.status === "accepted" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"}`}>
+                              <Badge className={`text-[9px] px-1.5 py-0 h-4 ${s.status === "approved" ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400" : "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"}`}>
                                 {s.status}
                               </Badge>
                             )}
