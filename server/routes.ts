@@ -13436,12 +13436,15 @@ export async function registerDiscoveryRoutes(app: Express) {
           transportLegs: dayLegs.map(leg => ({
             id: leg.id,
             legOrder: leg.legOrder,
+            fromLabel: leg.fromName,
+            toLabel: leg.toName,
             fromName: leg.fromName,
             toName: leg.toName,
             recommendedMode: leg.recommendedMode,
             userSelectedMode: leg.userSelectedMode,
             distanceDisplay: leg.distanceDisplay,
             distanceMeters: leg.distanceMeters,
+            distanceKm: leg.distanceMeters ? Math.round(leg.distanceMeters / 100) / 10 : null,
             estimatedDurationMinutes: leg.estimatedDurationMinutes,
             estimatedCostUsd: leg.estimatedCostUsd,
             energyCost: leg.energyCost,
@@ -13451,6 +13454,8 @@ export async function registerDiscoveryRoutes(app: Express) {
             fromLng: leg.fromLng,
             toLat: leg.toLat,
             toLng: leg.toLng,
+            bookingTiming: leg.bookingTiming,
+            providerSource: leg.providerSource,
           })),
         };
       });
@@ -13553,7 +13558,7 @@ export async function registerDiscoveryRoutes(app: Express) {
   app.patch("/api/transport-legs/:legId/mode", async (req, res) => {
     try {
       const { legId } = req.params;
-      const { selectedMode, shareToken } = req.body;
+      const { selectedMode, shareToken, bookingTiming, providerSource } = req.body;
       const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
@@ -13616,15 +13621,19 @@ export async function registerDiscoveryRoutes(app: Express) {
       const prevDuration = leg.estimatedDurationMinutes;
       const timeDiff = newDuration - prevDuration;
 
+      const updatePayload: Record<string, any> = {
+        userSelectedMode: selectedMode,
+        estimatedDurationMinutes: newDuration,
+        estimatedCostUsd: newCost ?? null,
+        energyCost: newEnergy ?? 0,
+        updatedAt: new Date(),
+      };
+      if (bookingTiming !== undefined) updatePayload.bookingTiming = bookingTiming;
+      if (providerSource !== undefined) updatePayload.providerSource = providerSource;
+
       await db
         .update(transportLegs)
-        .set({
-          userSelectedMode: selectedMode,
-          estimatedDurationMinutes: newDuration,
-          estimatedCostUsd: newCost ?? null,
-          energyCost: newEnergy ?? 0,
-          updatedAt: new Date(),
-        })
+        .set(updatePayload)
         .where(eq(transportLegs.id, legId));
 
       // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
@@ -13659,6 +13668,8 @@ export async function registerDiscoveryRoutes(app: Express) {
           estimatedDurationMinutes: newDuration,
           estimatedCostUsd: newCost,
           energyCost: newEnergy,
+          bookingTiming: bookingTiming ?? null,
+          providerSource: providerSource ?? null,
         },
         downstreamImpact: {
           nextActivityStartTimeShift: -timeDiff,
@@ -13669,6 +13680,69 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err: any) {
       console.error("Update transport mode error:", err);
       res.status(500).json({ error: "Failed to update transport mode" });
+    }
+  });
+
+  // PATCH /api/itinerary-share/:token/transport-mode/bulk
+  // Apply a transport mode (and optional bookingTiming/providerSource) to ALL legs in the itinerary
+  app.patch("/api/itinerary-share/:token/transport-mode/bulk", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const { selectedMode, bookingTiming, providerSource } = req.body;
+      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+
+      if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+      if (!userId && !token) return res.status(401).json({ error: "Authentication required" });
+
+      const [shared] = await db
+        .select()
+        .from(sharedItineraries)
+        .where(eq(sharedItineraries.shareToken, token));
+
+      if (!shared) return res.status(404).json({ error: "Itinerary not found" });
+
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "Share link has expired" });
+      }
+
+      // Require owner or suggest-level permissions
+      const [variant] = await db
+        .select({ comparisonId: itineraryVariants.comparisonId })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.id, shared.variantId));
+
+      if (variant) {
+        const [comparison] = await db
+          .select({ userId: itineraryComparisons.userId })
+          .from(itineraryComparisons)
+          .where(eq(itineraryComparisons.id, variant.comparisonId));
+
+        const isOwner = userId && comparison?.userId === userId;
+        const canEdit = isOwner || shared.permissions === "suggest" || shared.permissions === "edit";
+        if (!canEdit) return res.status(403).json({ error: "Not authorized to update this itinerary" });
+      }
+
+      const bulkSet: Record<string, any> = {
+        userSelectedMode: selectedMode,
+        updatedAt: new Date(),
+      };
+      if (bookingTiming !== undefined) bulkSet.bookingTiming = bookingTiming;
+      if (providerSource !== undefined) bulkSet.providerSource = providerSource;
+
+      await db
+        .update(transportLegs)
+        .set(bulkSet)
+        .where(eq(transportLegs.variantId, shared.variantId));
+
+      const updatedLegs = await db
+        .select({ id: transportLegs.id, userSelectedMode: transportLegs.userSelectedMode })
+        .from(transportLegs)
+        .where(eq(transportLegs.variantId, shared.variantId));
+
+      res.json({ updated: updatedLegs.length, selectedMode, bookingTiming, providerSource });
+    } catch (err: any) {
+      console.error("Bulk transport mode update error:", err);
+      res.status(500).json({ error: "Failed to update transport modes" });
     }
   });
 

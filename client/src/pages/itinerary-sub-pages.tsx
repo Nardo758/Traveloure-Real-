@@ -55,6 +55,12 @@ interface ApiTransportLeg {
   operatorName?: string | null;
   bookingRef?: string | null;
   notes?: string | null;
+  bookingTiming?: "in_advance" | "real_time" | null;
+  providerSource?: "traveloure" | "external" | null;
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
 }
 
 interface ApiDay {
@@ -1114,8 +1120,38 @@ function RoutePlaceholder({ from, to, mode }: { from: string; to: string; mode: 
 export function TransportDetailPage() {
   const { token, legId } = useParams<{ token: string; legId: string }>();
   const [, navigate] = useLocation();
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useItineraryData(token);
-  const [selectedMode, setSelectedMode] = useState<string | null>(null);
+
+  // Mode selection state
+  const [pendingMode, setPendingMode] = useState<string | null>(null);
+  const [applyScope, setApplyScope] = useState<"leg" | "trip">("leg");
+  const [bookingTiming, setBookingTiming] = useState<"in_advance" | "real_time" | null>(null);
+  const [providerSource, setProviderSource] = useState<"traveloure" | "external" | null>(null);
+  const [activeProviderTab, setActiveProviderTab] = useState<"traveloure" | "external">("traveloure");
+  const [saved, setSaved] = useState(false);
+
+  // Per-leg mutation
+  const legMutation = useMutation({
+    mutationFn: async (body: { selectedMode: string; bookingTiming?: string | null; providerSource?: string | null; shareToken?: string }) =>
+      apiRequest("PATCH", `/api/transport-legs/${legId}/mode`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share", token] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
+  });
+
+  // Bulk trip mutation
+  const bulkMutation = useMutation({
+    mutationFn: async (body: { selectedMode: string; bookingTiming?: string | null; providerSource?: string | null }) =>
+      apiRequest("PATCH", `/api/itinerary-share/${token}/transport-mode/bulk`, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-share", token] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    },
+  });
 
   if (isLoading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={(error as Error).message} />;
@@ -1142,21 +1178,46 @@ export function TransportDetailPage() {
   if (!leg) return <ErrorScreen message="Transport leg not found." />;
 
   const baseMode = leg.userSelectedMode ?? leg.recommendedMode ?? "transit";
-  const displayMode = selectedMode ?? baseMode;
+  const displayMode = pendingMode ?? baseMode;
   const modeColor = MODE_COLORS[displayMode] ?? "#6b7280";
   const fromName = leg.fromLabel ?? fromActivity?.name ?? "—";
   const toName = leg.toLabel ?? toActivity?.name ?? "—";
   const destLocation = toActivity?.location ?? toName;
-
-  // Find expert suggested change for this leg
   const expertTransportDiff = data.expertDiff?.transportDiffs?.[legId ?? ""];
+  const savedTiming = bookingTiming ?? leg.bookingTiming ?? null;
+  const savedSource = providerSource ?? leg.providerSource ?? null;
+  const isPending = legMutation.isPending || bulkMutation.isPending;
 
   const daySubtitle = dayDate
     ? `Day ${dayNumber} — ${new Date(dayDate).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`
     : `Day ${dayNumber}`;
 
+  function handleConfirmMode() {
+    if (!pendingMode) return;
+    const body = {
+      selectedMode: pendingMode,
+      bookingTiming: savedTiming,
+      providerSource: savedSource,
+    };
+    if (applyScope === "trip") {
+      bulkMutation.mutate(body);
+    } else {
+      legMutation.mutate({ ...body, shareToken: data?.shareToken });
+    }
+    setPendingMode(null);
+  }
+
+  const OTHER_SOURCE_LINKS = [
+    { label: "Google Maps", icon: <MapPin className="w-4 h-4 text-blue-600" />, bg: "bg-blue-50", url: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(toName)}` },
+    { label: "Apple Maps", icon: <Map className="w-4 h-4 text-gray-600" />, bg: "bg-gray-100", url: `https://maps.apple.com/?daddr=${encodeURIComponent(toName)}` },
+    { label: "Uber", icon: <CarTaxiFront className="w-4 h-4 text-black" />, bg: "bg-gray-100", url: `https://m.uber.com/ul/?action=setPickup&dropoff[nickname]=${encodeURIComponent(toName)}` },
+    { label: "Rome2rio", icon: <Route className="w-4 h-4 text-orange-600" />, bg: "bg-orange-50", url: `https://www.rome2rio.com/map/${encodeURIComponent(fromName)}/${encodeURIComponent(toName)}` },
+    { label: "Waze", icon: <Navigation className="w-4 h-4 text-cyan-600" />, bg: "bg-cyan-50", url: leg.toLat && leg.toLng ? `https://www.waze.com/ul?ll=${leg.toLat},${leg.toLng}&navigate=yes` : `https://www.waze.com/` },
+  ];
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="transport-detail-page">
+      {/* Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -1169,27 +1230,36 @@ export function TransportDetailPage() {
           <h1 className="text-[15px] font-bold text-gray-900">Transport Details</h1>
           <p className="text-[11px] text-gray-500">{daySubtitle}</p>
         </div>
+        {saved && (
+          <span className="text-[11px] text-green-600 font-semibold flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+          </span>
+        )}
       </div>
 
+      {/* Route summary card */}
       <div className="px-4 pt-4 pb-3">
         <Card className="overflow-hidden">
           <div className="p-4">
-            {/* Mode header */}
             <div className="flex items-center gap-3 mb-4">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ backgroundColor: `${modeColor}15` }}
-              >
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${modeColor}15` }}>
                 <ModeIcon mode={displayMode} className="w-6 h-6" style={{ color: modeColor }} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[displayMode] ?? displayMode}</span>
-                  {displayMode === baseMode && (
+                  {pendingMode && pendingMode !== baseMode ? (
+                    <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Preview</Badge>
+                  ) : (
                     <Badge className="bg-blue-100 text-blue-700 border-0 text-[10px]">Current</Badge>
                   )}
-                  {selectedMode && selectedMode !== baseMode && (
-                    <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Preview</Badge>
+                  {savedTiming && (
+                    <Badge className={`border-0 text-[10px] ${savedTiming === "in_advance" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
+                      {savedTiming === "in_advance" ? "Plan ahead" : "On the day"}
+                    </Badge>
+                  )}
+                  {savedSource === "traveloure" && (
+                    <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px]">Traveloure</Badge>
                   )}
                 </div>
                 {leg.operatorName && (
@@ -1209,9 +1279,7 @@ export function TransportDetailPage() {
               </div>
               <div className="flex-1 space-y-3">
                 <div>
-                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-from">
-                    {fromName}
-                  </div>
+                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-from">{fromName}</div>
                   {leg.departureTime && (
                     <div className="text-[11px] text-gray-500 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Depart {formatTime(leg.departureTime)}
@@ -1219,9 +1287,7 @@ export function TransportDetailPage() {
                   )}
                 </div>
                 <div>
-                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-to">
-                    {toName}
-                  </div>
+                  <div className="text-[12px] font-semibold text-gray-900" data-testid="text-to">{toName}</div>
                   {leg.arrivalTime && (
                     <div className="text-[11px] text-gray-500 flex items-center gap-1">
                       <Clock className="w-3 h-3" /> Arrive {formatTime(leg.arrivalTime)}
@@ -1232,7 +1298,7 @@ export function TransportDetailPage() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-3">
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] text-gray-500 mb-0.5">Duration</div>
                 <div className="text-[14px] font-bold text-gray-900" data-testid="text-duration">
@@ -1253,23 +1319,17 @@ export function TransportDetailPage() {
               </div>
             </div>
 
-            {/* Notes */}
             {leg.notes && (
-              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+              <div className="mt-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
                 <Sparkles className="w-3 h-3 text-amber-600 mt-0.5 flex-shrink-0" />
                 {leg.notes}
               </div>
             )}
-
-            {/* Booking ref */}
             {leg.bookingRef && (
-              <div className="flex items-center gap-2 mb-3 text-[12px] text-gray-600">
+              <div className="flex items-center gap-2 mt-3 text-[12px] text-gray-600">
                 <Ticket className="w-3.5 h-3.5 text-gray-400" />
                 <span className="font-medium">Booking Ref:</span>
-                <span
-                  className="font-mono text-[11px] bg-gray-100 px-2 py-0.5 rounded"
-                  data-testid="text-booking-ref"
-                >
+                <span className="font-mono text-[11px] bg-gray-100 px-2 py-0.5 rounded" data-testid="text-booking-ref">
                   {leg.bookingRef}
                 </span>
               </div>
@@ -1280,103 +1340,229 @@ export function TransportDetailPage() {
 
       {/* Route map */}
       <div className="px-4 pb-3">
-        <h3 className="text-[13px] font-bold text-gray-900 mb-2">Route Map</h3>
         <RoutePlaceholder from={fromName} to={toName} mode={displayMode} />
       </div>
 
-      {/* Transit Mode Options */}
+      {/* ─── TRANSPORT MODE SELECTION ─── */}
       <div className="px-4 pb-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-[13px] font-bold text-gray-900 flex items-center gap-1.5">
-            <Repeat className="w-3.5 h-3.5 text-gray-500" /> Transit Mode Options
-          </h3>
-          <span className="text-[11px] text-gray-400">{TRANSPORT_OPTIONS.length} available</span>
-        </div>
+        <Card className="overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-4">
+              <Repeat className="w-4 h-4 text-gray-500" />
+              <span className="text-[14px] font-bold text-gray-900">Select Transport Mode</span>
+            </div>
 
-        {/* Maps & Transit alternatives */}
-        <div className="mb-3">
-          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-            <MapPin className="w-3 h-3" /> Maps &amp; Transit
-          </div>
-          <div className="space-y-1.5">
-            {TRANSPORT_OPTIONS.map(opt => {
-              const isSelected = displayMode === opt.mode;
-              return (
-                <Card
-                  key={opt.mode}
-                  className={`p-3 cursor-pointer transition-all hover:shadow-md ${isSelected ? "ring-2 ring-blue-500 bg-blue-50/30" : ""}`}
-                  onClick={() => setSelectedMode(opt.mode === baseMode ? null : opt.mode)}
-                  data-testid={`mode-option-${opt.mode}`}
+            {/* Scope toggle */}
+            <div className="mb-4">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Apply to</div>
+              <div className="flex rounded-xl overflow-hidden border border-gray-200 p-0.5 bg-gray-50">
+                <button
+                  onClick={() => setApplyScope("leg")}
+                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all ${applyScope === "leg" ? "bg-white shadow text-gray-900" : "text-gray-500"}`}
+                  data-testid="scope-toggle-leg"
                 >
-                  <div className="flex items-center gap-3">
+                  This leg
+                </button>
+                <button
+                  onClick={() => setApplyScope("trip")}
+                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all ${applyScope === "trip" ? "bg-white shadow text-gray-900" : "text-gray-500"}`}
+                  data-testid="scope-toggle-trip"
+                >
+                  Entire trip
+                </button>
+              </div>
+              {applyScope === "trip" && (
+                <p className="text-[10px] text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 mt-2 border border-amber-200">
+                  This will update all transport legs in this itinerary.
+                </p>
+              )}
+            </div>
+
+            {/* Mode grid */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {TRANSPORT_OPTIONS.map(opt => {
+                const isActive = displayMode === opt.mode;
+                const isCurrent = baseMode === opt.mode && !pendingMode;
+                return (
+                  <button
+                    key={opt.mode}
+                    onClick={() => setPendingMode(opt.mode === baseMode && !pendingMode ? null : opt.mode)}
+                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border-2 transition-all ${
+                      isActive
+                        ? "border-blue-500 bg-blue-50 shadow-sm"
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    }`}
+                    data-testid={`mode-option-${opt.mode}`}
+                  >
                     <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${opt.color}15` }}
+                      className="w-9 h-9 rounded-lg flex items-center justify-center"
+                      style={{ backgroundColor: `${opt.color}18` }}
                     >
                       <ModeIcon mode={opt.mode} className="w-4 h-4" style={{ color: opt.color }} />
                     </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[12px] font-semibold text-gray-900">{opt.label}</span>
-                        {opt.mode === baseMode && (
-                          <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">CURRENT</span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">
-                        Tap to preview this mode
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {isSelected && <Check className="w-4 h-4 text-blue-600" />}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
+                    <span className="text-[11px] font-semibold text-gray-800">{opt.label}</span>
+                    {isCurrent && !pendingMode && (
+                      <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">CURRENT</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-        {/* Traveloure Services */}
-        <div>
-          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-sky-500" /> Traveloure Services
-          </div>
-          <div className="space-y-1.5">
-            <Card className="p-3 border-sky-100 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-private-transfer">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
-                  <Car className="w-4 h-4 text-sky-600" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[12px] font-semibold text-gray-900">Private Transfer</span>
-                    <span className="text-[8px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
-                  </div>
-                  <div className="text-[11px] text-gray-500 mt-0.5">Comfortable door-to-door service</div>
-                </div>
-                <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px]">Available</Badge>
+            {/* Confirm / cancel if mode is pending */}
+            {pendingMode && pendingMode !== baseMode && (
+              <div className="flex gap-2 mb-4">
+                <Button
+                  size="sm"
+                  className="flex-1 gap-1.5 text-[12px]"
+                  onClick={handleConfirmMode}
+                  disabled={isPending}
+                  data-testid="button-confirm-mode"
+                >
+                  {isPending ? (
+                    <span className="flex items-center gap-1.5"><span className="w-3 h-3 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</span>
+                  ) : (
+                    <><Check className="w-3.5 h-3.5" /> Apply {applyScope === "trip" ? "to entire trip" : "to this leg"}</>
+                  )}
+                </Button>
+                <Button size="sm" variant="outline" className="text-[12px]" onClick={() => setPendingMode(null)} data-testid="button-cancel-mode">
+                  Cancel
+                </Button>
               </div>
-            </Card>
-            <Card className="p-3 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-request-alternative">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
-                  <Repeat className="w-4 h-4 text-gray-500" />
-                </div>
-                <div className="flex-1">
-                  <span className="text-[12px] font-semibold text-gray-800">Request Alternative</span>
-                  <div className="text-[11px] text-gray-500 mt-0.5">Ask your expert to suggest options</div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
+            )}
+
+            {/* Booking timing */}
+            <div className="mb-4">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Booking timing
               </div>
-            </Card>
+              <div className="flex rounded-xl overflow-hidden border border-gray-200 p-0.5 bg-gray-50">
+                <button
+                  onClick={() => setBookingTiming(savedTiming === "in_advance" ? null : "in_advance")}
+                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    savedTiming === "in_advance" ? "bg-purple-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                  data-testid="timing-toggle-advance"
+                >
+                  <Calendar className="w-3 h-3" /> Plan ahead
+                </button>
+                <button
+                  onClick={() => setBookingTiming(savedTiming === "real_time" ? null : "real_time")}
+                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    savedTiming === "real_time" ? "bg-green-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                  data-testid="timing-toggle-realtime"
+                >
+                  <Sparkles className="w-3 h-3" /> On the day
+                </button>
+              </div>
+              {savedTiming && (
+                <p className="text-[10px] text-gray-500 mt-1.5 text-center">
+                  {savedTiming === "in_advance" ? "Book this in advance for guaranteed availability." : "Book on arrival — flexible, may cost more."}
+                </p>
+              )}
+            </div>
+
+            {/* Provider source tabs */}
+            <div>
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Globe className="w-3 h-3" /> Provider source
+              </div>
+              <div className="flex rounded-xl overflow-hidden border border-gray-200 p-0.5 bg-gray-50 mb-3">
+                <button
+                  onClick={() => { setActiveProviderTab("traveloure"); setProviderSource("traveloure"); }}
+                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    activeProviderTab === "traveloure" ? "bg-sky-600 text-white shadow" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                  data-testid="provider-tab-traveloure"
+                >
+                  <Sparkles className="w-3 h-3" /> Traveloure Partners
+                </button>
+                <button
+                  onClick={() => { setActiveProviderTab("external"); setProviderSource("external"); }}
+                  className={`flex-1 py-2 text-[12px] font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    activeProviderTab === "external" ? "bg-gray-800 text-white shadow" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                  data-testid="provider-tab-external"
+                >
+                  <ExternalLink className="w-3 h-3" /> Other sources
+                </button>
+              </div>
+
+              {activeProviderTab === "traveloure" ? (
+                <div className="space-y-2">
+                  <Card className="p-3 border-sky-100 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-private-transfer">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                        <Car className="w-4 h-4 text-sky-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[12px] font-semibold text-gray-900">Private Transfer</span>
+                          <span className="text-[8px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">Door-to-door, pre-arranged service</div>
+                      </div>
+                      <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px]">Available</Badge>
+                    </div>
+                  </Card>
+                  <Card className="p-3 border-indigo-100 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-guided-tour">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center flex-shrink-0">
+                        <Users className="w-4 h-4 text-indigo-600" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[12px] font-semibold text-gray-900">Guided Transfer</span>
+                          <span className="text-[8px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-0.5">With local guide, shared or private</div>
+                      </div>
+                      <Badge className="bg-indigo-100 text-indigo-700 border-0 text-[10px]">On request</Badge>
+                    </div>
+                  </Card>
+                  <Card className="p-3 cursor-pointer hover:shadow-md transition-all" data-testid="platform-option-request-alternative">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <MessageSquare className="w-4 h-4 text-gray-500" />
+                      </div>
+                      <div className="flex-1">
+                        <span className="text-[12px] font-semibold text-gray-800">Request a quote</span>
+                        <div className="text-[11px] text-gray-500 mt-0.5">Ask your expert to arrange options</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-400" />
+                    </div>
+                  </Card>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {OTHER_SOURCE_LINKS.map(link => (
+                    <a
+                      key={link.label}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-white hover:shadow-md transition-all"
+                      data-testid={`external-link-${link.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <div className={`w-9 h-9 rounded-lg ${link.bg} flex items-center justify-center flex-shrink-0`}>
+                        {link.icon}
+                      </div>
+                      <span className="flex-1 text-[12px] font-semibold text-gray-800">{link.label}</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Expert Suggested Change */}
       {expertTransportDiff && (
         <div className="px-4 pb-3">
-          <h3 className="text-[13px] font-bold text-gray-900 mb-2">Suggested Change</h3>
+          <h3 className="text-[13px] font-bold text-gray-900 mb-2">Expert Suggested Change</h3>
           <Card className="p-3 border-indigo-200 bg-indigo-50/30">
             <div className="flex items-start gap-2 mb-3">
               <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -1384,7 +1570,7 @@ export function TransportDetailPage() {
               </div>
               <div className="flex-1">
                 <div className="text-[12px] font-semibold text-indigo-800 mb-1">Expert Recommendation</div>
-                <div className="flex items-center gap-2 text-[11px] text-gray-600 mb-1">
+                <div className="flex items-center gap-2 text-[11px] text-gray-600">
                   <span className="line-through text-red-500">{MODE_LABELS[expertTransportDiff.originalMode] ?? expertTransportDiff.originalMode}</span>
                   <ArrowRight className="w-3 h-3 text-gray-400" />
                   <span className="text-green-700 font-semibold">{MODE_LABELS[expertTransportDiff.newMode] ?? expertTransportDiff.newMode}</span>
@@ -1410,6 +1596,7 @@ export function TransportDetailPage() {
           <NavigateDropdown location={destLocation} lat={toActivity?.lat} lng={toActivity?.lng} />
         </Card>
       </div>
+
       <SubPageNav token={token} currentPage="transport" />
     </div>
   );
