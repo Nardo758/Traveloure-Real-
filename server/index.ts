@@ -215,7 +215,9 @@ async function runDatabaseSeeding() {
             try {
               const { execSync } = await import("child_process");
               execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: "ignore" });
-            } catch {}
+            } catch (fuserErr) {
+              logger.warn({ port, err: fuserErr }, "fuser port cleanup unavailable or failed — retrying without kill");
+            }
           }
           await new Promise(r => setTimeout(r, 800));
           resolve(tryListen(retriesLeft - 1));
