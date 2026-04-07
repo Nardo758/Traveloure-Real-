@@ -576,6 +576,24 @@ export function FullItineraryPage() {
             </button>
             <div className="w-px h-5 bg-gray-200 mx-1" />
             <button
+              onClick={() => allActivities[0] && navigate(`/itinerary-view/${token}/activity/${allActivities[0].id}`)}
+              disabled={!allActivities[0]}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Activity Detail"
+              data-testid="header-nav-activity"
+            >
+              <ActivityIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => allTransports[0] && navigate(`/itinerary-view/${token}/transport/${allTransports[0].id}`)}
+              disabled={!allTransports[0]}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Transport Detail"
+              data-testid="header-nav-transport"
+            >
+              <TrainFront className="w-4 h-4" />
+            </button>
+            <button
               onClick={() => navigate(`/itinerary-view/${token}/map`)}
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
               title="Map"
