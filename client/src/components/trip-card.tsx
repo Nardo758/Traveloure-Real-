@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,11 +7,22 @@ import { format, differenceInDays } from "date-fns";
 import type { Trip } from "@shared/schema";
 import { motion } from "framer-motion";
 
+function getDestinationGradient(destination: string): string {
+  let hash = 0;
+  for (let i = 0; i < destination.length; i++) {
+    hash = (hash << 5) - hash + destination.charCodeAt(i);
+    hash |= 0;
+  }
+  const h = Math.abs(hash) % 360;
+  return `linear-gradient(135deg, hsl(${h}, 60%, 40%), hsl(${(h + 50) % 360}, 70%, 28%))`;
+}
+
 interface TripCardProps {
   trip: Trip;
 }
 
 export function TripCard({ trip }: TripCardProps) {
+  const [imgError, setImgError] = useState(false);
   const startDate = new Date(trip.startDate);
   const endDate = new Date(trip.endDate);
   const duration = differenceInDays(endDate, startDate) + 1;
@@ -29,11 +41,19 @@ export function TripCard({ trip }: TripCardProps) {
         >
           {/* Image */}
           <div className="relative h-48 overflow-hidden">
-            <img 
-              src={`https://source.unsplash.com/800x600/?${encodeURIComponent(trip.destination)},travel,landmark`}
-              alt={trip.destination}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-            />
+            {imgError ? (
+              <div
+                className="w-full h-full group-hover:scale-105 transition-transform duration-500"
+                style={{ background: getDestinationGradient(trip.destination) }}
+              />
+            ) : (
+              <img 
+                src={`https://source.unsplash.com/800x600/?${encodeURIComponent(trip.destination)},travel,landmark`}
+                alt={trip.destination}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                onError={() => setImgError(true)}
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
             
             {/* Status Badge */}

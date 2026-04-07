@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Calendar, MapPin, Users, Coffee, Camera, Utensils, Bed, Plane, ArrowRight, ShoppingCart, Clock } from "lucide-react";
@@ -5,6 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { format, differenceInDays } from "date-fns";
+
+function getDestinationGradient(destination: string): string {
+  let hash = 0;
+  for (let i = 0; i < destination.length; i++) {
+    hash = (hash << 5) - hash + destination.charCodeAt(i);
+    hash |= 0;
+  }
+  const h = Math.abs(hash) % 360;
+  return `linear-gradient(135deg, hsl(${h}, 60%, 40%), hsl(${(h + 50) % 360}, 70%, 28%))`;
+}
 
 function getActivityIcon(type: string) {
   switch (type?.toLowerCase()) {
@@ -49,6 +60,7 @@ interface SharedTripResponse {
 }
 
 export default function SharedTripPage() {
+  const [imgError, setImgError] = useState(false);
   const { token } = useParams<{ token: string }>();
 
   const { data, isLoading, isError } = useQuery<SharedTripResponse>({
@@ -99,11 +111,19 @@ export default function SharedTripPage() {
     <div className="min-h-screen bg-background pb-20">
       {/* Hero */}
       <div className="relative h-[40vh] min-h-[280px]">
-        <img
-          src={`https://source.unsplash.com/1600x900/?${encodeURIComponent(trip.destination)},travel,landmark`}
-          alt={trip.destination}
-          className="w-full h-full object-cover"
-        />
+        {imgError ? (
+          <div
+            className="w-full h-full"
+            style={{ background: getDestinationGradient(trip.destination) }}
+          />
+        ) : (
+          <img
+            src={`https://source.unsplash.com/1600x900/?${encodeURIComponent(trip.destination)},travel,landmark`}
+            alt={trip.destination}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/20" />
 
         {/* Branding */}

@@ -173,6 +173,48 @@ async function runDatabaseSeeding() {
   logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
 }
 
+async function killPortHolder(port: number): Promise<void> {
+  const fs = (await import("fs")).default;
+  const portHex = port.toString(16).toUpperCase().padStart(4, "0");
+
+  let targetInode: string | null = null;
+  for (const file of ["/proc/net/tcp6", "/proc/net/tcp"]) {
+    try {
+      const lines = fs.readFileSync(file, "utf8").split("\n").slice(1);
+      for (const line of lines) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 10) continue;
+        const localAddr = parts[1];
+        if (localAddr && localAddr.toUpperCase().endsWith(":" + portHex)) {
+          targetInode = parts[9];
+          break;
+        }
+      }
+    } catch {}
+    if (targetInode) break;
+  }
+
+  if (!targetInode) return;
+
+  const pids = fs.readdirSync("/proc").filter((d: string) => /^\d+$/.test(d));
+  for (const pid of pids) {
+    if (pid === String(process.pid)) continue;
+    try {
+      const fds = fs.readdirSync(`/proc/${pid}/fd`);
+      for (const fd of fds) {
+        try {
+          const link = fs.readlinkSync(`/proc/${pid}/fd/${fd}`);
+          if (link === `socket:[${targetInode}]`) {
+            process.kill(parseInt(pid), "SIGKILL");
+            logger.info({ port, pid }, "Killed stale port holder");
+            return;
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+}
+
 (async () => {
   await registerRoutes(httpServer, app);
 
@@ -211,13 +253,10 @@ async function runDatabaseSeeding() {
         if (err.code === "EADDRINUSE" && retriesLeft > 0) {
           logger.warn({ port }, `Port ${port} in use — killing stale listener and retrying`);
           httpServer.removeListener("error", onError);
-          if (process.env.NODE_ENV !== "production") {
-            try {
-              const { execSync } = await import("child_process");
-              execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: "ignore" });
-            } catch (fuserErr) {
-              logger.warn({ port, err: fuserErr }, "fuser port cleanup unavailable or failed — retrying without kill");
-            }
+          try {
+            await killPortHolder(port);
+          } catch (killErr) {
+            logger.warn({ port, err: killErr }, "Port cleanup failed — retrying without kill");
           }
           await new Promise(r => setTimeout(r, 800));
           resolve(tryListen(retriesLeft - 1));
