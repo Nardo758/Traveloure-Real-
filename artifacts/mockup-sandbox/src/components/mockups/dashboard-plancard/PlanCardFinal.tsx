@@ -680,25 +680,38 @@ export function PlanCardFinal() {
         <Card className="overflow-hidden border border-gray-200 shadow-xl bg-white">
           <HeroSection />
 
-          <div className="px-4 pt-3 flex gap-1.5">
-            <button
-              onClick={() => setViewMode("card")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border-0 ${
-                viewMode === "card" ? "bg-gray-900 text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-              }`}
-              data-testid="view-card"
-            >
-              <LayoutList className="w-4 h-4" /> Card View
-            </button>
-            <button
-              onClick={() => setViewMode("map")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition-all border-0 ${
-                viewMode === "map" ? "bg-blue-600 text-white shadow-md" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-              }`}
-              data-testid="view-map"
-            >
-              <Map className="w-4 h-4" /> Map Control Center
-            </button>
+          <div className="px-4 pt-3">
+            <div className="relative bg-gray-100 rounded-xl p-1 flex gap-0.5">
+              <div
+                className="absolute top-1 bottom-1 rounded-lg transition-all duration-300 ease-in-out shadow-md"
+                style={{
+                  left: viewMode === "card" ? "4px" : "calc(50% + 1px)",
+                  width: "calc(50% - 5px)",
+                  background: viewMode === "card" ? "#111827" : "#2563eb",
+                }}
+              />
+              <button
+                onClick={() => setViewMode("card")}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors duration-300 ${
+                  viewMode === "card" ? "text-white" : "text-gray-500 hover:text-gray-700"
+                }`}
+                data-testid="view-card"
+              >
+                <LayoutList className="w-4 h-4" /> Dashboard
+              </button>
+              <button
+                onClick={() => setViewMode("map")}
+                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors duration-300 ${
+                  viewMode === "map" ? "text-white" : "text-gray-500 hover:text-gray-700"
+                }`}
+                data-testid="view-map"
+              >
+                <Map className="w-4 h-4" /> Map Control Center
+                {viewMode !== "map" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-4 border-b border-gray-200 mt-3">
@@ -1163,15 +1176,28 @@ export function PlanCardFinal() {
           )}
 
           <div className="px-4 pb-3 pt-2 flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-shrink-0"
-              onClick={() => setViewMode("map")}
-              data-testid="footer-maps"
-            >
-              <MapPin className="w-3.5 h-3.5 mr-1" /> Maps
-            </Button>
+            {viewMode === "card" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={() => setViewMode("map")}
+                data-testid="footer-maps"
+              >
+                <Map className="w-3.5 h-3.5 mr-1" /> Open Map
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse ml-1" />
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-shrink-0"
+                onClick={() => setViewMode("card")}
+                data-testid="footer-dashboard"
+              >
+                <LayoutList className="w-3.5 h-3.5 mr-1" /> Dashboard
+              </Button>
+            )}
             <Button size="sm" className="flex-1 text-xs font-semibold bg-gray-900 text-white hover:bg-gray-800" data-testid="footer-itinerary">
               <Calendar className="w-3.5 h-3.5 mr-1" /> View Itinerary
               <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
