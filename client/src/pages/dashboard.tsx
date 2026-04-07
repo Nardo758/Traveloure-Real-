@@ -99,6 +99,10 @@ export default function Dashboard() {
     queryKey: ["/api/credits/balance"],
     retry: false,
   });
+  const { data: tripScores } = useQuery<Array<{ tripId: string; optimizationScore: number | null; shareToken: string | null }>>({
+    queryKey: ["/api/dashboard/trip-scores"],
+    staleTime: 60000,
+  });
 
   if (isLoading) {
     return (
@@ -143,6 +147,7 @@ export default function Dashboard() {
 
   const destinations = activePlans.map(t => t.destination).filter(Boolean);
   const convList = conversations ?? [];
+  const scoreMap = new Map((tripScores ?? []).map(s => [s.tripId, s]));
 
   return (
     <DashboardLayout>
@@ -230,6 +235,8 @@ export default function Dashboard() {
               data-testid="active-plans-grid"
             >
               {activePlans.slice(0, 6).map((trip, i) => {
+                const tripScore = scoreMap.get(trip.id);
+                const resolvedShareToken = tripScore?.shareToken ?? (trip as any).shareToken ?? null;
                 const planCardTrip: PlanCardTrip = {
                   id: trip.id,
                   destination: trip.destination ?? "",
@@ -240,14 +247,18 @@ export default function Dashboard() {
                   budget: trip.budget ?? undefined,
                   eventType: trip.eventType ?? undefined,
                   status: trip.status ?? undefined,
-                  shareToken: trip.shareToken ?? null,
-                  trackingNumber: trip.trackingNumber ?? null,
+                  shareToken: resolvedShareToken,
+                  trackingNumber: (trip as any).trackingNumber ?? null,
                   expertNotes: trip.expertNotes ?? null,
                 };
+                const score = tripScore
+                  ? { tripId: trip.id, optimizationScore: tripScore.optimizationScore, shareToken: tripScore.shareToken }
+                  : undefined;
                 return (
                   <PlanCard
                     key={trip.id}
                     trip={planCardTrip}
+                    score={score}
                     index={i}
                     conversations={convList}
                     notifications={notifications}

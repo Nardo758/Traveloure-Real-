@@ -13297,6 +13297,52 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // GET /api/trips/:id/itinerary-token — Get or create a self-share token for the owner to view their itinerary
+  app.get("/api/trips/:id/itinerary-token", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req as any).user?.claims?.sub || (req as any).user?.id;
+      const tripId = req.params.id;
+
+      // Find the latest comparison with a selected variant for this trip
+      const [comp] = await db
+        .select({ id: itineraryComparisons.id, selectedVariantId: itineraryComparisons.selectedVariantId })
+        .from(itineraryComparisons)
+        .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryComparisons.userId, userId)))
+        .orderBy(desc(itineraryComparisons.createdAt))
+        .limit(1);
+
+      if (!comp?.selectedVariantId) return res.json({ shareToken: null });
+
+      // Check for existing share by this owner for this variant
+      const [existing] = await db
+        .select({ shareToken: sharedItineraries.shareToken })
+        .from(sharedItineraries)
+        .where(and(
+          eq(sharedItineraries.variantId, comp.selectedVariantId),
+          eq(sharedItineraries.sharedByUserId, userId),
+        ))
+        .limit(1);
+
+      if (existing) return res.json({ shareToken: existing.shareToken });
+
+      // Create a new self-share
+      const shareToken = crypto.randomUUID();
+      await db.insert(sharedItineraries).values({
+        shareToken,
+        variantId: comp.selectedVariantId,
+        sharedByUserId: userId,
+        sharedWithUserId: null,
+        permissions: "view",
+        transportPreferences: null,
+      });
+
+      return res.json({ shareToken });
+    } catch (err: any) {
+      console.error("Itinerary token error:", err);
+      res.status(500).json({ error: "Failed to get itinerary token" });
+    }
+  });
+
   // GET /api/itinerary-share/:token — PUBLIC
   app.get("/api/itinerary-share/:token", async (req, res) => {
     try {

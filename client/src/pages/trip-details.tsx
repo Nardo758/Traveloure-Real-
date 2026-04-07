@@ -23,6 +23,13 @@ interface Conversation {
   createdAt: string;
 }
 
+interface ShareInfo {
+  shareToken?: string | null;
+  variantId?: string | null;
+  expertStatus?: string | null;
+  expertNotes?: string | null;
+}
+
 export default function TripDetails() {
   const { id } = useParams();
   const { data: trip, isLoading } = useTrip(id || "");
@@ -33,6 +40,17 @@ export default function TripDetails() {
 
   const { data: conversations } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
+  });
+
+  const { data: shareInfo } = useQuery<ShareInfo>({
+    queryKey: ["/api/trips", id, "itinerary-token"],
+    queryFn: async () => {
+      const res = await fetch(`/api/trips/${id}/itinerary-token`, { credentials: "include" });
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!id,
+    staleTime: 30000,
   });
 
   if (isLoading) {
@@ -56,6 +74,8 @@ export default function TripDetails() {
     );
   }
 
+  const resolvedShareToken = shareInfo?.shareToken ?? (trip as any).shareToken ?? null;
+
   const planCardTrip: PlanCardTrip = {
     id: trip.id,
     destination: trip.destination ?? "",
@@ -66,10 +86,14 @@ export default function TripDetails() {
     budget: trip.budget ?? undefined,
     eventType: trip.eventType ?? undefined,
     status: trip.status ?? undefined,
-    shareToken: trip.shareToken ?? null,
-    trackingNumber: trip.trackingNumber ?? null,
+    shareToken: resolvedShareToken,
+    trackingNumber: (trip as any).trackingNumber ?? null,
     expertNotes: trip.expertNotes ?? null,
   };
+
+  const score = resolvedShareToken
+    ? { tripId: trip.id, optimizationScore: null, shareToken: resolvedShareToken }
+    : undefined;
 
   return (
     <div className="py-4 px-4" data-testid="trip-details-page">
@@ -89,6 +113,7 @@ export default function TripDetails() {
       <div className="max-w-[560px] mx-auto">
         <PlanCard
           trip={planCardTrip}
+          score={score}
           index={0}
           conversations={conversations ?? []}
           notifications={notificationsData ?? []}
