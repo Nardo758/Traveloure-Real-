@@ -16,7 +16,7 @@ interface ProviderService {
   reviewCount: number;
   status: string;
   category?: { name: string | null; slug: string | null } | null;
-  provider?: { firstName: string | null; lastName: string | null } | null;
+  provider?: { firstName: string | null; lastName: string | null; businessName?: string | null } | null;
 }
 
 interface RecommendedServicesProps {
@@ -147,6 +147,7 @@ export function RecommendedServices({
           const catName = svc.category?.name || "Service";
           const catColors = getCategoryColor(catName);
           const provName =
+            svc.provider?.businessName ||
             `${svc.provider?.firstName || ""} ${svc.provider?.lastName || ""}`.trim() ||
             "Provider";
           const initials = provName
