@@ -58,7 +58,6 @@ function getInitials(name: string): string {
 }
 
 function findMatchedConversationId(
-  tripId: string,
   tripDestination: string,
   tripTitle: string | undefined,
   conversations: Array<{ id: number; title: string }>,
@@ -133,7 +132,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
   });
   const pendingSuggestions = suggestionsData?.suggestions?.filter(s => s.status === "pending").length ?? 0;
 
-  const matchedConvId = findMatchedConversationId(trip.id, trip.destination, trip.title, conversations);
+  const matchedConvId = findMatchedConversationId(trip.destination, trip.title, conversations);
   const { data: convWithMessages } = useQuery<ConversationWithMessages>({
     queryKey: ['/api/conversations', matchedConvId],
     enabled: matchedConvId !== null,
