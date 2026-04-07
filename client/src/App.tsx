@@ -132,6 +132,16 @@ import QuickStartItinerary from "@/pages/quick-start-itinerary";
 import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import ItineraryViewPage from "@/pages/itinerary-view";
+import {
+  FullItineraryPage,
+  ActivityDetailPage,
+  TransportDetailPage,
+  MapFullPage,
+  TripStatsPage,
+  ServicesPage,
+  ExpertChatPage,
+  ReviewChangesPage,
+} from "@/pages/itinerary-sub-pages";
 import SharedTripPage from "@/pages/shared-trip";
 import LoginPage from "@/pages/login";
 import { Loader2 } from "lucide-react";
@@ -227,6 +237,32 @@ function Router() {
       </Route>
       <Route path="/cart">
         <CartPage />
+      </Route>
+
+      {/* Itinerary sub-pages (must be before /itinerary-view/:token catch-all) */}
+      <Route path="/itinerary-view/:token/itinerary">
+        <FullItineraryPage />
+      </Route>
+      <Route path="/itinerary-view/:token/activity/:activityId">
+        <ActivityDetailPage />
+      </Route>
+      <Route path="/itinerary-view/:token/transport/:legId">
+        <TransportDetailPage />
+      </Route>
+      <Route path="/itinerary-view/:token/map">
+        <MapFullPage />
+      </Route>
+      <Route path="/itinerary-view/:token/stats">
+        <TripStatsPage />
+      </Route>
+      <Route path="/itinerary-view/:token/services">
+        <ServicesPage />
+      </Route>
+      <Route path="/itinerary-view/:token/chat">
+        <ExpertChatPage />
+      </Route>
+      <Route path="/itinerary-view/:token/changes">
+        <ReviewChangesPage />
       </Route>
 
       <Route path="/itinerary-view/:token">

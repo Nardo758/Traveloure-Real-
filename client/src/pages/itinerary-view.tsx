@@ -688,13 +688,38 @@ export default function ItineraryViewPage() {
         )}
 
         {!isExpertView && (
-          <div className="mt-8 pt-6 border-t text-center">
-            <p className="text-sm text-muted-foreground mb-3">
-              Plan your own trip with Traveloure
-            </p>
-            <Button onClick={() => window.location.href = "/"} data-testid="button-plan-trip">
-              Plan My Trip
-            </Button>
+          <div className="mt-6 space-y-3">
+            {/* Quick navigation to sub-pages */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: "Full Itinerary", path: `/itinerary-view/${token}/itinerary`, icon: "📋" },
+                { label: "Map View", path: `/itinerary-view/${token}/map`, icon: "🗺️" },
+                { label: "Trip Stats", path: `/itinerary-view/${token}/stats`, icon: "📊" },
+                { label: "Services", path: `/itinerary-view/${token}/services`, icon: "🎫" },
+                { label: "Expert Chat", path: `/itinerary-view/${token}/chat`, icon: "💬" },
+                { label: "Review Changes", path: `/itinerary-view/${token}/changes`, icon: "✏️" },
+              ].map(({ label, path, icon }) => (
+                <Button
+                  key={label}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(path)}
+                  className="flex items-center gap-1.5 text-[11px] h-10"
+                  data-testid={`nav-${label.toLowerCase().replace(/ /g, "-")}`}
+                >
+                  <span>{icon}</span>
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <div className="pt-4 border-t text-center">
+              <p className="text-sm text-muted-foreground mb-3">
+                Plan your own trip with Traveloure
+              </p>
+              <Button onClick={() => window.location.href = "/"} data-testid="button-plan-trip">
+                Plan My Trip
+              </Button>
+            </div>
           </div>
         )}
       </div>
