@@ -220,19 +220,22 @@ function HeroSection() {
 }
 
 function ExpertNotesPanel() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="mx-4 mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2 rounded-t-xl bg-purple-50 border border-purple-200/60 text-left"
+        className={`w-full flex items-center justify-between px-3 py-2 ${open ? "rounded-t-xl" : "rounded-xl"} bg-purple-50 border border-purple-200/60 text-left`}
       >
         <span className="flex items-center gap-2 text-[12px] font-bold text-purple-700 uppercase tracking-wider">
           <FileText className="w-3.5 h-3.5" /> Expert Notes
           <span className="bg-purple-200 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">2</span>
         </span>
-        {open ? <ChevronUp className="w-3.5 h-3.5 text-purple-500" /> : <ChevronDown className="w-3.5 h-3.5 text-purple-500" />}
+        <div className="flex items-center gap-2">
+          {!open && <span className="text-[10px] text-purple-500 font-medium">Sofia Chen</span>}
+          {open ? <ChevronUp className="w-3.5 h-3.5 text-purple-500" /> : <ChevronDown className="w-3.5 h-3.5 text-purple-500" />}
+        </div>
       </button>
       {open && (
         <div className="border border-t-0 border-purple-200/60 rounded-b-xl bg-purple-50/50 px-3 py-2.5 space-y-2.5">
@@ -261,7 +264,7 @@ function ExpertNotesPanel() {
 }
 
 function ReviewChangesBanner() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, "accepted" | "rejected">>({});
 
   const pending = EXPERT_CHANGES.filter(c => !decisions[c.id]);
@@ -270,13 +273,16 @@ function ReviewChangesBanner() {
     <div className="mx-4 mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-3 py-2.5 rounded-t-xl bg-blue-50 border border-blue-200/60 text-left"
+        className={`w-full flex items-center justify-between px-3 py-2.5 ${open ? "rounded-t-xl" : "rounded-xl"} bg-blue-50 border border-blue-200/60 text-left`}
       >
         <span className="flex items-center gap-2 text-[12px] font-bold text-blue-700">
           <MessageSquare className="w-3.5 h-3.5" />
           {pending.length > 0 ? `${pending.length} expert change${pending.length > 1 ? "s" : ""} to review` : "All changes reviewed"}
         </span>
-        {open ? <ChevronUp className="w-3.5 h-3.5 text-blue-500" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-500" />}
+        <div className="flex items-center gap-2">
+          {!open && pending.length > 0 && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />}
+          {open ? <ChevronUp className="w-3.5 h-3.5 text-blue-500" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-500" />}
+        </div>
       </button>
 
       {open && (
