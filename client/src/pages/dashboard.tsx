@@ -73,9 +73,9 @@ function SavedTripsLink() {
       >
         <Bookmark className="w-4 h-4 flex-shrink-0" style={{ color: "#E85D55" }} />
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>Saved for later</div>
+          <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>{count} saved for later</div>
           <div className="text-[9px]" style={{ color: "#7A7A72" }}>
-            {count} {count === 1 ? "plan" : "plans"} waiting
+            View in My Plans
           </div>
         </div>
         <span
