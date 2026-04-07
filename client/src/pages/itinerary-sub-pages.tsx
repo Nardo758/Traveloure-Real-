@@ -745,26 +745,28 @@ export function ActivityDetailPage() {
   const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
   const activityExpertNote = data.expertDiff?.activityDiffs?.[activityId]?.note ?? null;
 
+  const expertName = data.sharedBy?.name ?? "Expert";
+  const expertInitials = expertName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+
   return (
     <div className="min-h-screen bg-gray-50" data-testid="activity-detail-page">
-      {/* Hero — image if available, gradient fallback */}
+      {/* Hero */}
       <div className="relative">
         {activity.imageUrl ? (
-          <img
-            src={activity.imageUrl}
-            alt={activity.name}
-            className="w-full h-44 object-cover"
-            data-testid="img-activity-hero"
-          />
+          <div className="h-52 relative overflow-hidden">
+            <img
+              src={activity.imageUrl}
+              alt={activity.name}
+              className="w-full h-full object-cover"
+              data-testid="img-activity-hero"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          </div>
         ) : (
           <div
-            className="h-44"
-            style={{ background: `linear-gradient(135deg, ${dayColor}cc, ${dayColor}88)` }}
+            className="h-52"
+            style={{ background: `linear-gradient(135deg, ${dayColor}cc, ${dayColor}66)` }}
           />
-        )}
-        {/* Dark overlay for text readability on images */}
-        {activity.imageUrl && (
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
         )}
         <div className="absolute top-3 left-3">
           <button
@@ -776,7 +778,10 @@ export function ActivityDetailPage() {
           </button>
         </div>
         <div className="absolute bottom-4 left-4 right-4">
-          <h1 className="text-[22px] font-bold text-white leading-tight drop-shadow-sm">
+          <h1
+            className="text-[22px] text-white leading-tight drop-shadow-sm"
+            style={{ fontFamily: "'DM Serif Display', serif" }}
+          >
             {activity.name}
           </h1>
           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -794,9 +799,6 @@ export function ActivityDetailPage() {
                 Confirmed
               </Badge>
             )}
-            <Badge className="text-[10px] px-2 py-0.5 border-0 bg-white/20 text-white">
-              Day {dayNumber} · Stop {activityIndex + 1}
-            </Badge>
           </div>
         </div>
       </div>
@@ -860,27 +862,38 @@ export function ActivityDetailPage() {
         {/* Description */}
         {activity.description && (
           <Card className="p-4">
-            <h3 className="text-[13px] font-bold text-gray-900 mb-2">About</h3>
+            <h3 className="text-[13px] font-bold text-gray-900 mb-2">Description</h3>
             <p className="text-[12px] text-gray-600 leading-relaxed">{activity.description}</p>
           </Card>
         )}
 
-        {/* Expert note for this activity */}
+        {/* Expert note — purple card with avatar */}
         {activityExpertNote && (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200" data-testid="activity-expert-note">
-            <Lightbulb className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="text-[11px] font-bold text-amber-800 mb-0.5">Expert Suggestion</div>
-              <p className="text-[12px] text-amber-900 leading-relaxed italic">"{activityExpertNote}"</p>
+          <Card className="p-4 border-purple-200/60 bg-purple-50/30" data-testid="activity-expert-note">
+            <h3 className="text-[13px] font-bold text-purple-900 mb-2.5 flex items-center gap-2">
+              <Lightbulb className="w-4 h-4 text-purple-500" />
+              Expert Note
+            </h3>
+            <div className="flex gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800 flex-shrink-0">
+                {expertInitials}
+              </div>
+              <div>
+                <div className="text-[11px] text-purple-600 font-medium">{expertName}</div>
+                <p className="text-[12px] text-purple-800 leading-relaxed mt-0.5 italic">
+                  "{activityExpertNote}"
+                </p>
+              </div>
             </div>
-          </div>
+          </Card>
         )}
 
-        {/* Navigation */}
+        {/* Navigate */}
         {activity.location && (
           <Card className="p-4" data-testid="navigate-section">
             <h3 className="text-[13px] font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <Navigation className="w-4 h-4 text-blue-600" /> Get Directions
+              <Navigation className="w-4 h-4 text-blue-600" />
+              Navigate
             </h3>
             <div className="space-y-2">
               <a
@@ -925,92 +938,120 @@ export function ActivityDetailPage() {
           </Card>
         )}
 
-        {/* Transport connections */}
-        {(prevTransport || nextTransport) && (
-          <Card className="p-4" data-testid="transport-connections">
-            <h3 className="text-[13px] font-bold text-gray-900 mb-3">Transport Connections</h3>
+        {/* Contact — only shown when data exists */}
+        {(activity.phone || activity.website) && (
+          <Card className="p-4">
+            <h3 className="text-[13px] font-bold text-gray-900 mb-3">Contact</h3>
             <div className="space-y-2">
-              {prevTransport && (
-                <button
-                  onClick={() => navigate(`/itinerary-view/${token}/transport/${prevTransport!.id}`)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                  data-testid={`prev-transport-${prevTransport.id}`}
+              {activity.phone && (
+                <a
+                  href={`tel:${activity.phone}`}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                  data-testid="link-phone"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                    <ArrowLeft className="w-4 h-4 text-gray-500" />
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                    <Phone className="w-4 h-4 text-green-600" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-gray-500">Arriving from</div>
-                    <div className="text-[12px] font-semibold text-gray-900">
-                      {prevTransport.fromLabel ?? "Previous stop"} via {MODE_LABELS[prevTransport.userSelectedMode ?? prevTransport.recommendedMode ?? "transit"] ?? "transit"}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </button>
+                  <span className="text-[13px] font-medium text-gray-800">{activity.phone}</span>
+                </a>
               )}
-              {nextTransport && (
-                <button
-                  onClick={() => navigate(`/itinerary-view/${token}/transport/${nextTransport!.id}`)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left"
-                  data-testid={`next-transport-${nextTransport.id}`}
+              {activity.website && (
+                <a
+                  href={activity.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                  data-testid="link-website"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
-                    <ChevronRight className="w-4 h-4 text-gray-500" />
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <Globe className="w-4 h-4 text-blue-600" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] text-gray-500">Continuing to</div>
-                    <div className="text-[12px] font-semibold text-gray-900">
-                      {nextTransport.toLabel ?? "Next stop"} via {MODE_LABELS[nextTransport.userSelectedMode ?? nextTransport.recommendedMode ?? "transit"] ?? "transit"}
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </button>
+                  <span className="text-[13px] font-medium text-gray-800 flex-1 truncate">
+                    {activity.website.replace(/^https?:\/\//, "")}
+                  </span>
+                  <ExternalLink className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                </a>
               )}
             </div>
           </Card>
         )}
 
-        {/* Contact info */}
-        <Card className="p-4">
-          <h3 className="text-[13px] font-bold text-gray-900 mb-3">Contact &amp; Info</h3>
-          <div className="space-y-2.5">
-            <a
-              href={`tel:${activity.phone ?? "+1-555-000-0000"}`}
-              className="flex items-center gap-3 hover:opacity-70 transition-opacity"
-              data-testid="link-phone"
-            >
-              <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                <Phone className="w-4 h-4 text-green-600" />
-              </div>
-              <div>
-                <div className="text-[11px] text-gray-400">Phone</div>
-                <div className="text-[12px] font-semibold text-gray-800">
-                  {activity.phone ?? "+1 555-000-0000"}
-                </div>
-              </div>
-            </a>
-            <a
-              href={activity.website ?? `https://example.com/${encodeURIComponent(activity.name)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 hover:opacity-70 transition-opacity"
-              data-testid="link-website"
-            >
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                <Globe className="w-4 h-4 text-blue-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-gray-400">Website</div>
-                <div className="text-[12px] font-semibold text-blue-600 truncate">
-                  {activity.website
-                    ? activity.website.replace(/^https?:\/\//, "")
-                    : "Visit website"}
-                </div>
-              </div>
-              <ExternalLink className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-            </a>
-          </div>
-        </Card>
+        {/* Related Transport */}
+        {(prevTransport || nextTransport) && (
+          <Card className="p-4" data-testid="transport-connections">
+            <h3 className="text-[13px] font-bold text-gray-900 mb-3">Related Transport</h3>
+            <div className="space-y-2">
+              {prevTransport && (() => {
+                const mode = prevTransport.userSelectedMode ?? prevTransport.recommendedMode ?? "transit";
+                const modeColor = MODE_COLORS[mode] ?? "#6b7280";
+                return (
+                  <button
+                    key={prevTransport.id}
+                    onClick={() => navigate(`/itinerary-view/${token}/transport/${prevTransport!.id}`)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    data-testid={`prev-transport-${prevTransport.id}`}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: modeColor + "20" }}
+                    >
+                      <ModeIcon mode={mode} className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12px] font-semibold text-gray-800">
+                        Arriving from {prevTransport.fromLabel ?? "Previous stop"}
+                      </div>
+                      <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                        <span className="capitalize">{MODE_LABELS[mode] ?? mode}</span>
+                        {prevTransport.estimatedDurationMinutes && (
+                          <span>· {formatDuration(prevTransport.estimatedDurationMinutes)}</span>
+                        )}
+                        {(prevTransport.estimatedCostUsd ?? 0) > 0 && (
+                          <span className="font-semibold">· ${prevTransport.estimatedCostUsd}</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  </button>
+                );
+              })()}
+              {nextTransport && (() => {
+                const mode = nextTransport.userSelectedMode ?? nextTransport.recommendedMode ?? "transit";
+                const modeColor = MODE_COLORS[mode] ?? "#6b7280";
+                return (
+                  <button
+                    key={nextTransport.id}
+                    onClick={() => navigate(`/itinerary-view/${token}/transport/${nextTransport!.id}`)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+                    data-testid={`next-transport-${nextTransport.id}`}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: modeColor + "20" }}
+                    >
+                      <ModeIcon mode={mode} className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12px] font-semibold text-gray-800">
+                        Departing to {nextTransport.toLabel ?? "Next stop"}
+                      </div>
+                      <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                        <span className="capitalize">{MODE_LABELS[mode] ?? mode}</span>
+                        {nextTransport.estimatedDurationMinutes && (
+                          <span>· {formatDuration(nextTransport.estimatedDurationMinutes)}</span>
+                        )}
+                        {(nextTransport.estimatedCostUsd ?? 0) > 0 && (
+                          <span className="font-semibold">· ${nextTransport.estimatedCostUsd}</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  </button>
+                );
+              })()}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
