@@ -9,7 +9,6 @@ import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
-import { CreditsPanel } from "@/components/dashboard/CreditsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
 
 interface Notification {
@@ -284,7 +283,6 @@ export default function Dashboard() {
                 trips={activePlans}
               />
               <TopExpertsPanel destinations={destinations} />
-              <CreditsPanel />
               <SavedTripsLink />
             </div>
           </div>
