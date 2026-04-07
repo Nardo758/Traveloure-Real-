@@ -2,23 +2,43 @@ import { useState } from "react";
 import {
   ArrowLeft, MapPin, Navigation, ExternalLink, Route, Map,
   Clock, DollarSign, Footprints, Car, TrainFront, Check, X,
-  ArrowRight, Ticket, Building2, ChevronRight,
+  ArrowRight, Ticket, Building2, ChevronRight, Ship, Bus, Train,
+  CarTaxiFront, KeyRound, Repeat, Star, Sparkles,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  DAYS, DAY_COLORS, MODE_COLORS, STATUS_STYLES,
+  DAYS, DAY_COLORS, MODE_COLORS, STATUS_STYLES, TRANSIT_MODE_META,
   formatDuration, buildMapsUrl, buildAppleMapsUrl,
-  type Transport,
+  type Transport, type TransitOption, type TransitMode,
 } from "./shared-data";
 
 function ModeIcon({ mode, className = "w-4 h-4", style }: { mode: string; className?: string; style?: React.CSSProperties }) {
   if (mode === "walk") return <Footprints className={className} style={style} />;
-  if (mode === "taxi" || mode === "car") return <Car className={className} style={style} />;
-  if (mode === "ferry" || mode === "bus") return <TrainFront className={className} style={style} />;
+  if (mode === "taxi" || mode === "rideshare") return <CarTaxiFront className={className} style={style} />;
+  if (mode === "car") return <Car className={className} style={style} />;
+  if (mode === "ferry") return <Ship className={className} style={style} />;
+  if (mode === "bus") return <Bus className={className} style={style} />;
+  if (mode === "train") return <Train className={className} style={style} />;
+  if (mode === "subway") return <TrainFront className={className} style={style} />;
+  if (mode === "private_car") return <Car className={className} style={style} />;
+  if (mode === "rental_car") return <KeyRound className={className} style={style} />;
   return <Footprints className={className} style={style} />;
 }
+
+const MODE_LABELS: Record<string, string> = {
+  walk: "Walk", taxi: "Taxi", bus: "Bus", ferry: "Ferry", car: "Car",
+  train: "Train", subway: "Subway", rideshare: "Rideshare",
+  private_car: "Private Car", rental_car: "Rental Car",
+};
+
+const SOURCE_ICONS: Record<string, { label: string; color: string; bg: string }> = {
+  google: { label: "Google Maps", color: "text-blue-700", bg: "bg-blue-50" },
+  apple: { label: "Apple Maps", color: "text-gray-700", bg: "bg-gray-50" },
+  waze: { label: "Waze", color: "text-cyan-700", bg: "bg-cyan-50" },
+  platform: { label: "Traveloure", color: "text-sky-700", bg: "bg-sky-50" },
+};
 
 function buildWazeUrl(lat?: number, lng?: number) {
   if (lat && lng) return `https://www.waze.com/ul?ll=${lat},${lng}&navigate=yes`;
@@ -100,8 +120,17 @@ const SAMPLE_TRANSPORT = DAYS[0].transports[1];
 
 export function TransportDetailPage() {
   const transport = SAMPLE_TRANSPORT;
+  const [selectedMode, setSelectedMode] = useState<string>(transport.selectedMode || transport.mode);
   const statusStyle = STATUS_STYLES[transport.status] || STATUS_STYLES.confirmed;
-  const modeColor = MODE_COLORS[transport.mode] || "#6b7280";
+
+  const currentOption = transport.transitOptions?.find(o => o.mode === selectedMode);
+  const displayMode = selectedMode;
+  const displayDuration = currentOption?.duration ?? transport.duration;
+  const displayCost = currentOption?.cost ?? transport.cost;
+  const modeColor = MODE_COLORS[displayMode] || "#6b7280";
+
+  const platformOptions = transport.transitOptions?.filter(o => o.source === "platform") || [];
+  const transitOptions = transport.transitOptions?.filter(o => o.source !== "platform") || [];
 
   return (
     <div className="min-h-screen bg-gray-50 font-['Inter',sans-serif]">
@@ -123,18 +152,28 @@ export function TransportDetailPage() {
                 className="w-12 h-12 rounded-xl flex items-center justify-center"
                 style={{ backgroundColor: `${modeColor}15` }}
               >
-                <ModeIcon mode={transport.mode} className="w-6 h-6" style={{ color: modeColor }} />
+                <ModeIcon mode={displayMode} className="w-6 h-6" style={{ color: modeColor }} />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[15px] font-bold text-gray-900 capitalize">{transport.mode}</span>
+                  <span className="text-[15px] font-bold text-gray-900">{MODE_LABELS[displayMode] || displayMode}</span>
                   <Badge className={`${statusStyle.bg} ${statusStyle.fg} border-0 text-[10px]`}>
                     {statusStyle.label}
                   </Badge>
+                  {currentOption?.recommended && (
+                    <Badge className="bg-green-100 text-green-700 border-0 text-[10px]">
+                      <Star className="w-2.5 h-2.5 mr-0.5" /> Recommended
+                    </Badge>
+                  )}
+                  {currentOption?.source === "platform" && (
+                    <Badge className="bg-sky-100 text-sky-700 border-0 text-[10px]">
+                      <Sparkles className="w-2.5 h-2.5 mr-0.5" /> Traveloure
+                    </Badge>
+                  )}
                 </div>
-                {transport.operator && (
+                {currentOption?.provider && (
                   <div className="flex items-center gap-1.5 mt-0.5 text-[12px] text-gray-500">
-                    <Building2 className="w-3 h-3" /> {transport.operator}
+                    <Building2 className="w-3 h-3" /> via {currentOption.provider}
                   </div>
                 )}
               </div>
@@ -169,7 +208,7 @@ export function TransportDetailPage() {
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] text-gray-500 mb-0.5">Duration</div>
-                <div className="text-[14px] font-bold text-gray-900" data-testid="text-duration">{formatDuration(transport.duration)}</div>
+                <div className="text-[14px] font-bold text-gray-900" data-testid="text-duration">{formatDuration(displayDuration)}</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] text-gray-500 mb-0.5">Distance</div>
@@ -178,10 +217,17 @@ export function TransportDetailPage() {
               <div className="bg-gray-50 rounded-lg p-2.5 text-center">
                 <div className="text-[10px] text-gray-500 mb-0.5">Cost</div>
                 <div className="text-[14px] font-bold text-gray-900" data-testid="text-cost">
-                  {transport.cost > 0 ? `$${transport.cost}` : "Free"}
+                  {displayCost > 0 ? `$${displayCost}` : "Free"}
                 </div>
               </div>
             </div>
+
+            {currentOption?.notes && (
+              <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+                <Sparkles className="w-3 h-3 text-amber-600 mt-0.5 flex-shrink-0" />
+                {currentOption.notes}
+              </div>
+            )}
 
             {transport.line && (
               <div className="flex items-center gap-2 mb-3 text-[12px] text-gray-600">
@@ -203,53 +249,112 @@ export function TransportDetailPage() {
 
       <div className="px-4 pb-3">
         <h2 className="text-[13px] font-bold text-gray-900 mb-2">Route Map</h2>
-        <RoutePlaceholder from={transport.from} to={transport.to} mode={transport.mode} />
+        <RoutePlaceholder from={transport.from} to={transport.to} mode={displayMode} />
       </div>
 
-      {transport.alternatives && transport.alternatives.length > 0 && (
+      {transport.transitOptions && transport.transitOptions.length > 1 && (
         <div className="px-4 pb-3">
-          <h2 className="text-[13px] font-bold text-gray-900 mb-2">Alternative Options</h2>
-          <div className="space-y-2">
-            {transport.alternatives.map((alt, i) => {
-              const altColor = MODE_COLORS[alt.mode] || "#6b7280";
-              return (
-                <Card key={i} className="p-3">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                      style={{ backgroundColor: `${altColor}15` }}
-                    >
-                      <ModeIcon mode={alt.mode} className="w-4 h-4" style={{ color: altColor }} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-[12px] font-semibold text-gray-900 capitalize" data-testid={`text-alt-mode-${i}`}>{alt.mode}</div>
-                      <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(alt.duration)}</span>
-                        <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{alt.cost > 0 ? `$${alt.cost}` : "Free"}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {alt.duration < transport.duration && (
-                        <span className="text-[9px] text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full font-medium">
-                          {formatDuration(transport.duration - alt.duration)} faster
-                        </span>
-                      )}
-                      {alt.cost < transport.cost && (
-                        <span className="text-[9px] text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full font-medium">
-                          ${transport.cost - alt.cost} cheaper
-                        </span>
-                      )}
-                      {alt.duration > transport.duration && (
-                        <span className="text-[9px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full font-medium">
-                          +{formatDuration(alt.duration - transport.duration)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-[13px] font-bold text-gray-900 flex items-center gap-1.5">
+              <Repeat className="w-3.5 h-3.5 text-gray-500" /> Transit Mode Options
+            </h2>
+            <span className="text-[11px] text-gray-400">{transport.transitOptions.length} available</span>
           </div>
+
+          {transitOptions.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                <MapPin className="w-3 h-3" /> Maps & Transit
+              </div>
+              <div className="space-y-1.5">
+                {transitOptions.map((opt) => {
+                  const optColor = MODE_COLORS[opt.mode] || "#6b7280";
+                  const isSelected = selectedMode === opt.mode;
+                  const src = SOURCE_ICONS[opt.source];
+                  return (
+                    <Card
+                      key={`transit-${opt.mode}`}
+                      className={`p-3 cursor-pointer transition-all hover:shadow-md ${isSelected ? "ring-2 ring-blue-500 bg-blue-50/30" : ""}`}
+                      onClick={() => setSelectedMode(opt.mode)}
+                      data-testid={`transit-option-${opt.mode}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${optColor}15` }}
+                        >
+                          <ModeIcon mode={opt.mode} className="w-4 h-4" style={{ color: optColor }} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[12px] font-semibold text-gray-900">{opt.label || MODE_LABELS[opt.mode]}</span>
+                            {opt.recommended && <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">REC</span>}
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-0.5">
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(opt.duration)}</span>
+                            <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{opt.cost > 0 ? `$${opt.cost}` : "Free"}</span>
+                            {opt.provider && <span className="text-gray-400">via {opt.provider}</span>}
+                          </div>
+                          {opt.notes && <div className="text-[10px] text-gray-400 mt-0.5">{opt.notes}</div>}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {src && <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${src.bg} ${src.color}`}>{src.label}</span>}
+                          {isSelected && <Check className="w-4 h-4 text-blue-600" />}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {platformOptions.length > 0 && (
+            <div className="mb-3">
+              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-sky-500" /> Traveloure Services
+              </div>
+              <div className="space-y-1.5">
+                {platformOptions.map((opt) => {
+                  const optColor = MODE_COLORS[opt.mode] || "#6b7280";
+                  const isSelected = selectedMode === opt.mode;
+                  return (
+                    <Card
+                      key={`platform-${opt.mode}`}
+                      className={`p-3 cursor-pointer transition-all hover:shadow-md border-sky-100 ${isSelected ? "ring-2 ring-sky-500 bg-sky-50/30" : ""}`}
+                      onClick={() => setSelectedMode(opt.mode)}
+                      data-testid={`platform-option-${opt.mode}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: `${optColor}15` }}
+                        >
+                          <ModeIcon mode={opt.mode} className="w-4 h-4" style={{ color: optColor }} />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[12px] font-semibold text-gray-900">{opt.label || MODE_LABELS[opt.mode]}</span>
+                            {opt.recommended && <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">REC</span>}
+                            <span className="text-[8px] bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold">TRAVELOURE</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-0.5">
+                            <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{formatDuration(opt.duration)}</span>
+                            <span className="flex items-center gap-1"><DollarSign className="w-3 h-3" />{opt.cost > 0 ? `$${opt.cost}` : "Free"}</span>
+                            {opt.provider && <span className="text-gray-400">via {opt.provider}</span>}
+                          </div>
+                          {opt.notes && <div className="text-[10px] text-gray-400 mt-0.5">{opt.notes}</div>}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {isSelected && <Check className="w-4 h-4 text-sky-600" />}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
