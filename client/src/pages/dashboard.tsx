@@ -4,7 +4,7 @@ import { Plus, Loader2, Bookmark } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
@@ -229,9 +229,9 @@ export default function Dashboard() {
               data-testid="active-plans-grid"
             >
               {activePlans.slice(0, 6).map((trip, i) => (
-                <DashboardPlanCard
+                <PlanCard
                   key={trip.id}
-                  trip={trip}
+                  trip={trip as any}
                   index={i}
                   conversations={convList}
                   notifications={notifications}

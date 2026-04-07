@@ -189,11 +189,34 @@ async function runDatabaseSeeding() {
   app.use(globalErrorHandler);
 
   const port = parseInt(process.env.PORT || "5000", 10);
+
+  process.on("SIGTERM", () => {
+    httpServer.close(() => {
+      logger.info("Server closed on SIGTERM");
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5000);
+  });
+  process.on("SIGINT", () => {
+    httpServer.close(() => {
+      logger.info("Server closed on SIGINT");
+      process.exit(0);
+    });
+    setTimeout(() => process.exit(0), 5000);
+  });
+
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      logger.error({ port }, `Port ${port} is already in use. Exiting.`);
+      process.exit(1);
+    }
+    throw err;
+  });
+
   httpServer.listen(
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
       logger.info({ port }, "Server started");

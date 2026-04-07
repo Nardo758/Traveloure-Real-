@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Calendar, ChevronRight, LayoutList, Map as MapIcon, MapPin, X } from "lucide-react";
+import { Calendar, ChevronRight, LayoutList, Lightbulb, Map as MapIcon, MapPin, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange } from "./plancard-types";
@@ -17,7 +17,60 @@ import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
 import { MapControlCenter } from "./MapControlCenter";
 
-export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
+interface ExpertAdvisor {
+  advisor_id: string;
+  status: "pending" | "accepted" | "rejected";
+  first_name: string;
+  last_name: string;
+  profile_image_url: string | null;
+}
+
+interface ConversationMessage {
+  id: number;
+  conversationId: number;
+  role: string;
+  content: string;
+  createdAt: string;
+}
+
+interface ConversationWithMessages {
+  id: number;
+  title: string;
+  messages: ConversationMessage[];
+}
+
+const AVATAR_COLORS: Array<{ bg: string; text: string }> = [
+  { bg: "#E8B339", text: "#412402" },
+  { bg: "#B5D4F4", text: "#0C447C" },
+  { bg: "#CECBF6", text: "#3C3489" },
+  { bg: "#9FE1CB", text: "#04342C" },
+  { bg: "#F4C0D1", text: "#72243E" },
+];
+
+function getInitials(name: string): string {
+  return name.split(" ").filter(Boolean).map(p => p[0]).join("").toUpperCase().slice(0, 2);
+}
+
+function findMatchedConversationId(
+  tripId: string,
+  tripDestination: string,
+  tripTitle: string | undefined,
+  conversations: Array<{ id: number; title: string }>,
+): number | null {
+  if (!conversations.length) return null;
+  const destKey = tripDestination?.split(",")[0]?.toLowerCase().trim();
+  const titleKey = tripTitle?.toLowerCase().trim();
+  const match = conversations.find(c => {
+    const cTitle = c.title.toLowerCase();
+    return (
+      (destKey && cTitle.includes(destKey)) ||
+      (titleKey && cTitle.includes(titleKey))
+    );
+  });
+  return match?.id ?? null;
+}
+
+export function PlanCard({ trip, score, index = 0, conversations = [], notifications = [] }: PlanCardProps) {
   const [selectedDay, setSelectedDay] = useState(0);
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [showChanges, setShowChanges] = useState(true);
@@ -25,6 +78,7 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
   const [confirming, setConfirming] = useState(false);
   const { toast } = useToast();
   const deleteTrip = useDeleteTrip();
+  const [, navigate] = useLocation();
 
   const handleDelete = () => {
     if (!confirming) {
@@ -37,23 +91,15 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
 
   const templateConfig = getTemplateConfig(trip.eventType);
 
-  // Open destination in maps (phone-agnostic)
   const openInMaps = () => {
     if (!trip.destination) return;
-    
     const query = encodeURIComponent(trip.destination);
-    // Use generic geo: URI which works on both iOS and Android
-    // Falls back to Google Maps web if geo: not supported
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    
     if (isIOS) {
-      // iOS: Apple Maps
       window.open(`maps://maps.apple.com/?q=${query}`, "_blank");
     } else {
-      // Android/Desktop: Google Maps
       window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank");
     }
-    
     toast({ title: "Opening Maps", description: trip.destination });
   };
 
@@ -61,6 +107,47 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
     queryKey: [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
   });
+
+  const { data: advisorData } = useQuery<{ advisor: ExpertAdvisor | null }>({
+    queryKey: ['/api/trips', trip.id, 'expert-advisor'],
+    staleTime: 60000,
+  });
+  const advisor = advisorData?.advisor ?? null;
+
+  const { data: serviceBookings } = useQuery<any[]>({
+    queryKey: ['/api/service-bookings'],
+    staleTime: 60000,
+  });
+  const tripServiceCount = serviceBookings?.filter((b: any) => b.tripId === trip.id).length ?? 0;
+
+  const { data: suggestionsData } = useQuery<{ suggestions: Array<{ id: string; status: string }> }>({
+    queryKey: ['/api/trips', trip.id, 'suggestions'],
+    enabled: !!advisor,
+    staleTime: 60000,
+  });
+  const pendingSuggestions = suggestionsData?.suggestions?.filter(s => s.status === "pending").length ?? 0;
+
+  const matchedConvId = findMatchedConversationId(trip.id, trip.destination, trip.title, conversations);
+  const { data: convWithMessages } = useQuery<ConversationWithMessages>({
+    queryKey: ['/api/conversations', matchedConvId],
+    enabled: matchedConvId !== null,
+    staleTime: 60000,
+  });
+  const lastAssistantMsg = convWithMessages?.messages
+    ? [...convWithMessages.messages]
+        .filter(m => m.role === "assistant")
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+    : null;
+  const expertMsgText = lastAssistantMsg
+    ? lastAssistantMsg.content.slice(0, 100) + (lastAssistantMsg.content.length > 100 ? "…" : "")
+    : null;
+
+  const actionItems = notifications
+    .filter(n => n.tripId === trip.id)
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+    .slice(0, 2);
+
+  const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
 
   const days: PlanCardDay[] = plancardData?.days || [];
   const changeLog: PlanCardChange[] = plancardData?.changeLog || [];
@@ -240,6 +327,110 @@ export function PlanCard({ trip, score, index = 0 }: PlanCardProps) {
           />
         )}
 
+        {/* Enrichment pills row */}
+        {(tripServiceCount > 0 || totalLegs > 0 || advisor) && (
+          <div className="flex gap-1.5 flex-wrap px-5 pt-1 pb-0" data-testid={`pills-row-${trip.id}`}>
+            {tripServiceCount > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=bookings`)}
+                className="text-[10px] px-2.5 py-1 rounded-full cursor-pointer hover:opacity-80 transition-opacity font-medium"
+                style={{ background: "#E6F1FB", color: "#0C447C" }}
+                data-testid={`pill-services-${trip.id}`}
+              >
+                💼 {tripServiceCount} service{tripServiceCount !== 1 ? "s" : ""}
+              </button>
+            )}
+            {totalLegs > 0 && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=itinerary&section=transport`)}
+                className="text-[10px] px-2.5 py-1 rounded-full cursor-pointer hover:opacity-80 transition-opacity font-medium"
+                style={{ background: "#E1F5EE", color: "#085041" }}
+                data-testid={`pill-transport-${trip.id}`}
+              >
+                🚗 {totalLegs} leg{totalLegs !== 1 ? "s" : ""}
+              </button>
+            )}
+            {advisor && (
+              <button
+                type="button"
+                onClick={() => navigate(`/trip/${trip.id}?tab=expert`)}
+                className="text-[10px] px-2.5 py-1 rounded-full cursor-pointer hover:opacity-80 transition-opacity font-medium"
+                style={{ background: "#EEEDFE", color: "#3C3489" }}
+                data-testid={`pill-expert-${trip.id}`}
+              >
+                👥 Expert assigned
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Expert advisor strip */}
+        {advisor && (
+          <Link href={`/trip/${trip.id}?tab=expert&section=suggestions`}>
+            <div
+              className="flex items-center gap-2.5 cursor-pointer hover:bg-muted/40 transition-colors mx-5 my-2 rounded-xl border border-border px-3 py-2"
+              data-testid={`advisor-strip-${trip.id}`}
+            >
+              {advisor.profile_image_url ? (
+                <img
+                  src={advisor.profile_image_url}
+                  alt={`${advisor.first_name} ${advisor.last_name}`}
+                  className="w-7 h-7 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-semibold flex-shrink-0"
+                  style={{ background: avatarColor.bg, color: avatarColor.text }}
+                >
+                  {getInitials(`${advisor.first_name} ${advisor.last_name}`)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-foreground">
+                  {advisor.first_name} {advisor.last_name}
+                </div>
+                {advisor.status === "accepted" && expertMsgText && (
+                  <div className="text-[10px] truncate text-muted-foreground">
+                    "{expertMsgText}"
+                  </div>
+                )}
+              </div>
+              {pendingSuggestions > 0 ? (
+                <div
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: "#FAEEDA", color: "#633806" }}
+                  data-testid={`badge-suggestions-${trip.id}`}
+                >
+                  <Lightbulb className="w-2.5 h-2.5" />
+                  {pendingSuggestions}
+                </div>
+              ) : (
+                advisor.status === "accepted" && (
+                  <div className="w-2 h-2 rounded-full flex-shrink-0 bg-green-500" />
+                )
+              )}
+            </div>
+          </Link>
+        )}
+
+        {/* Action items from notifications */}
+        {actionItems.length > 0 && (
+          <div className="mx-5 mb-2 rounded-xl bg-muted/40 border border-border px-3 py-2" data-testid={`action-items-${trip.id}`}>
+            {actionItems.map((n, i) => (
+              <div key={n.id ?? i} className="flex items-start gap-2 py-0.5">
+                <div
+                  className="w-1.5 h-1.5 rounded-full mt-[5px] flex-shrink-0"
+                  style={{ background: n.type === "urgent" || n.type === "alert" ? "#E24B4A" : "#EF9F27" }}
+                />
+                <span className="text-[11px] flex-1 text-foreground">{n.title || n.message}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Footer buttons */}
         <div className="px-5 pb-5 pt-2 flex gap-2">
           <Button
             variant="outline"
