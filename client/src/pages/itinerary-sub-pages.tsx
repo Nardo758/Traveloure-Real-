@@ -2474,6 +2474,7 @@ interface ChangeItem {
   removeLine: string | null;
   addLine: string;
   reason: string;
+  dayNum?: number;
 }
 
 const CHANGE_TYPE_LABELS: Record<string, { label: string; bg: string; fg: string }> = {
@@ -2483,29 +2484,53 @@ const CHANGE_TYPE_LABELS: Record<string, { label: string; bg: string; fg: string
   remove: { label: "Remove", bg: "bg-red-100", fg: "text-red-700" },
 };
 
-function buildChangesFromDiff(diff: ExpertDiff): ChangeItem[] {
+function buildChangesFromDiff(diff: ExpertDiff, days: ApiDay[]): ChangeItem[] {
   const changes: ChangeItem[] = [];
+
+  // Build lookup maps for day numbers
+  const activityDayMap: Record<string, number> = {};
+  const transportDayMap: Record<string, number> = {};
+  for (const day of days) {
+    for (const a of day.activities) activityDayMap[a.id] = day.dayNumber;
+    for (const t of day.transportLegs) transportDayMap[t.id] = day.dayNumber;
+  }
 
   if (diff.activityDiffs) {
     for (const [id, d] of Object.entries(diff.activityDiffs)) {
+      const dayNum = activityDayMap[id];
       if (d.name && d.name !== d.originalName) {
         changes.push({
           id: `act-name-${id}`,
           type: "replace",
-          title: `Rename: ${d.originalName}`,
-          removeLine: d.originalName,
+          title: `${d.originalName ?? "Activity"}`,
+          removeLine: d.originalName ?? null,
           addLine: d.name,
-          reason: d.note ?? "Name updated by expert",
+          reason: d.note ?? "Updated by expert",
+          dayNum,
         });
       }
       if (d.startTime && d.originalStartTime && d.startTime !== d.originalStartTime) {
         changes.push({
           id: `act-time-${id}`,
           type: "time",
-          title: `Time Change: ${d.originalName}`,
-          removeLine: `@ ${d.originalStartTime}`,
-          addLine: `@ ${d.startTime}`,
+          title: `${d.originalName ?? "Activity"}`,
+          removeLine: `${d.originalName} @ ${formatTime(d.originalStartTime)}`,
+          addLine: `${d.originalName} @ ${formatTime(d.startTime)}`,
           reason: d.note ?? "Time updated by expert",
+          dayNum,
+        });
+      }
+      // Note-only diffs (expert annotation without changing name/time)
+      if (d.note && !d.name && !d.startTime) {
+        const actName = days.flatMap(day => day.activities).find(a => a.id === id)?.name ?? d.originalName ?? id;
+        changes.push({
+          id: `act-note-${id}`,
+          type: "add",
+          title: actName,
+          removeLine: null,
+          addLine: `Note: "${d.note}"`,
+          reason: d.note,
+          dayNum,
         });
       }
     }
@@ -2513,13 +2538,18 @@ function buildChangesFromDiff(diff: ExpertDiff): ChangeItem[] {
 
   if (diff.transportDiffs) {
     for (const [id, d] of Object.entries(diff.transportDiffs)) {
+      const dayNum = transportDayMap[id];
+      const fromLabel = days.flatMap(day => day.transportLegs).find(t => t.id === id)?.fromLabel;
+      const toLabel = days.flatMap(day => day.transportLegs).find(t => t.id === id)?.toLabel;
+      const legTitle = fromLabel && toLabel ? `${fromLabel} → ${toLabel}` : `Transport Leg ${d.legOrder}`;
       changes.push({
         id: `trans-${id}`,
         type: "replace",
-        title: `Transport: Leg ${d.legOrder}`,
-        removeLine: d.originalMode,
-        addLine: d.newMode,
-        reason: "Mode change suggested by expert",
+        title: legTitle,
+        removeLine: MODE_LABELS[d.originalMode] ?? d.originalMode,
+        addLine: MODE_LABELS[d.newMode] ?? d.newMode,
+        reason: "Transport mode suggested by expert",
+        dayNum,
       });
     }
   }
@@ -2557,7 +2587,7 @@ export function ReviewChangesPage() {
     );
   }
 
-  const changes = buildChangesFromDiff(data.expertDiff);
+  const changes = buildChangesFromDiff(data.expertDiff, data.variant.days);
 
   const getStatus = (c: ChangeItem): "pending" | "accepted" | "rejected" =>
     decisions[c.id] ?? "pending";
@@ -2678,7 +2708,7 @@ export function ReviewChangesPage() {
         </div>
       )}
 
-      <div className="mx-4 mb-4 space-y-3">
+      <div className="mx-4 mb-3 space-y-3">
         {filtered.length === 0 ? (
           <Card className="p-6 text-center">
             <AlertCircle className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -2689,12 +2719,29 @@ export function ReviewChangesPage() {
             const status = getStatus(change);
             const typeInfo = CHANGE_TYPE_LABELS[change.type] ?? CHANGE_TYPE_LABELS.replace;
 
+            const dayBadge = change.dayNum != null ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <div
+                  className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                  style={{ backgroundColor: DAY_COLORS[(change.dayNum - 1) % DAY_COLORS.length] }}
+                >
+                  {change.dayNum}
+                </div>
+                <span className="text-[11px] text-gray-500">Day {change.dayNum}</span>
+              </div>
+            ) : null;
+
             if (status === "accepted") {
               return (
                 <Card key={change.id} className="overflow-hidden opacity-90" data-testid={`change-card-${change.id}`}>
                   <div className="px-4 py-3 bg-green-50 flex items-center gap-3">
                     <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-                    <span className="text-[13px] text-green-800 font-semibold flex-1">{change.title}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[13px] text-green-800 font-semibold">{change.title}</span>
+                      {change.dayNum != null && (
+                        <span className="text-[10px] text-green-600 ml-2">Day {change.dayNum}</span>
+                      )}
+                    </div>
                     <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px]">
                       Accepted
                     </Badge>
@@ -2708,7 +2755,12 @@ export function ReviewChangesPage() {
                 <Card key={change.id} className="overflow-hidden opacity-60" data-testid={`change-card-${change.id}`}>
                   <div className="px-4 py-3 bg-red-50 flex items-center gap-3">
                     <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                    <span className="text-[13px] text-red-800 font-semibold line-through flex-1">{change.title}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[13px] text-red-800 font-semibold line-through">{change.title}</span>
+                      {change.dayNum != null && (
+                        <span className="text-[10px] text-red-500 ml-2">Day {change.dayNum}</span>
+                      )}
+                    </div>
                     <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">
                       Rejected
                     </Badge>
@@ -2729,6 +2781,7 @@ export function ReviewChangesPage() {
                       {typeInfo.label}
                     </Badge>
                   </div>
+                  {dayBadge}
                 </div>
                 <div className="px-4 py-3 space-y-2">
                   {change.removeLine && (
@@ -2773,6 +2826,88 @@ export function ReviewChangesPage() {
           })
         )}
       </div>
+
+      {/* Change History Timeline */}
+      {(() => {
+        const expertName = data.sharedBy?.name ?? "Expert";
+        type TimelineEntry = { id: string; role: "expert" | "owner" | "ai"; who: string; type: string; when: string; what: string };
+        const timeline: TimelineEntry[] = [];
+
+        if (data.expertDiff.submittedAt) {
+          timeline.push({
+            id: "submitted",
+            role: "expert",
+            who: expertName,
+            type: "Submitted",
+            when: formatDate(data.expertDiff.submittedAt),
+            what: `Submitted ${changes.length} change suggestion${changes.length !== 1 ? "s" : ""} for your review`,
+          });
+        }
+
+        const acceptedNow = Object.values(decisions).filter(v => v === "accepted").length;
+        const rejectedNow = Object.values(decisions).filter(v => v === "rejected").length;
+
+        if (acceptedNow > 0 || rejectedNow > 0) {
+          const parts: string[] = [];
+          if (acceptedNow > 0) parts.push(`accepted ${acceptedNow}`);
+          if (rejectedNow > 0) parts.push(`rejected ${rejectedNow}`);
+          timeline.push({
+            id: "reviewed",
+            role: "owner",
+            who: "You",
+            type: "Reviewed",
+            when: "Just now",
+            what: `You ${parts.join(" and ")} change${(acceptedNow + rejectedNow) !== 1 ? "s" : ""}`,
+          });
+        } else if (counts.pending > 0) {
+          timeline.push({
+            id: "pending",
+            role: "owner",
+            who: "You",
+            type: "Pending",
+            when: "Now",
+            what: `${counts.pending} change${counts.pending !== 1 ? "s" : ""} awaiting your decision`,
+          });
+        }
+
+        const CHANGE_DOT: Record<string, string> = {
+          expert: "bg-blue-500",
+          ai: "bg-green-500",
+          owner: "bg-amber-500",
+        };
+
+        if (timeline.length === 0) return null;
+
+        return (
+          <div className="mx-4 mb-6">
+            <div className="mx-0 my-3 border-t border-gray-200" />
+            <div className="flex items-center gap-2 mb-3">
+              <History className="w-4 h-4 text-gray-500" />
+              <h4 className="text-[13px] font-bold text-gray-800">Change History</h4>
+            </div>
+            <div className="relative ml-2">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200" />
+              <div className="space-y-3">
+                {timeline.map(entry => (
+                  <div key={entry.id} className="flex items-start gap-3 relative" data-testid={`changelog-${entry.id}`}>
+                    <div className={`w-[15px] h-[15px] rounded-full ${CHANGE_DOT[entry.role] ?? "bg-gray-400"} flex-shrink-0 z-10 border-2 border-white`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[12px] font-semibold text-gray-800">{entry.who}</span>
+                        <Badge variant="secondary" className="text-[9px] px-1.5 py-0">
+                          {entry.type}
+                        </Badge>
+                        <span className="text-[10px] text-gray-400 ml-auto flex-shrink-0">{entry.when}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 mt-0.5">{entry.what}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
