@@ -1297,7 +1297,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
               <LayoutList className="w-3.5 h-3.5 mr-1" /> Dashboard
             </Button>
           )}
-          <Link href={`/trip/${trip.id}`} className="flex-1">
+          <Link href={shareToken ? `/itinerary-view/${shareToken}` : `/trip/${trip.id}`} className="flex-1">
             <Button size="sm" className="w-full text-xs font-semibold" data-testid={`footer-itinerary-${trip.id}`}>
               <Calendar className="w-3.5 h-3.5 mr-1" /> View Itinerary
               <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
