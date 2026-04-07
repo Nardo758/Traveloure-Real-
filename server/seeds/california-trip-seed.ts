@@ -14,10 +14,13 @@ import {
   localExpertForms,
   tripExpertAdvisors,
 } from "@shared/schema";
-import { users } from "@shared/models/auth";
+import { users, type UpsertUser } from "@shared/models/auth";
 import { conversations, messages } from "@shared/models/chat";
 import { eq } from "drizzle-orm";
 import * as nodeCrypto from "crypto";
+
+type VariantItemInsert = typeof itineraryVariantItems.$inferInsert;
+type TransportLegInsert = typeof transportLegs.$inferInsert;
 
 const TEST_USER_ID = "647ba652-e636-49ec-a3ea-0e1addce7263";
 
@@ -74,7 +77,7 @@ export async function seedCaliforniaTrip() {
   const spUserId = existingSP?.id ?? crypto.randomUUID();
 
   if (!existingExpert || !existingSP) {
-    const toInsert: any[] = [];
+    const toInsert: UpsertUser[] = [];
     if (!existingExpert) {
       toInsert.push({
         id: expertUserId,
@@ -191,7 +194,7 @@ export async function seedCaliforniaTrip() {
     {
       id: variantAId,
       comparisonId,
-      name: "Classic Coast",
+      name: "User Original",
       description: "A balanced 8-day road trip hitting major coastal highlights with plenty of relaxation time. Beach-forward with city exploration in LA and SF.",
       source: "user",
       status: "generated",
@@ -206,7 +209,7 @@ export async function seedCaliforniaTrip() {
     {
       id: variantBId,
       comparisonId,
-      name: "Adventure & Wine",
+      name: "AI Optimized",
       description: "An optimized route adding wine-country tastings, coastal hikes, and photographer-recommended sunset spots. More packed but higher-rated experiences.",
       source: "ai_optimized",
       status: "generated",
@@ -517,7 +520,7 @@ export async function seedCaliforniaTrip() {
 }
 
 function buildVariantItems(variantId: string, variant: "A" | "B") {
-  const items: any[] = [];
+  const items: VariantItemInsert[] = [];
   let order = 0;
 
   const days = variant === "A" ? getClassicDays() : getAdventureDays();
@@ -591,9 +594,9 @@ function getClassicDays(): DayPlan[] {
     {
       dayNumber: 4,
       activities: [
-        { name: "Santa Barbara Stearns Wharf", description: "Walk the oldest working wharf on the West Coast. Browse shops, eat clam chowder, watch pelicans", location: "Stearns Wharf, Santa Barbara", startTime: "09:30", endTime: "11:30", price: 0, duration: 120, lat: 34.4099, lng: -119.6854, category: "sightseeing" },
-        { name: "Old Mission Santa Barbara", description: "The 'Queen of the Missions' — stunning Spanish colonial architecture and rose gardens", location: "Old Mission, Santa Barbara", startTime: "12:00", endTime: "13:30", price: 15, duration: 90, lat: 34.4373, lng: -119.7139, category: "culture" },
-        { name: "Dinner at The Lark", description: "Farm-to-table dining in a converted fish market. Excellent vegetarian options", location: "The Lark, Santa Barbara", startTime: "18:30", endTime: "20:30", price: 95, duration: 120, lat: 34.4139, lng: -119.6936, category: "dining" },
+        { name: "Wine Tasting in Santa Ynez", description: "Visit boutique wineries in the scenic Santa Ynez Valley. Sample Pinot Noir, Syrah, and Chardonnay", location: "Santa Ynez Valley, CA", startTime: "10:00", endTime: "13:00", price: 60, duration: 180, lat: 34.6126, lng: -119.7713, category: "experience" },
+        { name: "Stearns Wharf", description: "Walk the oldest working wharf on the West Coast. Browse shops, eat clam chowder, watch pelicans", location: "Stearns Wharf, Santa Barbara", startTime: "14:30", endTime: "16:00", duration: 90, lat: 34.4099, lng: -119.6854, category: "sightseeing" },
+        { name: "Old Mission Santa Barbara", description: "The 'Queen of the Missions' — stunning Spanish colonial architecture and rose gardens", location: "Old Mission, Santa Barbara", startTime: "16:30", endTime: "18:00", price: 15, duration: 90, lat: 34.4373, lng: -119.7139, category: "culture" },
       ],
     },
     {
@@ -664,7 +667,7 @@ function getAdventureDays(): DayPlan[] {
 }
 
 function buildTransportLegs(variantId: string) {
-  const legs: any[] = [];
+  const legs: TransportLegInsert[] = [];
   const defs: {
     day: number;
     order: number;
@@ -682,8 +685,9 @@ function buildTransportLegs(variantId: string) {
     energy: number;
     alts: { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string }[];
   }[] = [
-    { day: 1, order: 0, from: "LAX Airport", fromLat: 33.9425, fromLng: -118.4081, to: "Santa Monica Pier", toLat: 34.0094, toLng: -118.4973, dist: 14500, distDisp: "14.5 km", mode: "car", mins: 25, cost: 0, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 25, costUsd: 18, energyCost: 1, reason: "No car yet" }] },
-    { day: 1, order: 1, from: "Santa Monica Pier", fromLat: 34.0094, fromLng: -118.4973, to: "Venice Beach", toLat: 33.9850, toLng: -118.4695, dist: 3200, distDisp: "3.2 km", mode: "walk", mins: 35, cost: 0, energy: 2, alts: [{ mode: "bike", durationMinutes: 12, costUsd: 5, energyCost: 1, reason: "Beach bike path" }] },
+    { day: 1, order: 0, from: "LAX Airport", fromLat: 33.9425, fromLng: -118.4081, to: "Hotel (Santa Monica)", toLat: 34.0094, toLng: -118.4973, dist: 14500, distDisp: "14.5 km", mode: "rideshare", mins: 25, cost: 18, energy: 1, alts: [{ mode: "taxi", durationMinutes: 25, costUsd: 35, energyCost: 1, reason: "Traditional taxi option" }] },
+    { day: 1, order: 1, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "Santa Monica Pier", toLat: 34.0095, toLng: -118.4970, dist: 400, distDisp: "0.4 km", mode: "walk", mins: 5, cost: 0, energy: 1, alts: [] },
+    { day: 1, order: 2, from: "Santa Monica Pier", fromLat: 34.0094, fromLng: -118.4973, to: "Venice Beach", toLat: 33.9850, toLng: -118.4695, dist: 3200, distDisp: "3.2 km", mode: "walk", mins: 35, cost: 0, energy: 2, alts: [{ mode: "bike", durationMinutes: 12, costUsd: 5, energyCost: 1, reason: "Beach bike path" }] },
     { day: 2, order: 0, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "Griffith Observatory", toLat: 34.1184, toLng: -118.3004, dist: 24000, distDisp: "24 km", mode: "car", mins: 35, cost: 0, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 35, costUsd: 22, energyCost: 1, reason: "Skip parking hassle" }] },
     { day: 2, order: 1, from: "Griffith Observatory", fromLat: 34.1184, fromLng: -118.3004, to: "Hollywood Blvd", toLat: 34.1016, toLng: -118.3267, dist: 5000, distDisp: "5 km", mode: "car", mins: 12, cost: 0, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 12, costUsd: 10, energyCost: 1, reason: "Short hop" }] },
     { day: 3, order: 0, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "El Matador Beach", toLat: 34.0381, toLng: -118.8745, dist: 42000, distDisp: "42 km", mode: "car", mins: 45, cost: 0, energy: 1, alts: [] },
