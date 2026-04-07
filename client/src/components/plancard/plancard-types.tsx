@@ -109,6 +109,16 @@ export function getDestinationPhotoUrl(destination: string): string {
   return `https://source.unsplash.com/800x400/?${encodeURIComponent(destination)},travel,landmark`;
 }
 
+export function getDestinationGradient(destination: string): string {
+  let hash = 0;
+  for (let i = 0; i < destination.length; i++) {
+    hash = (hash << 5) - hash + destination.charCodeAt(i);
+    hash |= 0;
+  }
+  const h = Math.abs(hash) % 360;
+  return `linear-gradient(135deg, hsl(${h}, 60%, 40%), hsl(${(h + 50) % 360}, 70%, 28%))`;
+}
+
 export function getEnergyProfile(day: PlanCardDay | undefined | null): string {
   if (day?.energyProfile) return day.energyProfile;
   const activities = day?.activities;
