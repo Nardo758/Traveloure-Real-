@@ -251,8 +251,8 @@ function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, 
           </button>
         </Link>
       </div>
-      <div className="absolute bottom-3 left-3 right-3">
-        <h3 className="font-['DM_Serif_Display',serif] text-[18px] text-white leading-tight drop-shadow-sm truncate" data-testid={`text-plan-title-${trip.id}`}>
+      <Link href={`/trip/${trip.id}`} className="absolute bottom-3 left-3 right-3 block group/title">
+        <h3 className="font-['DM_Serif_Display',serif] text-[18px] text-white leading-tight drop-shadow-sm truncate group-hover/title:underline decoration-white/60" data-testid={`text-plan-title-${trip.id}`}>
           {trip.title}
         </h3>
         <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1.5">
@@ -270,7 +270,7 @@ function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, 
             </span>
           )}
         </div>
-      </div>
+      </Link>
     </div>
   );
 }
@@ -1297,7 +1297,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
               <LayoutList className="w-3.5 h-3.5 mr-1" /> Dashboard
             </Button>
           )}
-          <Link href={`/itinerary/${trip.id}`} className="flex-1">
+          <Link href={`/trip/${trip.id}`} className="flex-1">
             <Button size="sm" className="w-full text-xs font-semibold" data-testid={`footer-itinerary-${trip.id}`}>
               <Calendar className="w-3.5 h-3.5 mr-1" /> View Itinerary
               <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
