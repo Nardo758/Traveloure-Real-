@@ -13556,12 +13556,20 @@ export async function registerDiscoveryRoutes(app: Express) {
   // PATCH /api/trips/:tripId/transport-mode
   // Bulk-update transport mode (and optional bookingTiming/providerSource) for ALL legs in a trip
   app.patch("/api/trips/:tripId/transport-mode", async (req, res) => {
+    const VALID_TIMING = ["in_advance", "real_time"];
+    const VALID_SOURCE = ["traveloure", "external"];
     try {
       const { tripId } = req.params;
       const { selectedMode, bookingTiming, providerSource } = req.body;
       const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+      if (bookingTiming !== undefined && bookingTiming !== null && !VALID_TIMING.includes(bookingTiming)) {
+        return res.status(400).json({ error: `bookingTiming must be one of: ${VALID_TIMING.join(", ")}` });
+      }
+      if (providerSource !== undefined && providerSource !== null && !VALID_SOURCE.includes(providerSource)) {
+        return res.status(400).json({ error: `providerSource must be one of: ${VALID_SOURCE.join(", ")}` });
+      }
       if (!userId) return res.status(401).json({ error: "Authentication required" });
 
       // Resolve selectedVariantId for this trip
@@ -13601,12 +13609,20 @@ export async function registerDiscoveryRoutes(app: Express) {
   // PATCH /api/transport-legs/:legId/mode
   // Accepts either authenticated session (owner) or a suggest-permissions shareToken (expert without login)
   app.patch("/api/transport-legs/:legId/mode", async (req, res) => {
+    const VALID_TIMING = ["in_advance", "real_time"];
+    const VALID_SOURCE = ["traveloure", "external"];
     try {
       const { legId } = req.params;
       const { selectedMode, shareToken, bookingTiming, providerSource } = req.body;
       const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+      if (bookingTiming !== undefined && bookingTiming !== null && !VALID_TIMING.includes(bookingTiming)) {
+        return res.status(400).json({ error: `bookingTiming must be one of: ${VALID_TIMING.join(", ")}` });
+      }
+      if (providerSource !== undefined && providerSource !== null && !VALID_SOURCE.includes(providerSource)) {
+        return res.status(400).json({ error: `providerSource must be one of: ${VALID_SOURCE.join(", ")}` });
+      }
       if (!userId && !shareToken) return res.status(401).json({ error: "Authentication or share token required" });
 
       const [leg] = await db
@@ -13737,12 +13753,20 @@ export async function registerDiscoveryRoutes(app: Express) {
   // PATCH /api/itinerary-share/:token/transport-mode/bulk
   // Apply a transport mode (and optional bookingTiming/providerSource) to ALL legs in the itinerary
   app.patch("/api/itinerary-share/:token/transport-mode/bulk", async (req, res) => {
+    const VALID_TIMING = ["in_advance", "real_time"];
+    const VALID_SOURCE = ["traveloure", "external"];
     try {
       const { token } = req.params;
       const { selectedMode, bookingTiming, providerSource } = req.body;
       const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       if (!selectedMode) return res.status(400).json({ error: "selectedMode is required" });
+      if (bookingTiming !== undefined && bookingTiming !== null && !VALID_TIMING.includes(bookingTiming)) {
+        return res.status(400).json({ error: `bookingTiming must be one of: ${VALID_TIMING.join(", ")}` });
+      }
+      if (providerSource !== undefined && providerSource !== null && !VALID_SOURCE.includes(providerSource)) {
+        return res.status(400).json({ error: `providerSource must be one of: ${VALID_SOURCE.join(", ")}` });
+      }
       if (!userId && !token) return res.status(401).json({ error: "Authentication required" });
 
       const [shared] = await db
