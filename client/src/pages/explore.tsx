@@ -132,6 +132,7 @@ export default function Explore() {
                         src={(place.imageUrl as string[])?.[0] || `https://source.unsplash.com/800x600/?${encodeURIComponent(place.place)}`}
                         alt={place.place}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
                     </div>
@@ -224,6 +225,7 @@ export default function Explore() {
                           src={'image' in trip ? trip.image : `https://source.unsplash.com/800x600/?${encodeURIComponent(trip.city)},travel`}
                           alt={trip.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                         <Badge className="absolute top-4 right-4 bg-white/90 text-primary border-0 font-bold">
