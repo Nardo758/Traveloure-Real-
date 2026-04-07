@@ -146,7 +146,7 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="p-6" data-testid="traveler-dashboard">
+      <div className="px-4 py-5" data-testid="traveler-dashboard">
         {/* Greeting — full width above panels */}
         <div className="pt-4 mb-4">
           <div
@@ -166,11 +166,11 @@ export default function Dashboard() {
         </div>
 
         {/* Two-panel layout */}
-        <div className="flex gap-5">
+        <div className="flex gap-4">
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
             {/* CTA Row */}
-            <div className="flex gap-2.5 mb-[18px]">
+            <div className="flex gap-2 mb-[16px]">
               {CTA_CARDS.map((card) => {
                 const sub =
                   card.testId === "cta-credits"
@@ -226,7 +226,7 @@ export default function Dashboard() {
             </div>
 
             <div
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6"
               data-testid="active-plans-grid"
             >
               {activePlans.slice(0, 6).map((trip, i) => {
@@ -291,7 +291,7 @@ export default function Dashboard() {
           </div>
 
           {/* RIGHT: Intelligence panel */}
-          <div className="w-[260px] flex-shrink-0 hidden lg:block">
+          <div className="w-[210px] flex-shrink-0 hidden lg:block">
             <div className="sticky top-16 space-y-3">
               <TravelPulsePanel />
               <ActionItemsPanel notifications={notifications} />
