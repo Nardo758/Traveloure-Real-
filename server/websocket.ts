@@ -21,7 +21,17 @@ interface ConnectedClient {
 const clients = new Map<string, ConnectedClient>();
 
 export function setupWebSocket(server: Server) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (req, socket, head) => {
+    if (req.url === "/ws") {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
 
   wss.on("connection", (ws, req) => {
     let userId: string | null = null;
