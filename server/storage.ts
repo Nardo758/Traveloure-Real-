@@ -89,25 +89,6 @@ import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 
-export interface ProviderServiceEnriched {
-  id: string;
-  userId: string;
-  serviceName: string;
-  shortDescription: string | null;
-  description: string | null;
-  price: string | null;
-  priceType: string | null;
-  location: string | null;
-  averageRating: string | null;
-  reviewCount: number | null;
-  status: string | null;
-  isFeatured: boolean | null;
-  serviceImage: string | null;
-  categoryId: string | null;
-  category: { name: string | null; slug: string | null } | null;
-  provider: { firstName: string | null; lastName: string | null; businessName: string | null } | null;
-}
-
 export interface IStorage {
   // Trips
   getTrips(userId?: string): Promise<Trip[]>;
@@ -166,7 +147,7 @@ export interface IStorage {
 
   // Provider Services
   getProviderServices(userId: string): Promise<ProviderService[]>;
-  getAllProviderServices(): Promise<ProviderServiceEnriched[]>;
+  getAllProviderServices(): Promise<ProviderService[]>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -738,38 +719,8 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(providerServices).where(eq(providerServices.userId, userId));
   }
 
-  async getAllProviderServices(): Promise<ProviderServiceEnriched[]> {
-    return await db
-      .select({
-        id: providerServices.id,
-        userId: providerServices.userId,
-        serviceName: providerServices.serviceName,
-        shortDescription: providerServices.shortDescription,
-        description: providerServices.description,
-        price: providerServices.price,
-        priceType: providerServices.priceType,
-        location: providerServices.location,
-        averageRating: providerServices.averageRating,
-        reviewCount: providerServices.reviewCount,
-        status: providerServices.status,
-        isFeatured: providerServices.isFeatured,
-        serviceImage: providerServices.serviceImage,
-        categoryId: providerServices.categoryId,
-        category: {
-          name: serviceCategories.name,
-          slug: serviceCategories.slug,
-        },
-        provider: {
-          firstName: users.firstName,
-          lastName: users.lastName,
-          businessName: serviceProviderForms.businessName,
-        },
-      })
-      .from(providerServices)
-      .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
-      .leftJoin(users, eq(providerServices.userId, users.id))
-      .leftJoin(serviceProviderForms, eq(providerServices.userId, serviceProviderForms.userId))
-      .where(eq(providerServices.status, 'active'));
+  async getAllProviderServices(): Promise<ProviderService[]> {
+    return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
