@@ -1444,7 +1444,7 @@ export function MapFullPage() {
           className="flex items-center gap-1.5 text-[11px] font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg"
           data-testid="button-open-full-route"
         >
-          <Route className="w-3.5 h-3.5" /> Open Route
+          <Route className="w-3.5 h-3.5" /> Open Full Route
         </a>
       </div>
 
@@ -1508,10 +1508,15 @@ export function MapFullPage() {
 
       <div className="px-4 pb-6">
         <h2 className="text-[13px] font-bold text-gray-900 mb-3">
-          {isAllDays ? "All Stops" : `Day ${currentDays[0]?.dayNumber} Stops`}
+          {isAllDays
+            ? "All Stops"
+            : currentDays[0]?.date
+              ? `Day ${currentDays[0].dayNumber} — ${new Date(currentDays[0].date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}`
+              : `Day ${currentDays[0]?.dayNumber}`}
         </h2>
         {currentDays.map((day) => {
           const dc = DAY_COLORS[(day.dayNumber - 1) % DAY_COLORS.length];
+          const sortedLegs = Array.from(day.transportLegs).sort((a, b) => a.legOrder - b.legOrder);
           return (
             <div key={day.dayNumber} className="mb-4">
               {isAllDays && (
@@ -1523,43 +1528,75 @@ export function MapFullPage() {
                     {day.dayNumber}
                   </div>
                   <span className="text-[12px] font-bold text-gray-800">Day {day.dayNumber}</span>
+                  {day.date && (
+                    <span className="text-[10px] text-gray-400">
+                      {new Date(day.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                  )}
                 </div>
               )}
               <div className="space-y-0">
-                {day.activities.map((act, ai) => (
-                  <div key={act.id}>
-                    <div className="flex items-start gap-3 py-2.5">
-                      <div className="flex flex-col items-center flex-shrink-0">
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold border-2 border-white shadow-sm"
-                          style={{ backgroundColor: dc }}
-                          data-testid={`pin-${act.id}`}
-                        >
-                          {ai + 1}
+                {day.activities.map((act, ai) => {
+                  const leg = sortedLegs[ai];
+                  const mode = leg?.userSelectedMode ?? leg?.recommendedMode ?? null;
+                  const hasConnector = ai < day.activities.length - 1;
+                  return (
+                    <div key={act.id}>
+                      <div className="flex items-start gap-3 py-2.5">
+                        <div className="flex flex-col items-center flex-shrink-0">
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold border-2 border-white shadow-sm"
+                            style={{ backgroundColor: dc }}
+                            data-testid={`pin-${act.id}`}
+                          >
+                            {ai + 1}
+                          </div>
+                          {hasConnector && <div className="w-0.5 h-6 bg-gray-200 mt-1" />}
                         </div>
-                        {ai < day.activities.length - 1 && <div className="w-0.5 h-6 bg-gray-200 mt-1" />}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-[12px] font-semibold text-gray-900">{act.name}</span>
-                        <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500 flex-wrap">
-                          {act.startTime && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {formatTime(act.startTime)}
-                            </span>
-                          )}
-                          {act.location && (
-                            <span className="flex items-center gap-1">
-                              <MapPin className="w-3 h-3" /> {act.location}
-                            </span>
-                          )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[12px] font-semibold text-gray-900">{act.name}</span>
+                            {act.category && (
+                              <Badge variant="secondary" className="text-[9px] px-1.5 py-0 capitalize">
+                                {act.category}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500 flex-wrap">
+                            {act.startTime && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> {formatTime(act.startTime)}
+                              </span>
+                            )}
+                            {act.location && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" /> {act.location}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                        {act.location && (
+                          <NavigateDropdown location={act.location} lat={act.lat} lng={act.lng} />
+                        )}
                       </div>
-                      {act.location && (
-                        <NavigateDropdown location={act.location} lat={act.lat} lng={act.lng} />
+
+                      {hasConnector && mode && (
+                        <div className="flex items-center gap-2 pl-10 py-1">
+                          <div className="flex items-center gap-1 text-[10px] text-gray-400">
+                            <ModeIcon mode={mode} className="w-3 h-3" />
+                            <span className="capitalize">{MODE_LABELS[mode] ?? mode}</span>
+                            {leg.estimatedDurationMinutes && (
+                              <span>· {formatDuration(leg.estimatedDurationMinutes)}</span>
+                            )}
+                            {leg.estimatedCostUsd != null && leg.estimatedCostUsd > 0 && (
+                              <span>· ${leg.estimatedCostUsd}</span>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
