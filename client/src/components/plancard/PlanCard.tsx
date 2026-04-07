@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Calendar, ChevronRight, LayoutList, Lightbulb, Map as MapIcon, MapPin, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
-import { getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange } from "./plancard-types";
+import { getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type TransitMode } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { StatsRow, OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
@@ -81,6 +81,8 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
   const [showChanges, setShowChanges] = useState(true);
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
   const [confirming, setConfirming] = useState(false);
+  const [tripWideMode, setTripWideMode] = useState<string | null>(null);
+  const [selectedModes, setSelectedModes] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const deleteTrip = useDeleteTrip();
   const [, navigate] = useLocation();
@@ -160,6 +162,39 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
   const stats = plancardData?.stats || {};
   const day = days[selectedDay];
 
+  useEffect(() => {
+    if (days.length === 0) return;
+    const initial: Record<string, string> = {};
+    days.forEach(d => d.transports?.forEach(t => {
+      if (t.selectedMode) initial[t.id] = t.selectedMode;
+      else initial[t.id] = t.mode;
+    }));
+    setSelectedModes(initial);
+  }, [days]);
+
+  const applyTripWideMode = (mode: string) => {
+    setTripWideMode(mode);
+    const updated: Record<string, string> = { ...selectedModes };
+    days.forEach(d => d.transports?.forEach(t => {
+      const hasOption = t.transitOptions?.some(o => o.mode === mode);
+      if (hasOption) updated[t.id] = mode;
+    }));
+    setSelectedModes(updated);
+  };
+
+  const resetTransitModes = () => {
+    setTripWideMode(null);
+    const reset: Record<string, string> = {};
+    days.forEach(d => d.transports?.forEach(t => {
+      reset[t.id] = t.selectedMode || t.mode;
+    }));
+    setSelectedModes(reset);
+  };
+
+  const handleModeChange = (legId: string, mode: string) => {
+    setSelectedModes(prev => ({ ...prev, [legId]: mode }));
+  };
+
   const optimizationScore = score?.optimizationScore;
   const shareToken = score?.shareToken;
 
@@ -229,29 +264,38 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           budget={budgetDisplay}
         />
 
-        <div className="px-5 pt-3 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
-          <button
-            onClick={() => setViewMode("card")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
-              viewMode === "card"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-            data-testid={`btn-card-view-${trip.id}`}
-          >
-            <LayoutList className="w-4 h-4" /> Card View
-          </button>
-          <button
-            onClick={() => setViewMode("map")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold cursor-pointer transition-all border-0 ${
-              viewMode === "map"
-                ? "bg-primary text-primary-foreground shadow-md"
-                : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-            }`}
-            data-testid={`btn-map-view-${trip.id}`}
-          >
-            <MapIcon className="w-4 h-4" /> Map Control Center
-          </button>
+        <div className="px-4 pt-3" data-testid={`view-mode-toggle-${trip.id}`}>
+          <div className="relative bg-muted rounded-xl p-1 flex gap-0.5">
+            <div
+              className="absolute top-1 bottom-1 rounded-lg transition-all duration-300 ease-in-out shadow-md"
+              style={{
+                left: viewMode === "card" ? "4px" : "calc(50% + 1px)",
+                width: "calc(50% - 5px)",
+                background: "hsl(var(--primary))",
+              }}
+            />
+            <button
+              onClick={() => setViewMode("card")}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors duration-300 border-0 cursor-pointer ${
+                viewMode === "card" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid={`btn-card-view-${trip.id}`}
+            >
+              <LayoutList className="w-4 h-4" /> Dashboard
+            </button>
+            <button
+              onClick={() => setViewMode("map")}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-colors duration-300 border-0 cursor-pointer ${
+                viewMode === "map" ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid={`btn-map-view-${trip.id}`}
+            >
+              <MapIcon className="w-4 h-4" /> Map Control Center
+              {viewMode !== "map" && (
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              )}
+            </button>
+          </div>
         </div>
 
         {viewMode === "card" ? (
@@ -319,6 +363,12 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
                 tripId={trip.id}
                 tripDestination={trip.destination}
                 day={day}
+                days={days}
+                selectedModes={selectedModes}
+                onModeChange={handleModeChange}
+                tripWideMode={tripWideMode}
+                onApplyTripWideMode={applyTripWideMode}
+                onResetModes={resetTransitModes}
               />
             )}
           </>
@@ -332,29 +382,55 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
           />
         )}
 
-        {/* Footer buttons */}
         <div className="px-5 pb-3 pt-2 flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-shrink-0"
-            onClick={openInMaps}
-            data-testid={`button-open-maps-${trip.id}`}
-          >
-            <MapPin className="w-3.5 h-3.5 mr-1" />
-            Maps
-          </Button>
-          <Link href={`/itinerary/${trip.id}`} className="flex-1">
-            <Button
-              size="sm"
-              className="w-full text-xs font-semibold"
-              data-testid={`button-view-itinerary-${trip.id}`}
-            >
-              <Calendar className="w-3.5 h-3.5 mr-1" />
-              View Itinerary
-              <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-            </Button>
-          </Link>
+          {viewMode === "card" ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-shrink-0"
+                onClick={() => setViewMode("map")}
+                data-testid={`button-open-map-${trip.id}`}
+              >
+                <MapIcon className="w-3.5 h-3.5 mr-1" />
+                Open Map
+              </Button>
+              <Link href={`/itinerary/${trip.id}`} className="flex-1">
+                <Button
+                  size="sm"
+                  className="w-full text-xs font-semibold"
+                  data-testid={`button-view-itinerary-${trip.id}`}
+                >
+                  <Calendar className="w-3.5 h-3.5 mr-1" />
+                  View Itinerary
+                  <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+                </Button>
+              </Link>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-shrink-0"
+                onClick={openInMaps}
+                data-testid={`button-open-maps-${trip.id}`}
+              >
+                <MapPin className="w-3.5 h-3.5 mr-1" />
+                Maps
+              </Button>
+              <Button
+                size="sm"
+                className="flex-1 text-xs font-semibold"
+                onClick={() => setViewMode("card")}
+                data-testid={`button-dashboard-${trip.id}`}
+              >
+                <LayoutList className="w-3.5 h-3.5 mr-1" />
+                Dashboard
+                <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Enrichment pills row — below footer buttons */}
