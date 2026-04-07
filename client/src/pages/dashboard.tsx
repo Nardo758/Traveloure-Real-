@@ -6,8 +6,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
+import { Bookmark } from "lucide-react";
 import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
-import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
@@ -55,6 +55,39 @@ const CTA_CARDS = [
     testId: "cta-find-experts",
   },
 ];
+
+function SavedTripsLink() {
+  const { data: savedTrips } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/saved-trips"],
+  });
+
+  const count = savedTrips?.length ?? 0;
+  if (count === 0) return null;
+
+  return (
+    <Link href="/my-trips">
+      <div
+        className="flex items-center gap-2.5 rounded-[10px] p-3 cursor-pointer hover:opacity-80 transition-opacity"
+        style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
+        data-testid="link-saved-trips"
+      >
+        <Bookmark className="w-4 h-4 flex-shrink-0" style={{ color: "#E85D55" }} />
+        <div className="flex-1 min-w-0">
+          <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>Saved for later</div>
+          <div className="text-[9px]" style={{ color: "#7A7A72" }}>
+            {count} {count === 1 ? "plan" : "plans"} waiting
+          </div>
+        </div>
+        <span
+          className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+          style={{ background: "rgba(232,93,85,0.1)", color: "#E85D55" }}
+        >
+          {count}
+        </span>
+      </div>
+    </Link>
+  );
+}
 
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
@@ -176,8 +209,6 @@ export default function Dashboard() {
               })}
             </div>
 
-            <SavedTripsSection />
-
             {/* Active Plans */}
             <div
               className="text-sm font-medium mb-3 flex items-center justify-between"
@@ -264,6 +295,7 @@ export default function Dashboard() {
               />
               <TopExpertsPanel destinations={destinations} />
               <CreditsPanel />
+              <SavedTripsLink />
             </div>
           </div>
         </div>
