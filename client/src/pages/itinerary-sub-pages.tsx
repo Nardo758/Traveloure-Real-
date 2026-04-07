@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
@@ -34,6 +34,7 @@ interface ApiActivity {
   duration?: number | null;
   phone?: string | null;
   website?: string | null;
+  imageUrl?: string | null;
 }
 
 interface ApiTransportLeg {
@@ -457,14 +458,21 @@ export function FullItineraryPage() {
   const [, navigate] = useLocation();
   const { data, isLoading, error } = useItineraryData(token);
 
+  // Redirect expert roles after data loads — useEffect avoids render side-effects
+  useEffect(() => {
+    if (!data) return;
+    const isExpert = data.permissions === "suggest" || data.permissions === "edit";
+    if (isExpert) {
+      navigate(`/itinerary-view/${token}/expert-review`, { replace: true });
+    }
+  }, [data, token, navigate]);
+
   if (isLoading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={(error as Error).message} />;
   if (!data) return null;
 
-  // Only true expert roles get redirected — NOT trip owners who merely shared with an expert
-  const isExpert = data.permissions === "suggest" || data.permissions === "edit";
-  if (isExpert) {
-    navigate(`/itinerary-view/${token}/expert-review`, { replace: true });
+  // Render nothing for experts while redirect fires (they won't see this for more than one frame)
+  if (data.permissions === "suggest" || data.permissions === "edit") {
     return null;
   }
 
@@ -678,12 +686,25 @@ export function ActivityDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="activity-detail-page">
-      {/* Hero */}
+      {/* Hero — image if available, gradient fallback */}
       <div className="relative">
-        <div
-          className="h-44"
-          style={{ background: `linear-gradient(135deg, ${dayColor}cc, ${dayColor}88)` }}
-        />
+        {activity.imageUrl ? (
+          <img
+            src={activity.imageUrl}
+            alt={activity.name}
+            className="w-full h-44 object-cover"
+            data-testid="img-activity-hero"
+          />
+        ) : (
+          <div
+            className="h-44"
+            style={{ background: `linear-gradient(135deg, ${dayColor}cc, ${dayColor}88)` }}
+          />
+        )}
+        {/* Dark overlay for text readability on images */}
+        {activity.imageUrl && (
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+        )}
         <div className="absolute top-3 left-3">
           <button
             onClick={() => navigate(`/itinerary-view/${token}`)}
