@@ -1645,6 +1645,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json(wallet);
   });
 
+  // Get credits balance (balance + total for UI display)
+  app.get("/api/credits/balance", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const wallet = await storage.getOrCreateWallet(userId);
+    const balance = wallet.credits ?? 0;
+    const total = Math.max(balance, 250);
+    res.json({ balance, total });
+  });
+
   // Get wallet transactions
   app.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
