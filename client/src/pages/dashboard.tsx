@@ -47,6 +47,13 @@ const CTA_CARDS = [
     href: "/credits",
     testId: "cta-credits",
   },
+  {
+    icon: "🔍",
+    label: "Find experts",
+    sub: "In your destinations",
+    href: "/experts",
+    testId: "cta-find-experts",
+  },
 ];
 
 export default function Dashboard() {
@@ -133,7 +140,7 @@ export default function Dashboard() {
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
             {/* CTA Row */}
-            <div className="flex gap-2.5 mb-[18px] items-start">
+            <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
                 const sub =
                   card.testId === "cta-credits"
@@ -143,7 +150,7 @@ export default function Dashboard() {
                   <Link
                     key={card.testId}
                     href={card.href}
-                    className="flex-none w-[88px]"
+                    className="flex-1"
                   >
                     <div
                       className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
@@ -167,10 +174,9 @@ export default function Dashboard() {
                   </Link>
                 );
               })}
-              <div className="flex-1 min-w-0">
-                <SavedTripsSection />
-              </div>
             </div>
+
+            <SavedTripsSection />
 
             {/* Active Plans */}
             <div
@@ -205,37 +211,6 @@ export default function Dashboard() {
                     notifications={notifications}
                   />
                 ))}
-                {activePlans.length < 2 && (
-                  <Link href="/experiences">
-                    <div
-                      className="rounded-[14px] flex flex-col items-center justify-center gap-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                      style={{
-                        border: "1.5px dashed #D1D1C7",
-                        background: "#FAFAFA",
-                        minHeight: "200px",
-                      }}
-                      data-testid="create-new-plan-card"
-                    >
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{ background: "#FFE3E8" }}
-                      >
-                        <Plus className="w-5 h-5" style={{ color: "#E85D55" }} />
-                      </div>
-                      <div className="text-center">
-                        <div
-                          className="text-[13px] font-medium mb-0.5"
-                          style={{ color: "#1A1A18" }}
-                        >
-                          Create new plan
-                        </div>
-                        <div className="text-[11px]" style={{ color: "#7A7A72" }}>
-                          Plan your next adventure
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                )}
               </div>
             ) : (
               <Card
