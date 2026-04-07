@@ -8,9 +8,9 @@ import {
   Filter, History, ChevronRight, Footprints, Car, Ship, Bus,
   Train, TrainFront, CarTaxiFront, KeyRound, Sparkles, Building2,
   Ticket, Check, X, Hotel, Compass, Shield, UtensilsCrossed,
-  FileText, Copy, Phone, ChevronDown, ChevronUp, TrendingUp,
-  BarChart3, Leaf, Calendar, Activity as ActivityIcon,
-  Printer, Send, MessageSquare, Lightbulb,
+  FileText, Copy, Phone, Globe, ChevronDown, ChevronUp,
+  BarChart3, Calendar, Activity as ActivityIcon,
+  Printer, Send, MessageSquare, Lightbulb, Repeat,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,8 @@ interface ApiActivity {
   description?: string | null;
   location?: string | null;
   duration?: number | null;
+  phone?: string | null;
+  website?: string | null;
 }
 
 interface ApiTransportLeg {
@@ -371,9 +373,13 @@ function DaySection({
                             {a.category}
                           </Badge>
                         )}
-                        {hasSuggestion && (
+                        {hasSuggestion ? (
                           <Badge className="text-[9px] px-1.5 py-0 border-0 bg-blue-100 text-blue-700">
                             Suggested
+                          </Badge>
+                        ) : (
+                          <Badge className="text-[9px] px-1.5 py-0 border-0 bg-green-100 text-green-700">
+                            Confirmed
                           </Badge>
                         )}
                       </div>
@@ -696,6 +702,15 @@ export function ActivityDetailPage() {
                 {activity.category}
               </Badge>
             )}
+            {activityExpertNote ? (
+              <Badge className="text-[10px] px-2 py-0.5 border-0 bg-blue-400/80 text-white">
+                Suggested
+              </Badge>
+            ) : (
+              <Badge className="text-[10px] px-2 py-0.5 border-0 bg-green-400/80 text-white">
+                Confirmed
+              </Badge>
+            )}
             <Badge className="text-[10px] px-2 py-0.5 border-0 bg-white/20 text-white">
               Day {dayNumber} · Stop {activityIndex + 1}
             </Badge>
@@ -871,6 +886,48 @@ export function ActivityDetailPage() {
             </div>
           </Card>
         )}
+
+        {/* Contact info */}
+        <Card className="p-4">
+          <h3 className="text-[13px] font-bold text-gray-900 mb-3">Contact &amp; Info</h3>
+          <div className="space-y-2.5">
+            <a
+              href={`tel:${activity.phone ?? "+1-555-000-0000"}`}
+              className="flex items-center gap-3 hover:opacity-70 transition-opacity"
+              data-testid="link-phone"
+            >
+              <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                <Phone className="w-4 h-4 text-green-600" />
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400">Phone</div>
+                <div className="text-[12px] font-semibold text-gray-800">
+                  {activity.phone ?? "+1 555-000-0000"}
+                </div>
+              </div>
+            </a>
+            <a
+              href={activity.website ?? `https://example.com/${encodeURIComponent(activity.name)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 hover:opacity-70 transition-opacity"
+              data-testid="link-website"
+            >
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <Globe className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] text-gray-400">Website</div>
+                <div className="text-[12px] font-semibold text-blue-600 truncate">
+                  {activity.website
+                    ? activity.website.replace(/^https?:\/\//, "")
+                    : "Visit website"}
+                </div>
+              </div>
+              <ExternalLink className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+            </a>
+          </div>
+        </Card>
       </div>
     </div>
   );
@@ -879,6 +936,44 @@ export function ActivityDetailPage() {
 // ─────────────────────────────────────────────
 // 3. TRANSPORT DETAIL PAGE
 // ─────────────────────────────────────────────
+function RoutePlaceholder({ from, to, mode }: { from: string; to: string; mode: string }) {
+  const modeColor = MODE_COLORS[mode] ?? "#6b7280";
+  return (
+    <div className="relative w-full h-40 rounded-xl overflow-hidden border border-gray-200 bg-gradient-to-br from-blue-50 via-cyan-50 to-emerald-50">
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+        {Array.from({ length: 11 }).map((_, i) => (
+          <line key={`h${i}`} x1="0" y1={i * 10} x2="100" y2={i * 10} stroke="#e5e7eb" strokeWidth="0.3" />
+        ))}
+        {Array.from({ length: 11 }).map((_, i) => (
+          <line key={`v${i}`} x1={i * 10} y1="0" x2={i * 10} y2="100" stroke="#e5e7eb" strokeWidth="0.3" />
+        ))}
+        <path d="M 20 70 Q 50 20, 80 50" fill="none" stroke={modeColor} strokeWidth="1.2" strokeDasharray="3,2" opacity="0.7" />
+      </svg>
+      <div className="absolute" style={{ left: "20%", top: "70%", transform: "translate(-50%, -50%)" }}>
+        <div className="w-5 h-5 rounded-full bg-green-500 border-2 border-white shadow flex items-center justify-center">
+          <span className="text-white text-[8px] font-bold">A</span>
+        </div>
+      </div>
+      <div className="absolute" style={{ left: "80%", top: "50%", transform: "translate(-50%, -50%)" }}>
+        <div className="w-5 h-5 rounded-full bg-red-500 border-2 border-white shadow flex items-center justify-center">
+          <span className="text-white text-[8px] font-bold">B</span>
+        </div>
+      </div>
+      <div className="absolute bottom-2 left-2 bg-white/80 backdrop-blur-sm rounded-lg px-2 py-1 text-[10px] text-gray-500 font-medium">
+        Route Preview
+      </div>
+      <div className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm rounded-lg px-2 py-1 flex items-center gap-1">
+        <ModeIcon mode={mode} className="w-3 h-3" />
+        <span className="text-[10px] text-gray-600 font-medium">{MODE_LABELS[mode] ?? mode}</span>
+      </div>
+      <div className="absolute bottom-2 right-2 flex flex-col gap-0.5 items-end">
+        <div className="bg-white/80 backdrop-blur-sm rounded px-1.5 py-0.5 text-[9px] text-gray-500 truncate max-w-[80px]">{from}</div>
+        <div className="bg-white/80 backdrop-blur-sm rounded px-1.5 py-0.5 text-[9px] text-gray-500 truncate max-w-[80px]">{to}</div>
+      </div>
+    </div>
+  );
+}
+
 export function TransportDetailPage() {
   const { token, legId } = useParams<{ token: string; legId: string }>();
   const [, navigate] = useLocation();
@@ -1023,6 +1118,44 @@ export function TransportDetailPage() {
                 </span>
               </div>
             )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Route map placeholder */}
+      <div className="px-4 pb-3">
+        <h3 className="text-[13px] font-bold text-gray-900 mb-2">Route Map</h3>
+        <RoutePlaceholder from={fromName} to={toName} mode={mode} />
+      </div>
+
+      {/* Traveloure services */}
+      <div className="px-4 pb-3">
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Sparkles className="w-4 h-4 text-sky-600" />
+            <h3 className="text-[13px] font-bold text-gray-900">Traveloure Services</h3>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-sky-50 border border-sky-200">
+              <div className="w-8 h-8 rounded-lg bg-sky-100 flex items-center justify-center">
+                <Car className="w-4 h-4 text-sky-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-sky-900">Private Transfer</div>
+                <div className="text-[11px] text-sky-700">Comfortable door-to-door service</div>
+              </div>
+              <Badge className="bg-sky-200 text-sky-800 border-0 text-[10px]">Available</Badge>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50">
+              <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                <Repeat className="w-4 h-4 text-gray-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-gray-800">Request Alternative</div>
+                <div className="text-[11px] text-gray-500">Ask your expert to suggest options</div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-gray-400" />
+            </div>
           </div>
         </Card>
       </div>
