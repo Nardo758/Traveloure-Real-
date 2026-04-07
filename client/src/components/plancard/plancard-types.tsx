@@ -216,6 +216,7 @@ export interface PlanCardTrip {
   status?: string;
   shareToken?: string | null;
   trackingNumber?: string | null;
+  expertNotes?: string | null;
 }
 
 export interface NotificationItem {

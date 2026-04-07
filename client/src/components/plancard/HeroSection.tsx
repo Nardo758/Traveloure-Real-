@@ -28,6 +28,18 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
     ? "Today"
     : "Active";
 
+  const urgencyGradient = daysUntilEnd < 0
+    ? "from-gray-400/30 via-gray-500/20 to-gray-400/30"
+    : daysUntilStart <= 0
+    ? "from-red-500/30 via-orange-500/20 to-yellow-500/30"
+    : daysUntilStart <= 3
+    ? "from-orange-500/30 via-amber-500/20 to-yellow-500/30"
+    : daysUntilStart <= 7
+    ? "from-amber-400/30 via-yellow-400/20 to-orange-400/30"
+    : daysUntilStart <= 14
+    ? "from-primary/30 via-orange-500/20 to-purple-500/30"
+    : "from-blue-400/30 via-indigo-400/20 to-purple-400/30";
+
   const destinationParts = trip.destination?.split(",") || [trip.destination];
   const city = destinationParts[0]?.trim() || trip.destination;
   const country = destinationParts.slice(1).join(",").trim() || "";
@@ -46,7 +58,7 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
   }
 
   return (
-    <div className="relative h-52 overflow-hidden bg-gradient-to-br from-primary/30 via-orange-500/20 to-purple-500/30">
+    <div className={`relative h-52 overflow-hidden bg-gradient-to-br ${urgencyGradient}`}>
       <img
         src={photoUrl}
         alt={trip.destination}
