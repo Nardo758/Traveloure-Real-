@@ -10,7 +10,7 @@ import {
   Ticket, Check, X, Hotel, Compass, Shield, UtensilsCrossed,
   FileText, Copy, Phone, Globe, ChevronDown, ChevronUp,
   BarChart3, Calendar, Activity as ActivityIcon,
-  Printer, Send, MessageSquare, Lightbulb, Repeat,
+  Printer, Download, Send, MessageSquare, Lightbulb, Repeat,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -307,6 +307,7 @@ function DaySection({
   const transitTime = day.transportLegs.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
   const transitCost = day.transportLegs.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
   const dateLabel = day.date ? formatDate(day.date) : `Day ${day.dayNumber}`;
+  const confirmedCount = day.activities.filter(a => !expertDiff?.activityDiffs?.[a.id]).length;
 
   type Entry =
     | { kind: "activity"; item: ApiActivity; seq: number }
@@ -335,9 +336,13 @@ function DaySection({
           D{day.dayNumber}
         </div>
         <div className="flex-1 min-w-0">
-          <span className="text-[14px] font-bold text-gray-900">{dateLabel}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[14px] font-bold text-gray-900">{dateLabel}</span>
+            {day.date && <span className="text-[11px] text-gray-400">{day.date}</span>}
+          </div>
           <div className="flex items-center gap-3 mt-0.5 text-[11px] text-gray-500">
             <span>{day.activities.length} activities</span>
+            <span>{confirmedCount} confirmed</span>
             {(dayCost + transitCost) > 0 && (
               <span className="text-emerald-700 font-semibold">${(dayCost + transitCost).toLocaleString()}</span>
             )}
@@ -355,18 +360,23 @@ function DaySection({
               const tc = TYPE_COLORS[a.category ?? "activity"] ?? TYPE_COLORS.activity;
               const actDiff = expertDiff?.activityDiffs?.[a.id];
               const hasSuggestion = !!actDiff;
+              const durationMins = a.duration ?? (a.startTime && a.endTime
+                ? Math.round((new Date(a.endTime).getTime() - new Date(a.startTime).getTime()) / 60000)
+                : null);
               return (
-                <button
+                <div
                   key={a.id}
-                  onClick={() => onNavigateActivity(a.id)}
-                  className={`w-full bg-white rounded-xl border shadow-sm p-3 text-left hover:shadow-md transition-shadow ${hasSuggestion ? "border-blue-200" : "border-gray-100"}`}
+                  className={`bg-white rounded-xl border shadow-sm p-3 ${hasSuggestion ? "border-blue-200" : "border-gray-100"}`}
                   data-testid={`activity-row-${a.id}`}
                 >
                   <div className="flex items-start gap-3">
                     <div className="w-8 h-8 rounded-full bg-gray-50 border-2 border-gray-200 flex items-center justify-center text-[11px] font-bold text-gray-600 flex-shrink-0">
                       {entry.seq + 1}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div
+                      className="flex-1 min-w-0 cursor-pointer"
+                      onClick={() => onNavigateActivity(a.id)}
+                    >
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[13px] font-bold text-gray-900">{a.name}</span>
                         {a.category && (
@@ -398,24 +408,36 @@ function DaySection({
                             <MapPin className="w-3 h-3" /> {a.location}
                           </span>
                         )}
+                        {durationMins && durationMins > 0 && (
+                          <span className="text-[11px] text-gray-500">{formatDuration(durationMins)}</span>
+                        )}
                       </div>
                       {(a.cost ?? 0) > 0 && (
                         <div className="text-[12px] font-semibold text-emerald-700 mt-1">${a.cost}</div>
                       )}
                     </div>
-                    <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" />
+                    <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <NavigateDropdown location={a.location ?? a.name} lat={a.lat} lng={a.lng} />
+                    </div>
                   </div>
-                </button>
+                  {a.description && (
+                    <div className="mt-2 ml-11 flex items-start gap-1.5 bg-purple-50 rounded-lg px-2.5 py-1.5">
+                      <Lightbulb className="w-3 h-3 text-purple-500 flex-shrink-0 mt-0.5" />
+                      <span className="text-[11px] text-purple-700 italic leading-relaxed">"{a.description}"</span>
+                    </div>
+                  )}
+                </div>
               );
             } else {
               const t = entry.item;
               const mode = t.userSelectedMode ?? t.recommendedMode ?? "transit";
               const modeColor = MODE_COLORS[mode] ?? "#6b7280";
+              const isTraveloure = t.operatorName?.toLowerCase().includes("traveloure");
               return (
                 <button
                   key={t.id}
                   onClick={() => onNavigateTransport(t.id)}
-                  className="flex items-center gap-2 py-1.5 px-3 ml-6 border-l-2 border-dashed w-full text-left hover:bg-gray-50 transition-colors rounded-r-lg"
+                  className="flex items-center gap-2 py-2 px-3 ml-6 border-l-2 border-dashed w-full text-left hover:bg-gray-50 transition-colors rounded-r-lg"
                   style={{ borderColor: `${modeColor}60` }}
                   data-testid={`transport-row-${t.id}`}
                 >
@@ -426,18 +448,26 @@ function DaySection({
                     <ModeIcon mode={mode} className="w-3 h-3" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-gray-600 font-semibold">{MODE_LABELS[mode] ?? mode}</span>
+                    <span className="text-[11px] text-gray-700 font-semibold">{MODE_LABELS[mode] ?? mode}</span>
                     {t.fromLabel && t.toLabel && (
                       <span className="text-[10px] text-gray-400 ml-1.5">
                         {t.fromLabel} → {t.toLabel}
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-gray-500 flex-shrink-0">
-                    {formatDuration(t.estimatedDurationMinutes ?? 0)}
-                    {(t.estimatedCostUsd ?? 0) > 0 && ` · $${t.estimatedCostUsd}`}
-                  </span>
-                  <ChevronRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" /> {formatDuration(t.estimatedDurationMinutes ?? 0)}
+                    </span>
+                    {(t.estimatedCostUsd ?? 0) > 0 ? (
+                      <span className="text-[10px] font-semibold text-gray-700">${t.estimatedCostUsd}</span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-green-600">Free</span>
+                    )}
+                    {isTraveloure && (
+                      <span className="text-[8px] bg-sky-100 text-sky-700 px-1 py-0.5 rounded font-bold">TRAVELOURE</span>
+                    )}
+                  </div>
                 </button>
               );
             }
@@ -486,6 +516,9 @@ export function FullItineraryPage() {
   const totalTransitTime =
     variant.transportSummary?.totalMinutes ??
     allTransports.reduce((s, t) => s + (t.estimatedDurationMinutes ?? 0), 0);
+  const confirmedActivityCount = allActivities.filter(
+    a => !data.expertDiff?.activityDiffs?.[a.id]
+  ).length;
 
   const destination = variant.destination ?? variant.name;
   const hasExpertDiff = !!(data.expertDiff?.activityDiffs || data.expertDiff?.transportDiffs);
@@ -509,6 +542,34 @@ export function FullItineraryPage() {
             <p className="text-[10px] text-gray-500">{variant.days.length} days · {allActivities.length} activities</p>
           </div>
           <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => window.print()}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+              title="Print"
+              data-testid="header-print"
+            >
+              <Printer className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                const content = `${destination}\n\n${variant.days.map(d =>
+                  `Day ${d.dayNumber} — ${d.date ?? ""}\n${d.activities.map((a, i) =>
+                    `${i + 1}. ${a.name}${a.startTime ? ` (${formatTime(a.startTime)})` : ""}${a.location ? ` — ${a.location}` : ""}`
+                  ).join("\n")}`
+                ).join("\n\n")}`;
+                const blob = new Blob([content], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `${destination}-itinerary.txt`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+              title="Download"
+              data-testid="header-download"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <div className="w-px h-5 bg-gray-200 mx-1" />
             <button
               onClick={() => navigate(`/itinerary-view/${token}/map`)}
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
@@ -601,6 +662,15 @@ export function FullItineraryPage() {
             </div>
           </Card>
           <Card className="p-3 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="w-4 h-4 text-green-600" />
+            </div>
+            <div>
+              <div className="text-[18px] font-bold text-gray-900">{confirmedActivityCount}</div>
+              <div className="text-[10px] text-gray-500">Confirmed</div>
+            </div>
+          </Card>
+          <Card className="p-3 flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
               <DollarSign className="w-4 h-4 text-emerald-600" />
             </div>
@@ -616,15 +686,6 @@ export function FullItineraryPage() {
             <div>
               <div className="text-[18px] font-bold text-gray-900">{formatDuration(totalTransitTime)}</div>
               <div className="text-[10px] text-gray-500">Transit Time</div>
-            </div>
-          </Card>
-          <Card className="p-3 flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-              <Calendar className="w-4 h-4 text-purple-600" />
-            </div>
-            <div>
-              <div className="text-[18px] font-bold text-gray-900">{variant.days.length}</div>
-              <div className="text-[10px] text-gray-500">Days</div>
             </div>
           </Card>
         </div>
