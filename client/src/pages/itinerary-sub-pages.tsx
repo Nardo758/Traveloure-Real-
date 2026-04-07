@@ -585,7 +585,7 @@ export function FullItineraryPage() {
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="px-4 py-2.5 flex items-center gap-2">
           <button
-            onClick={() => window.history.back()}
+            onClick={() => navigate("/dashboard")}
             className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
             data-testid="button-back"
           >
