@@ -1,26 +1,22 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { Loader2 } from "lucide-react";
 
 interface ProviderService {
   id: string;
-  providerId: string;
-  categoryId: string;
-  name: string;
-  description: string;
-  basePrice: string;
-  pricingType: string;
+  userId: string;
+  categoryId: string | null;
+  serviceName: string;
+  shortDescription: string | null;
+  description: string | null;
+  price: string | null;
+  priceType: string | null;
   location: string | null;
-  rating: string | null;
+  averageRating: string | null;
   reviewCount: number;
-  isActive: boolean;
-  category?: { name: string; slug: string };
-  provider?: {
-    businessName: string;
-    firstName: string;
-    lastName: string;
-  };
+  status: string;
+  category?: { name: string | null; slug: string | null } | null;
+  provider?: { firstName: string | null; lastName: string | null } | null;
 }
 
 interface RecommendedServicesProps {
@@ -48,6 +44,35 @@ function getCategoryColor(categoryName: string) {
   return CATEGORY_COLORS.default;
 }
 
+function getReasonText(svc: ProviderService, destinations: string[]): string {
+  const catName = (svc.category?.name || "").toLowerCase();
+  const location = svc.location || "";
+  const dest = destinations[0] || "";
+
+  if (dest && location && location.toLowerCase().includes(dest.toLowerCase())) {
+    return `Matches your ${dest} itinerary`;
+  }
+  if (catName.includes("transport") || catName.includes("transfer")) {
+    return `Smooth travel logistics for your trip`;
+  }
+  if (catName.includes("photography") || catName.includes("photo")) {
+    return `Capture memories from your journey`;
+  }
+  if (catName.includes("dining") || catName.includes("food")) {
+    return `Discover local flavours along the way`;
+  }
+  if (catName.includes("tour") || catName.includes("guide")) {
+    return `Local expertise for a richer experience`;
+  }
+  if (location) {
+    return `Trending in ${location}`;
+  }
+  if (dest) {
+    return `Recommended for your ${dest} trip`;
+  }
+  return `Popular with travellers like you`;
+}
+
 export function RecommendedServices({
   destinations,
 }: RecommendedServicesProps) {
@@ -70,7 +95,7 @@ export function RecommendedServices({
     );
   }
 
-  const allServices = (services ?? []).filter((s) => s.isActive);
+  const allServices = services ?? [];
   const filterTabs = ["all", ...new Set(destinations.map((d) => d.toLowerCase()))];
 
   const filtered =
@@ -122,22 +147,23 @@ export function RecommendedServices({
           const catName = svc.category?.name || "Service";
           const catColors = getCategoryColor(catName);
           const provName =
-            svc.provider?.businessName ||
             `${svc.provider?.firstName || ""} ${svc.provider?.lastName || ""}`.trim() ||
             "Provider";
           const initials = provName
             .split(" ")
+            .filter(Boolean)
             .map((w) => w[0])
             .join("")
             .toUpperCase()
             .slice(0, 2);
-          const price = parseFloat(svc.basePrice || "0");
-          const rating = parseFloat(svc.rating || "0");
+          const price = parseFloat(svc.price || "0");
+          const rating = parseFloat(svc.averageRating || "0");
+          const reason = getReasonText(svc, destinations);
 
           return (
             <div
               key={svc.id}
-              className="flex items-center gap-3 px-3 py-2.5 bg-card border border-border cursor-pointer hover:bg-muted/20 transition-colors"
+              className="flex items-start gap-3 px-3 py-2.5 bg-card border border-border cursor-pointer hover:bg-muted/20 transition-colors"
               style={{
                 borderRadius:
                   i === 0
@@ -150,18 +176,18 @@ export function RecommendedServices({
               data-testid={`service-row-${svc.id}`}
             >
               <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0 mt-0.5"
                 style={{
                   background: catColors.bg,
                   color: catColors.text,
                 }}
               >
-                {initials}
+                {initials || "SV"}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <span className="text-[12px] font-medium text-foreground truncate">
-                    {svc.name}
+                    {svc.serviceName}
                   </span>
                   <span
                     className="text-[8px] px-1.5 py-0.5 rounded font-medium flex-shrink-0"
@@ -173,7 +199,7 @@ export function RecommendedServices({
                     {catName}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap">
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground flex-wrap mb-0.5">
                   <span className="font-medium text-foreground">
                     {provName}
                   </span>
@@ -187,10 +213,16 @@ export function RecommendedServices({
                     <span>({svc.reviewCount})</span>
                   )}
                 </div>
+                <div
+                  className="text-[10px] italic"
+                  style={{ color: "#089E7C" }}
+                >
+                  💡 {reason}
+                </div>
               </div>
               <div className="text-right flex-shrink-0">
                 <div className="text-sm font-semibold text-foreground mb-1">
-                  ${price > 0 ? price.toFixed(0) : "—"}
+                  {price > 0 ? `$${price.toFixed(0)}` : "—"}
                 </div>
                 <button
                   className="text-[9px] px-2.5 py-1 rounded font-medium border transition-colors"
