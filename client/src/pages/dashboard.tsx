@@ -151,7 +151,7 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout>
-      <div className="px-4 py-5" data-testid="traveler-dashboard">
+      <div className="px-4 py-5 max-w-5xl mx-auto" data-testid="traveler-dashboard">
         {/* Greeting — full width above panels */}
         <div className="pt-4 mb-4">
           <div
@@ -231,8 +231,7 @@ export default function Dashboard() {
             </div>
 
             <div
-              className="grid gap-3 mb-6"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6"
               data-testid="active-plans-grid"
             >
               {activePlans.slice(0, 6).map((trip, i) => {
