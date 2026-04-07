@@ -862,7 +862,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
               }`}
               data-testid={`view-map-${trip.id}`}
             >
-              <Map className="w-3.5 h-3.5" /> Map Center
+              <Map className="w-3.5 h-3.5" /> Map Control Center
               {viewMode !== "map" && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />}
             </button>
           </div>
@@ -873,7 +873,7 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
             { label: "Days", value: `${days.length || "–"}`, icon: Calendar },
             { label: "Activities", value: `${totalActivities}`, icon: Star },
             { label: "Transit", value: `${totalLegs}`, icon: TrainFront },
-            { label: "Time", value: totalMinutes > 0 ? formatDuration(totalMinutes) : "–", icon: Clock },
+            { label: "Transit Time", value: totalMinutes > 0 ? formatDuration(totalMinutes) : "–", icon: Clock },
           ].map((s, i) => (
             <div key={i} className={`py-2.5 px-1.5 text-center ${i < 3 ? "border-r border-border" : ""}`}>
               <div className="text-[9px] text-muted-foreground mb-0.5 flex items-center justify-center gap-0.5">
