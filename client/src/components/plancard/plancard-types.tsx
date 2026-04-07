@@ -213,6 +213,9 @@ export interface PlanCardTrip {
   numberOfTravelers: number;
   budget?: string | number;
   eventType?: string;
+  status?: string;
+  shareToken?: string | null;
+  trackingNumber?: string | null;
 }
 
 export interface NotificationItem {

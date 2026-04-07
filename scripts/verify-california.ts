@@ -104,9 +104,9 @@ async function run() {
   }
 
   // ──────────────────────────────────────────────────────────────────
-  // 6. DashboardPlanCard pill expectations
+  // 6. PlanCard pill expectations
   // ──────────────────────────────────────────────────────────────────
-  console.log("\n📊 Expected DashboardPlanCard pills:");
+  console.log("\n📊 Expected PlanCard pills:");
   console.log(`   • Services pill: ${serviceCount > 0 ? `✅ ${serviceCount} service(s)` : '❌ (hidden)'}`);
   console.log(`   • Transport pill: ${transportCount > 0 ? `✅ ${transportCount} leg(s)` : '❌ (hidden)'}`);
   console.log(`   • Expert pill: ${expert.rows.length > 0 ? '✅ Expert assigned' : '❌ (hidden)'}`);
