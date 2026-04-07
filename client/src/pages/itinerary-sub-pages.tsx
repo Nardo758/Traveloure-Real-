@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
+import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import {
   ArrowLeft, Clock, MapPin, Navigation, ExternalLink, Map,
   Route, DollarSign, Hash, CheckCircle2, XCircle, AlertCircle,
@@ -10,7 +12,7 @@ import {
   Ticket, Check, X, Hotel, Compass, Shield, UtensilsCrossed,
   FileText, Copy, Phone, Globe, ChevronDown, ChevronUp,
   BarChart3, Calendar, Activity as ActivityIcon,
-  Printer, Download, Send, MessageSquare, Lightbulb, Repeat,
+  Printer, Download, Send, MessageSquare, Lightbulb, Repeat, Star,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -2035,11 +2037,41 @@ export function ServicesPage() {
 // ─────────────────────────────────────────────
 // 7. EXPERT CHAT PAGE
 // ─────────────────────────────────────────────
+const TAG_COLORS: Record<string, { bg: string; fg: string }> = {
+  accommodation: { bg: "bg-purple-100", fg: "text-purple-700" },
+  dining: { bg: "bg-rose-100", fg: "text-rose-700" },
+  transport: { bg: "bg-cyan-100", fg: "text-cyan-700" },
+  activity: { bg: "bg-blue-100", fg: "text-blue-700" },
+  attraction: { bg: "bg-blue-100", fg: "text-blue-700" },
+  experience: { bg: "bg-indigo-100", fg: "text-indigo-700" },
+  logistics: { bg: "bg-amber-100", fg: "text-amber-700" },
+};
+
+interface ChatMsg {
+  id: string | number;
+  message: string;
+  isFromMe: boolean;
+  createdAt: string | null;
+}
+
+function formatMsgTime(ts: string | null): string {
+  if (!ts) return "";
+  const d = new Date(ts);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return d.toLocaleDateString();
+}
+
 export function ExpertChatPage() {
   const { token } = useParams<{ token: string }>();
   const [, navigate] = useLocation();
   const { data, isLoading, error } = useItineraryData(token);
-  const [message, setMessage] = useState("");
+  const { user, isAuthenticated } = useAuth();
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   if (isLoading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={(error as Error).message} />;
@@ -2047,9 +2079,45 @@ export function ExpertChatPage() {
 
   const destination = data.variant.destination ?? data.variant.name;
   const sharedBy = data.sharedBy;
+  const expertName = sharedBy?.name ?? "Expert";
+  const expertInitials = expertName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
+  const expertUserId = sharedBy?.userId;
+  const conversationId = user && expertUserId ? [user.id, expertUserId].sort().join("_") : null;
+
+  // Derive expert notes from diff + general expertNotes
+  interface NoteItem { id: string; activityName: string; category: string; dayNumber: number; note: string; }
+  const derivedNotes: NoteItem[] = [];
+  if (data.expertDiff?.activityDiffs) {
+    for (const [actId, diff] of Object.entries(data.expertDiff.activityDiffs)) {
+      if (!diff.note) continue;
+      // Find activity info
+      let actName = diff.originalName ?? actId;
+      let category = "activity";
+      let dayNumber = 0;
+      for (const day of data.variant.days) {
+        const found = day.activities.find(a => a.id === actId);
+        if (found) {
+          actName = found.name;
+          category = found.category ?? "activity";
+          dayNumber = day.dayNumber;
+          break;
+        }
+      }
+      derivedNotes.push({ id: actId, activityName: actName, category, dayNumber, note: diff.note });
+    }
+  }
+
+  const allTags = Array.from(new Set(derivedNotes.map(n => n.category)));
+  const filteredNotes = activeTag ? derivedNotes.filter(n => n.category === activeTag) : derivedNotes;
+  const notesByDay: Record<number, NoteItem[]> = {};
+  filteredNotes.forEach(n => {
+    if (!notesByDay[n.dayNumber]) notesByDay[n.dayNumber] = [];
+    notesByDay[n.dayNumber].push(n);
+  });
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="expert-chat-page">
+      {/* Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -2060,96 +2128,335 @@ export function ExpertChatPage() {
         </button>
         <div className="flex-1 min-w-0">
           <h2 className="text-[14px] font-bold text-gray-900" data-testid="text-page-title">Expert Chat</h2>
-          <p className="text-[11px] text-gray-500 truncate">{destination}</p>
+          <p className="text-[11px] text-gray-500 truncate">{destination}{sharedBy ? ` · ${expertName}` : ""}</p>
         </div>
-        {sharedBy && (
-          <div className="w-8 h-8 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800">
-            {sharedBy.name?.[0]?.toUpperCase() ?? "E"}
-          </div>
-        )}
+        <div className="w-8 h-8 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800">
+          {expertInitials}
+        </div>
       </div>
 
+      {/* Expert Profile Card */}
       {sharedBy && (
         <Card className="mx-4 mt-4 mb-3 overflow-hidden">
           <div className="p-4">
             <div className="flex items-start gap-3">
               <div className="w-14 h-14 rounded-full bg-purple-200 flex items-center justify-center text-lg font-bold text-purple-800 flex-shrink-0">
-                {sharedBy.name?.[0]?.toUpperCase() ?? "E"}
+                {expertInitials}
               </div>
               <div className="flex-1 min-w-0">
-                <h3
-                  className="text-[15px] font-bold text-gray-900"
-                  data-testid="text-expert-name"
-                >
-                  {sharedBy.name}
-                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-[15px] font-bold text-gray-900" data-testid="text-expert-name">
+                    {expertName}
+                  </h3>
+                </div>
                 <p className="text-[12px] text-gray-500 mt-0.5">Travel Expert</p>
+                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                  <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Responds quickly
+                  </span>
+                  <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                    <Globe className="w-3 h-3" /> English
+                  </span>
+                </div>
               </div>
             </div>
+            {data.expertNotes && (
+              <p className="text-[12px] text-gray-600 mt-3 leading-relaxed">{data.expertNotes}</p>
+            )}
           </div>
         </Card>
       )}
 
-      {data.expertNotes && (
-        <div className="mx-4 mb-3">
-          <div className="flex items-center gap-2 mb-2">
+      {/* Chat thread */}
+      <ExpertChatThread
+        token={token!}
+        destination={destination}
+        expertName={expertName}
+        expertInitials={expertInitials}
+        expertUserId={expertUserId}
+        conversationId={conversationId}
+        isAuthenticated={isAuthenticated}
+        user={user}
+        sharedBy={sharedBy}
+        expertNotes={data.expertNotes ?? null}
+      />
+
+      {/* Expert Notes from diff */}
+      {(derivedNotes.length > 0 || data.expertNotes) && (
+        <div className="mx-4 mb-6 mt-2">
+          <div className="border-t border-gray-200 mb-4" />
+          <div className="flex items-center gap-2 mb-3">
             <Lightbulb className="w-4 h-4 text-amber-500" />
             <h4 className="text-[13px] font-bold text-gray-800">Expert Notes</h4>
+            {derivedNotes.length > 0 && (
+              <span className="text-[11px] text-gray-400">{derivedNotes.length} note{derivedNotes.length !== 1 ? "s" : ""}</span>
+            )}
           </div>
-          <Card className="p-3">
-            <p className="text-[12px] text-gray-700 leading-relaxed italic">"{data.expertNotes}"</p>
-          </Card>
-        </div>
-      )}
 
-      <div className="mx-4 mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <MessageSquare className="w-4 h-4 text-gray-500" />
-          <h4 className="text-[13px] font-bold text-gray-800">Messages</h4>
-        </div>
-
-        {!sharedBy ? (
-          <Card className="p-6 text-center">
-            <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-            <p className="text-[13px] text-gray-500">No expert assigned to this itinerary yet.</p>
-          </Card>
-        ) : (
-          <>
-            <div className="flex items-start gap-2.5 mb-3">
-              <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800 flex-shrink-0">
-                {sharedBy.name?.[0]?.toUpperCase() ?? "E"}
-              </div>
-              <div className="max-w-[85%]">
-                <div className="rounded-2xl rounded-tl-md px-3.5 py-2.5 text-[12px] bg-white border border-gray-200 text-gray-800 leading-relaxed">
-                  {data.expertNotes
-                    ? data.expertNotes
-                    : `Hi! I'm ${sharedBy.name}. I've reviewed your itinerary for ${destination}. Feel free to ask me any questions!`}
+          {/* General expert notes */}
+          {data.expertNotes && derivedNotes.length === 0 && (
+            <Card className="p-3 mb-3">
+              <div className="flex gap-2.5">
+                <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[10px] font-bold text-purple-800 flex-shrink-0">
+                  {expertInitials}
+                </div>
+                <div>
+                  <div className="text-[11px] text-purple-600 font-medium">{expertName}</div>
+                  <p className="text-[12px] text-gray-700 mt-0.5 leading-relaxed italic">"{data.expertNotes}"</p>
                 </div>
               </div>
-            </div>
+            </Card>
+          )}
 
-            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mt-4">
-              <input
-                type="text"
-                value={message}
-                onChange={e => setMessage(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none"
-                data-testid="input-chat-message"
-              />
-              <Button
-                size="icon"
-                variant="default"
-                className="rounded-full w-8 h-8"
-                data-testid="button-send-message"
-                onClick={() => setMessage("")}
-              >
-                <Send className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </>
+          {/* Per-activity notes with filter tabs */}
+          {derivedNotes.length > 0 && (
+            <>
+              {allTags.length > 1 && (
+                <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1">
+                  <button
+                    onClick={() => setActiveTag(null)}
+                    className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                      activeTag === null ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                    }`}
+                    data-testid="button-filter-all"
+                  >
+                    All
+                  </button>
+                  {allTags.map(tag => {
+                    const colors = TAG_COLORS[tag.toLowerCase()] ?? { bg: "bg-gray-100", fg: "text-gray-600" };
+                    return (
+                      <button
+                        key={tag}
+                        onClick={() => setActiveTag(tag === activeTag ? null : tag)}
+                        className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold capitalize transition-colors ${
+                          activeTag === tag ? `${colors.bg} ${colors.fg}` : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                        }`}
+                        data-testid={`button-filter-${tag}`}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {Object.entries(notesByDay)
+                  .sort(([a], [b]) => Number(a) - Number(b))
+                  .map(([dayNum, notes]) => (
+                    <div key={dayNum}>
+                      {Number(dayNum) > 0 && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <div
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                            style={{ backgroundColor: DAY_COLORS[(Number(dayNum) - 1) % DAY_COLORS.length] }}
+                          >
+                            {dayNum}
+                          </div>
+                          <span className="text-[11px] font-semibold text-gray-600">Day {dayNum}</span>
+                        </div>
+                      )}
+                      <div className="space-y-2 ml-1">
+                        {notes.map(note => {
+                          const colors = TAG_COLORS[note.category.toLowerCase()] ?? { bg: "bg-gray-100", fg: "text-gray-600" };
+                          return (
+                            <Card key={note.id} className="p-3" data-testid={`note-card-${note.id}`}>
+                              <div className="flex items-start gap-2.5">
+                                <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[9px] font-bold text-purple-800 flex-shrink-0 mt-0.5">
+                                  {expertInitials}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[11px] font-semibold text-gray-800">{expertName}</span>
+                                    <span className="text-[10px] text-gray-500 truncate max-w-[120px]">{note.activityName}</span>
+                                    <Badge
+                                      variant="secondary"
+                                      className={`text-[9px] px-1.5 py-0 capitalize border-0 ${colors.bg} ${colors.fg}`}
+                                      data-testid={`badge-topic-${note.category}`}
+                                    >
+                                      {note.category}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-[12px] text-gray-700 mt-1 leading-relaxed">{note.note}</p>
+                                </div>
+                              </div>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpertChatThread({
+  token, destination, expertName, expertInitials, expertUserId,
+  conversationId, isAuthenticated, user, sharedBy, expertNotes,
+}: {
+  token: string;
+  destination: string;
+  expertName: string;
+  expertInitials: string;
+  expertUserId: string | undefined;
+  conversationId: string | null;
+  isAuthenticated: boolean;
+  user: any;
+  sharedBy: any;
+  expertNotes: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const [message, setMessage] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const { data: messages = [], isLoading: msgsLoading } = useQuery<ChatMsg[]>({
+    queryKey: ["/api/messages/conversation", conversationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/messages/conversation/${conversationId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!conversationId && isAuthenticated,
+    refetchInterval: 10000,
+  });
+
+  const sendMutation = useMutation({
+    mutationFn: (msg: string) =>
+      apiRequest("POST", "/api/messages", { recipientId: expertUserId, message: msg }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversation", conversationId] });
+      setMessage("");
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    },
+  });
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages.length]);
+
+  const handleSend = () => {
+    const trimmed = message.trim();
+    if (!trimmed || sendMutation.isPending) return;
+    sendMutation.mutate(trimmed);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  // If no expert assigned
+  if (!sharedBy) {
+    return (
+      <div className="mx-4 mb-4">
+        <Card className="p-6 text-center">
+          <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+          <p className="text-[13px] text-gray-500">No expert assigned to this itinerary yet.</p>
+        </Card>
+      </div>
+    );
+  }
+
+  const displayMessages: ChatMsg[] = messages.length > 0 ? messages : (
+    expertNotes ? [{
+      id: "intro",
+      message: expertNotes,
+      isFromMe: false,
+      createdAt: null,
+    }] : [{
+      id: "intro",
+      message: `Hi! I'm ${expertName}. I've reviewed your ${destination} itinerary and have some suggestions to make it even better.`,
+      isFromMe: false,
+      createdAt: null,
+    }]
+  );
+
+  return (
+    <div className="mx-4 mb-4">
+      <div className="flex items-center gap-2 mb-3">
+        <MessageSquare className="w-4 h-4 text-gray-500" />
+        <h4 className="text-[13px] font-bold text-gray-800">Chat</h4>
+        {messages.length > 0 && (
+          <span className="text-[11px] text-gray-400">{messages.length} message{messages.length !== 1 ? "s" : ""}</span>
         )}
       </div>
+
+      <div className="space-y-3 mb-3">
+        {displayMessages.map(msg => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.isFromMe ? "justify-end" : "justify-start"}`}
+            data-testid={`chat-message-${msg.id}`}
+          >
+            <div className="max-w-[85%]">
+              {!msg.isFromMe && (
+                <div className="flex items-center gap-1.5 mb-1">
+                  <div className="w-5 h-5 rounded-full bg-purple-200 flex items-center justify-center text-[8px] font-bold text-purple-800">
+                    {expertInitials}
+                  </div>
+                  <span className="text-[10px] font-semibold text-purple-700">{expertName}</span>
+                  {msg.createdAt && (
+                    <span className="text-[10px] text-gray-400">{formatMsgTime(msg.createdAt)}</span>
+                  )}
+                </div>
+              )}
+              <div className={`rounded-2xl px-3.5 py-2.5 text-[12px] leading-relaxed ${
+                msg.isFromMe
+                  ? "bg-blue-600 text-white rounded-tr-md"
+                  : "bg-white border border-gray-200 text-gray-800 rounded-tl-md"
+              }`}>
+                {msg.message}
+              </div>
+              {msg.isFromMe && msg.createdAt && (
+                <div className="text-right mt-1">
+                  <span className="text-[10px] text-gray-400">{formatMsgTime(msg.createdAt)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {!isAuthenticated ? (
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+          <p className="text-[12px] text-gray-500 flex-1">
+            <a href="/api/login" className="text-blue-600 font-semibold hover:underline">Sign in</a>
+            {" "}to send messages to the expert.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2">
+          <input
+            type="text"
+            value={message}
+            onChange={e => setMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a message..."
+            className="flex-1 bg-transparent text-[13px] text-gray-800 placeholder-gray-400 outline-none"
+            data-testid="input-chat-message"
+          />
+          <Button
+            size="icon"
+            variant="default"
+            className="rounded-full w-8 h-8"
+            data-testid="button-send-message"
+            onClick={handleSend}
+            disabled={sendMutation.isPending || !message.trim()}
+          >
+            <Send className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
