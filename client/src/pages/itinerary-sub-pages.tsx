@@ -289,13 +289,14 @@ function useItineraryData(token: string) {
 // Day section (used in FullItineraryPage)
 // ─────────────────────────────────────────────
 function DaySection({
-  day, dayIndex, token, onNavigateActivity, onNavigateTransport,
+  day, dayIndex, token, onNavigateActivity, onNavigateTransport, expertDiff,
 }: {
   day: ApiDay;
   dayIndex: number;
   token: string;
   onNavigateActivity: (id: string) => void;
   onNavigateTransport: (id: string) => void;
+  expertDiff?: ExpertDiff | null;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
@@ -349,11 +350,13 @@ function DaySection({
             if (entry.kind === "activity") {
               const a = entry.item;
               const tc = TYPE_COLORS[a.category ?? "activity"] ?? TYPE_COLORS.activity;
+              const actDiff = expertDiff?.activityDiffs?.[a.id];
+              const hasSuggestion = !!actDiff;
               return (
                 <button
                   key={a.id}
                   onClick={() => onNavigateActivity(a.id)}
-                  className="w-full bg-white rounded-xl border border-gray-100 shadow-sm p-3 text-left hover:shadow-md transition-shadow"
+                  className={`w-full bg-white rounded-xl border shadow-sm p-3 text-left hover:shadow-md transition-shadow ${hasSuggestion ? "border-blue-200" : "border-gray-100"}`}
                   data-testid={`activity-row-${a.id}`}
                 >
                   <div className="flex items-start gap-3">
@@ -368,11 +371,19 @@ function DaySection({
                             {a.category}
                           </Badge>
                         )}
+                        {hasSuggestion && (
+                          <Badge className="text-[9px] px-1.5 py-0 border-0 bg-blue-100 text-blue-700">
+                            Suggested
+                          </Badge>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 flex-wrap">
                         {a.startTime && (
                           <span className="text-[11px] text-gray-500 flex items-center gap-1">
                             <Clock className="w-3 h-3" /> {formatTime(a.startTime)}
+                            {actDiff?.startTime && actDiff.startTime !== a.startTime && (
+                              <span className="text-[10px] text-blue-600 ml-1">→ {formatTime(actDiff.startTime)}</span>
+                            )}
                           </span>
                         )}
                         {a.location && (
@@ -468,29 +479,68 @@ export function FullItineraryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="full-itinerary-page">
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
-        <button
-          onClick={() => window.history.back()}
-          className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
-          data-testid="button-back"
-        >
-          <ArrowLeft className="w-4 h-4 text-gray-700" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-[15px] font-bold text-gray-900 truncate">{destination}</h1>
-          <p className="text-[11px] text-gray-500">Full Itinerary · {variant.days.length} days</p>
+      {/* Sticky header with back + title + nav icons */}
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
+        <div className="px-4 py-2.5 flex items-center gap-2">
+          <button
+            onClick={() => window.history.back()}
+            className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
+            data-testid="button-back"
+          >
+            <ArrowLeft className="w-4 h-4 text-gray-700" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-[14px] font-bold text-gray-900 truncate">{destination}</h1>
+            <p className="text-[10px] text-gray-500">{variant.days.length} days · {allActivities.length} activities</p>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => navigate(`/itinerary-view/${token}/map`)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+              title="Map"
+              data-testid="header-nav-map"
+            >
+              <MapPin className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => navigate(`/itinerary-view/${token}/stats`)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+              title="Stats"
+              data-testid="header-nav-stats"
+            >
+              <BarChart3 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => navigate(`/itinerary-view/${token}/services`)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+              title="Services"
+              data-testid="header-nav-services"
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => navigate(`/itinerary-view/${token}/chat`)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
+              title="Expert Chat"
+              data-testid="header-nav-chat"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+            {hasExpertDiff && (
+              <button
+                onClick={() => navigate(`/itinerary-view/${token}/changes`)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-blue-50 transition-colors text-blue-600"
+                title="Review Changes"
+                data-testid="header-nav-changes"
+              >
+                <History className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="w-8 h-8"
-          onClick={() => window.print()}
-          data-testid="button-print"
-        >
-          <Printer className="w-4 h-4" />
-        </Button>
       </div>
 
+      {/* Pending changes banner */}
       {hasPendingChanges && (
         <div
           className="mx-4 mt-3 p-3 rounded-xl bg-blue-50 border border-blue-200 flex items-center gap-2.5"
@@ -507,6 +557,19 @@ export function FullItineraryPage() {
           >
             View
           </button>
+        </div>
+      )}
+
+      {/* Expert notes inline */}
+      {data.expertNotes && (
+        <div className="mx-4 mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2.5" data-testid="expert-notes-inline">
+          <Lightbulb className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-bold text-amber-800 mb-0.5">
+              Expert Note{data.sharedBy ? ` from ${data.sharedBy.name}` : ""}
+            </div>
+            <p className="text-[12px] text-amber-900 leading-relaxed italic">"{data.expertNotes}"</p>
+          </div>
         </div>
       )}
 
@@ -557,33 +620,11 @@ export function FullItineraryPage() {
             day={day}
             dayIndex={i}
             token={token}
+            expertDiff={data.expertDiff}
             onNavigateActivity={(id) => navigate(`/itinerary-view/${token}/activity/${id}`)}
             onNavigateTransport={(id) => navigate(`/itinerary-view/${token}/transport/${id}`)}
           />
         ))}
-
-        {/* Navigation grid */}
-        <div className="mt-6 grid grid-cols-3 gap-2">
-          {[
-            { label: "Map", path: `/itinerary-view/${token}/map`, icon: <MapPin className="w-4 h-4" /> },
-            { label: "Stats", path: `/itinerary-view/${token}/stats`, icon: <BarChart3 className="w-4 h-4" /> },
-            { label: "Services", path: `/itinerary-view/${token}/services`, icon: <FileText className="w-4 h-4" /> },
-            { label: "Expert Chat", path: `/itinerary-view/${token}/chat`, icon: <MessageSquare className="w-4 h-4" /> },
-            ...(hasExpertDiff
-              ? [{ label: "Changes", path: `/itinerary-view/${token}/changes`, icon: <History className="w-4 h-4" /> }]
-              : []),
-          ].map(({ label, path, icon }) => (
-            <button
-              key={label}
-              onClick={() => navigate(path)}
-              className="flex flex-col items-center gap-1 p-3 rounded-xl bg-white border border-gray-200 hover:bg-gray-50 transition-colors text-[11px] font-semibold text-gray-700"
-              data-testid={`nav-${label.toLowerCase().replace(/ /g, "-")}`}
-            >
-              {icon}
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -626,6 +667,7 @@ export function ActivityDetailPage() {
   const tc = TYPE_COLORS[activity.category ?? "activity"] ?? TYPE_COLORS.activity;
   const destination = data.variant.destination ?? data.variant.name;
   const dayColor = DAY_COLORS[dayIndex % DAY_COLORS.length];
+  const activityExpertNote = data.expertDiff?.activityDiffs?.[activityId]?.note ?? null;
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="activity-detail-page">
@@ -723,6 +765,17 @@ export function ActivityDetailPage() {
             <h3 className="text-[13px] font-bold text-gray-900 mb-2">About</h3>
             <p className="text-[12px] text-gray-600 leading-relaxed">{activity.description}</p>
           </Card>
+        )}
+
+        {/* Expert note for this activity */}
+        {activityExpertNote && (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200" data-testid="activity-expert-note">
+            <Lightbulb className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="text-[11px] font-bold text-amber-800 mb-0.5">Expert Suggestion</div>
+              <p className="text-[12px] text-amber-900 leading-relaxed italic">"{activityExpertNote}"</p>
+            </div>
+          </div>
         )}
 
         {/* Navigation */}
@@ -1626,17 +1679,42 @@ export function ServicesPage() {
 
   const destination = data.variant.destination ?? data.variant.name;
 
-  const derivedBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
-    day.activities.map(a => ({
-      id: a.id,
-      name: a.name,
-      type: a.category === "dining" ? "restaurant" as const : "tour" as const,
-      provider: "Traveloure",
-      status: "confirmed" as const,
-      cost: a.cost ?? 0,
-      date: day.date ? formatDate(day.date) : undefined,
-    }))
+  const activityBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
+    day.activities.map(a => {
+      let type: ServiceBooking["type"] = "tour";
+      if (a.category === "dining") type = "restaurant";
+      else if (a.category === "shopping") type = "tour";
+      else if (a.category === "attraction") type = "tour";
+      return {
+        id: a.id,
+        name: a.name,
+        type,
+        provider: "Traveloure",
+        status: "confirmed" as const,
+        cost: a.cost ?? 0,
+        date: day.date ? formatDate(day.date) : `Day ${day.dayNumber}`,
+        address: a.location ?? undefined,
+      };
+    })
   );
+
+  const transportBookings: ServiceBooking[] = data.variant.days.flatMap(day =>
+    day.transportLegs
+      .filter(t => t.bookingRef || (t.estimatedCostUsd ?? 0) > 0)
+      .map(t => ({
+        id: t.id,
+        name: `${MODE_LABELS[t.userSelectedMode ?? t.recommendedMode ?? "transit"] ?? "Transit"}: ${t.fromLabel ?? "From"} → ${t.toLabel ?? "To"}`,
+        type: "transport" as const,
+        provider: t.operatorName ?? "Transport",
+        status: "confirmed" as const,
+        cost: t.estimatedCostUsd ?? 0,
+        date: day.date ? formatDate(day.date) : `Day ${day.dayNumber}`,
+        confirmationCode: t.bookingRef ?? undefined,
+        notes: t.notes ?? undefined,
+      }))
+  );
+
+  const derivedBookings: ServiceBooking[] = [...activityBookings, ...transportBookings];
 
   const confirmedCount = derivedBookings.filter(b => b.status === "confirmed").length;
   const pendingCount = derivedBookings.filter(b => b.status === "pending").length;
