@@ -3828,7 +3828,21 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const userId = (req.user as any).claims.sub;
     const unreadOnly = req.query.unread === "true";
     const notifications = await storage.getNotifications(userId, unreadOnly);
-    res.json(notifications);
+
+    const enriched = await Promise.all(notifications.map(async (n) => {
+      let tripId: string | null = null;
+      if (n.relatedType === "trip" && n.relatedId) {
+        tripId = n.relatedId;
+      } else if (n.relatedType === "booking" && n.relatedId) {
+        try {
+          const booking = await storage.getServiceBooking(n.relatedId);
+          tripId = booking?.tripId ?? null;
+        } catch { tripId = null; }
+      }
+      return { ...n, tripId };
+    }));
+
+    res.json(enriched);
   });
 
   // Get unread count

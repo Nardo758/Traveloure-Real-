@@ -57,47 +57,98 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
 
     let variantLegs: any[] = [];
     let variantMetrics: any[] = [];
+    let selectedVariant: any = null;
 
     if (comparison) {
       const variantId = comparison.selectedVariantId;
-      let variant;
       if (variantId) {
-        variant = await db.query.itineraryVariants.findFirst({
+        selectedVariant = await db.query.itineraryVariants.findFirst({
           where: eq(itineraryVariants.id, variantId),
         });
       }
-      if (!variant) {
+      if (!selectedVariant) {
         const variants = await db.query.itineraryVariants.findMany({
           where: eq(itineraryVariants.comparisonId, comparison.id),
           orderBy: (v, { asc }) => [asc(v.sortOrder)],
           limit: 1,
         });
-        variant = variants[0];
+        selectedVariant = variants[0];
       }
-      if (variant) {
+      if (selectedVariant) {
         variantLegs = await db.select().from(transportLegs)
-          .where(eq(transportLegs.variantId, variant.id))
+          .where(eq(transportLegs.variantId, selectedVariant.id))
           .orderBy(transportLegs.dayNumber, transportLegs.legOrder);
 
         variantMetrics = await db.select().from(itineraryVariantMetrics)
-          .where(eq(itineraryVariantMetrics.variantId, variant.id));
+          .where(eq(itineraryVariantMetrics.variantId, selectedVariant.id));
       }
     }
+
+    let variantItemsFallback: any[] = [];
+    if (items.length === 0 && selectedVariant) {
+      variantItemsFallback = await db.select().from(itineraryVariantItems)
+        .where(eq(itineraryVariantItems.variantId, selectedVariant.id))
+        .orderBy(itineraryVariantItems.dayNumber, itineraryVariantItems.sortOrder);
+    }
+
+    const effectiveItems = items.length > 0 ? items : variantItemsFallback;
+    const usingVariantFallback = items.length === 0 && variantItemsFallback.length > 0;
 
     const changes = await storage.getItineraryChanges(tripId, 20);
     const commentCounts = await storage.getActivityCommentCounts(tripId);
 
-    const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
+    const dayNumbers = usingVariantFallback
+      ? [...new Set(variantItemsFallback.map((i: any) => i.dayNumber))].sort((a: number, b: number) => a - b)
+      : [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
     const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
 
     const days = dayNumbers.map(dayNum => {
-      const dayItems = items.filter(i => i.dayNumber === dayNum);
       const dayLegs = variantLegs.filter(l => l.dayNumber === dayNum);
 
       const dayDate = new Date(startDate);
       dayDate.setDate(dayDate.getDate() + dayNum - 1);
       const dateLabel = dayDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 
+      if (usingVariantFallback) {
+        const dayVItems = variantItemsFallback.filter((i: any) => i.dayNumber === dayNum);
+        const types = dayVItems.map((i: any) => i.serviceType || "activity");
+        const label = generateDayLabel(types, dayVItems.map((i: any) => ({ title: i.name, itemType: i.serviceType })));
+
+        return {
+          dayNum,
+          date: dateLabel,
+          label,
+          activities: dayVItems.map((item: any) => ({
+            id: item.id,
+            time: item.startTime || "",
+            name: item.name,
+            location: item.location || "",
+            type: mapItemType(item.serviceType),
+            status: "confirmed",
+            cost: parseFloat(item.price?.toString() || "0"),
+            latitude: item.latitude ? parseFloat(item.latitude.toString()) : null,
+            longitude: item.longitude ? parseFloat(item.longitude.toString()) : null,
+            comments: 0,
+            suggestedBy: null,
+            changes: [],
+          })),
+          transports: dayLegs.map(leg => ({
+            id: leg.id,
+            from: leg.fromActivityId || "",
+            to: leg.toActivityId || "",
+            fromName: leg.fromName,
+            toName: leg.toName,
+            mode: leg.userSelectedMode || leg.recommendedMode || "walk",
+            duration: leg.estimatedDurationMinutes || 0,
+            cost: leg.estimatedCostUsd || 0,
+            line: null,
+            status: leg.userSelectedMode ? "confirmed" : "suggested",
+            suggestedBy: leg.userSelectedMode ? null : "ai",
+          })),
+        };
+      }
+
+      const dayItems = items.filter(i => i.dayNumber === dayNum);
       const types = dayItems.map(i => i.itemType || "activity");
       const label = generateDayLabel(types, dayItems);
 
@@ -143,20 +194,23 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       metricsMap[m.metricKey] = m.metricValue;
     }
 
-    // If no structured itinerary items, fall back to generated_itineraries activity count
-    let fallbackActivityCount = items.length;
-    let fallbackDays = days.length;
-    if (items.length === 0) {
+    let totalActivityCount = effectiveItems.length;
+    let totalDayCount = days.length;
+    if (effectiveItems.length === 0) {
       const genItinerary = await db.query.generatedItineraries.findFirst({
         where: eq(generatedItineraries.tripId, tripId),
       });
       if (genItinerary?.itineraryData) {
         const data = genItinerary.itineraryData as { days?: Array<{ activities?: unknown[] }> };
         const genDays = data.days ?? [];
-        fallbackDays = genDays.length || fallbackDays;
-        fallbackActivityCount = genDays.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
+        totalDayCount = genDays.length || totalDayCount;
+        totalActivityCount = genDays.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
       }
     }
+
+    const confirmedCount = usingVariantFallback
+      ? effectiveItems.length
+      : items.filter(i => i.status === "confirmed" || i.status === "planned").length;
 
     res.json({
       trip: {
@@ -181,11 +235,11 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       })),
       metrics: metricsMap,
       stats: {
-        totalDays: fallbackDays || days.length,
-        totalActivities: fallbackActivityCount,
+        totalDays: totalDayCount || days.length,
+        totalActivities: totalActivityCount,
         totalLegs: variantLegs.length,
         totalTransitMinutes: variantLegs.reduce((s, l) => s + (l.estimatedDurationMinutes || 0), 0),
-        confirmedActivities: items.filter(i => i.status === "confirmed" || i.status === "planned").length,
+        confirmedActivities: confirmedCount,
         pendingExpertChanges: changes.filter(c => c.role === "expert" && c.changeType === "suggest").length,
       },
     });
