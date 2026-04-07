@@ -1130,6 +1130,20 @@ export function TransportDetailPage() {
   const [providerSource, setProviderSource] = useState<"traveloure" | "external" | null>(null);
   const [activeProviderTab, setActiveProviderTab] = useState<"traveloure" | "external">("traveloure");
   const [saved, setSaved] = useState(false);
+  const [initializedFromDb, setInitializedFromDb] = useState(false);
+
+  // Sync provider tab from DB on first load
+  useEffect(() => {
+    if (!data || initializedFromDb) return;
+    for (const day of data.variant.days) {
+      const foundLeg = day.transportLegs.find(t => t.id === legId);
+      if (foundLeg) {
+        if (foundLeg.providerSource === "external") setActiveProviderTab("external");
+        setInitializedFromDb(true);
+        break;
+      }
+    }
+  }, [data, legId, initializedFromDb]);
 
   // Per-leg mutation
   const legMutation = useMutation({
