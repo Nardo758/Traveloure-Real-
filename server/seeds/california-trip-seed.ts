@@ -504,13 +504,13 @@ export async function seedCaliforniaTrip() {
     userId: TEST_USER_ID,
     variantId: variantBId,
     comparisonId: comparisonId,
-    notes: "Hawaii Honeymoon — Maui + Big Island, 10 days. Found great deals on beachfront resorts for September.",
-    savedAt: new Date("2026-03-15T18:00:00Z"),
+    notes: "AI Optimized variant — adventure-heavy route with wine country, coastal hikes, and golden-hour photography. Saving to compare with the original later.",
+    savedAt: new Date("2026-04-06T18:00:00Z"),
     expiresAt: new Date("2026-12-31T23:59:59Z"),
-    priceSnapshot: "4200.00",
+    priceSnapshot: "6200.00",
     status: "active",
   });
-  console.log("  ✓ 1 saved trip created (Hawaii Honeymoon)\n");
+  console.log("  ✓ 1 saved trip created\n");
 
   console.log("🎉 California Coastal Road Trip seed complete!");
   console.log(`   Trip ID: ${tripId}`);
@@ -685,20 +685,34 @@ function buildTransportLegs(variantId: string) {
     energy: number;
     alts: { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string }[];
   }[] = [
+    // Day 1: LAX → Hotel → Santa Monica Pier → Venice Beach
     { day: 1, order: 0, from: "LAX Airport", fromLat: 33.9425, fromLng: -118.4081, to: "Hotel (Santa Monica)", toLat: 34.0094, toLng: -118.4973, dist: 14500, distDisp: "14.5 km", mode: "rideshare", mins: 25, cost: 18, energy: 1, alts: [{ mode: "taxi", durationMinutes: 25, costUsd: 35, energyCost: 1, reason: "Traditional taxi option" }] },
     { day: 1, order: 1, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "Santa Monica Pier", toLat: 34.0095, toLng: -118.4970, dist: 400, distDisp: "0.4 km", mode: "walk", mins: 5, cost: 0, energy: 1, alts: [] },
     { day: 1, order: 2, from: "Santa Monica Pier", fromLat: 34.0094, fromLng: -118.4973, to: "Venice Beach", toLat: 33.9850, toLng: -118.4695, dist: 3200, distDisp: "3.2 km", mode: "walk", mins: 35, cost: 0, energy: 2, alts: [{ mode: "bike", durationMinutes: 12, costUsd: 5, energyCost: 1, reason: "Beach bike path" }] },
-    { day: 2, order: 0, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "Griffith Observatory", toLat: 34.1184, toLng: -118.3004, dist: 24000, distDisp: "24 km", mode: "car", mins: 35, cost: 0, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 35, costUsd: 22, energyCost: 1, reason: "Skip parking hassle" }] },
-    { day: 2, order: 1, from: "Griffith Observatory", fromLat: 34.1184, fromLng: -118.3004, to: "Hollywood Blvd", toLat: 34.1016, toLng: -118.3267, dist: 5000, distDisp: "5 km", mode: "car", mins: 12, cost: 0, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 12, costUsd: 10, energyCost: 1, reason: "Short hop" }] },
+    // Day 2: Hotel → Griffith → Hollywood → Silver Lake
+    { day: 2, order: 0, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "Griffith Observatory", toLat: 34.1184, toLng: -118.3004, dist: 24000, distDisp: "24 km", mode: "rideshare", mins: 35, cost: 22, energy: 1, alts: [{ mode: "car", durationMinutes: 35, costUsd: 0, energyCost: 1, reason: "Self-drive but parking is limited" }] },
+    { day: 2, order: 1, from: "Griffith Observatory", fromLat: 34.1184, fromLng: -118.3004, to: "Hollywood Blvd", toLat: 34.1016, toLng: -118.3267, dist: 5000, distDisp: "5 km", mode: "rideshare", mins: 12, cost: 10, energy: 1, alts: [{ mode: "walk", durationMinutes: 40, costUsd: 0, energyCost: 3, reason: "Downhill walk through Griffith Park" }] },
+    { day: 2, order: 2, from: "Hollywood Blvd", fromLat: 34.1016, fromLng: -118.3267, to: "Silver Lake", toLat: 34.0870, toLng: -118.2593, dist: 8000, distDisp: "8 km", mode: "rideshare", mins: 18, cost: 12, energy: 1, alts: [{ mode: "transit", durationMinutes: 30, costUsd: 1.75, energyCost: 2, reason: "Metro Red + bus" }] },
+    // Day 3: Hotel → El Matador Beach → PCH/Oxnard
     { day: 3, order: 0, from: "Hotel (Santa Monica)", fromLat: 34.0094, fromLng: -118.4973, to: "El Matador Beach", toLat: 34.0381, toLng: -118.8745, dist: 42000, distDisp: "42 km", mode: "car", mins: 45, cost: 0, energy: 1, alts: [] },
     { day: 3, order: 1, from: "El Matador Beach", fromLat: 34.0381, fromLng: -118.8745, to: "Channel Islands Harbor", toLat: 34.1599, toLng: -119.2247, dist: 55000, distDisp: "55 km", mode: "car", mins: 50, cost: 0, energy: 1, alts: [] },
+    // Day 4 (B): Oxnard → Santa Ynez Wine → Stearns Wharf → The Lark
     { day: 4, order: 0, from: "Oxnard Hotel", fromLat: 34.1975, fromLng: -119.1771, to: "Santa Ynez Valley", toLat: 34.6126, toLng: -119.7713, dist: 85000, distDisp: "85 km", mode: "car", mins: 75, cost: 0, energy: 1, alts: [] },
+    { day: 4, order: 1, from: "Santa Ynez Valley", fromLat: 34.6126, fromLng: -119.7713, to: "Stearns Wharf", toLat: 34.4099, toLng: -119.6854, dist: 45000, distDisp: "45 km", mode: "car", mins: 40, cost: 0, energy: 1, alts: [] },
+    { day: 4, order: 2, from: "Stearns Wharf", fromLat: 34.4099, fromLng: -119.6854, to: "The Lark", toLat: 34.4139, toLng: -119.6936, dist: 1200, distDisp: "1.2 km", mode: "walk", mins: 15, cost: 0, energy: 1, alts: [] },
+    // Day 5 (B): Santa Barbara → Ragged Point → McWay Falls → Bixby Bridge
     { day: 5, order: 0, from: "Santa Barbara Hotel", fromLat: 34.4208, fromLng: -119.6982, to: "Ragged Point", toLat: 35.7838, toLng: -121.3280, dist: 195000, distDisp: "195 km", mode: "car", mins: 150, cost: 0, energy: 2, alts: [] },
-    { day: 5, order: 1, from: "McWay Falls", fromLat: 36.1579, fromLng: -121.6722, to: "Bixby Bridge", toLat: 36.3714, toLng: -121.9016, dist: 35000, distDisp: "35 km", mode: "car", mins: 40, cost: 0, energy: 1, alts: [] },
+    { day: 5, order: 1, from: "Ragged Point", fromLat: 35.7838, fromLng: -121.3280, to: "McWay Falls", toLat: 36.1579, toLng: -121.6722, dist: 65000, distDisp: "65 km", mode: "car", mins: 75, cost: 0, energy: 1, alts: [] },
+    { day: 5, order: 2, from: "McWay Falls", fromLat: 36.1579, fromLng: -121.6722, to: "Bixby Bridge", toLat: 36.3714, toLng: -121.9016, dist: 35000, distDisp: "35 km", mode: "car", mins: 40, cost: 0, energy: 1, alts: [] },
+    // Day 6: Big Sur → Monterey Aquarium → 17-Mile Drive → Carmel
     { day: 6, order: 0, from: "Big Sur Lodge", fromLat: 36.2500, fromLng: -121.7868, to: "Monterey Bay Aquarium", toLat: 36.6183, toLng: -121.9018, dist: 50000, distDisp: "50 km", mode: "car", mins: 55, cost: 0, energy: 1, alts: [] },
     { day: 6, order: 1, from: "Monterey Bay Aquarium", fromLat: 36.6183, fromLng: -121.9018, to: "17-Mile Drive", toLat: 36.5872, toLng: -121.9664, dist: 8000, distDisp: "8 km", mode: "car", mins: 30, cost: 11, energy: 1, alts: [] },
+    { day: 6, order: 2, from: "17-Mile Drive", fromLat: 36.5872, fromLng: -121.9664, to: "Carmel-by-the-Sea", toLat: 36.5553, toLng: -121.9233, dist: 6000, distDisp: "6 km", mode: "car", mins: 15, cost: 0, energy: 1, alts: [{ mode: "walk", durationMinutes: 45, costUsd: 0, energyCost: 2, reason: "Scenic walk if weather is good" }] },
+    // Day 7 (B): SF Hotel → Golden Gate → North Beach Food Walk → Mister Jiu's
     { day: 7, order: 0, from: "SF Hotel (Union Square)", fromLat: 37.7879, fromLng: -122.4074, to: "Golden Gate Bridge", toLat: 37.8199, toLng: -122.4783, dist: 9000, distDisp: "9 km", mode: "transit", mins: 25, cost: 2.5, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 15, costUsd: 12, energyCost: 1, reason: "Faster but parking is limited" }] },
     { day: 7, order: 1, from: "Golden Gate Bridge", fromLat: 37.8199, fromLng: -122.4783, to: "North Beach", toLat: 37.8060, toLng: -122.4103, dist: 8500, distDisp: "8.5 km", mode: "transit", mins: 25, cost: 2.5, energy: 1, alts: [{ mode: "walk", durationMinutes: 60, costUsd: 0, energyCost: 3, reason: "Scenic walk through the Marina" }] },
+    { day: 7, order: 2, from: "North Beach", fromLat: 37.8060, fromLng: -122.4103, to: "Mister Jiu's (Chinatown)", toLat: 37.7953, toLng: -122.4065, dist: 1200, distDisp: "1.2 km", mode: "walk", mins: 15, cost: 0, energy: 1, alts: [] },
+    // Day 8: SF Hotel → Pier 33 (Alcatraz) → SFO
     { day: 8, order: 0, from: "SF Hotel", fromLat: 37.7879, fromLng: -122.4074, to: "Pier 33 (Alcatraz Ferry)", toLat: 37.8080, toLng: -122.4098, dist: 3000, distDisp: "3 km", mode: "walk", mins: 25, cost: 0, energy: 1, alts: [{ mode: "rideshare", durationMinutes: 8, costUsd: 8, energyCost: 0, reason: "Save energy for island walking" }] },
     { day: 8, order: 1, from: "Pier 33", fromLat: 37.8080, fromLng: -122.4098, to: "SFO Airport", toLat: 37.6213, toLng: -122.3790, dist: 22000, distDisp: "22 km", mode: "rideshare", mins: 30, cost: 35, energy: 1, alts: [{ mode: "BART", durationMinutes: 45, costUsd: 9, energyCost: 2, reason: "Budget option with one transfer" }] },
   ];
