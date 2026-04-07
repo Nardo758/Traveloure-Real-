@@ -719,8 +719,36 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(providerServices).where(eq(providerServices.userId, userId));
   }
 
-  async getAllProviderServices(): Promise<ProviderService[]> {
-    return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
+  async getAllProviderServices(): Promise<any[]> {
+    return await db
+      .select({
+        id: providerServices.id,
+        userId: providerServices.userId,
+        serviceName: providerServices.serviceName,
+        shortDescription: providerServices.shortDescription,
+        description: providerServices.description,
+        price: providerServices.price,
+        priceType: providerServices.priceType,
+        location: providerServices.location,
+        averageRating: providerServices.averageRating,
+        reviewCount: providerServices.reviewCount,
+        status: providerServices.status,
+        isFeatured: providerServices.isFeatured,
+        serviceImage: providerServices.serviceImage,
+        categoryId: providerServices.categoryId,
+        category: {
+          name: serviceCategories.name,
+          slug: serviceCategories.slug,
+        },
+        provider: {
+          firstName: users.firstName,
+          lastName: users.lastName,
+        },
+      })
+      .from(providerServices)
+      .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+      .leftJoin(users, eq(providerServices.userId, users.id))
+      .where(eq(providerServices.status, 'active'));
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
