@@ -47,13 +47,6 @@ const CTA_CARDS = [
     href: "/credits",
     testId: "cta-credits",
   },
-  {
-    icon: "🔍",
-    label: "Find experts",
-    sub: "In your destinations",
-    href: "/experts",
-    testId: "cta-find-experts",
-  },
 ];
 
 export default function Dashboard() {
@@ -140,7 +133,7 @@ export default function Dashboard() {
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
             {/* CTA Row */}
-            <div className="flex gap-2.5 mb-[18px]">
+            <div className="flex gap-2.5 mb-[18px] items-start">
               {CTA_CARDS.map((card) => {
                 const sub =
                   card.testId === "cta-credits"
@@ -150,7 +143,7 @@ export default function Dashboard() {
                   <Link
                     key={card.testId}
                     href={card.href}
-                    className="flex-1"
+                    className="flex-none w-[88px]"
                   >
                     <div
                       className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
@@ -174,9 +167,10 @@ export default function Dashboard() {
                   </Link>
                 );
               })}
+              <div className="flex-1 min-w-0">
+                <SavedTripsSection />
+              </div>
             </div>
-
-            <SavedTripsSection />
 
             {/* Active Plans */}
             <div
