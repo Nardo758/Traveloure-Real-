@@ -484,6 +484,55 @@ function DaySection({
 }
 
 // ─────────────────────────────────────────────
+// Shared Bottom Navigation Bar (all sub-pages)
+// ─────────────────────────────────────────────
+function SubPageNav({ token, currentPage }: { token: string; currentPage: string }) {
+  const [, navigate] = useLocation();
+  const { data } = useItineraryData(token);
+  const allActivities = data?.variant.days.flatMap(d => d.activities) ?? [];
+  const allTransports = data?.variant.days.flatMap(d => d.transportLegs) ?? [];
+  const firstActivityId = allActivities[0]?.id;
+  const firstTransportId = allTransports[0]?.id;
+
+  const tabs = [
+    { id: "itinerary", Icon: Calendar, label: "Home", path: `/itinerary-view/${token}` },
+    { id: "activity", Icon: ActivityIcon, label: "Activity", path: firstActivityId ? `/itinerary-view/${token}/activity/${firstActivityId}` : null },
+    { id: "transport", Icon: TrainFront, label: "Transit", path: firstTransportId ? `/itinerary-view/${token}/transport/${firstTransportId}` : null },
+    { id: "map", Icon: MapPin, label: "Map", path: `/itinerary-view/${token}/map` },
+    { id: "stats", Icon: BarChart3, label: "Stats", path: `/itinerary-view/${token}/stats` },
+    { id: "services", Icon: FileText, label: "Services", path: `/itinerary-view/${token}/services` },
+    { id: "chat", Icon: MessageSquare, label: "Chat", path: `/itinerary-view/${token}/chat` },
+    { id: "changes", Icon: History, label: "Changes", path: `/itinerary-view/${token}/changes` },
+  ];
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-[0_-1px_8px_rgba(0,0,0,0.06)]">
+      <div className="max-w-2xl mx-auto flex">
+        {tabs.map(({ id, Icon, label, path }) => {
+          const isActive = currentPage === id;
+          return (
+            <button
+              key={id}
+              onClick={() => path && navigate(path)}
+              disabled={!path}
+              data-testid={`subnav-${id}`}
+              className={`flex-1 min-w-0 flex flex-col items-center justify-center py-2 gap-0.5 transition-colors border-t-2 ${
+                isActive
+                  ? "text-blue-600 border-blue-500 bg-blue-50/50"
+                  : "text-gray-400 border-transparent hover:text-gray-600 hover:bg-gray-50"
+              } disabled:opacity-30 disabled:cursor-not-allowed`}
+            >
+              <Icon className="w-4 h-4" />
+              <span className="text-[9px] font-medium leading-none truncate max-w-full px-0.5">{label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // 1. FULL ITINERARY PAGE
 // Primary route: /itinerary-view/:token
 // Redirects experts to /itinerary-view/:token/expert-review
@@ -531,7 +580,7 @@ export function FullItineraryPage() {
   const hasPendingChanges = hasExpertDiff;
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="full-itinerary-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="full-itinerary-page">
       {/* Sticky header with back + title + nav icons */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200">
         <div className="px-4 py-2.5 flex items-center gap-2">
@@ -573,65 +622,6 @@ export function FullItineraryPage() {
               data-testid="header-download"
             >
               <Download className="w-4 h-4" />
-            </button>
-            <div className="w-px h-5 bg-gray-200 mx-1" />
-            <button
-              onClick={() => allActivities[0] && navigate(`/itinerary-view/${token}/activity/${allActivities[0].id}`)}
-              disabled={!allActivities[0]}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Activity Detail"
-              data-testid="header-nav-activity"
-            >
-              <ActivityIcon className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => allTransports[0] && navigate(`/itinerary-view/${token}/transport/${allTransports[0].id}`)}
-              disabled={!allTransports[0]}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Transport Detail"
-              data-testid="header-nav-transport"
-            >
-              <TrainFront className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/itinerary-view/${token}/map`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
-              title="Map"
-              data-testid="header-nav-map"
-            >
-              <MapPin className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/itinerary-view/${token}/stats`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
-              title="Stats"
-              data-testid="header-nav-stats"
-            >
-              <BarChart3 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/itinerary-view/${token}/services`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
-              title="Services"
-              data-testid="header-nav-services"
-            >
-              <FileText className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/itinerary-view/${token}/chat`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500"
-              title="Expert Chat"
-              data-testid="header-nav-chat"
-            >
-              <MessageSquare className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => navigate(`/itinerary-view/${token}/changes`)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-blue-50 transition-colors text-blue-600"
-              title="Review Changes"
-              data-testid="header-nav-changes"
-            >
-              <History className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -723,6 +713,7 @@ export function FullItineraryPage() {
           />
         ))}
       </div>
+      <SubPageNav token={token} currentPage="itinerary" />
     </div>
   );
 }
@@ -770,7 +761,7 @@ export function ActivityDetailPage() {
   const expertInitials = expertName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="activity-detail-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="activity-detail-page">
       {/* Hero */}
       <div className="relative">
         {activity.imageUrl ? (
@@ -1074,6 +1065,7 @@ export function ActivityDetailPage() {
           </Card>
         )}
       </div>
+      <SubPageNav token={token} currentPage="activity" />
     </div>
   );
 }
@@ -1164,7 +1156,7 @@ export function TransportDetailPage() {
     : `Day ${dayNumber}`;
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="transport-detail-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="transport-detail-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -1418,6 +1410,7 @@ export function TransportDetailPage() {
           <NavigateDropdown location={destLocation} lat={toActivity?.lat} lng={toActivity?.lng} />
         </Card>
       </div>
+      <SubPageNav token={token} currentPage="transport" />
     </div>
   );
 }
@@ -1507,7 +1500,7 @@ export function MapFullPage() {
   const totalTransitCost = allTransports.reduce((s, t) => s + (t.estimatedCostUsd ?? 0), 0);
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="map-full-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="map-full-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -1692,6 +1685,7 @@ export function MapFullPage() {
           <Map className="w-4 h-4" /> Open Full Route in Maps <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
+      <SubPageNav token={token} currentPage="map" />
     </div>
   );
 }
@@ -1821,7 +1815,7 @@ export function TripStatsPage() {
   const maxDayCost = Math.max(...dayCosts.map(d => d.cost), 1);
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="trip-stats-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="trip-stats-page">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -2065,6 +2059,7 @@ export function TripStatsPage() {
         </Card>
 
       </div>
+      <SubPageNav token={token} currentPage="stats" />
     </div>
   );
 }
@@ -2356,7 +2351,7 @@ export function ServicesPage() {
   }, {});
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="services-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="services-page">
       <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -2423,6 +2418,7 @@ export function ServicesPage() {
           })
         )}
       </div>
+      <SubPageNav token={token} currentPage="services" />
     </div>
   );
 }
@@ -2509,7 +2505,7 @@ export function ExpertChatPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="expert-chat-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="expert-chat-page">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
@@ -2684,6 +2680,7 @@ export function ExpertChatPage() {
           )}
         </div>
       )}
+      <SubPageNav token={token} currentPage="chat" />
     </div>
   );
 }
@@ -3001,7 +2998,7 @@ export function ReviewChangesPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50" data-testid="review-changes-page">
+    <div className="min-h-screen bg-gray-50 pb-20 max-w-2xl mx-auto" data-testid="review-changes-page">
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate(`/itinerary-view/${token}`)}
@@ -3301,6 +3298,7 @@ export function ReviewChangesPage() {
           </div>
         );
       })()}
+      <SubPageNav token={token} currentPage="changes" />
     </div>
   );
 }
