@@ -719,8 +719,60 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(providerServices).where(eq(providerServices.userId, userId));
   }
 
-  async getAllProviderServices(): Promise<ProviderService[]> {
-    return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
+  async getAllProviderServices(): Promise<(ProviderService & { category: { name: string; slug: string | null } | null; provider: { firstName: string; lastName: string; businessName: string } })[]> {
+    const rows = await db
+      .select({
+        id: providerServices.id,
+        userId: providerServices.userId,
+        trackingNumber: providerServices.trackingNumber,
+        serviceName: providerServices.serviceName,
+        shortDescription: providerServices.shortDescription,
+        description: providerServices.description,
+        serviceType: providerServices.serviceType,
+        categoryId: providerServices.categoryId,
+        price: providerServices.price,
+        priceType: providerServices.priceType,
+        priceBasedOn: providerServices.priceBasedOn,
+        deliveryMethod: providerServices.deliveryMethod,
+        deliveryTimeframe: providerServices.deliveryTimeframe,
+        revisionsIncluded: providerServices.revisionsIncluded,
+        maxConcurrentBookings: providerServices.maxConcurrentBookings,
+        leadTimeHours: providerServices.leadTimeHours,
+        location: providerServices.location,
+        availability: providerServices.availability,
+        whatIncluded: providerServices.whatIncluded,
+        requirements: providerServices.requirements,
+        faqs: providerServices.faqs,
+        serviceImage: providerServices.serviceImage,
+        serviceFile: providerServices.serviceFile,
+        status: providerServices.status,
+        formStatus: providerServices.formStatus,
+        isFeatured: providerServices.isFeatured,
+        bookingsCount: providerServices.bookingsCount,
+        totalRevenue: providerServices.totalRevenue,
+        averageRating: providerServices.averageRating,
+        reviewCount: providerServices.reviewCount,
+        createdAt: providerServices.createdAt,
+        updatedAt: providerServices.updatedAt,
+        categoryName: serviceCategories.name,
+        categorySlug: serviceCategories.slug,
+        providerFirstName: users.firstName,
+        providerLastName: users.lastName,
+      })
+      .from(providerServices)
+      .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+      .leftJoin(users, eq(providerServices.userId, users.id))
+      .where(eq(providerServices.status, 'active'));
+
+    return rows.map(r => ({
+      ...r,
+      category: r.categoryName ? { name: r.categoryName, slug: r.categorySlug } : null,
+      provider: {
+        firstName: r.providerFirstName || '',
+        lastName: r.providerLastName || '',
+        businessName: '',
+      },
+    }));
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {

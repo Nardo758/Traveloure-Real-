@@ -162,12 +162,12 @@ export function DashboardPlanCard({
   notifications: Notification[];
 }) {
   const { data: plancardData } = useQuery<PlanCardData>({
-    queryKey: [`/api/trips/${trip.id}/plancard`],
+    queryKey: ['/api/trips', trip.id, 'plancard'],
     staleTime: 30000,
   });
 
   const { data: advisorData } = useQuery<{ advisor: ExpertAdvisor | null }>({
-    queryKey: [`/api/trips/${trip.id}/expert-advisor`],
+    queryKey: ['/api/trips', trip.id, 'expert-advisor'],
     staleTime: 60000,
   });
   const advisor = advisorData?.advisor ?? null;
@@ -178,7 +178,7 @@ export function DashboardPlanCard({
   });
 
   const { data: suggestionsData } = useQuery<{ suggestions: Array<{ id: string; status: string }> }>({
-    queryKey: [`/api/trips/${trip.id}/suggestions`],
+    queryKey: ['/api/trips', trip.id, 'suggestions'],
     enabled: !!advisor,
     staleTime: 60000,
   });
@@ -201,7 +201,7 @@ export function DashboardPlanCard({
   };
 
   const { data: convWithMessages } = useQuery<ConversationWithMessages>({
-    queryKey: [`/api/conversations/${matchedConvId}`],
+    queryKey: ['/api/conversations', matchedConvId],
     enabled: matchedConvId !== null,
     staleTime: 60000,
   });
