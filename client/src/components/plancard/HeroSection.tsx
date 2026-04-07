@@ -17,10 +17,16 @@ interface HeroSectionProps {
 export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, budget }: HeroSectionProps) {
   const { toast } = useToast();
   const photoUrl = getDestinationPhotoUrl(trip.destination);
-  const daysUntil = differenceInDays(new Date(trip.startDate ?? Date.now()), new Date());
-  const statusLabel = daysUntil > 0
-    ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
-    : "Planning";
+  const now = new Date();
+  const daysUntilStart = differenceInDays(new Date(trip.startDate ?? Date.now()), now);
+  const daysUntilEnd = trip.endDate ? differenceInDays(new Date(trip.endDate), now) : daysUntilStart;
+  const statusLabel = daysUntilStart > 0
+    ? `${daysUntilStart}d away`
+    : daysUntilEnd < 0
+    ? "Completed"
+    : daysUntilStart === 0
+    ? "Today"
+    : "Active";
 
   const destinationParts = trip.destination?.split(",") || [trip.destination];
   const city = destinationParts[0]?.trim() || trip.destination;
