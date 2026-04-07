@@ -226,19 +226,25 @@ function ExpertNotesPanel() {
     <div className="mx-4 mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between px-3 py-2 ${open ? "rounded-t-xl" : "rounded-xl"} bg-purple-50 border border-purple-200/60 text-left`}
+        className={`w-full flex items-center gap-2.5 px-3 py-2.5 ${open ? "rounded-t-xl" : "rounded-xl"} border border-purple-200/60 bg-white hover:bg-purple-50/50 transition-colors text-left`}
       >
-        <span className="flex items-center gap-2 text-[12px] font-bold text-purple-700 uppercase tracking-wider">
-          <FileText className="w-3.5 h-3.5" /> Expert Notes
-          <span className="bg-purple-200 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">2</span>
-        </span>
-        <div className="flex items-center gap-2">
-          {!open && <span className="text-[10px] text-purple-500 font-medium">Sofia Chen</span>}
-          {open ? <ChevronUp className="w-3.5 h-3.5 text-purple-500" /> : <ChevronDown className="w-3.5 h-3.5 text-purple-500" />}
+        <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[9px] font-bold text-purple-800 flex-shrink-0">SC</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold text-gray-900">Expert Notes</span>
+            <span className="text-[10px] text-purple-600 font-medium">Sofia Chen</span>
+          </div>
+          <div className="text-[10px] text-gray-500 truncate">"I'd recommend the boutique hotel on Lombard St…"</div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: "#FAEEDA", color: "#633806" }}>
+            <Lightbulb className="w-2.5 h-2.5" /> 2
+          </span>
+          {open ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
         </div>
       </button>
       {open && (
-        <div className="border border-t-0 border-purple-200/60 rounded-b-xl bg-purple-50/50 px-3 py-2.5 space-y-2.5">
+        <div className="border border-t-0 border-purple-200/60 rounded-b-xl bg-purple-50/30 px-3 py-2.5 space-y-2.5">
           <div className="flex gap-2.5">
             <div className="w-6 h-6 rounded-full bg-purple-200 flex items-center justify-center text-[9px] font-bold text-purple-800 flex-shrink-0 mt-0.5">SC</div>
             <div>
@@ -273,15 +279,27 @@ function ReviewChangesBanner() {
     <div className="mx-4 mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between px-3 py-2.5 ${open ? "rounded-t-xl" : "rounded-xl"} bg-blue-50 border border-blue-200/60 text-left`}
+        className={`w-full flex items-center gap-2.5 px-3 py-2.5 ${open ? "rounded-t-xl" : "rounded-xl"} border border-blue-200/60 bg-white hover:bg-blue-50/50 transition-colors text-left`}
       >
-        <span className="flex items-center gap-2 text-[12px] font-bold text-blue-700">
-          <MessageSquare className="w-3.5 h-3.5" />
-          {pending.length > 0 ? `${pending.length} expert change${pending.length > 1 ? "s" : ""} to review` : "All changes reviewed"}
-        </span>
-        <div className="flex items-center gap-2">
-          {!open && pending.length > 0 && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />}
-          {open ? <ChevronUp className="w-3.5 h-3.5 text-blue-500" /> : <ChevronDown className="w-3.5 h-3.5 text-blue-500" />}
+        <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+          <MessageSquare className="w-3.5 h-3.5 text-blue-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-semibold text-gray-900">Review Changes</span>
+            {pending.length > 0 && <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />}
+          </div>
+          <div className="text-[10px] text-gray-500 truncate">
+            {pending.length > 0 ? `${pending.length} expert change${pending.length > 1 ? "s" : ""} waiting for your review` : "All changes reviewed ✓"}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {pending.length > 0 && (
+            <span className="bg-blue-600 text-white w-5 h-5 rounded-full text-[10px] font-extrabold flex items-center justify-center">
+              {pending.length}
+            </span>
+          )}
+          {open ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
         </div>
       </button>
 
@@ -570,6 +588,7 @@ export function PlanCardFinal() {
   const [showChanges, setShowChanges] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set([0]));
+  const [itineraryOpen, setItineraryOpen] = useState(false);
 
   const day = DAYS[selectedDay];
   const totalActivities = DAYS.reduce((s, d) => s + d.activities.length, 0);
@@ -629,20 +648,32 @@ export function PlanCardFinal() {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2 px-4 py-2.5 border-b border-gray-200 bg-gray-50/50">
-            <Badge className="text-[11px] gap-1 bg-blue-100 text-blue-700 border-0">
+          <div className="flex flex-wrap gap-1.5 px-4 py-2.5 border-b border-gray-200 bg-gray-50/50">
+            <Badge className="text-[10px] gap-1 bg-blue-100 text-blue-700 border-0">
               <Star className="w-3 h-3" /> 87 Score
             </Badge>
-            <Badge className="text-[11px] gap-1 bg-green-100 text-green-700 border-0">
+            <Badge className="text-[10px] gap-1 bg-green-100 text-green-700 border-0">
               $4,200 ($1,050/pp)
             </Badge>
-            <Badge className="text-[11px] gap-1 bg-green-100 text-green-700 border-0">
+            <Badge className="text-[10px] gap-1 bg-green-100 text-green-700 border-0">
               <TrendingDown className="w-3 h-3" /> Saves $380
             </Badge>
-            <Badge className="text-[11px] gap-1 bg-purple-100 text-purple-700 border-0">
+            <Badge className="text-[10px] gap-1 bg-purple-100 text-purple-700 border-0">
               <Heart className="w-3 h-3" /> 45m wellness
             </Badge>
+            <Badge className="text-[10px] gap-1 border-0" style={{ background: "#E6F1FB", color: "#0C447C" }}>
+              3 services
+            </Badge>
+            <Badge className="text-[10px] gap-1 border-0" style={{ background: "#E1F5EE", color: "#085041" }}>
+              <Route className="w-3 h-3" /> {totalLegs} legs
+            </Badge>
+            <Badge className="text-[10px] gap-1 border-0" style={{ background: "#EEEDFE", color: "#3C3489" }}>
+              <Users className="w-3 h-3" /> Expert assigned
+            </Badge>
           </div>
+
+          <ExpertNotesPanel />
+          <ReviewChangesBanner />
 
           {viewMode === "map" ? (
             <div className="pt-3">
@@ -650,236 +681,237 @@ export function PlanCardFinal() {
             </div>
           ) : (
             <>
-              <div className="flex border-b border-gray-200 px-4">
+              <div className="mx-4 mb-3">
                 <button
-                  onClick={() => setSection("activities")}
-                  className={`py-3 px-4 border-b-2 transition-all text-sm font-medium flex items-center gap-2 ${
-                    section === "activities" ? "border-gray-900 text-gray-900 font-bold" : "border-transparent text-gray-400 hover:text-gray-600"
-                  }`}
-                  data-testid="tab-activities"
+                  onClick={() => setItineraryOpen(!itineraryOpen)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 ${itineraryOpen ? "rounded-t-xl" : "rounded-xl"} border border-gray-200 bg-white hover:bg-gray-50 transition-colors text-left`}
                 >
-                  Activities
-                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                    section === "activities" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
-                  }`}>{totalActivities}</span>
-                  <span className="text-[11px] text-gray-400 font-normal flex items-center gap-0.5">
-                    <CheckCircle2 className="w-3 h-3" /> {confirmedActivities}/{totalActivities}
-                  </span>
+                  <div className="w-7 h-7 rounded-full bg-gray-900 flex items-center justify-center flex-shrink-0">
+                    <LayoutList className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-semibold text-gray-900">Itinerary</div>
+                    <div className="text-[10px] text-gray-500">{totalActivities} activities · {totalLegs} transport legs · {confirmedActivities} confirmed</div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[10px] text-green-600 font-semibold flex items-center gap-0.5">
+                      <CheckCircle2 className="w-3 h-3" /> {confirmedActivities}/{totalActivities}
+                    </span>
+                    {itineraryOpen ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                  </div>
                 </button>
-                <button
-                  onClick={() => setSection("transport")}
-                  className={`py-3 px-4 border-b-2 transition-all text-sm font-medium flex items-center gap-2 ${
-                    section === "transport" ? "border-gray-900 text-gray-900 font-bold" : "border-transparent text-gray-400 hover:text-gray-600"
-                  }`}
-                  data-testid="tab-transport"
-                >
-                  Transport
-                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                    section === "transport" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
-                  }`}>{totalLegs}</span>
-                </button>
-                <button
-                  onClick={() => setShowChanges(!showChanges)}
-                  className={`ml-auto py-3 px-3 text-xs font-semibold flex items-center gap-1.5 ${
-                    showChanges ? "text-amber-500" : "text-gray-400 hover:text-gray-600"
-                  }`}
-                  data-testid="toggle-changes"
-                >
-                  <History className="w-3.5 h-3.5" /> Changes
-                  <span className="bg-amber-500 text-white w-5 h-5 rounded-full text-[10px] font-extrabold flex items-center justify-center">3</span>
-                </button>
-              </div>
 
-              {showChanges && (
-                <div className="bg-amber-50/50 border-b border-amber-200/30 px-5 py-4">
-                  <div className="text-[11px] font-bold text-amber-600 mb-3 uppercase tracking-wider">Change History</div>
-                  {CHANGELOG.map((c, i) => (
-                    <div key={c.id} className={`flex items-start gap-2.5 py-2 ${i < CHANGELOG.length - 1 ? "border-b border-gray-200/30" : ""}`}>
-                      <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${CHANGE_DOT[c.role]}`} />
-                      <div>
-                        <span className="text-gray-900 text-[13px] font-semibold">{c.who}</span>
-                        <span className="text-gray-500 text-[13px]"> – {c.what}</span>
-                        <div className="text-gray-400 text-[11px] mt-0.5">{c.when}</div>
-                      </div>
+                {itineraryOpen && (
+                  <div className="border border-t-0 border-gray-200 rounded-b-xl overflow-hidden bg-white">
+                    <div className="flex border-b border-gray-200 px-3">
+                      <button
+                        onClick={() => setSection("activities")}
+                        className={`py-2.5 px-3 border-b-2 transition-all text-[12px] font-medium flex items-center gap-1.5 ${
+                          section === "activities" ? "border-gray-900 text-gray-900 font-bold" : "border-transparent text-gray-400 hover:text-gray-600"
+                        }`}
+                        data-testid="tab-activities"
+                      >
+                        Activities
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          section === "activities" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
+                        }`}>{totalActivities}</span>
+                      </button>
+                      <button
+                        onClick={() => setSection("transport")}
+                        className={`py-2.5 px-3 border-b-2 transition-all text-[12px] font-medium flex items-center gap-1.5 ${
+                          section === "transport" ? "border-gray-900 text-gray-900 font-bold" : "border-transparent text-gray-400 hover:text-gray-600"
+                        }`}
+                        data-testid="tab-transport"
+                      >
+                        Transport
+                        <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          section === "transport" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500"
+                        }`}>{totalLegs}</span>
+                      </button>
+                      <button
+                        onClick={() => setShowChanges(!showChanges)}
+                        className={`ml-auto py-2.5 px-2 text-[11px] font-semibold flex items-center gap-1 ${
+                          showChanges ? "text-amber-500" : "text-gray-400 hover:text-gray-600"
+                        }`}
+                        data-testid="toggle-changes"
+                      >
+                        <History className="w-3 h-3" /> Changes
+                        <span className="bg-amber-500 text-white w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center">3</span>
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
 
-              <ExpertNotesPanel />
-              <ReviewChangesBanner />
-
-              {section === "activities" && (
-                <div className="px-4 pb-4">
-                  {DAYS.map((d, dayIdx) => {
-                    const isExpanded = expandedDays.has(dayIdx);
-                    const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
-                    const dayConfirmed = d.activities.filter(a => a.status === "confirmed").length;
-
-                    return (
-                      <div key={d.dayNum} className="mb-2">
-                        <button
-                          onClick={() => toggleDay(dayIdx)}
-                          className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors text-left group"
-                          data-testid={`day-header-${d.dayNum}`}
-                        >
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
-                            style={{ backgroundColor: dayColor }}
-                          >
-                            {d.dayNum}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[13px] font-bold text-gray-900">{d.label}</div>
-                            <div className="text-[11px] text-gray-500">{d.date} · {d.activities.length} activities · {dayConfirmed} confirmed</div>
-                          </div>
-                          {d.activities.length > 0 && (
-                            <div className="flex items-center gap-1.5">
-                              {d.activities.some(a => a.expertNote) && (
-                                <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-                              )}
-                              {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                    {showChanges && (
+                      <div className="bg-amber-50/50 border-b border-amber-200/30 px-4 py-3">
+                        <div className="text-[10px] font-bold text-amber-600 mb-2 uppercase tracking-wider">Change History</div>
+                        {CHANGELOG.map((c, i) => (
+                          <div key={c.id} className={`flex items-start gap-2 py-1.5 ${i < CHANGELOG.length - 1 ? "border-b border-gray-200/30" : ""}`}>
+                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${CHANGE_DOT[c.role]}`} />
+                            <div>
+                              <span className="text-gray-900 text-[12px] font-semibold">{c.who}</span>
+                              <span className="text-gray-500 text-[12px]"> – {c.what}</span>
+                              <div className="text-gray-400 text-[10px] mt-0.5">{c.when}</div>
                             </div>
-                          )}
-                        </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
-                        {isExpanded && d.activities.length > 0 && (
-                          <div className="ml-[18px] pl-4 border-l-2 mt-1 mb-2" style={{ borderColor: `${dayColor}30` }}>
-                            {d.activities.map((a, i) => {
-                              const tc = TYPE_COLORS[a.type] || TYPE_COLORS.attraction;
-                              const ss = STATUS_STYLES[a.status] || STATUS_STYLES.pending;
-                              return (
-                                <div key={a.id}>
-                                  <div className={`flex gap-3 py-3 ${i < d.activities.length - 1 ? "border-b border-gray-100" : ""}`}>
-                                    <div className="flex flex-col items-center w-11 flex-shrink-0">
-                                      <div className="text-[12px] font-bold text-gray-900">{a.time}</div>
-                                      <div className="w-2.5 h-2.5 rounded-full mt-1.5 border-2 border-white" style={{ backgroundColor: tc.dot, boxShadow: `0 0 8px ${tc.dot}40` }} />
-                                      {i < d.activities.length - 1 && (
-                                        <div className="w-0.5 flex-1 mt-1" style={{ background: `linear-gradient(to bottom, ${tc.dot}40, transparent)` }} />
-                                      )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-start gap-1.5 flex-wrap">
-                                        <span className="text-[14px] font-semibold text-gray-900 flex-1 min-w-0">{a.name}</span>
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide ${tc.bg} ${tc.fg}`}>
-                                          {a.type}
-                                        </span>
-                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${ss.bg} ${ss.fg}`}>
-                                          {ss.label}
-                                        </span>
-                                      </div>
-                                      <div className="text-[11px] text-gray-500 mt-1 flex items-center gap-1">
-                                        <MapPin className="w-3 h-3 flex-shrink-0" /> {a.location}
-                                        {a.cost > 0 && <span className="ml-2 text-green-600 font-semibold">${a.cost}</span>}
-                                      </div>
-                                      <div className="flex items-center gap-2 mt-2">
-                                        <NavigateDropdown location={a.location} lat={a.lat} lng={a.lng} />
-                                        {a.comments > 0 && (
-                                          <span className="text-[11px] text-blue-600 flex items-center gap-1">
-                                            <MessageSquare className="w-3 h-3" /> {a.comments}
-                                          </span>
-                                        )}
-                                      </div>
-                                      {a.expertNote && (
-                                        <div className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 italic flex items-start gap-1.5">
-                                          <Lightbulb className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-600" />
-                                          {a.expertNote}
+                    {section === "activities" && (
+                      <div className="px-3 pb-3">
+                        {DAYS.map((d, dayIdx) => {
+                          const isExpanded = expandedDays.has(dayIdx);
+                          const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
+                          const dayConfirmed = d.activities.filter(a => a.status === "confirmed").length;
+                          return (
+                            <div key={d.dayNum} className="mb-1.5">
+                              <button
+                                onClick={() => toggleDay(dayIdx)}
+                                className="w-full flex items-center gap-2 py-2 px-2.5 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                                data-testid={`day-header-${d.dayNum}`}
+                              >
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0" style={{ backgroundColor: dayColor }}>
+                                  {d.dayNum}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-[12px] font-bold text-gray-900">{d.label}</div>
+                                  <div className="text-[10px] text-gray-500">{d.date} · {d.activities.length} activities · {dayConfirmed} confirmed</div>
+                                </div>
+                                {d.activities.length > 0 && (
+                                  <div className="flex items-center gap-1.5">
+                                    {d.activities.some(a => a.expertNote) && <Lightbulb className="w-3 h-3 text-amber-500" />}
+                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                                  </div>
+                                )}
+                              </button>
+                              {isExpanded && d.activities.length > 0 && (
+                                <div className="ml-[14px] pl-3 border-l-2 mt-1 mb-1.5" style={{ borderColor: `${dayColor}30` }}>
+                                  {d.activities.map((a, i) => {
+                                    const tc = TYPE_COLORS[a.type] || TYPE_COLORS.attraction;
+                                    const ss = STATUS_STYLES[a.status] || STATUS_STYLES.pending;
+                                    return (
+                                      <div key={a.id}>
+                                        <div className={`flex gap-2.5 py-2.5 ${i < d.activities.length - 1 ? "border-b border-gray-100" : ""}`}>
+                                          <div className="flex flex-col items-center w-10 flex-shrink-0">
+                                            <div className="text-[11px] font-bold text-gray-900">{a.time}</div>
+                                            <div className="w-2 h-2 rounded-full mt-1 border-2 border-white" style={{ backgroundColor: tc.dot, boxShadow: `0 0 6px ${tc.dot}40` }} />
+                                            {i < d.activities.length - 1 && (
+                                              <div className="w-0.5 flex-1 mt-1" style={{ background: `linear-gradient(to bottom, ${tc.dot}40, transparent)` }} />
+                                            )}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-start gap-1 flex-wrap">
+                                              <span className="text-[13px] font-semibold text-gray-900 flex-1 min-w-0">{a.name}</span>
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${tc.bg} ${tc.fg}`}>{a.type}</span>
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${ss.bg} ${ss.fg}`}>{ss.label}</span>
+                                            </div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1">
+                                              <MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {a.location}
+                                              {a.cost > 0 && <span className="ml-1.5 text-green-600 font-semibold">${a.cost}</span>}
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-1.5">
+                                              <NavigateDropdown location={a.location} lat={a.lat} lng={a.lng} />
+                                              {a.comments > 0 && (
+                                                <span className="text-[10px] text-blue-600 flex items-center gap-1">
+                                                  <MessageSquare className="w-2.5 h-2.5" /> {a.comments}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {a.expertNote && (
+                                              <div className="mt-1.5 px-2 py-1 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-800 italic flex items-start gap-1">
+                                                <Lightbulb className="w-2.5 h-2.5 flex-shrink-0 mt-0.5 text-amber-600" />
+                                                {a.expertNote}
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {i < d.activities.length - 1 && d.transports[i] && (
-                                    <div className="flex gap-3 py-1 ml-11">
-                                      <div className="flex items-center gap-2 text-[11px] text-gray-400 py-1 px-2 rounded-lg bg-gray-50">
-                                        <span style={{ color: MODE_COLORS[d.transports[i].mode] || "#94a3b8" }}>
-                                          <ModeIcon mode={d.transports[i].mode} className="w-3 h-3" />
-                                        </span>
-                                        <span className="font-medium text-gray-500 capitalize">{d.transports[i].mode}</span>
-                                        <span>{formatDuration(d.transports[i].duration)}</span>
-                                        {d.transports[i].cost > 0 && (
-                                          <span className="text-green-600">${d.transports[i].cost}</span>
+                                        {i < d.activities.length - 1 && d.transports[i] && (
+                                          <div className="flex gap-2.5 py-0.5 ml-10">
+                                            <div className="flex items-center gap-1.5 text-[10px] text-gray-400 py-0.5 px-2 rounded bg-gray-50">
+                                              <span style={{ color: MODE_COLORS[d.transports[i].mode] || "#94a3b8" }}>
+                                                <ModeIcon mode={d.transports[i].mode} className="w-2.5 h-2.5" />
+                                              </span>
+                                              <span className="font-medium text-gray-500 capitalize">{d.transports[i].mode}</span>
+                                              <span>{formatDuration(d.transports[i].duration)}</span>
+                                              {d.transports[i].cost > 0 && <span className="text-green-600">${d.transports[i].cost}</span>}
+                                            </div>
+                                          </div>
                                         )}
                                       </div>
-                                    </div>
-                                  )}
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {section === "transport" && (
-                <div className="px-4 pb-4">
-                  {DAYS.map((d, dayIdx) => {
-                    if (d.transports.length === 0) return null;
-                    const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
-                    const isExpanded = expandedDays.has(dayIdx);
-
-                    return (
-                      <div key={d.dayNum} className="mb-2">
-                        <button
-                          onClick={() => toggleDay(dayIdx)}
-                          className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
-                        >
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0"
-                            style={{ backgroundColor: dayColor }}
-                          >
-                            {d.dayNum}
-                          </div>
-                          <div className="flex-1">
-                            <div className="text-[13px] font-bold text-gray-900">{d.label}</div>
-                            <div className="text-[11px] text-gray-500">
-                              {d.transports.length} leg{d.transports.length !== 1 ? "s" : ""} · {formatDuration(d.transports.reduce((s, t) => s + t.duration, 0))} · ${d.transports.reduce((s, t) => s + t.cost, 0)}
+                              )}
                             </div>
-                          </div>
-                          {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                        </button>
-
-                        {isExpanded && (
-                          <div className="ml-[18px] pl-4 border-l-2 mt-1 mb-2" style={{ borderColor: `${dayColor}30` }}>
-                            {d.transports.map((tr, i) => {
-                              const ss = STATUS_STYLES[tr.status] || STATUS_STYLES.pending;
-                              const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
-                              return (
-                                <div key={tr.id} className={`flex gap-3 py-3 ${i < d.transports.length - 1 ? "border-b border-gray-100" : ""}`}>
-                                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${modeColor}15`, color: modeColor }}>
-                                    <ModeIcon mode={tr.mode} className="w-4 h-4" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 text-[12px]">
-                                      <span className="text-gray-500 truncate">{tr.from}</span>
-                                      <span className="text-gray-300">→</span>
-                                      <span className="text-gray-900 font-semibold truncate">{tr.to}</span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 mt-1.5 items-center">
-                                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold capitalize" style={{ backgroundColor: `${modeColor}20`, color: modeColor }}>{tr.mode}</span>
-                                      <span className="text-[11px] text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(tr.duration)}</span>
-                                      {tr.cost > 0 && <span className="text-[11px] text-green-600 font-semibold">${tr.cost}</span>}
-                                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${ss.bg} ${ss.fg}`}>{ss.label}</span>
-                                    </div>
-                                  </div>
-                                  {tr.status === "suggested" && (
-                                    <div className="flex flex-col gap-1 flex-shrink-0">
-                                      <Button size="sm" className="text-[10px] h-6 px-2 bg-gray-900 text-white hover:bg-gray-800">Accept</Button>
-                                      <Button size="sm" variant="outline" className="text-[10px] h-6 px-2">Change</Button>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
+
+                    {section === "transport" && (
+                      <div className="px-3 pb-3">
+                        {DAYS.map((d, dayIdx) => {
+                          if (d.transports.length === 0) return null;
+                          const dayColor = DAY_COLORS[dayIdx % DAY_COLORS.length];
+                          const isExpanded = expandedDays.has(dayIdx);
+                          return (
+                            <div key={d.dayNum} className="mb-1.5">
+                              <button
+                                onClick={() => toggleDay(dayIdx)}
+                                className="w-full flex items-center gap-2 py-2 px-2.5 rounded-lg hover:bg-gray-50 transition-colors text-left"
+                              >
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0" style={{ backgroundColor: dayColor }}>
+                                  {d.dayNum}
+                                </div>
+                                <div className="flex-1">
+                                  <div className="text-[12px] font-bold text-gray-900">{d.label}</div>
+                                  <div className="text-[10px] text-gray-500">
+                                    {d.transports.length} leg{d.transports.length !== 1 ? "s" : ""} · {formatDuration(d.transports.reduce((s, t) => s + t.duration, 0))} · ${d.transports.reduce((s, t) => s + t.cost, 0)}
+                                  </div>
+                                </div>
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                              </button>
+                              {isExpanded && (
+                                <div className="ml-[14px] pl-3 border-l-2 mt-1 mb-1.5" style={{ borderColor: `${dayColor}30` }}>
+                                  {d.transports.map((tr, i) => {
+                                    const ss = STATUS_STYLES[tr.status] || STATUS_STYLES.pending;
+                                    const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
+                                    return (
+                                      <div key={tr.id} className={`flex gap-2.5 py-2.5 ${i < d.transports.length - 1 ? "border-b border-gray-100" : ""}`}>
+                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${modeColor}15`, color: modeColor }}>
+                                          <ModeIcon mode={tr.mode} className="w-3.5 h-3.5" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-1.5 text-[11px]">
+                                            <span className="text-gray-500 truncate">{tr.from}</span>
+                                            <span className="text-gray-300">→</span>
+                                            <span className="text-gray-900 font-semibold truncate">{tr.to}</span>
+                                          </div>
+                                          <div className="flex flex-wrap gap-1.5 mt-1 items-center">
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold capitalize" style={{ backgroundColor: `${modeColor}20`, color: modeColor }}>{tr.mode}</span>
+                                            <span className="text-[10px] text-gray-500 flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" /> {formatDuration(tr.duration)}</span>
+                                            {tr.cost > 0 && <span className="text-[10px] text-green-600 font-semibold">${tr.cost}</span>}
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${ss.bg} ${ss.fg}`}>{ss.label}</span>
+                                          </div>
+                                        </div>
+                                        {tr.status === "suggested" && (
+                                          <div className="flex flex-col gap-1 flex-shrink-0">
+                                            <Button size="sm" className="text-[9px] h-5 px-2 bg-gray-900 text-white hover:bg-gray-800">Accept</Button>
+                                            <Button size="sm" variant="outline" className="text-[9px] h-5 px-2">Change</Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </>
           )}
 
@@ -897,23 +929,6 @@ export function PlanCardFinal() {
               <Calendar className="w-3.5 h-3.5 mr-1" /> View Itinerary
               <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
             </Button>
-          </div>
-
-          <div className="flex gap-1.5 flex-wrap px-4 pb-2">
-            <span className="text-[10px] px-2.5 py-1 rounded-full font-medium" style={{ background: "#E6F1FB", color: "#0C447C" }}>3 services</span>
-            <span className="text-[10px] px-2.5 py-1 rounded-full font-medium" style={{ background: "#E1F5EE", color: "#085041" }}>{totalLegs} legs</span>
-            <span className="text-[10px] px-2.5 py-1 rounded-full font-medium" style={{ background: "#EEEDFE", color: "#3C3489" }}>Expert assigned</span>
-          </div>
-
-          <div className="flex items-center gap-2.5 mx-4 mb-3 rounded-xl border border-gray-200 px-3 py-2 hover:bg-gray-50 transition-colors cursor-pointer">
-            <div className="w-7 h-7 rounded-full bg-purple-200 flex items-center justify-center text-[9px] font-semibold text-purple-800 flex-shrink-0">SC</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-semibold text-gray-900">Sofia Chen</div>
-              <div className="text-[10px] truncate text-gray-500">"I recommend switching to the boutique h…"</div>
-            </div>
-            <div className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "#FAEEDA", color: "#633806" }}>
-              <Lightbulb className="w-2.5 h-2.5" /> 2
-            </div>
           </div>
 
           <div className="mx-4 mb-4 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
