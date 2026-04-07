@@ -500,17 +500,46 @@ export async function seedCaliforniaTrip() {
   ]);
   console.log("  ✓ 4 notifications created");
 
+  const hawaiiComparisonId = crypto.randomUUID();
+  const hawaiiVariantId = crypto.randomUUID();
+
+  await db.insert(itineraryComparisons).values({
+    id: hawaiiComparisonId,
+    userId: TEST_USER_ID,
+    title: "Hawaii Honeymoon",
+    destination: "Maui & Big Island, Hawaii",
+    startDate: "2026-09-10",
+    endDate: "2026-09-20",
+    budget: "4200.00",
+    travelers: 2,
+    experienceTypeSlug: "travel",
+    status: "pending",
+    createdAt: new Date("2026-03-15T17:00:00Z"),
+  });
+
+  await db.insert(itineraryVariants).values({
+    id: hawaiiVariantId,
+    comparisonId: hawaiiComparisonId,
+    name: "Hawaii Honeymoon Draft",
+    description: "10-day Maui + Big Island honeymoon — beachfront resorts, snorkeling, volcano hikes, and luau dinners.",
+    source: "user",
+    status: "pending",
+    totalCost: "4200.00",
+    sortOrder: 0,
+    createdAt: new Date("2026-03-15T17:00:00Z"),
+  });
+
   await db.insert(savedTrips).values({
     userId: TEST_USER_ID,
-    variantId: variantBId,
-    comparisonId: comparisonId,
-    notes: "AI Optimized variant — adventure-heavy route with wine country, coastal hikes, and golden-hour photography. Saving to compare with the original later.",
-    savedAt: new Date("2026-04-06T18:00:00Z"),
+    variantId: hawaiiVariantId,
+    comparisonId: hawaiiComparisonId,
+    notes: "Hawaii Honeymoon — Maui + Big Island, 10 days. Found great deals on beachfront resorts for September.",
+    savedAt: new Date("2026-03-15T18:00:00Z"),
     expiresAt: new Date("2026-12-31T23:59:59Z"),
-    priceSnapshot: "6200.00",
+    priceSnapshot: "4200.00",
     status: "active",
   });
-  console.log("  ✓ 1 saved trip created\n");
+  console.log("  ✓ 1 saved trip created (Hawaii Honeymoon)\n");
 
   console.log("🎉 California Coastal Road Trip seed complete!");
   console.log(`   Trip ID: ${tripId}`);
