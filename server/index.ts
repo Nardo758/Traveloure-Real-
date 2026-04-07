@@ -211,10 +211,12 @@ async function runDatabaseSeeding() {
         if (err.code === "EADDRINUSE" && retriesLeft > 0) {
           logger.warn({ port }, `Port ${port} in use — killing stale listener and retrying`);
           httpServer.removeListener("error", onError);
-          try {
-            const { execSync } = await import("child_process");
-            execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: "ignore" });
-          } catch {}
+          if (process.env.NODE_ENV !== "production") {
+            try {
+              const { execSync } = await import("child_process");
+              execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: "ignore" });
+            } catch {}
+          }
           await new Promise(r => setTimeout(r, 800));
           resolve(tryListen(retriesLeft - 1));
         } else if (err.code === "EADDRINUSE") {

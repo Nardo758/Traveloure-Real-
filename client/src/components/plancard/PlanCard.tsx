@@ -25,6 +25,12 @@ interface ExpertAdvisor {
   profile_image_url: string | null;
 }
 
+interface ServiceBooking {
+  id: string | number;
+  tripId: string;
+  status?: string;
+}
+
 interface ConversationMessage {
   id: number;
   conversationId: number;
@@ -114,11 +120,11 @@ export function PlanCard({ trip, score, index = 0, conversations = [], notificat
   });
   const advisor = advisorData?.advisor ?? null;
 
-  const { data: serviceBookings } = useQuery<any[]>({
+  const { data: serviceBookings } = useQuery<ServiceBooking[]>({
     queryKey: ['/api/service-bookings'],
     staleTime: 60000,
   });
-  const tripServiceCount = serviceBookings?.filter((b: any) => b.tripId === trip.id).length ?? 0;
+  const tripServiceCount = serviceBookings?.filter(b => b.tripId === trip.id).length ?? 0;
 
   const { data: suggestionsData } = useQuery<{ suggestions: Array<{ id: string; status: string }> }>({
     queryKey: ['/api/trips', trip.id, 'suggestions'],
