@@ -1,0 +1,303 @@
+import { useState } from "react";
+
+const C = { bg: "#FAFAF8", white: "#FFF", border: "#E8E8E2", surface: "#F3F3EE", text: "#1A1A18", muted: "#7A7A72", faint: "#AEAEA6", accent: "#E85D55", teal: "#2E8B8B", gold: "#E8B339", dark: "#0D2137", blueLight: "#E6F1FB", blueText: "#0C447C", greenLight: "#E1F5EE", greenText: "#085041", amberLight: "#FAEEDA", amberText: "#633806", pinkLight: "#FBEAF0", pinkText: "#72243E", purpleLight: "#EEEDFE", purpleText: "#3C3489" };
+
+const SERVICES = [
+  { name: "Private Airport Transfer", provider: "Kyoto Premium Cars", provInit: "KP", rating: "4.9", reviews: 87, price: "$65", category: "Transport", catBg: C.greenLight, catText: C.greenText, location: "Kyoto", reason: "You have an arrival on Day 1 with no transport booked" },
+  { name: "Bamboo Grove Photo Session", provider: "Yuki Photography", provInit: "YP", rating: "5.0", reviews: 134, price: "$120", category: "Photo", catBg: C.pinkLight, catText: C.pinkText, location: "Arashiyama", reason: "Arashiyama is on your Day 3 itinerary" },
+  { name: "Private Kaiseki Dinner", provider: "Chef Tanaka", provInit: "CT", rating: "4.8", reviews: 62, price: "$95/pp", category: "Dining", catBg: C.amberLight, catText: C.amberText, location: "Gion", reason: "No dinner booked for Day 2" },
+  { name: "Full-Day Temple Guide", provider: "Kenji Takahashi", provInit: "KT", rating: "4.9", reviews: 127, price: "$180", category: "Guide", catBg: C.blueLight, catText: C.blueText, location: "Kyoto", reason: "Expert Yuki recommended this provider" },
+  { name: "Tea Ceremony Experience", provider: "Urasenke Studio", provInit: "US", rating: "4.7", reviews: 93, price: "$45", category: "Culture", catBg: C.purpleLight, catText: C.purpleText, location: "Higashiyama", reason: "Trending in Kyoto this week" },
+  { name: "PCH Convertible Rental", provider: "Coast Drive Co.", provInit: "CD", rating: "4.6", reviews: 41, price: "$95/day", category: "Transport", catBg: C.greenLight, catText: C.greenText, location: "Los Angeles", reason: "Road trip with no vehicle booked yet" },
+];
+
+function Sidebar() {
+  return (
+    <div style={{ width: 180, minWidth: 180, background: C.white, borderRight: `1px solid ${C.border}`, height: "100%", padding: "14px 10px", fontSize: 11 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16, padding: "0 6px" }}>
+        <div style={{ width: 24, height: 24, borderRadius: 7, background: C.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700 }}>T</div>
+        <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Traveloure</span>
+      </div>
+      {[{ g: "Plan", items: ["Home", "My plans", "Plan new", "AI planner"] }, { g: "Marketplace", items: ["Discover", "Experts", "Bookings", "Cart"] }, { g: "Account", items: ["Messages", "Credits", "Profile"] }].map(group => (
+        <div key={group.g}>
+          <div style={{ fontSize: 9, fontWeight: 600, color: C.faint, textTransform: "uppercase", letterSpacing: 1, padding: "0 8px", margin: "10px 0 4px" }}>{group.g}</div>
+          {group.items.map(l => (
+            <div key={l} style={{ padding: "6px 8px", borderRadius: 6, fontSize: 11, color: l === "Home" ? C.accent : C.muted, background: l === "Home" ? "rgba(232,85,85,0.08)" : "transparent", fontWeight: l === "Home" ? 600 : 400, marginBottom: 1 }}>{l}</div>
+          ))}
+        </div>
+      ))}
+      <div style={{ marginTop: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 6px", borderTop: `1px solid ${C.border}` }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg, ${C.accent}, ${C.dark})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 10, fontWeight: 600 }}>LD</div>
+          <div><div style={{ fontSize: 11, fontWeight: 500, color: C.text }}>Leon Dixon</div><div style={{ fontSize: 9, color: C.muted }}>Explorer plan</div></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlanCard() {
+  return (
+    <div style={{ borderRadius: 10, overflow: "hidden", border: `0.5px solid ${C.border}`, background: C.white }}>
+      <div style={{ background: "linear-gradient(135deg,#D85A30,#F0997B)", padding: "12px 14px 10px", color: "#fff", position: "relative" }}>
+        <div style={{ fontSize: 8, fontWeight: 600, background: "rgba(255,255,255,0.25)", padding: "2px 7px", borderRadius: 6, display: "inline-block", textTransform: "uppercase", marginBottom: 5 }}>Upcoming</div>
+        <div style={{ position: "absolute", top: 10, right: 12, textAlign: "right" }}><div style={{ fontSize: 18, fontWeight: 500 }}>69</div><div style={{ fontSize: 8, opacity: .7 }}>days</div></div>
+        <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 2, paddingRight: 40 }}>California Coastal Road Trip</div>
+        <div style={{ fontSize: 10, opacity: .85 }}>California · Jun 13-20</div>
+      </div>
+      <div style={{ padding: "8px 12px" }}>
+        <div style={{ display: "flex", textAlign: "center" }}>
+          {[["Days", "8"], ["Activities", "32"], ["Legs", "29"], ["Transit", "14h"]].map(([l, v], i) => (
+            <div key={i} style={{ flex: 1, padding: "4px 0", borderLeft: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
+              <div style={{ fontSize: 8, color: C.muted }}>{l}</div>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 5, padding: "4px 12px 6px", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 9, background: C.blueLight, color: C.blueText, padding: "2px 7px", borderRadius: 10 }}>3 services</span>
+        <span style={{ fontSize: 9, background: C.greenLight, color: C.greenText, padding: "2px 7px", borderRadius: 10 }}>29 legs</span>
+        <span style={{ fontSize: 9, background: C.purpleLight, color: C.purpleText, padding: "2px 7px", borderRadius: 10 }}>Expert</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: `0.5px solid ${C.border}` }}>
+        <div style={{ width: 24, height: 24, borderRadius: "50%", background: C.gold, color: "#412402", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600 }}>MS</div>
+        <div style={{ flex: 1 }}><div style={{ fontSize: 10, fontWeight: 500 }}>Maria Santos</div><div style={{ fontSize: 9, color: C.muted }}>"Excited to help!"</div></div>
+        <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#5DCAA5" }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, padding: "6px 12px 10px" }}>
+        <button style={{ flex: "0 0 auto", padding: "6px 10px", borderRadius: 6, fontSize: 10, border: `0.5px solid ${C.border}`, background: C.white, cursor: "pointer" }}>Maps</button>
+        <button style={{ flex: 1, padding: "6px 10px", borderRadius: 6, fontSize: 10, border: "none", background: C.accent, color: "#fff", cursor: "pointer" }}>View itinerary ›</button>
+      </div>
+    </div>
+  );
+}
+
+function EmptyCard() {
+  return (
+    <div style={{ borderRadius: 10, border: `1.5px dashed ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 200, cursor: "pointer" }}>
+      <div style={{ fontSize: 20, color: C.faint, marginBottom: 6 }}>+</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: C.muted }}>Create new plan</div>
+      <div style={{ fontSize: 10, color: C.faint, marginTop: 2 }}>Travel, wedding, event</div>
+    </div>
+  );
+}
+
+function ServiceList({ filter }) {
+  const filtered = filter === "all" ? SERVICES : SERVICES.filter(s => {
+    if (filter === "kyoto") return ["Kyoto", "Arashiyama", "Gion", "Higashiyama"].includes(s.location);
+    if (filter === "california") return ["Los Angeles", "Santa Monica", "Paso Robles"].includes(s.location);
+    return true;
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {filtered.map((svc, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: C.white, border: `0.5px solid ${C.border}`, borderRadius: i === 0 ? "8px 8px 0 0" : i === filtered.length - 1 ? "0 0 8px 8px" : 0, borderTop: i > 0 ? "none" : undefined, cursor: "pointer" }}>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: svc.catBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: svc.catText, flexShrink: 0 }}>{svc.provInit}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{svc.name}</span>
+              <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 4, background: svc.catBg, color: svc.catText, fontWeight: 500 }}>{svc.category}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 10, color: C.muted }}>
+              <span style={{ fontWeight: 500, color: C.text }}>{svc.provider}</span>
+              <span>📍 {svc.location}</span>
+              <span style={{ color: C.gold }}>★ {svc.rating}</span>
+              <span>({svc.reviews})</span>
+            </div>
+            <div style={{ fontSize: 9, color: C.teal, marginTop: 3, fontStyle: "italic" }}>💡 {svc.reason}</div>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>{svc.price}</div>
+            <button style={{ fontSize: 9, padding: "4px 10px", borderRadius: 5, border: `0.5px solid ${C.accent}`, background: "transparent", color: C.accent, cursor: "pointer", fontWeight: 500 }}>Add to cart</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TravelPulseSidebar() {
+  const items = [
+    { c: "Kyoto", t: "Cherry blossom peak: Apr 8-14", k: "peak", kc: "#5DCAA5" },
+    { c: "JPY/USD", t: "¥152.3 — favorable for USD", k: "+0.8%", kc: "#5DCAA5" },
+    { c: "Fushimi Inari", t: "Low crowds expected this week", k: "good", kc: "#5DCAA5" },
+    { c: "California", t: "PCH road conditions clear", k: "normal", kc: "#FAC775" },
+    { c: "EUR/USD", t: "€1.087 against USD", k: "-0.3%", kc: "#F09595" },
+    { c: "Kyoto", t: "3 trending spots from experts", k: "new", kc: "#FAC775" },
+    { c: "Gion", t: "Geisha district: moderate crowds", k: "avg", kc: "#FAC775" },
+    { c: "NRT→KIX", t: "Flight prices dropped 12%", k: "↓12%", kc: "#5DCAA5" },
+  ];
+  const doubled = [...items, ...items];
+
+  return (
+    <div style={{ background: C.dark, borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px 0" }}>
+        <span style={{ fontSize: 9, fontWeight: 600, color: "#5DCAA5", textTransform: "uppercase", letterSpacing: 1.2 }}>TravelPulse</span>
+        <span style={{ fontSize: 8, color: C.gold, cursor: "pointer" }}>Upgrade →</span>
+      </div>
+      <div style={{ height: 180, overflow: "hidden", position: "relative", margin: "8px 0 10px" }}>
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 20, background: `linear-gradient(to bottom, ${C.dark}, transparent)`, zIndex: 2 }} />
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 20, background: `linear-gradient(to top, ${C.dark}, transparent)`, zIndex: 2 }} />
+        <div style={{ animation: "tpScroll 30s linear infinite", padding: "0 14px" }}>
+          {doubled.map((x, i) => (
+            <div key={i} style={{ padding: "7px 0", borderTop: i > 0 ? "0.5px solid rgba(255,255,255,0.06)" : "none" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 9, color: "#5DCAA5", fontWeight: 600 }}>{x.c}</span>
+                <span style={{ fontSize: 8, color: x.kc, background: `${x.kc}18`, padding: "1px 5px", borderRadius: 4 }}>{x.k}</span>
+              </div>
+              <div style={{ fontSize: 10, color: "#E1F5EE", lineHeight: 1.4, marginTop: 2 }}>{x.t}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <style>{`@keyframes tpScroll { 0% { transform: translateY(0); } 100% { transform: translateY(-50%); } }`}</style>
+    </div>
+  );
+}
+
+function RightPanel() {
+  const experts = [
+    { init: "KT", name: "Kenji Takahashi", spec: "Kyoto · Temples, zen", rating: "4.9", badge: "Founding", badgeBg: C.greenLight, badgeText: C.greenText },
+    { init: "AY", name: "Aiko Yamamoto", spec: "Kyoto · Food, sake", rating: "4.8", badge: "Top rated", badgeBg: C.amberLight, badgeText: C.amberText },
+    { init: "SC", name: "Sofia Chen", spec: "CA · Road trips", rating: "4.7", badge: "Rising star", badgeBg: C.blueLight, badgeText: C.blueText },
+    { init: "DP", name: "David Park", spec: "CA · Photography", rating: "4.9", badge: "Founding", badgeBg: C.greenLight, badgeText: C.greenText },
+  ];
+
+  return (
+    <div style={{ width: 255, minWidth: 255, display: "flex", flexDirection: "column", gap: 10 }}>
+      <TravelPulseSidebar />
+
+      {/* Action Items */}
+      <div style={{ background: C.white, border: `0.5px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.text, marginBottom: 8 }}>Action items</div>
+        {[
+          { t: "Approve Fushimi guide — expires tomorrow", u: true },
+          { t: "Review Yuki's Day 9-10 update", u: false },
+          { t: "Confirm airport pickup for Apr 8", u: false },
+        ].map((a, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, padding: "4px 0", alignItems: "flex-start" }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: a.u ? "#E24B4A" : "#EF9F27", marginTop: 5, flexShrink: 0 }} />
+            <span style={{ fontSize: 10, color: C.text, lineHeight: 1.4 }}>{a.t}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Active Experts */}
+      <div style={{ background: C.white, border: `0.5px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.text, marginBottom: 8 }}>Active experts</div>
+        {[
+          { name: "Yuki Matsuda", init: "YM", trip: "Kyoto trip", online: true, msg: "Updated Days 9-10 with Arashiyama alternatives!" },
+          { name: "Maria Santos", init: "MS", trip: "California trip", online: false, msg: "Excited to help! I know the coast well." },
+        ].map((e, i) => (
+          <div key={i} style={{ padding: "6px 0", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.gold, color: "#412402", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600, flexShrink: 0 }}>{e.init}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10, fontWeight: 500, color: C.text }}>{e.name}</div>
+                <div style={{ fontSize: 9, color: e.online ? C.teal : C.muted, display: "flex", alignItems: "center", gap: 3 }}>
+                  {e.online && <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#5DCAA5", display: "inline-block" }} />}
+                  {e.online ? "Online now" : "2h ago"} · {e.trip}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 9, color: C.muted, fontStyle: "italic", background: C.surface, padding: "5px 8px", borderRadius: 6, marginTop: 6, marginLeft: 36 }}>"{e.msg}"</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Top Experts */}
+      <div style={{ background: C.white, border: `0.5px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.text, marginBottom: 10, display: "flex", justifyContent: "space-between" }}>
+          <span>Top experts</span>
+          <span style={{ fontSize: 9, color: C.teal, cursor: "pointer", fontWeight: 400 }}>View all</span>
+        </div>
+        {experts.map((e, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0", borderTop: i > 0 ? `0.5px solid ${C.border}` : "none", cursor: "pointer" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: C.gold, color: "#412402", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 600, flexShrink: 0 }}>{e.init}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 500, color: C.text }}>{e.name}</div>
+              <div style={{ fontSize: 9, color: C.muted }}>{e.spec}</div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 10, color: C.gold }}>★ {e.rating}</div>
+              <span style={{ fontSize: 7, padding: "1px 4px", borderRadius: 4, background: e.badgeBg, color: e.badgeText, fontWeight: 500 }}>{e.badge}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Credits */}
+      <div style={{ background: C.white, border: `0.5px solid ${C.border}`, borderRadius: 10, padding: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 500, color: C.text, marginBottom: 4 }}>Credits</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+          <span style={{ fontSize: 20, fontWeight: 500, color: C.text }}>150</span>
+          <span style={{ fontSize: 10, color: C.muted }}>remaining</span>
+        </div>
+        <div style={{ height: 4, background: C.surface, borderRadius: 2, marginTop: 6, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: "60%", background: C.teal, borderRadius: 2 }} />
+        </div>
+        <button style={{ width: "100%", marginTop: 8, padding: "6px", borderRadius: 6, fontSize: 10, fontWeight: 500, border: "none", background: C.accent, color: "#fff", cursor: "pointer" }}>Buy credits</button>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardV4() {
+  const [svcFilter, setSvcFilter] = useState("all");
+
+  return (
+    <div style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
+      <div style={{ display: "flex", background: C.bg, borderRadius: 10, overflow: "hidden", border: `0.5px solid ${C.border}`, minHeight: 800 }}>
+        <Sidebar />
+        <div style={{ flex: 1, padding: 16, overflowY: "auto" }}>
+          <div style={{ fontSize: 18, fontWeight: 500, color: C.text, marginBottom: 2 }}>Welcome back, Leon</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>1 active plan · 2 actions pending</div>
+
+          <div style={{ display: "flex", gap: 16 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+
+              {/* CTA Row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+                {[{ i: "+", l: "New experience", s: "Travel, wedding, event" }, { i: "◆", l: "Credits", s: "150 credits remaining" }, { i: "◎", l: "Find experts", s: "In your destinations" }].map(c => (
+                  <div key={c.l} style={{ background: C.surface, borderRadius: 8, padding: "12px 8px", textAlign: "center", cursor: "pointer" }}>
+                    <div style={{ fontSize: 14, marginBottom: 3 }}>{c.i}</div>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: C.text }}>{c.l}</div>
+                    <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>{c.s}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Active Plans */}
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 8, display: "flex", justifyContent: "space-between" }}>
+                <span>Your active plans</span>
+                <span style={{ fontSize: 10, color: C.teal, cursor: "pointer" }}>View all</span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+                <PlanCard />
+                <EmptyCard />
+              </div>
+
+              {/* Recommended Services */}
+              <div style={{ fontSize: 13, fontWeight: 500, color: C.text, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span>Recommended services</span>
+                  <span style={{ fontSize: 9, padding: "2px 7px", borderRadius: 6, background: C.amberLight, color: C.amberText, fontWeight: 500 }}>Based on your plans</span>
+                </div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[["all", "All"], ["kyoto", "Kyoto"], ["california", "California"]].map(([k, l]) => (
+                    <button key={k} onClick={() => setSvcFilter(k)} style={{ fontSize: 9, padding: "3px 8px", borderRadius: 5, border: svcFilter === k ? `1px solid ${C.accent}` : `0.5px solid ${C.border}`, background: svcFilter === k ? "rgba(232,85,85,0.06)" : "transparent", color: svcFilter === k ? C.accent : C.muted, cursor: "pointer", fontWeight: svcFilter === k ? 500 : 400 }}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              <ServiceList filter={svcFilter} />
+
+            </div>
+            <RightPanel />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
