@@ -69,7 +69,6 @@ import { registerExpertRoutes } from "./routes/expert";
 import { registerCartRoutes } from "./routes/cart";
 import { registerItineraryShareRoutes } from "./routes/itinerary";
 import { registerMiscRoutes } from "./routes/misc";
-import { verifyTripOwnership as _verifyTripOwnership, logItineraryChange as _logItineraryChange } from "./routes/route-utils";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -78,70 +77,6 @@ import {
   insertTripEmergencyContactSchema,
   insertTripAlertSchema
 } from "@shared/schema";
-
-// Helper function to verify trip ownership
-async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
-  const trip = await storage.getTrip(tripId);
-  return trip?.userId === userId;
-}
-
-function logItineraryChange(tripId: string, who: string, action: string, changeType: string, role: string, activityId?: string, metadata?: any) {
-  return storage.createItineraryChange({
-    tripId,
-    activityId: activityId || null,
-    who,
-    action,
-    changeType,
-    role,
-    metadata: metadata || {},
-  }).catch(err => console.error("Failed to log itinerary change:", err));
-}
-
-// Helper function to map Fever categories to TravelPulse event types
-function mapFeverCategoryToEventType(category: string): string {
-  const categoryMap: Record<string, string> = {
-    'experiences': 'cultural',
-    'concerts': 'cultural',
-    'theater': 'cultural',
-    'exhibitions': 'cultural',
-    'festivals': 'cultural',
-    'nightlife': 'nightlife',
-    'food-drink': 'culinary',
-    'sports': 'sports',
-    'wellness': 'wellness',
-    'tours': 'cultural',
-    'classes': 'cultural',
-    'family': 'family',
-  };
-  return categoryMap[category] || 'other';
-}
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-// Simple XSS sanitization - strips HTML tags and dangerous characters
-function sanitizeInput(input: string): string {
-  if (typeof input !== 'string') return input;
-  return input
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/[<>'"]/g, (char) => {
-      const entities: Record<string, string> = { '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' };
-      return entities[char] || char;
-    })
-    .trim();
-}
-
-// Sanitize object string fields recursively
-function sanitizeObject<T extends Record<string, any>>(obj: T): T {
-  const result = { ...obj };
-  for (const key of Object.keys(result)) {
-    if (typeof result[key] === 'string') {
-      result[key] = sanitizeInput(result[key]);
-    }
-  }
-  return result;
-}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -158,13 +93,8 @@ export async function registerRoutes(
     // Continue without auth - public routes will still work
   }
 
-  
   // Chat routes for AI Assistant conversations
   registerChatRoutes(app);
-
-  // Start a chat with an expert
-
-  // Instagram API routes
   app.use("/api/instagram", instagramRoutes);
 
   // Bookings API routes - Stripe payments, availability, pricing
@@ -265,7 +195,6 @@ export async function registerRoutes(
     await storage.deleteTrip(req.params.id);
     res.status(204).send();
   });
-
 
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     try {
@@ -372,19 +301,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.status(500).json({ message: "Failed to generate itinerary" });
     }
   });
-
-  // Create generated itinerary (save AI-generated itinerary)
-
-  // Request expert booking assistance
   const expertBookingRequestSchema = z.object({
     tripId: z.string().min(1, "tripId is required"),
     notes: z.string().optional().default("")
   });
-
-
-  // Get generated itinerary for a trip
-
-  // Tourist Places Routes
   app.get(api.touristPlaces.search.path, async (req, res) => {
     const query = req.query.query as string;
     if (!query) return res.json([]);
@@ -464,81 +384,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     res.json(trip);
   });
-
-  // AI Blueprint Generation API
-
-  // AI Chat Endpoint for Trip Planning
-
-  // Experience AI Optimization endpoint
-
-  // Vendors Routes
-
-
-  // === Expert Application Routes ===
-  
-  // Get current user's expert application
-
-  // Submit expert application
-
-  // Alias: /api/expert-forms -> /api/expert-application (for API compatibility)
-
-  // Admin: Get platform stats
-
-
-  // Admin: Get all expert applications
-
-  // Admin: Update expert application status
-
-  // === Provider Application Routes ===
-  
-  // Get current user's provider application
-
-  // Submit provider application
-
-  // Alias: /api/provider-forms -> /api/provider-application (for API compatibility)
-
-  // Admin: Get all provider applications
-
-  // Admin: Update provider application status
-
-  // === Provider Services Routes ===
-  
-  // Get all active provider services (public - for experience browsing)
-  
-  // Get provider's services
-
-  // Create a new service
-
-  // Update a service
-
-  // Delete a service
-
-  // === Service Categories Routes ===
-  
-  // Get all categories
-
-
-  // Create category (admin)
-
-  // Get subcategories for a category
-
-  // Create subcategory (admin)
-
-  // === Custom Venues Routes ===
-  
-  // Get custom venues (with optional filters)
-
-  // Get single custom venue
-
-  // Create custom venue
-
-  // Update custom venue
-
-  // Delete custom venue
-
-  // === Experience Types Routes ===
-  
-  // Slug aliasing for backward compatibility
   const slugAliases: Record<string, string> = {
     "romance": "date-night",
     "corporate": "corporate-events",
@@ -547,235 +392,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   function resolveSlug(slug: string): string {
     return slugAliases[slug] || slug;
   }
-  
-  // Get all experience types (filter out legacy slugs for frontend)
-
-  // Get experience type by slug (with alias resolution)
-
-  // Get template steps for an experience type
-
-  // Get template tabs with filters for an experience type
-
-  // Get universal filters for an experience type
-
-  // === Experience Catalog API ===
-
-  // Search unified experience catalog across all providers
-
-  // Hybrid catalog search with SERP fallback
-
-  // Get experience type with all tabs and filters
-
-  // Get single catalog item by ID and type
-
-  // Get available destinations from all providers
-
-  // Alias: /api/destinations -> /api/catalog/destinations
-
-  // === User Experiences Routes ===
-
-  // Get user's experiences
-
-  // Get single experience with items
-
-  // Create new experience
-
-  // Update experience
-
-  // Delete experience
-
-  // Add item to experience
-
-  // Update experience item
-
-  // Remove experience item
-
-  // === FAQ Routes ===
-  
-  // Get all FAQs
-
-  // Create FAQ (admin)
-
-  // Update FAQ (admin)
-
-  // Delete FAQ (admin)
-
-  // === Wallet & Credits Routes ===
-  
-  // Get current user's wallet
-
-  // Get credits balance (balance + total for UI display)
-
-  // Get wallet transactions
-
-  // Add credits (admin only - for production, integrate with payment provider)
-
-  // Purchase credits via Stripe Checkout
-  const CREDIT_PACKAGES = [
-    { id: 1, credits: 50, price: 49 },
-    { id: 2, credits: 100, price: 89 },
-    { id: 3, credits: 250, price: 199 },
-    { id: 4, credits: 500, price: 349 },
-  ];
-
-
-  // === Service Templates Routes (Admin manages, Experts browse) ===
-  
-  // Get all active service templates
-
-  // Get single template
-
-  // Create template (admin only)
-
-  // Update template (admin only)
-
-  // Delete template (admin only - soft delete)
-
-  // === Admin Service Category Management ===
-
-  // Get all categories with subcategories
-
-  // Get single category
-
-  // Create category (admin only)
-
-  // Update category (admin only)
-
-  // Delete category (admin only)
-
-  // Create subcategory (admin only)
-
-  // Update subcategory (admin only)
-
-  // Delete subcategory (admin only)
-
-  // Seed 15 core categories (admin only - run once)
-
-  // === Enhanced Expert Services Routes ===
-
-  // Get all expert service categories with offerings (public)
-
-  // Get expert service offerings for a specific category
-
-  // Get all experts with their full profiles (public)
-
-  // Get a single expert with profile by ID (public)
-
-  // Get services offered by a specific expert (public)
-
-  // Get reviews for a specific expert (public)
-
-  // Get current expert's selected services (authenticated)
-
-  // Add service offering to expert's profile (authenticated)
-
-  // Remove service offering from expert's profile (authenticated)
-
-  // Get current expert's specializations (authenticated)
-
-  // Add specialization to expert's profile (authenticated)
-
-  // Remove specialization from expert's profile (authenticated)
-
-  // === Expert Custom Services (User-submitted offerings) ===
-  
-  // Get current expert's custom services (authenticated)
-
-  // Get single custom service by ID (authenticated - owner only)
-
-  // Create new custom service (authenticated - experts only)
-
-  // Update custom service (authenticated - owner only, draft status only)
-
-  // Submit custom service for approval (authenticated - owner only)
-
-  // Delete custom service (authenticated - owner only, draft/rejected status only)
-
-  // Admin: Get all custom services pending approval
-
-  // Admin: Approve custom service
-
-  // Admin: Reject custom service
-
-  // === Expert Templates (Income Streams) ===
-  
-  // Get all published templates (public)
-
-  // Get single template (public - also tracks views)
-
-  // Get expert's own templates (authenticated)
-
-  // Create new template (authenticated)
-
-  // Update template (authenticated - owner only)
-
-  // Delete template (authenticated - owner only)
-
-  // Purchase template (authenticated)
-
-  // Get user's purchased templates
-
-  // Get template reviews
-
-  // Create template review (authenticated - must have purchased)
-
-  // Get expert earnings (authenticated)
-
-  // Get expert template sales (authenticated)
-
-  // === Income Streams & Revenue Splits ===
-  
-  // Get revenue splits configuration
-
-  // Expert Tips - Create a tip for an expert
-
-  // Get tips received by expert
-
-  // Expert Referrals - Get referral code and stats
-
-  // Affiliate earnings for expert
-
-  // Comprehensive Revenue Optimization endpoint
-
-  // === Destination Calendar (Public travel guide) ===
-  
-  // Get countries with calendar data (public)
-
-  // Get approved events for a destination (public)
-
-  // Get seasons for a destination (public)
-
-  // Get contributor's own destination events (authenticated)
-
-  // Create a new destination event (authenticated - contributor)
-
-  // Update destination event (authenticated - contributor only)
-
-  // Submit destination event for approval (authenticated - contributor only)
-
-  // Delete destination event (authenticated - contributor only)
-
-  // Admin: Get pending destination events
-
-  // Admin: Approve destination event
-
-  // Admin: Reject destination event
-
-  // Get single service by ID (public - for booking page)
-
-  // Browse all active services (public marketplace)
-
-  // Unified Discovery Search (public - with advanced filtering)
-
-  // Analytics: Get destination search trends
-
-  // Analytics: Get expert match trends
-
-  // Analytics: Get destination metrics history (time-series)
-
-  // === Tourism Analytics Event Tracking (Fire-and-forget) ===
-  
-  // Track destination search events
   const searchEventSchema = z.object({
     destination: z.string(),
     origin: z.string().optional(),
@@ -785,7 +401,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     experienceType: z.string().optional(),
     searchContext: z.string().optional(), // "discover" | "experience-template" | "quick-start"
   });
-
 
   // Track itinerary generation events
   const itineraryGeneratedSchema = z.object({
@@ -799,7 +414,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     experienceType: z.string().optional(),
   });
 
-
   // Track booking events
   const bookingEventSchema = z.object({
     type: z.string(), // "hotel" | "activity" | "flight" | "service" | "transport"
@@ -811,136 +425,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     provider: z.string().optional(), // "amadeus" | "viator" | "platform" | "external"
     bookingStatus: z.string().optional(), // "initiated" | "confirmed" | "pending"
   });
-
-
-  // AI-Powered Service Recommendations
-
-  // Get expert's services by status
-
-  // Toggle service status (pause/activate)
-
-  // Duplicate a service
-
-  // Create service from template
-
-  // === Service Bookings Routes ===
-  
-  // Get bookings for provider (their services)
-  // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
-
-  // Get bookings for traveler (services they booked)
-  // Provider bookings (for calendar)
-  // NOTE: User data is sanitized - providers cannot see full traveler info
-
-
-  // Get single booking
-  // NOTE: If requester is provider, traveler info is sanitized
-
-  // Get client profile (for experts/providers) - sanitized view
-  // SECURITY: Experts can only see limited client information for their bookings
-
-  // Create a booking
-
-  // Update booking status (provider actions)
-
-  // Cancel booking (traveler action)
-
-  // === Notifications Routes ===
-
-  // Get user notifications
-
-  // Get unread count
-
-  // Mark notification as read
-
-  // Mark all as read
-
-  // Delete notification
-
-  // === Service Reviews Routes ===
-  
-  // Get reviews for a service
-
-  // Create a review (only after completed booking)
-
-  // Provider responds to a review
-
-  // Get expert's analytics/stats
-
-
-  // Get comprehensive expert analytics dashboard data
-
-  // Get market intelligence for experts - filtered by their markets
-
-  // === Service Recommendation Engine API Endpoints ===
-
-  // Get service recommendations for experts based on TravelPulse trends
-
-  // Get service recommendations for providers
-
-  // Get service recommendations for users (trip planning)
-
-  // Get market intelligence for a city
-
-  // Get seasonal opportunities
-
-  // Refresh demand signals for a city (authenticated users only for now)
-
-  // Record recommendation conversion (when user acts on a recommendation)
-
-  // Dismiss a recommendation
-
-  // Get provider analytics dashboard
-
-  // === Cart Routes ===
-
-  // Get cart items
-
-  // Add to cart
-
-  // Update cart item
-
-  // Remove from cart
-
-  // Clear cart
-
-  // === Checkout & Auto-Contract Generation ===
-
-  // Create booking with auto-contract
-
-  // Get contract details
-
-  // === COORDINATION HUB API ROUTES ===
-
-  // Vendor Availability Slots
-
-
-  // Coordination States
-
-
-  // Coordination Bookings
-
-
-  // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
-
-  // Amadeus Travel API Routes
-  
-  // Search airports/cities for autocomplete - uses database cache first
-
-  // Search flights
-
-  // Search hotels by city
-
-  // Search Points of Interest by location
-
-  // Get POI by ID
-
-  // Search Amadeus Tours & Activities by location
-
-  // Get Amadeus activity by ID
-
-  // Search airport transfers
   const transferSearchSchema = z.object({
     startLocationCode: z.string().min(3).max(4),
     endAddressLine: z.string().optional(),
@@ -955,35 +440,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       typeof val === 'string' ? parseInt(val, 10) : val
     ),
   });
-
-
-  // Get safety ratings for a location
-
-  // Get safety rating by ID
-
-  // ============ VIATOR API ROUTES ============
-
-  // Search activities by destination (freetext search)
-
-  // Get activity details by product code
-
-  // Check availability for an activity
-
-  // Get Viator destinations
-
-  // ============ CACHED DATA WITH LOCATIONS API ============
-
-  // Get cached hotels with location data for mapping
-
-  // Get cached activities with location data for mapping
-
-  // Get cached flights
-
-  // Get map markers for hotels in a destination
-
-  // Get map markers for activities in a destination
-
-  // Verify availability before purchase
   const verifyItemSchema = z.object({
     type: z.enum(['hotel', 'activity', 'flight']),
     id: z.string(),
@@ -998,13 +454,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   const verifyAvailabilitySchema = z.object({
     items: z.array(verifyItemSchema).min(1).max(50),
   });
-
-
-  // Clean up expired cache entries
-
-  // ============ FILTERING AND SORTING API ============
-
-  // Zod schemas for filter validation
   const hotelFilterSchema = z.object({
     cityCode: z.string().max(10).optional(),
     searchQuery: z.string().max(200).optional(),
@@ -1035,22 +484,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     limit: z.coerce.number().min(1).max(100).default(20),
     offset: z.coerce.number().min(0).default(0),
   });
-
-  // Get filtered hotels with pagination
-
-  // Get filtered activities with pagination
-
-  // Get available preference tags with counts
-
-  // Get available categories with counts (for activities)
-
-  // ============ CACHE SCHEDULER ROUTES ============
-
-  // Get cache freshness status
-
-  // Trigger manual cache refresh (admin only)
-
-  // Pre-checkout verification endpoint
   const checkoutVerifySchema = z.object({
     items: z.array(z.object({
       type: z.enum(['hotel', 'activity', 'flight']),
@@ -1065,11 +498,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).optional(),
     })).max(20),
   });
-
-
-  // ============ CLAUDE AI ROUTES ============
-
-  // Zod schemas for Claude API validation
   const claudeCartItemSchema = z.object({
     id: z.string().max(100),
     type: z.string().max(50),
@@ -1136,12 +564,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }),
     interests: z.array(z.string().max(50)).max(20),
   });
-
-  // Optimize itinerary using Claude
-
-  // Analyze transportation needs
-
-  // Generate transport packages for trip segments
   const transportPackageSegmentSchema = z.object({
     id: z.string(),
     type: z.string(),
@@ -1156,15 +578,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     travelers: z.number().int().min(1).default(1),
     tripDays: z.number().int().min(1).default(1),
   });
-
-
-  // Full itinerary graph analysis (Airport → Hotel → Activities → Hotel → Airport)
-
-  // Get travel recommendations
-
-  // Google Routes API - Single transit route
-
-  // Google Routes API - Multiple transit routes from one origin to many destinations
   const multiTransitSchema = z.object({
     origin: z.object({
       lat: z.number(),
@@ -1178,7 +591,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       name: z.string(),
     })),
   });
-
 
   // Google Maps Geocoding API - Convert place name to coordinates
   const geocodeSchema = z.object({
@@ -1283,12 +695,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     "hungary": { lat: 47.4979, lng: 19.0402, formattedAddress: "Budapest, Hungary" },
     "croatia": { lat: 45.8150, lng: 15.9819, formattedAddress: "Zagreb, Croatia" },
   };
-
-  // Geocoding endpoint - public access since it's just a geographic lookup
-
-  // === GROK AI INTEGRATION ROUTES ===
-
-  // Expert Matching - Match experts to traveler needs
   const expertMatchSchema = z.object({
     travelerProfile: z.object({
       destination: z.string(),
@@ -1306,7 +712,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     limit: z.number().optional().default(5),
   });
 
-
   // Content Generation - Generate bio, descriptions, responses
   const contentGenerationSchema = z.object({
     type: z.enum(["bio", "service_description", "inquiry_response", "welcome_message"]),
@@ -1314,7 +719,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     tone: z.enum(["professional", "friendly", "casual"]).optional(),
     length: z.enum(["short", "medium", "long"]).optional(),
   });
-
 
   // Real-Time Intelligence - Get current events, weather, trends for destination
   const intelligenceSchema = z.object({
@@ -1325,7 +729,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }).optional(),
     topics: z.array(z.enum(["events", "weather", "safety", "trending", "deals"])).optional(),
   });
-
 
   // Autonomous Itinerary Generation - Full AI trip planning
   const autonomousItinerarySchema = z.object({
@@ -1345,7 +748,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     tripId: z.string().optional(),
   });
 
-
   // AI Quick Start Itinerary - Fetches city intelligence and generates itinerary
   const quickStartItinerarySchema = z.object({
     destination: z.string().min(1),
@@ -1359,7 +761,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     pacePreference: z.enum(["relaxed", "moderate", "packed"]).default("moderate"),
   });
 
-
   // AI Chat endpoint - General purpose chat
   const chatSchema = z.object({
     messages: z.array(z.object({
@@ -1369,76 +770,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     systemContext: z.string().optional(),
     preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
   });
-
-
-  // AI Health check
-
-  // === EXPERT AI TASKS ROUTES ===
-  
-  // Get expert's AI tasks
-
-  // Delegate a task to AI
   const delegateTaskSchema = z.object({
     taskType: z.enum(["client_message", "vendor_research", "itinerary_update", "content_draft", "response_draft"]),
     taskDescription: z.string().min(10, "Task description must be at least 10 characters"),
     clientName: z.string().optional(),
     context: z.record(z.any()).optional(),
   });
-
-
-  // Approve/Send a task
-
-  // Reject a task
-
-  // Regenerate a task
-
-  // Get expert AI stats
-
-  // =================================================================
-  // PHASE 4: Real-Time Destination Intelligence API
-  // =================================================================
-  
-  // Get real-time intelligence for a destination (requires authentication)
-
-  // Phase 5: Autonomous AI Itinerary Generation
-
-  // Trip Optimization Framework: Generate 3 itinerary variations with real-time intelligence
-
-  // Get user's AI-generated itineraries
-
-  // Get single AI-generated itinerary
-
-  // ============================================
-  // TRAVELPULSE API - Real-Time Travel Intelligence
-  // ============================================
-  
   const { travelPulseService } = await import("./services/travelpulse.service");
-
-
-  // ============================================
-  // TRAVELPULSE CITY-LEVEL ENDPOINTS
-  // ============================================
-
-  // Get all trending cities for the grid view
-
-  // Get full city intelligence (city details + hidden gems + alerts + happening now + activity)
-
-  // Get hidden gems for a city
-
-  // Get live activity for a city
-
-  // Get alerts for a city
-
-  // Get happening now events for a city
-
-  // Get global live activity feed (across all cities)
-
-  // Seed cities data (for initial setup)
-
-  // ============================================
-  // TRAVELPULSE AI INTELLIGENCE ROUTES (Admin-only)
-  // ============================================
-
   const { travelPulseScheduler } = await import("./services/travelpulse-scheduler.service");
 
   // Middleware to check admin role for AI endpoints
@@ -1471,129 +809,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     aiRefreshCount++;
     next();
   };
-
-  // Get AI scheduler status (admin only)
-
-  // Manually trigger AI refresh for a specific city (admin only, rate limited)
-
-  // Manually trigger AI refresh for all stale cities (admin only, rate limited)
-
-  // Get city media (public - for frontend gallery)
-
-  // Track Unsplash download (required by Unsplash API guidelines)
-  // Must be called when a photo is displayed prominently or used
-
-  // Get full destination calendar data (seasonal + events) for a city
-
-  // AI-enhanced recommendations based on calendar data
-
-  // Event-aligned recommendations
-
-  // Best time to visit analysis
-
-  // Get city with full AI intelligence data (admin only)
-
-  // Global Calendar - Get all cities ranked by seasonal rating for a given month
-
-  // Get all upcoming events globally
-
-  // Get enriched recommendations for a city (AI + affiliate/booking links)
-
-  // Search SERP for venue-specific results
-
-  // Template-aware SERP search with caching
-
-  // Track SERP provider click
-
-  // Create inquiry to SERP provider
-
-  // Get partnership opportunities (admin)
-
-  // ============================================
-  // VENUE SEARCH API ROUTES
-  // Google Places API integration for venues/vendors
-  // ============================================
-
-  // Search for venues by type and location
-
-  // Search for wedding vendors (photographers, florists, etc.)
-  // IMPORTANT: This route must be defined BEFORE /api/venues/:placeId to avoid being caught by the dynamic route
-
-  // Get venue details by place ID
-
-  // ============================================
-  // FEVER PARTNER API ROUTES
-  // Events and experiences from Fever (feverup.com)
-  // ============================================
-
-  // Get Fever service status and supported cities
-
-  // Search events by city
-
-  // Get event details by ID
-
-  // Get upcoming events for a city
-
-  // Get free events for a city
-
-  // Get events by date range for a city
-
-  // Get list of supported cities
-
-  // Merge Fever events with TravelPulse destination events for calendar integration
-
-  // ============ FEVER CACHE ENDPOINTS ============
-
-  // Get Fever cache status
-
-  // Get cached events for a city (uses cache, refreshes if stale)
-
-  // Manually refresh cache for a city (admin only)
-
-  // Get comprehensive location summary for admin panel
-
-  // Manually refresh all cities (admin only)
-
-  // Start the scheduler when routes are registered
   travelPulseScheduler.start();
-
-  // === Logistics Intelligence Layer Routes ===
-
-  // --- Coordination / Participants Routes (using asyncHandler for consistent error handling) ---
-
-
-  // --- Vendor Contracts Routes ---
-
-
-  // --- Budget / Transactions Routes ---
-
-
-  // --- Itinerary Intelligence Routes ---
-
-
-  // POST /api/trips/:tripId/activate-transport
-  // Creates or reuses an itinerary comparison+variant for the trip's AI-generated itinerary,
-  // then calculates and persists real transport legs so users can select modes.
-
-
-  // --- Emergency Routes ---
-
-
-  // ============ SPONTANEOUS ACTIVITIES & LIVE INTEL ENGINE ============
-  
-  // GET /api/spontaneous/opportunities - Get spontaneous opportunities based on location
-
-  // GET /api/spontaneous/preferences - Get user spontaneity preferences
-
-  // POST /api/spontaneous/preferences - Save user spontaneity preferences
-
-  // POST /api/spontaneous/:id/book - Book a spontaneous opportunity
-
-  // GET /api/spontaneous/quick-search/:window - Quick search for opportunities
-
-  // Register AI Discovery routes
   await registerDiscoveryRoutes(app);
-
 
   // === Domain route registration ===
   registerAdminRoutes(app, resolveSlug);
@@ -1785,7 +1002,6 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   // External API Usage Tracking (Amadeus, etc.)
 
-
   // === Revenue Tracking Endpoints ===
 
   // Admin unified revenue dashboard
@@ -1799,36 +1015,26 @@ export async function registerDiscoveryRoutes(app: Express) {
   // Provider earnings endpoints
   // Uses same auth pattern as /api/provider/services, /api/provider/bookings
 
-
   // Provider payout requests
-
 
   // Expert earnings details endpoint
   // Uses same auth pattern as /api/provider/services, /api/provider/bookings
 
   // === Stripe Connect Onboarding ===
 
-
   // === Admin Payouts Management ===
-
 
   // === Logistics: Temporal Anchors ===
 
-
   // === Logistics: Day Boundaries ===
-
 
   // === Logistics: Schedule Validation ===
 
-
   // === Logistics: Energy Calculation ===
-
 
   // === Logistics: Template Presets ===
 
-
   // === Logistics: AI Anchor Suggestions ===
-
 
   // ==========================================
   // Expert/Provider Logistics Integration
@@ -1836,23 +1042,17 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   // === Expert: Client Constraint Visibility ===
 
-
   // === Expert: Vendor Coordination ===
 
-
   // === Provider: Booking Requests ===
-
 
   // ==========================================
   // Constraint Propagation & Workflow Services
   // ==========================================
 
-
   // === Wedding Coordination ===
 
-
   // === Corporate Coordination ===
-
 
   // === Admin Users Management ===
 
@@ -1963,18 +1163,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   // Conversion Funnel Report
 
-
   // Track activity/service interactions
 
   // Activity Demand Report - What activities are trending
 
   // Activity trends by category (for selling to specific industries)
 
-
   // Track enhanced trip analytics
 
   // Destination Benchmark Report (premium product for tourism boards)
-
 
   // === AUTO-INFER ANALYTICS FROM USER BEHAVIOR ===
   
@@ -2098,9 +1295,7 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   // === Admin Activity Feed ===
 
-
   // === Admin Flagged Content Queue ===
-
 
   // === Admin Platform Settings ===
 
@@ -2133,6 +1328,5 @@ export async function registerDiscoveryRoutes(app: Express) {
   }
   // Seed on startup (non-blocking)
   seedDefaultSettings();
-
 
 }
