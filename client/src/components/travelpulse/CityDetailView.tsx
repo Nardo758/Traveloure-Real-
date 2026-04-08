@@ -743,17 +743,18 @@ function CityDetailSkeleton() {
   );
 }
 
-const VIBE_TO_CATEGORY: Record<string, string> = {
-  foodie: "food",
-  nightlife: "entertainment",
-  cultural: "cultural",
-  adventure: "outdoor",
-  luxury: "luxury",
-  romantic: "experience",
-  nature: "outdoor",
-  family: "family",
-  budget: "budget",
-  relaxation: "wellness",
+interface VibeFilter { categories: string[]; minPrice?: number }
+const VIBE_TO_FILTER: Record<string, VibeFilter> = {
+  foodie:     { categories: ["food", "dining", "restaurant", "culinary"] },
+  nightlife:  { categories: ["entertainment", "nightlife", "bars", "club"] },
+  cultural:   { categories: ["cultural", "museum", "art", "history", "heritage"] },
+  adventure:  { categories: ["outdoor", "adventure", "sports", "hiking", "extreme"] },
+  luxury:     { categories: ["luxury", "premium", "fine dining", "vip"], minPrice: 150 },
+  romantic:   { categories: ["experience", "romantic", "couples", "sunset"] },
+  nature:     { categories: ["outdoor", "nature", "parks", "scenic", "wildlife"] },
+  family:     { categories: ["family", "kids", "tours", "zoo"] },
+  budget:     { categories: ["budget", "free", "affordable", "walking tour"] },
+  relaxation: { categories: ["wellness", "spa", "relaxation", "yoga", "meditation"] },
 };
 
 export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
@@ -797,12 +798,13 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
   });
 
   // Spontaneous opportunities — loaded on demand when Spontaneous tab is active
-  const spontaneousCategories = spontaneousVibe ? VIBE_TO_CATEGORY[spontaneousVibe] || spontaneousVibe : undefined;
+  const spontaneousFilter = spontaneousVibe ? VIBE_TO_FILTER[spontaneousVibe] : undefined;
   const { data: spontaneousData, isLoading: spontaneousLoading } = useQuery<{ opportunities: SpontaneousOpp[]; total: number }>({
     queryKey: ["/api/spontaneous/quick-search", spontaneousWindow, cityName, spontaneousVibe],
     queryFn: async () => {
       const params = new URLSearchParams({ city: cityName });
-      if (spontaneousCategories) params.set("categories", spontaneousCategories);
+      if (spontaneousFilter?.categories.length) params.set("categories", spontaneousFilter.categories.join(","));
+      if (spontaneousFilter?.minPrice) params.set("minPrice", String(spontaneousFilter.minPrice));
       const res = await fetch(`/api/spontaneous/quick-search/${spontaneousWindow}?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch opportunities");
       return res.json();
@@ -1271,13 +1273,13 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                   {(() => {
                     const twitter = (socialPosts || []).filter(p => p.source === 'twitter');
                     const instagram = (instagramPosts || []).filter(p => p.source === 'instagram');
-                    const combined = socialSource === 'twitter'
+                    const combined = (socialSource === 'twitter'
                       ? twitter
                       : socialSource === 'instagram'
                       ? instagram
                       : [...twitter, ...instagram].sort(
                           (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
-                        );
+                        )).slice(0, 20);
 
                     if (combined.length === 0) {
                       return (

@@ -895,7 +895,11 @@ Sentiment values: "positive", "neutral", or "negative". Use actual data from X s
         throw new Error(`Responses API returned ${response.status}`);
       }
 
-      const data = await response.json() as any;
+      interface XResponsesContent { type: string; text?: string }
+      interface XResponsesOutput { role: string; content: XResponsesContent[] }
+      interface XResponsesApiResponse { output?: XResponsesOutput[]; error?: { message: string } }
+
+      const data = await response.json() as XResponsesApiResponse;
       const text: string = data?.output?.[0]?.content?.[0]?.text || '';
       if (!text) throw new Error('Empty Responses API output');
 
@@ -904,51 +908,36 @@ Sentiment values: "positive", "neutral", or "negative". Use actual data from X s
       const jsonStr = jsonMatch?.[1] || jsonMatch?.[0] || '';
       if (!jsonStr) throw new Error('No JSON found in Responses API output');
 
-      const parsed = JSON.parse(jsonStr);
-      const posts = (parsed.posts || []) as SocialFeedPost[];
+      interface XPostRaw {
+        id?: string;
+        authorName?: string;
+        authorHandle?: string;
+        content?: string;
+        likesCount?: number;
+        repostsCount?: number;
+        postedAt?: string;
+        postUrl?: string;
+        sentiment?: 'positive' | 'neutral' | 'negative';
+      }
+      interface XPostsParsed { posts?: XPostRaw[] }
+      const parsed = JSON.parse(jsonStr) as XPostsParsed;
+      const rawPosts = parsed.posts || [];
 
       // Enforce cap, add source field
-      return posts.slice(0, 20).map((p, i) => ({
-        ...p,
+      return rawPosts.slice(0, 20).map((p, i) => ({
         id: p.id || `xpost_${i}`,
         source: 'twitter' as const,
+        authorName: p.authorName || 'Traveler',
+        authorHandle: p.authorHandle,
+        content: p.content || '',
+        likesCount: p.likesCount || 0,
+        repostsCount: p.repostsCount,
+        postedAt: p.postedAt || new Date().toISOString(),
+        postUrl: p.postUrl || `https://x.com/search?q=${encodeURIComponent(city)}travel`,
         sentiment: p.sentiment || 'positive',
       }));
     } catch (error: any) {
-      console.warn('xAI Responses API x_search failed, falling back to synthetic generation:', error.message);
-      return this._getSocialFeedSynthetic(city);
-    }
-  }
-
-  private async _getSocialFeedSynthetic(city: string): Promise<SocialFeedPost[]> {
-    const now = new Date().toISOString();
-    const systemPrompt = `You are a travel social media analyst. Return ONLY valid JSON, no other text.`;
-    const userPrompt = `Generate 10-12 recent X (Twitter) posts representing what travelers are sharing about ${city}. Mix of first-hand experiences, tips, food finds, and reactions based on your knowledge of what's currently trending there.
-
-Return this exact JSON:
-{"posts": [{"id": "uid_1", "source": "twitter", "authorName": "Display Name", "authorHandle": "@handle", "content": "Post text about ${city} (max 280 chars)", "likesCount": 234, "repostsCount": 45, "postedAt": "${now}", "postUrl": "https://x.com/handle/status/1234567890", "sentiment": "positive"}]}
-
-Content mix: arrival excitement, hidden gem discoveries, restaurant finds, crowd/weather reports, local tips.
-Sentiment: "positive", "neutral", or "negative". Mostly positive. Engagement: 30-4000 likes, 5-400 reposts.`;
-
-    try {
-      const response = await getGrokClient().chat.completions.create({
-        model: GROK_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 3000,
-      });
-
-      const content = response.choices[0].message.content;
-      if (!content) return [];
-
-      const parsed = JSON.parse(content);
-      return ((parsed.posts || []) as SocialFeedPost[]).slice(0, 20);
-    } catch (error: any) {
-      console.error("Social feed synthetic fallback error:", error);
+      console.warn('xAI Responses API x_search failed, returning empty feed:', error.message);
       return [];
     }
   }
