@@ -106,8 +106,8 @@ export function ExpertCard({ expert, showServices = true }: ExpertCardProps) {
     : null;
 
   return (
-    <Card className="hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
-      <CardContent className="p-4">
+    <Card className="hover-elevate transition-all duration-200 overflow-visible group flex flex-col h-full" data-testid={`card-expert-${expert.id}`}>
+      <CardContent className="p-4 flex flex-col flex-1">
 
         {/* Header: Avatar + Name + Location */}
         <div className="flex items-start gap-3">
@@ -220,7 +220,7 @@ export function ExpertCard({ expert, showServices = true }: ExpertCardProps) {
         )}
 
         {/* Footer */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#F3F4F6]">
+        <div className="flex items-center gap-2 mt-auto pt-3 border-t border-[#F3F4F6]">
           {lowestPrice !== null && lowestPrice > 0 && (
             <div className="mr-auto">
               <p className="text-[10px] text-[#9CA3AF]">From</p>

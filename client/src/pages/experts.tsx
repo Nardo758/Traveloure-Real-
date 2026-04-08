@@ -545,6 +545,7 @@ export default function ExpertsPage() {
               {sortedExperts.map((expert: any, idx: number) => (
                 <motion.div
                   key={expert.id}
+                  className="h-full"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}
