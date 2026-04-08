@@ -1448,27 +1448,25 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    // Show service markers when destination is set
-    const serviceMarkers = destination && destination.length >= 2
+    // Only scatter service markers once we have a resolved destination center.
+    // Without it, markers would cluster at the hardcoded fallback (NYC), which
+    // is actively misleading when the user searches a different country/city.
+    const serviceMarkers = destination && destination.length >= 2 && destinationCenter
       ? filteredServices.map((s, index) => {
-          const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
           // Use golden angle distribution for spreading markers around destination
           const goldenAngle = 137.5 * (Math.PI / 180);
           const angle = index * goldenAngle;
           const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
           const latOffset = Math.cos(angle) * radius;
           const lngOffset = Math.sin(angle) * radius;
-          // Use destination center when available, otherwise fall back to NYC
-          const baseLat = destinationCenter?.lat ?? 40.7128;
-          const baseLng = destinationCenter?.lng ?? -74.0060;
           return {
             id: s.id.toString(),
             name: s.serviceName,
             category: s.serviceType || currentTabCategory || "venue",
             price: Number(s.price) || 0,
             rating: Number(s.averageRating) || 4.5,
-            lat: baseLat + latOffset,
-            lng: baseLng + lngOffset,
+            lat: destinationCenter.lat + latOffset,
+            lng: destinationCenter.lng + lngOffset,
             description: s.shortDescription || s.description || undefined
           };
         })
