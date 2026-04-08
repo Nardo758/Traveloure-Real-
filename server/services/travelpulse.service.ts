@@ -1287,7 +1287,15 @@ Return JSON:
       const metricsToTrack = [
         { metricType: "trend_score", metricValue: String(result.pulseMetrics.trendingScore || 0) },
         { metricType: "pulse_score", metricValue: String(result.pulseMetrics.pulseScore || 0) },
-        { metricType: "crowd_level", metricValue: String(({ quiet: 1, moderate: 2, busy: 3, packed: 4 } as Record<string, number>)[result.pulseMetrics.crowdLevel as string] ?? 0) },
+        (() => {
+          const crowdMap: Record<string, number> = { quiet: 1, moderate: 2, busy: 3, packed: 4 };
+          const rawLabel = result.pulseMetrics.crowdLevel as string;
+          const numeric = crowdMap[rawLabel];
+          if (numeric === undefined && rawLabel) {
+            console.warn(`[TravelPulse] Unknown crowd_level label "${rawLabel}" for ${cityName} — defaulting to 0`);
+          }
+          return { metricType: "crowd_level", metricValue: String(numeric ?? 0) };
+        })(),
         { metricType: "weather_score", metricValue: String(result.pulseMetrics.weatherScore || 0) },
         { metricType: "avg_hotel_price", metricValue: String(result.priceIntelligence.avgHotelPriceUsd || 0) },
       ];
