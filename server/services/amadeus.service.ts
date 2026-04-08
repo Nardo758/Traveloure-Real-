@@ -7,6 +7,26 @@ const amadeus = new Amadeus({
   hostname: 'test', // Use test environment
 });
 
+// Cached OAuth2 token for direct REST calls (safety API not in SDK)
+let _amadeusToken: string | null = null;
+let _amadeusTokenExpiry = 0;
+
+async function getAmadeusToken(): Promise<string> {
+  if (_amadeusToken && Date.now() < _amadeusTokenExpiry - 60_000) {
+    return _amadeusToken;
+  }
+  const res = await fetch('https://test.api.amadeus.com/v1/security/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `grant_type=client_credentials&client_id=${encodeURIComponent(process.env.AMADEUS_API_KEY!)}&client_secret=${encodeURIComponent(process.env.AMADEUS_API_SECRET!)}`,
+  });
+  if (!res.ok) throw new Error(`Amadeus OAuth2 failed: ${res.status}`);
+  const data = await res.json() as { access_token: string; expires_in: number };
+  _amadeusToken = data.access_token;
+  _amadeusTokenExpiry = Date.now() + data.expires_in * 1000;
+  return _amadeusToken;
+}
+
 export interface FlightSearchParams {
   originLocationCode: string;
   destinationLocationCode: string;
@@ -518,12 +538,27 @@ export class AmadeusService {
   async getSafetyRatings(params: SafetySearchParams): Promise<SafetyRating[]> {
     const startTime = Date.now();
     try {
-      const response = await (amadeus as any).safety.safetyRatedLocations.get({
-        latitude: params.latitude,
-        longitude: params.longitude,
-        radius: params.radius || 5,
+      const token = await getAmadeusToken();
+      const url = new URL('https://test.api.amadeus.com/v1/safety/safety-rated-locations');
+      url.searchParams.set('latitude', String(params.latitude));
+      url.searchParams.set('longitude', String(params.longitude));
+      url.searchParams.set('radius', String(params.radius || 5));
+      const resp = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      const results = response.data || [];
+      if (!resp.ok) {
+        const errBody = await resp.json().catch(() => ({})) as any;
+        const detail = errBody?.errors?.[0]?.detail || `Safety API returned ${resp.status}`;
+        await apiUsageService.logAmadeusCall('safety_rated_locations', 'search', {
+          responseTimeMs: Date.now() - startTime,
+          success: resp.status === 404,
+          errorMessage: resp.status !== 404 ? detail : undefined,
+        });
+        if (resp.status === 404) return [];
+        throw new Error(detail);
+      }
+      const data = await resp.json() as { data?: SafetyRating[] };
+      const results = data.data || [];
       await apiUsageService.logAmadeusCall('safety_rated_locations', 'search', {
         responseTimeMs: Date.now() - startTime,
         success: true,
@@ -534,14 +569,12 @@ export class AmadeusService {
     } catch (error: any) {
       await apiUsageService.logAmadeusCall('safety_rated_locations', 'search', {
         responseTimeMs: Date.now() - startTime,
-        success: error?.response?.statusCode === 404,
-        errorMessage: error?.response?.statusCode !== 404 ? (error?.response?.body?.errors?.[0]?.detail || 'Safety ratings search failed') : undefined,
+        success: false,
+        errorMessage: error.message || 'Safety ratings search failed',
       });
-      console.error('Amadeus safety search error:', error?.response?.body || error);
-      if (error?.response?.statusCode === 404) {
-        return [];
-      }
-      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Safety ratings search failed');
+      console.error('Amadeus safety search error:', error.message);
+      if (error.message?.includes('404')) return [];
+      throw error;
     }
   }
 
