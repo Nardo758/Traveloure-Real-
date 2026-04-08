@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { DashboardLayout } from "@/components/dashboard-layout";
+import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1035,7 +1035,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <DashboardLayout>
+    <Layout>
       <SEOHead 
         title="Discover Services & Experiences"
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
@@ -2103,6 +2103,6 @@ export default function DiscoverPage() {
         </section>
       </div>
       <TripQueueIndicator />
-    </DashboardLayout>
+    </Layout>
   );
 }
