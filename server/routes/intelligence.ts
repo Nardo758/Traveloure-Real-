@@ -41,7 +41,8 @@ import {
   expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow,
   transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries,
   accessAuditLogs, contentRegistry,
-  hotelCache, hotelOfferCache, feverEventCache
+  hotelCache, hotelOfferCache, feverEventCache,
+  activityCache, safetyCache
 } from "@shared/schema";
 import { 
   insertTripParticipantSchema, 
@@ -1637,6 +1638,191 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
     } catch (error: any) {
       console.error("Deals API error:", error);
       res.status(500).json({ message: "Failed to fetch deals" });
+    }
+  });
+
+  // ── Admin: seed Amadeus activities into activity_cache ──────────────────────
+  app.post("/api/admin/seed/amadeus-activities", requireAdmin, async (req, res) => {
+    try {
+      const cities = await db
+        .select()
+        .from(travelPulseCities)
+        .where(and(isNotNull(travelPulseCities.latitude), isNotNull(travelPulseCities.longitude)));
+
+      const results: { city: string; added: number; skipped: number; error?: string }[] = [];
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      for (const city of cities) {
+        try {
+          const lat = parseFloat(city.latitude as string);
+          const lon = parseFloat(city.longitude as string);
+          const activities = await amadeusService.searchActivities({ latitude: lat, longitude: lon, radius: 20 });
+
+          let added = 0;
+          let skipped = 0;
+          for (const act of activities) {
+            try {
+              await db
+                .insert(activityCache)
+                .values({
+                  productCode: `amadeus-${act.id}`,
+                  destination: city.cityName,
+                  city: city.cityName,
+                  title: act.name,
+                  description: act.description || act.shortDescription || null,
+                  latitude: act.geoCode?.latitude?.toString() ?? null,
+                  longitude: act.geoCode?.longitude?.toString() ?? null,
+                  price: act.price?.amount ?? null,
+                  currency: act.price?.currencyCode ?? "USD",
+                  rating: act.rating?.toString() ?? null,
+                  imageUrl: act.pictures?.[0] ?? null,
+                  provider: "amadeus",
+                  category: act.type || "EXPERIENCE",
+                  rawData: act as any,
+                  expiresAt,
+                })
+                .onConflictDoUpdate({
+                  target: activityCache.productCode,
+                  set: {
+                    title: act.name,
+                    description: act.description || act.shortDescription || null,
+                    price: act.price?.amount ?? null,
+                    rating: act.rating?.toString() ?? null,
+                    imageUrl: act.pictures?.[0] ?? null,
+                    rawData: act as any,
+                    expiresAt,
+                    lastUpdated: new Date(),
+                  },
+                });
+              added++;
+            } catch {
+              skipped++;
+            }
+          }
+          results.push({ city: city.cityName, added, skipped });
+          // Small delay to avoid rate limits
+          await new Promise(r => setTimeout(r, 300));
+        } catch (err: any) {
+          results.push({ city: city.cityName, added: 0, skipped: 0, error: err.message });
+        }
+      }
+
+      const totalAdded = results.reduce((s, r) => s + r.added, 0);
+      res.json({ success: true, totalAdded, results });
+    } catch (error: any) {
+      console.error("Amadeus activities seed error:", error);
+      res.status(500).json({ message: "Failed to seed activities", error: error.message });
+    }
+  });
+
+  // ── Admin: seed Amadeus safety ratings into safety_cache ────────────────────
+  app.post("/api/admin/seed/amadeus-safety", requireAdmin, async (req, res) => {
+    try {
+      const cities = await db
+        .select()
+        .from(travelPulseCities)
+        .where(and(isNotNull(travelPulseCities.latitude), isNotNull(travelPulseCities.longitude)));
+
+      const results: { city: string; added: number; error?: string }[] = [];
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      for (const city of cities) {
+        try {
+          const lat = parseFloat(city.latitude as string);
+          const lon = parseFloat(city.longitude as string);
+          const ratings = await amadeusService.getSafetyRatings({ latitude: lat, longitude: lon, radius: 5 });
+
+          let added = 0;
+          for (const rating of ratings) {
+            try {
+              await db
+                .insert(safetyCache)
+                .values({
+                  amadeusId: rating.id,
+                  name: rating.name,
+                  subType: rating.subType,
+                  latitude: rating.geoCode.latitude.toString(),
+                  longitude: rating.geoCode.longitude.toString(),
+                  city: city.cityName,
+                  country: city.country,
+                  countryCode: city.countryCode,
+                  overallScore: rating.safetyScores?.overall ?? null,
+                  lgbtqScore: rating.safetyScores?.lgbtq ?? null,
+                  medicalScore: rating.safetyScores?.medical ?? null,
+                  physicalHarmScore: rating.safetyScores?.physicalHarm ?? null,
+                  politicalFreedomScore: rating.safetyScores?.politicalFreedom ?? null,
+                  theftScore: rating.safetyScores?.theft ?? null,
+                  womenSafetyScore: rating.safetyScores?.women ?? null,
+                  rawData: rating as any,
+                  expiresAt,
+                })
+                .onConflictDoUpdate({
+                  target: safetyCache.amadeusId,
+                  set: {
+                    overallScore: rating.safetyScores?.overall ?? null,
+                    lgbtqScore: rating.safetyScores?.lgbtq ?? null,
+                    medicalScore: rating.safetyScores?.medical ?? null,
+                    physicalHarmScore: rating.safetyScores?.physicalHarm ?? null,
+                    politicalFreedomScore: rating.safetyScores?.politicalFreedom ?? null,
+                    theftScore: rating.safetyScores?.theft ?? null,
+                    womenSafetyScore: rating.safetyScores?.women ?? null,
+                    rawData: rating as any,
+                    expiresAt,
+                    lastUpdated: new Date(),
+                  },
+                });
+              added++;
+            } catch {}
+          }
+          results.push({ city: city.cityName, added });
+          await new Promise(r => setTimeout(r, 300));
+        } catch (err: any) {
+          results.push({ city: city.cityName, added: 0, error: err.message });
+        }
+      }
+
+      const totalAdded = results.reduce((s, r) => s + r.added, 0);
+      res.json({ success: true, totalAdded, results });
+    } catch (error: any) {
+      console.error("Amadeus safety seed error:", error);
+      res.status(500).json({ message: "Failed to seed safety ratings", error: error.message });
+    }
+  });
+
+  // ── Safety scores API ────────────────────────────────────────────────────────
+  app.get("/api/travelpulse/safety/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const rows = await db
+        .select()
+        .from(safetyCache)
+        .where(sql`lower(${safetyCache.city}) = lower(${city})`);
+
+      if (rows.length === 0) {
+        return res.json(null);
+      }
+
+      const avg = (col: (typeof rows[0][keyof typeof rows[0]])[]) => {
+        const valid = col.filter((v) => v != null) as number[];
+        return valid.length ? Math.round(valid.reduce((s, v) => s + v, 0) / valid.length) : null;
+      };
+
+      const aggregated = {
+        city,
+        neighborhoodCount: rows.length,
+        overall: avg(rows.map(r => r.overallScore)),
+        lgbtq: avg(rows.map(r => r.lgbtqScore)),
+        medical: avg(rows.map(r => r.medicalScore)),
+        physicalHarm: avg(rows.map(r => r.physicalHarmScore)),
+        politicalFreedom: avg(rows.map(r => r.politicalFreedomScore)),
+        theft: avg(rows.map(r => r.theftScore)),
+        women: avg(rows.map(r => r.womenSafetyScore)),
+      };
+
+      res.json(aggregated);
+    } catch (error: any) {
+      console.error("Safety ratings API error:", error);
+      res.status(500).json({ message: "Failed to fetch safety ratings" });
     }
   });
 }

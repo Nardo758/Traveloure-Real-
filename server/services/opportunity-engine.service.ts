@@ -88,7 +88,19 @@ class OpportunityEngineService {
     // Sort by urgency score (higher = more urgent)
     opportunities.sort((a, b) => (b.urgencyScore || 0) - (a.urgencyScore || 0));
 
-    return opportunities.slice(0, limit);
+    // Ensure diversity: if Amadeus activities exist, guarantee up to 5 slots for them
+    const amadeusActivities = opportunities.filter(o => o.source === 'amadeus');
+    const nonAmadeus = opportunities.filter(o => o.source !== 'amadeus');
+    const amadeusSlots = Math.min(amadeusActivities.length, 5);
+    const nonAmadeusSlots = limit - amadeusSlots;
+    const mixed = [
+      ...nonAmadeus.slice(0, nonAmadeusSlots),
+      ...amadeusActivities.slice(0, amadeusSlots),
+    ];
+    // Re-sort the final mixed list
+    mixed.sort((a, b) => (b.urgencyScore || 0) - (a.urgencyScore || 0));
+
+    return mixed.slice(0, limit);
   }
 
   private async generateOpportunitiesFromCache(
@@ -219,18 +231,20 @@ class OpportunityEngineService {
         // Determine opportunity type
         const type = this.determineActivityType(activity, urgencyScore);
 
+        const provider = activity.provider === 'amadeus' ? 'amadeus' : 'viator';
+        const bookingUrl = (activity.rawData as any)?.bookingLink ?? null;
         return {
-          id: `viator-${activity.productCode}`,
-          city: activity.destination || params.city || "Unknown",
+          id: `${provider}-${activity.productCode}`,
+          city: activity.destination || activity.city || params.city || "Unknown",
           latitude: activity.latitude ? parseFloat(activity.latitude) : null,
           longitude: activity.longitude ? parseFloat(activity.longitude) : null,
           type,
-          source: "viator" as const,
+          source: provider as "amadeus" | "viator",
           externalId: activity.productCode,
           title: activity.title || "Untitled Activity",
           description: activity.description,
           imageUrl: activity.imageUrl,
-          affiliateUrl: null, // Viator activities don't store direct booking URLs in cache
+          affiliateUrl: bookingUrl,
           originalPrice: price,
           currentPrice: price,
           currency: activity.currency || "USD",
@@ -447,6 +461,8 @@ class OpportunityEngineService {
     
     const reviewCount = activity.reviewCount || 0;
     const flags = activity.flags || [];
+    const price = parseFloat(activity.price || "0");
+    const rating = parseFloat(activity.rating || "0");
     
     // Popularity boosts urgency (FOMO effect)
     if (reviewCount > 100) score += 20;
@@ -457,6 +473,11 @@ class OpportunityEngineService {
     if (flags.includes("BESTSELLER") || flags.includes("bestseller")) score += 15;
     if (flags.includes("LIKELY_TO_SELL_OUT") || flags.includes("likely_to_sell_out")) score += 25;
     if (flags.includes("NEW") || flags.includes("new")) score += 10;
+    
+    // Amadeus activities: boost if they have real price + rating data
+    if (activity.provider === 'amadeus' && price > 0) score += 20;
+    if (rating >= 4.0) score += 10;
+    else if (rating >= 3.5) score += 5;
     
     return Math.min(100, score);
   }
