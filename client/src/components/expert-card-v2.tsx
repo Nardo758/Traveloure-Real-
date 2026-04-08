@@ -43,6 +43,7 @@ interface ExpertCardProps {
       languages?: string[];
       yearsExperience?: string;
       responseTime?: string;
+      specialties?: string[];
       city?: string;
       country?: string;
     };
@@ -89,6 +90,7 @@ export function ExpertCard({ expert, showServices = true }: ExpertCardProps) {
 
   const expertise = [
     ...(expert.specialties || []),
+    ...(expert.expertForm?.specialties || []),
     ...(expert.specializations || []),
     ...(expert.experienceTypes?.map(e => e.experienceType?.name).filter(Boolean) as string[] || []),
   ].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
