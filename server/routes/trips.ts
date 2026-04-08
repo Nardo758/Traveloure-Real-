@@ -1121,4 +1121,187 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       res.status(500).json({ message: "Failed to capture analytics" });
     }
   });
+
+  // === Basic Trip CRUD ===
+  app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const status = req.query.status as string | undefined;
+    const trips = await storage.getTrips(userId, status);
+    res.json(trips);
+  });
+
+  app.get(api.trips.get.path, isAuthenticated, async (req, res) => {
+    const trip = await storage.getTrip(req.params.id);
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+    const userId = (req.user as any).claims.sub;
+    if (trip.userId !== userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    res.json(trip);
+  });
+
+  app.post(api.trips.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.trips.create.input.parse(req.body);
+      const sanitizedInput = sanitizeObject(input);
+      if (sanitizedInput.startDate && sanitizedInput.endDate) {
+        if (new Date(sanitizedInput.endDate) < new Date(sanitizedInput.startDate)) {
+          return res.status(400).json({ message: "End date must be on or after start date" });
+        }
+      }
+      if (sanitizedInput.budget && parseFloat(sanitizedInput.budget) < 0) {
+        return res.status(400).json({ message: "Budget must be a positive number" });
+      }
+      const userId = (req.user as any).claims.sub;
+      const trip = await storage.createTrip({ ...sanitizedInput, userId });
+      res.status(201).json(trip);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.patch(api.trips.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.trips.update.input.parse(req.body);
+      const sanitizedInput = sanitizeObject(input);
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      const userId = (req.user as any).claims.sub;
+      if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+      const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
+      res.json(updatedTrip);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  app.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
+    const trip = await storage.getTrip(req.params.id);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    const userId = (req.user as any).claims.sub;
+    if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
+    await storage.deleteTrip(req.params.id);
+    res.status(204).send();
+  });
+
+  app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    try {
+      const trip = await storage.getTrip(req.params.id);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const start = new Date(trip.startDate);
+      const end = new Date(trip.endDate);
+      const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+      const destination = trip.destination || "the destination";
+      const travelers = trip.numberOfTravelers || 1;
+      const preferences = trip.preferences || "";
+
+      let itineraryData: any;
+
+      try {
+        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}
+
+Return ONLY valid JSON in this exact structure:
+{
+  "days": [
+    {
+      "day": 1,
+      "title": "Day theme title",
+      "activities": [
+        {
+          "time": "09:00 AM",
+          "title": "Activity name",
+          "description": "2-3 sentence description",
+          "type": "sightseeing|food|travel|rest|adventure|shopping|culture",
+          "locationName": "Specific place name",
+          "durationMinutes": 90,
+          "estimatedCost": 20
+        }
+      ]
+    }
+  ]
+}
+
+Include 4-6 activities per day. Make it realistic, specific to ${destination}, and culturally accurate.`;
+
+        const completion = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [{ role: "user", content: prompt }],
+        });
+
+        const text = (completion.content[0] as any).text;
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        itineraryData = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+      } catch (aiErr) {
+        console.error("AI generation failed, using contextual fallback:", aiErr);
+        itineraryData = {
+          days: Array.from({ length: duration }, (_, i) => ({
+            day: i + 1,
+            title: i === 0 ? "Arrival & Orientation" : i === duration - 1 ? "Departure Day" : `Exploration Day ${i + 1}`,
+            activities: [
+              { time: "09:00 AM", title: `Morning in ${destination}`, description: `Start your day exploring the highlights of ${destination}.`, type: "sightseeing", locationName: destination, durationMinutes: 120, estimatedCost: 0 },
+              { time: "12:00 PM", title: "Local Lunch", description: `Try authentic local cuisine in ${destination}.`, type: "food", locationName: "Local Restaurant", durationMinutes: 60, estimatedCost: 20 },
+              { time: "2:00 PM", title: "Cultural Experience", description: `Immerse yourself in the culture and history of ${destination}.`, type: "culture", locationName: destination, durationMinutes: 150, estimatedCost: 15 },
+              { time: "7:00 PM", title: "Dinner", description: "Enjoy a relaxing dinner after a full day.", type: "food", locationName: "Local Restaurant", durationMinutes: 90, estimatedCost: 30 },
+            ],
+          })),
+        };
+      }
+
+      const existing = await storage.getGeneratedItineraryByTripId(trip.id);
+      let itinerary;
+      if (existing) {
+        [itinerary] = await db
+          .update(generatedItineraries)
+          .set({ itineraryData, status: "generated" })
+          .where(eq(generatedItineraries.id, existing.id))
+          .returning();
+      } else {
+        itinerary = await storage.createGeneratedItinerary({ tripId: trip.id, itineraryData, status: "generated" });
+      }
+
+      await db.delete(itineraryItems).where(eq(itineraryItems.tripId, trip.id));
+
+      for (const day of itineraryData.days || []) {
+        for (const activity of day.activities || []) {
+          await db.insert(itineraryItems).values({
+            tripId: trip.id,
+            title: activity.title || "Activity",
+            description: activity.description || "",
+            itemType: activity.type || "activity",
+            status: "planned",
+            dayNumber: day.day,
+            startTime: activity.time || "",
+            durationMinutes: activity.durationMinutes || 60,
+            locationName: activity.locationName || destination,
+            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+            currency: "USD",
+          });
+        }
+      }
+
+      res.status(201).json(itinerary);
+    } catch (err) {
+      console.error("Error generating itinerary:", err);
+      res.status(500).json({ message: "Failed to generate itinerary" });
+    }
+  });
+
+  // === Tourist Places ===
+  app.get(api.touristPlaces.search.path, async (req, res) => {
+    const query = req.query.query as string;
+    if (!query) return res.json([]);
+    const results = await storage.searchTouristPlaces(query);
+    res.json(results);
+  });
 }
