@@ -9,5 +9,6 @@ export const modules: ModuleMap = {
   "./components/mockups/dashboard-plancard/ReviewChangesPage.tsx": () => import("../components/mockups/dashboard-plancard/ReviewChangesPage.tsx"),
   "./components/mockups/dashboard-plancard/ServicesPage.tsx": () => import("../components/mockups/dashboard-plancard/ServicesPage.tsx"),
   "./components/mockups/dashboard-plancard/TransportDetailPage.tsx": () => import("../components/mockups/dashboard-plancard/TransportDetailPage.tsx"),
-  "./components/mockups/dashboard-plancard/TripStatsPage.tsx": () => import("../components/mockups/dashboard-plancard/TripStatsPage.tsx")
+  "./components/mockups/dashboard-plancard/TripStatsPage.tsx": () => import("../components/mockups/dashboard-plancard/TripStatsPage.tsx"),
+  "./components/mockups/expert-card/ExpertCard.tsx": () => import("../components/mockups/expert-card/ExpertCard.tsx")
 };
