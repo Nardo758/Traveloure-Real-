@@ -289,6 +289,7 @@ interface EnhancedItem {
   name?: string;
   title?: string;
   description?: string | null;
+  imageUrl?: string | null;
   price?: string | number | null;
   rating?: string | null;
   starRating?: number | null;
@@ -441,64 +442,77 @@ function AIRecommendationsSection({ cityName, country, cachedActivities = [] }: 
             Recommended Activities
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {activities.slice(0, 6).map((activity) => (
-              <Card key={activity.id} className="overflow-hidden" data-testid={`rec-activity-${activity.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-sm line-clamp-2">{activity.title || activity.name}</h4>
-                      {activity.category && (
-                        <Badge variant="outline" className="text-xs mt-1 capitalize">
-                          {activity.category}
-                        </Badge>
+            {activities.slice(0, 6).map((activity) => {
+              const matched = matchActivityToText(activity.title || activity.name || '', cachedActivities);
+              const imageUrl = activity.imageUrl || matched?.imageUrl || null;
+              const bookingHref = matched?.bookingUrl
+                ?? `https://www.viator.com/searchResults/all?text=${encodeURIComponent((activity.title || activity.name || '') + ' ' + cityName)}`;
+              return (
+                <Card key={activity.id} className="overflow-hidden flex flex-col" data-testid={`rec-activity-${activity.id}`}>
+                  {imageUrl ? (
+                    <div className="h-36 overflow-hidden flex-shrink-0">
+                      <img
+                        src={imageUrl}
+                        alt={activity.title || activity.name || 'Activity'}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-36 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center flex-shrink-0">
+                      <Compass className="h-10 w-10 text-primary/30" />
+                    </div>
+                  )}
+                  <CardContent className="p-4 flex flex-col flex-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex-1">
+                        <h4 className="font-medium text-sm line-clamp-2">{activity.title || activity.name}</h4>
+                        {activity.category && (
+                          <Badge variant="outline" className="text-xs mt-1 capitalize">
+                            {activity.category}
+                          </Badge>
+                        )}
+                      </div>
+                      {activity.rating && (
+                        <div className="flex items-center gap-1 ml-2">
+                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                          <span className="text-xs font-medium">{activity.rating}</span>
+                        </div>
                       )}
                     </div>
-                    {activity.rating && (
-                      <div className="flex items-center gap-1 ml-2">
-                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                        <span className="text-xs font-medium">{activity.rating}</span>
-                      </div>
-                    )}
-                  </div>
-                  <AIRecommendationBadges
-                    aiScore={activity.aiScore}
-                    aiReasons={activity.aiReasons}
-                    seasonalMatch={activity.seasonalMatch}
-                    eventRelated={activity.eventRelated}
-                    budgetMatch={activity.budgetMatch}
-                    bestTimeMatch={activity.bestTimeMatch}
-                    preferenceMatch={activity.preferenceMatch}
-                    showScore={true}
-                  />
-                  {(() => {
-                    const matched = matchActivityToText(activity.title || activity.name || '', cachedActivities);
-                    const bookingHref = matched?.bookingUrl
-                      ?? `https://www.viator.com/searchResults/all?text=${encodeURIComponent((activity.title || activity.name || '') + ' ' + cityName)}`;
-                    return (
-                      <div className="flex items-center justify-between mt-2">
-                        {activity.price && (
-                          <p className="text-sm font-semibold">
-                            ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
-                          </p>
-                        )}
-                        <a
-                          href={bookingHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-auto"
-                          data-testid={`link-book-activity-${activity.id}`}
-                        >
-                          <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
-                            {matched ? "Book Now" : "Find & Book"}
-                            <ExternalLink className="h-3 w-3 ml-1" />
-                          </Button>
-                        </a>
-                      </div>
-                    );
-                  })()}
-                </CardContent>
-              </Card>
-            ))}
+                    <AIRecommendationBadges
+                      aiScore={activity.aiScore}
+                      aiReasons={activity.aiReasons}
+                      seasonalMatch={activity.seasonalMatch}
+                      eventRelated={activity.eventRelated}
+                      budgetMatch={activity.budgetMatch}
+                      bestTimeMatch={activity.bestTimeMatch}
+                      preferenceMatch={activity.preferenceMatch}
+                      showScore={true}
+                    />
+                    <div className="flex items-center justify-between mt-auto pt-2">
+                      {activity.price && (
+                        <p className="text-sm font-semibold">
+                          ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
+                        </p>
+                      )}
+                      <a
+                        href={bookingHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto"
+                        data-testid={`link-book-activity-${activity.id}`}
+                      >
+                        <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
+                          {matched ? "Book Now" : "Find & Book"}
+                          <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </a>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}
