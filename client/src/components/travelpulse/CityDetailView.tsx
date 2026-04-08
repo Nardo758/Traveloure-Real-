@@ -46,6 +46,7 @@ import {
   ExternalLink,
   Radio,
   Ticket,
+  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -740,6 +741,189 @@ function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
   );
 }
 
+interface BookableActivity {
+  id: string;
+  productCode: string;
+  title: string;
+  description?: string | null;
+  price: number | null;
+  currency: string;
+  rating: number | null;
+  reviewCount: number;
+  imageUrl?: string | null;
+  provider: string;
+  category?: string | null;
+  durationMinutes?: number | null;
+  bookingUrl: string | null;
+}
+
+const CATEGORY_FILTERS = ["All", "Activity", "Tour", "Experience", "Outdoor", "Cultural"] as const;
+type CategoryFilter = typeof CATEGORY_FILTERS[number];
+
+const PROVIDER_COLORS: Record<string, string> = {
+  amadeus: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  viator: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+};
+
+function BookableActivitiesSection({ cityName }: { cityName: string }) {
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("All");
+
+  const { data, isLoading } = useQuery<{ activities: BookableActivity[]; total: number; city: string }>({
+    queryKey: ["/api/travelpulse/activities", cityName],
+    queryFn: async () => {
+      const res = await fetch(`/api/travelpulse/activities/${encodeURIComponent(cityName)}`);
+      if (!res.ok) throw new Error("Failed to fetch bookable activities");
+      return res.json();
+    },
+    enabled: !!cityName,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const filtered = (data?.activities ?? []).filter((act) => {
+    if (categoryFilter === "All") return true;
+    const cat = (act.category ?? "").toLowerCase();
+    return cat.includes(categoryFilter.toLowerCase());
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 mt-8">
+        <Skeleton className="h-8 w-56" />
+        <div className="flex gap-2">
+          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-7 w-20 rounded-full" />)}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-52 w-full rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || data.activities.length === 0) {
+    return (
+      <Card className="p-8 text-center mt-8" data-testid="card-no-bookable-activities">
+        <ShoppingBag className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground font-medium">No bookable experiences found for {cityName}</p>
+        <p className="text-xs text-muted-foreground mt-1">Activities are refreshed regularly</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4 mt-8" data-testid="bookable-activities-section">
+      <div className="flex items-center gap-2">
+        <ShoppingBag className="h-5 w-5 text-primary" />
+        <h3 className="text-lg font-semibold">Book Experiences</h3>
+        <Badge variant="outline" className="text-xs">{data.total} available</Badge>
+      </div>
+
+      <div className="flex gap-2 flex-wrap" data-testid="category-filter-chips">
+        {CATEGORY_FILTERS.map((cat) => (
+          <Button
+            key={cat}
+            size="sm"
+            variant={categoryFilter === cat ? "default" : "outline"}
+            onClick={() => setCategoryFilter(cat)}
+            className="text-xs h-7 rounded-full"
+            data-testid={`filter-category-${cat.toLowerCase()}`}
+          >
+            {cat}
+          </Button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">No {categoryFilter} experiences found</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+          {filtered.slice(0, 12).map((act) => (
+            <Card key={act.id} className="overflow-hidden flex flex-col" data-testid={`bookable-activity-${act.id}`}>
+              {act.imageUrl ? (
+                <div className="h-36 overflow-hidden flex-shrink-0">
+                  <img src={act.imageUrl} alt={act.title} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <div className="h-36 bg-muted flex items-center justify-center flex-shrink-0">
+                  <ShoppingBag className="h-8 w-8 text-muted-foreground/40" />
+                </div>
+              )}
+              <CardContent className="p-3 flex flex-col flex-1">
+                <div className="flex gap-1 flex-wrap mb-1">
+                  <Badge
+                    className={cn("text-xs capitalize", PROVIDER_COLORS[act.provider] ?? "bg-gray-100 text-gray-700")}
+                    data-testid={`provider-badge-${act.id}`}
+                  >
+                    {act.provider}
+                  </Badge>
+                  {act.category && (
+                    <Badge variant="outline" className="text-xs capitalize">{act.category}</Badge>
+                  )}
+                </div>
+
+                <h4
+                  className="font-medium text-sm leading-tight line-clamp-2 mb-1 flex-1"
+                  data-testid={`activity-title-${act.id}`}
+                >
+                  {act.title}
+                </h4>
+
+                {act.rating != null && (
+                  <div className="flex items-center gap-1 mb-2">
+                    <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                    <span className="text-xs font-medium">{act.rating.toFixed(1)}</span>
+                    {act.reviewCount > 0 && (
+                      <span className="text-xs text-muted-foreground">({act.reviewCount.toLocaleString()})</span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mt-auto pt-2">
+                  <div>
+                    {act.price != null && act.price > 0 ? (
+                      <p className="text-sm font-bold" data-testid={`activity-price-${act.id}`}>
+                        From {act.currency === "USD" ? "$" : act.currency}{act.price.toFixed(0)}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Price on request</p>
+                    )}
+                    {act.durationMinutes && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {act.durationMinutes >= 60
+                          ? `${Math.floor(act.durationMinutes / 60)}h${act.durationMinutes % 60 > 0 ? ` ${act.durationMinutes % 60}m` : ""}`
+                          : `${act.durationMinutes}m`}
+                      </p>
+                    )}
+                  </div>
+                  {act.bookingUrl ? (
+                    <a
+                      href={act.bookingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid={`link-book-activity-${act.id}`}
+                    >
+                      <Button size="sm" className="text-xs h-7">
+                        Book
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    </a>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-xs h-7" disabled>
+                      View
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CityDetailSkeleton() {
   return (
     <div className="space-y-6">
@@ -1141,6 +1325,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
 
         <TabsContent value="recommendations" className="mt-4">
           <AIRecommendationsSection cityName={city.cityName} country={city.country} />
+          <BookableActivitiesSection cityName={city.cityName} />
           <EnrichedRecommendationsSection cityName={city.cityName} />
         </TabsContent>
 
