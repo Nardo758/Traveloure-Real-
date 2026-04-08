@@ -858,33 +858,78 @@ Provide current, real-world data based on your knowledge. Include seasonal patte
   }
 
   async getSocialFeedForCity(city: string): Promise<SocialFeedPost[]> {
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return [];
+
+    const fromDate = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const toDate = new Date().toISOString().split('T')[0];
+
+    try {
+      // Use xAI Responses API with x_search tool for real-time X/Twitter data
+      // The old search_parameters on Chat Completions was deprecated Jan 12, 2026
+      const response = await fetch('https://api.x.ai/v1/responses', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'grok-3-fast',
+          input: [{
+            role: 'user',
+            content: `Search X for recent posts from travelers visiting or discussing ${city} in the past 48 hours. Find 10-12 real posts about the travel experience — food, sights, vibes, tips, or reactions.
+
+Return ONLY a JSON object with no markdown, no explanation, exactly this format:
+{"posts": [{"id": "post_1", "authorName": "Real Display Name", "authorHandle": "@realhandle", "content": "Actual post text (max 280 chars)", "likesCount": 234, "repostsCount": 45, "postedAt": "2026-04-07T14:30:00Z", "postUrl": "https://x.com/handle/status/1234567890", "sentiment": "positive"}]}
+
+Sentiment values: "positive", "neutral", or "negative". Use actual data from X search results. If no URL is available, use https://x.com/search?q=${encodeURIComponent(city)}travel.`
+          }],
+          tools: [{ type: 'x_search', from_date: fromDate, to_date: toDate }],
+          include: ['no_inline_citations'],
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        console.error(`xAI Responses API error ${response.status}:`, errText.slice(0, 200));
+        throw new Error(`Responses API returned ${response.status}`);
+      }
+
+      const data = await response.json() as any;
+      const text: string = data?.output?.[0]?.content?.[0]?.text || '';
+      if (!text) throw new Error('Empty Responses API output');
+
+      // Extract JSON from the response text (model may or may not wrap in code block)
+      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || text.match(/(\{[\s\S]*\})/);
+      const jsonStr = jsonMatch?.[1] || jsonMatch?.[0] || '';
+      if (!jsonStr) throw new Error('No JSON found in Responses API output');
+
+      const parsed = JSON.parse(jsonStr);
+      const posts = (parsed.posts || []) as SocialFeedPost[];
+
+      // Enforce cap, add source field
+      return posts.slice(0, 20).map((p, i) => ({
+        ...p,
+        id: p.id || `xpost_${i}`,
+        source: 'twitter' as const,
+        sentiment: p.sentiment || 'positive',
+      }));
+    } catch (error: any) {
+      console.warn('xAI Responses API x_search failed, falling back to synthetic generation:', error.message);
+      return this._getSocialFeedSynthetic(city);
+    }
+  }
+
+  private async _getSocialFeedSynthetic(city: string): Promise<SocialFeedPost[]> {
     const now = new Date().toISOString();
-
     const systemPrompt = `You are a travel social media analyst. Return ONLY valid JSON, no other text.`;
-
-    const userPrompt = `Generate 10-12 realistic X (Twitter) posts representing what travelers are sharing about ${city} right now. These should feel authentic — a mix of first-hand experiences, tips, food finds, and reactions.
+    const userPrompt = `Generate 10-12 recent X (Twitter) posts representing what travelers are sharing about ${city}. Mix of first-hand experiences, tips, food finds, and reactions based on your knowledge of what's currently trending there.
 
 Return this exact JSON:
-{
-  "posts": [
-    {
-      "id": "uid_1",
-      "source": "twitter",
-      "authorName": "Display Name",
-      "authorHandle": "@handle",
-      "content": "Tweet text about ${city} (max 280 chars)",
-      "likesCount": 234,
-      "repostsCount": 45,
-      "postedAt": "ISO timestamp within 48h of ${now}",
-      "postUrl": "https://x.com/handle/status/1234567890",
-      "sentiment": "positive"
-    }
-  ]
-}
+{"posts": [{"id": "uid_1", "source": "twitter", "authorName": "Display Name", "authorHandle": "@handle", "content": "Post text about ${city} (max 280 chars)", "likesCount": 234, "repostsCount": 45, "postedAt": "${now}", "postUrl": "https://x.com/handle/status/1234567890", "sentiment": "positive"}]}
 
-Content mix: arrival excitement, hidden gem discoveries, restaurant finds, crowd/weather reports, local tips, travel photography, event coverage.
-Sentiment: "positive", "neutral", or "negative". Mostly positive.
-Engagement: realistic ranges (30–4000 likes, 5–400 reposts).`;
+Content mix: arrival excitement, hidden gem discoveries, restaurant finds, crowd/weather reports, local tips.
+Sentiment: "positive", "neutral", or "negative". Mostly positive. Engagement: 30-4000 likes, 5-400 reposts.`;
 
     try {
       const response = await getGrokClient().chat.completions.create({
@@ -901,9 +946,9 @@ Engagement: realistic ranges (30–4000 likes, 5–400 reposts).`;
       if (!content) return [];
 
       const parsed = JSON.parse(content);
-      return (parsed.posts || []) as SocialFeedPost[];
+      return ((parsed.posts || []) as SocialFeedPost[]).slice(0, 20);
     } catch (error: any) {
-      console.error("Social feed Grok error:", error);
+      console.error("Social feed synthetic fallback error:", error);
       return [];
     }
   }
