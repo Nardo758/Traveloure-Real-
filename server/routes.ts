@@ -69,6 +69,7 @@ import { registerExpertRoutes } from "./routes/expert";
 import { registerCartRoutes } from "./routes/cart";
 import { registerItineraryShareRoutes } from "./routes/itinerary";
 import { registerMiscRoutes } from "./routes/misc";
+import { sanitizeObject } from "./routes/route-utils";
 import { 
   insertTripParticipantSchema, 
   insertVendorContractSchema, 

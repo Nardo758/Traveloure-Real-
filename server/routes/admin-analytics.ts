@@ -59,6 +59,22 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 
 
+const DEFAULT_SETTINGS: Record<string, string> = {
+  platform_name: "Traveloure",
+  default_currency: "USD",
+  timezone: "UTC",
+  support_email: "support@traveloure.com",
+  expert_commission_min: "75",
+  expert_commission_max: "85",
+  provider_commission_min: "4",
+  provider_commission_max: "12",
+  ai_recommendations_enabled: "true",
+  new_registrations_enabled: "true",
+  travelpulse_enabled: "true",
+  credit_system_enabled: "true",
+  affiliate_bookings_enabled: "true",
+};
+
 export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     try {

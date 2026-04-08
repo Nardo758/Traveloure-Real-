@@ -57,9 +57,15 @@ import { registerExpertBookingRoutes } from "./expert-bookings";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const expertBookingRequestSchema = z.object({
+  tripId: z.string().min(1, "tripId is required"),
+  notes: z.string().optional().default("")
+});
+
 export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
-  app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
   registerExpertBookingRoutes(app, resolveSlug);
+
+  app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
     try {
       const validation = expertBookingRequestSchema.safeParse(req.body);
       if (!validation.success) {

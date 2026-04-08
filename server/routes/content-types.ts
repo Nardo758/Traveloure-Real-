@@ -83,6 +83,11 @@ const contactSchema = z.object({
 });
 
 
+const slugAliases: Record<string, string> = {
+  "romance": "date-night",
+  "corporate": "corporate-events",
+};
+
 export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/vendors", async (req, res) => {
     const { category, city } = req.query;

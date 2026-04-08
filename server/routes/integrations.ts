@@ -66,6 +66,82 @@ import path from "path";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const transferSearchSchema = z.object({
+  startLocationCode: z.string().min(3).max(4),
+  endAddressLine: z.string().optional(),
+  endCityName: z.string().optional(),
+  endGeoCode: z.object({
+    latitude: z.number(),
+    longitude: z.number()
+  }).optional(),
+  transferType: z.string(),
+  startDateTime: z.string(),
+  passengers: z.union([z.string(), z.number()]).transform((val) => 
+    typeof val === 'string' ? parseInt(val, 10) : val
+  ),
+});
+
+const verifyItemSchema = z.object({
+  type: z.enum(['hotel', 'activity', 'flight']),
+  id: z.string(),
+  checkInDate: z.string().optional(),
+  checkOutDate: z.string().optional(),
+  travelDate: z.string().optional(),
+  adults: z.number().optional(),
+  rooms: z.number().optional(),
+  currency: z.string().optional(),
+});
+
+const verifyAvailabilitySchema = z.object({
+  items: z.array(verifyItemSchema).min(1).max(50),
+});
+
+const hotelFilterSchema = z.object({
+  cityCode: z.string().max(10).optional(),
+  searchQuery: z.string().max(200).optional(),
+  priceMin: z.coerce.number().min(0).max(100000).optional(),
+  priceMax: z.coerce.number().min(0).max(100000).optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  preferenceTags: z.string().max(500).optional(),
+  county: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
+  countryCode: z.string().max(5).optional(),
+  sortBy: z.enum(['price_low', 'price_high', 'rating', 'popularity', 'newest']).optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+});
+
+const activityFilterSchema = z.object({
+  destination: z.string().max(200).optional(),
+  searchQuery: z.string().max(200).optional(),
+  priceMin: z.coerce.number().min(0).max(100000).optional(),
+  priceMax: z.coerce.number().min(0).max(100000).optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
+  preferenceTags: z.string().max(500).optional(),
+  category: z.string().max(100).optional(),
+  county: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
+  countryCode: z.string().max(5).optional(),
+  sortBy: z.enum(['price_low', 'price_high', 'rating', 'popularity', 'newest']).optional(),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+});
+
+const checkoutVerifySchema = z.object({
+  items: z.array(z.object({
+    type: z.enum(['hotel', 'activity', 'flight']),
+    id: z.string().max(100),
+    params: z.object({
+      checkInDate: z.string().optional(),
+      checkOutDate: z.string().optional(),
+      travelDate: z.string().optional(),
+      adults: z.number().optional(),
+      rooms: z.number().optional(),
+      currency: z.string().optional(),
+    }).optional(),
+  })).max(20),
+});
+
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   email: z.string().email("Invalid email"),
