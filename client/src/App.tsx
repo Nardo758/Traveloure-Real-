@@ -643,7 +643,7 @@ function Router() {
         {() => <DashboardLayout><ProtectedRoute component={Chat} /></DashboardLayout>}
       </Route>
       <Route path="/ai-assistant">
-        {() => <DashboardLayout><ProtectedRoute component={AIAssistant} /></DashboardLayout>}
+        {() => <Layout><ProtectedRoute component={AIAssistant} /></Layout>}
       </Route>
       <Route path="/vendors">
         {() => <Layout><ProtectedRoute component={Vendors} /></Layout>}
