@@ -6766,9 +6766,11 @@ Respond with this exact JSON structure:
       }
       
       const normalizedAddress = address.toLowerCase().trim();
-      const fallback = Object.entries(FALLBACK_COORDINATES).find(([key]) => 
-        normalizedAddress.includes(key) || key.includes(normalizedAddress)
-      );
+      // Prefer exact key match first to avoid substring collisions (e.g. "uk" inside "phuket")
+      const fallback = Object.entries(FALLBACK_COORDINATES).find(([key]) => key === normalizedAddress)
+        ?? Object.entries(FALLBACK_COORDINATES).find(([key]) =>
+          normalizedAddress.includes(key) || key.includes(normalizedAddress)
+        );
       
       if (fallback) {
         return res.json(fallback[1]);
