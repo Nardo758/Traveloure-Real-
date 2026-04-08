@@ -66,6 +66,38 @@ import path from "path";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+const searchEventSchema = z.object({
+  destination: z.string(),
+  origin: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  travelers: z.number().optional(),
+  experienceType: z.string().optional(),
+  searchContext: z.string().optional(),
+});
+
+const itineraryGeneratedSchema = z.object({
+  tripId: z.string().optional(),
+  destination: z.string(),
+  activities: z.array(z.string()).optional(),
+  duration: z.number().optional(),
+  travelers: z.number().optional(),
+  budget: z.number().optional(),
+  variationType: z.string().optional(),
+  experienceType: z.string().optional(),
+});
+
+const bookingEventSchema = z.object({
+  type: z.string(),
+  destination: z.string().optional(),
+  price: z.number().optional(),
+  travelers: z.number().optional(),
+  tripId: z.string().optional(),
+  itemId: z.string().optional(),
+  provider: z.string().optional(),
+  bookingStatus: z.string().optional(),
+});
+
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   email: z.string().email("Invalid email"),

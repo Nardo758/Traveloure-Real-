@@ -75,6 +75,131 @@ const contactSchema = z.object({
   preferredContactMethod: z.enum(["email", "phone"]).optional(),
 });
 
+const claudeCartItemSchema = z.object({
+  id: z.string().max(100),
+  type: z.string().max(50),
+  name: z.string().max(500),
+  price: z.number().min(0).max(1000000),
+  details: z.string().max(1000).optional(),
+  metadata: z.object({
+    cabin: z.string().max(50).optional(),
+    baggage: z.string().max(100).optional(),
+    stops: z.number().min(0).max(10).optional(),
+    duration: z.string().max(50).optional(),
+    airline: z.string().max(100).optional(),
+    departureTime: z.string().max(50).optional(),
+    arrivalTime: z.string().max(50).optional(),
+    refundable: z.boolean().optional(),
+    cancellationDeadline: z.string().max(100).optional(),
+    boardType: z.string().max(50).optional(),
+    nights: z.number().min(0).max(365).optional(),
+    checkInDate: z.string().max(20).optional(),
+    checkOutDate: z.string().max(20).optional(),
+    meetingPoint: z.string().max(500).optional(),
+    meetingPointCoordinates: z.object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    }).optional(),
+    travelers: z.number().min(1).max(100).optional(),
+  }).passthrough().optional(),
+});
+
+const claudeOptimizeSchema = z.object({
+  destination: z.string().min(1).max(200),
+  startDate: z.string().max(20),
+  endDate: z.string().max(20),
+  travelers: z.number().min(1).max(100).optional(),
+  budget: z.number().min(0).max(10000000).optional(),
+  cartItems: z.array(claudeCartItemSchema).max(50),
+  preferences: z.object({
+    pacePreference: z.enum(['relaxed', 'moderate', 'packed']).optional(),
+    prioritizeProximity: z.boolean().optional(),
+    prioritizeBudget: z.boolean().optional(),
+    prioritizeRatings: z.boolean().optional(),
+  }).optional(),
+});
+
+const claudeTransportSchema = z.object({
+  hotelLocation: z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    address: z.string().max(500),
+  }),
+  activityLocations: z.array(z.object({
+    lat: z.number().min(-90).max(90),
+    lng: z.number().min(-180).max(180),
+    address: z.string().max(500),
+    name: z.string().max(300),
+  })).max(20),
+});
+
+const claudeRecommendationsSchema = z.object({
+  destination: z.string().min(1).max(200),
+  dates: z.object({
+    start: z.string().max(20),
+    end: z.string().max(20),
+  }),
+  interests: z.array(z.string().max(50)).max(20),
+});
+
+const expertMatchSchema = z.object({
+  travelerProfile: z.object({
+    destination: z.string(),
+    tripDates: z.object({
+      start: z.string(),
+      end: z.string(),
+    }),
+    eventType: z.string().optional(),
+    budget: z.number().optional(),
+    travelers: z.number(),
+    interests: z.array(z.string()).optional(),
+    preferences: z.record(z.any()).optional(),
+  }),
+  expertIds: z.array(z.string()).optional(),
+  limit: z.number().optional().default(5),
+});
+
+const contentGenerationSchema = z.object({
+  type: z.enum(["bio", "service_description", "inquiry_response", "welcome_message"]),
+  context: z.record(z.any()),
+  tone: z.enum(["professional", "friendly", "casual"]).optional(),
+  length: z.enum(["short", "medium", "long"]).optional(),
+});
+
+const intelligenceSchema = z.object({
+  destination: z.string(),
+  dates: z.object({
+    start: z.string(),
+    end: z.string(),
+  }).optional(),
+  topics: z.array(z.enum(["events", "weather", "safety", "trending", "deals"])).optional(),
+});
+
+const autonomousItinerarySchema = z.object({
+  destination: z.string(),
+  dates: z.object({
+    start: z.string(),
+    end: z.string(),
+  }),
+  travelers: z.number(),
+  budget: z.number().optional(),
+  eventType: z.string().optional(),
+  interests: z.array(z.string()),
+  pacePreference: z.enum(["relaxed", "moderate", "packed"]).optional(),
+  mustSeeAttractions: z.array(z.string()).optional(),
+  dietaryRestrictions: z.array(z.string()).optional(),
+  mobilityConsiderations: z.array(z.string()).optional(),
+  tripId: z.string().optional(),
+});
+
+const chatSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant", "system"]),
+    content: z.string(),
+  })),
+  systemContext: z.string().optional(),
+  preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
+});
 
 export function registerAiRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {

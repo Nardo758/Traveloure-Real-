@@ -59,9 +59,10 @@ import { registerAdminAnalyticsRoutes } from "./admin-analytics";
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
-  app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
   registerAdminContentRoutes(app, resolveSlug);
   registerAdminAnalyticsRoutes(app, resolveSlug);
+
+  app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });

@@ -53,6 +53,7 @@ import {
 import { api } from "@shared/routes";
 import Stripe from "stripe";
 import { verifyTripOwnership, logItineraryChange, sanitizeInput, sanitizeObject, mapFeverCategoryToEventType, requireAdmin, checkAIRateLimit } from "./route-utils";
+import { travelPulseService } from "../services/travelpulse.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
