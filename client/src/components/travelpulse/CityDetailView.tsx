@@ -322,7 +322,7 @@ interface AIRecommendationsResponse {
   totalActivities: number;
 }
 
-function AIRecommendationsSection({ cityName, country }: { cityName: string; country: string }) {
+function AIRecommendationsSection({ cityName, country, cachedActivities = [] }: { cityName: string; country: string; cachedActivities?: BookableActivity[] }) {
   const currentMonth = new Date().getMonth() + 1;
   
   const { data, isLoading, error } = useQuery<AIRecommendationsResponse>({
@@ -470,25 +470,32 @@ function AIRecommendationsSection({ cityName, country }: { cityName: string; cou
                     preferenceMatch={activity.preferenceMatch}
                     showScore={true}
                   />
-                  <div className="flex items-center justify-between mt-2">
-                    {activity.price && (
-                      <p className="text-sm font-semibold">
-                        ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
-                      </p>
-                    )}
-                    <a
-                      href={`https://www.viator.com/searchResults/all?text=${encodeURIComponent((activity.title || activity.name || '') + ' ' + cityName)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-auto"
-                      data-testid={`link-book-activity-${activity.id}`}
-                    >
-                      <Button size="sm" variant="outline" className="text-xs h-7">
-                        Book Activity
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </a>
-                  </div>
+                  {(() => {
+                    const matched = matchActivityToText(activity.title || activity.name || '', cachedActivities);
+                    const bookingHref = matched?.bookingUrl
+                      ?? `https://www.viator.com/searchResults/all?text=${encodeURIComponent((activity.title || activity.name || '') + ' ' + cityName)}`;
+                    return (
+                      <div className="flex items-center justify-between mt-2">
+                        {activity.price && (
+                          <p className="text-sm font-semibold">
+                            ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
+                          </p>
+                        )}
+                        <a
+                          href={bookingHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-auto"
+                          data-testid={`link-book-activity-${activity.id}`}
+                        >
+                          <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
+                            {matched ? "Book Now" : "Find & Book"}
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                          </Button>
+                        </a>
+                      </div>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             ))}
@@ -973,6 +980,52 @@ function CityDetailSkeleton() {
   );
 }
 
+// ── Activity Matching ─────────────────────────────────────────────────────────
+// Cross-reference free-text (social posts, gem names, AI recommendations)
+// against cached Viator/Amadeus activities. Returns the best match that also
+// has a real booking URL, or null if no confident match is found.
+const MATCH_STOPWORDS = new Set([
+  'this','that','with','from','have','been','will','your','they','their',
+  'more','just','like','what','when','then','than','into','over','some',
+  'only','also','very','come','here','time','even','most','such','both',
+  'each','after','well','great','there','about','which','those','these',
+  'really','amazing','awesome','loved','visit','going','doing',
+]);
+
+function matchActivityToText(text: string, activities: BookableActivity[]): BookableActivity | null {
+  if (!text || activities.length === 0) return null;
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !MATCH_STOPWORDS.has(w));
+  if (words.length === 0) return null;
+
+  let best: BookableActivity | null = null;
+  let bestScore = 0;
+
+  for (const act of activities) {
+    if (!act.bookingUrl) continue;
+    const titleWords = act.title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !MATCH_STOPWORDS.has(w));
+    if (titleWords.length === 0) continue;
+
+    const matchCount = words.filter(w => titleWords.includes(w)).length;
+    if (matchCount === 0) continue;
+
+    const score = matchCount / Math.min(titleWords.length, Math.max(words.length, 1));
+    // Require at least 2 matched words OR a strong score on a short title
+    if ((matchCount >= 2 || score >= 0.5) && score > bestScore) {
+      bestScore = score;
+      best = act;
+    }
+  }
+  return best;
+}
+
 interface VibeFilter { categories: string[]; minPrice?: number }
 const VIBE_TO_FILTER: Record<string, VibeFilter> = {
   foodie:     { categories: ["food", "dining", "restaurant", "culinary"] },
@@ -1002,6 +1055,20 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
     queryKey: ["/api/travelpulse/media", cityName, data?.city?.country],
     enabled: !!data?.city?.country,
   });
+
+  // Shared bookable activities — fetched on mount; same query key as
+  // BookableActivitiesSection so TanStack Query deduplicates the network call.
+  const { data: activitiesData } = useQuery<{ activities: BookableActivity[]; total: number; city: string }>({
+    queryKey: ["/api/travelpulse/activities", cityName],
+    queryFn: async () => {
+      const res = await fetch(`/api/travelpulse/activities/${encodeURIComponent(cityName)}`);
+      if (!res.ok) throw new Error("Failed to fetch activities");
+      return res.json();
+    },
+    enabled: !!cityName,
+    staleTime: 10 * 60 * 1000,
+  });
+  const cachedActivities = activitiesData?.activities ?? [];
 
   // Social feed (X/Twitter via Grok) — pre-warmed on city card open so Grok
   // fetch is already in flight when the user clicks the Live tab.
@@ -1354,18 +1421,25 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                           {gem.touristMentions} tourist mentions
                         </span>
                         {gem.priceRange && <span>{gem.priceRange}</span>}
-                        <a
-                          href={`https://www.google.com/maps/search/${encodeURIComponent(gem.placeName + ' ' + city.cityName)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-auto"
-                          data-testid={`link-explore-gem-${gem.id}`}
-                        >
-                          <Button size="sm" variant="outline" className="text-xs h-7">
-                            Explore
-                            <MapPin className="h-3 w-3 ml-1" />
-                          </Button>
-                        </a>
+                        {(() => {
+                          const matched = matchActivityToText(gem.placeName + ' ' + (gem.placeType ?? '') + ' ' + (gem.description ?? ''), cachedActivities);
+                          const href = matched?.bookingUrl
+                            ?? `https://www.google.com/maps/search/${encodeURIComponent(gem.placeName + ' ' + city.cityName)}`;
+                          return (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ml-auto"
+                              data-testid={`link-explore-gem-${gem.id}`}
+                            >
+                              <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
+                                {matched ? "Book" : "Explore"}
+                                {matched ? <ExternalLink className="h-3 w-3 ml-1" /> : <MapPin className="h-3 w-3 ml-1" />}
+                              </Button>
+                            </a>
+                          );
+                        })()}
                       </div>
                     </CardContent>
                   </div>
@@ -1376,7 +1450,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
         </TabsContent>
 
         <TabsContent value="recommendations" className="mt-4">
-          <AIRecommendationsSection cityName={city.cityName} country={city.country} />
+          <AIRecommendationsSection cityName={city.cityName} country={city.country} cachedActivities={cachedActivities} />
           <BookableActivitiesSection cityName={city.cityName} />
           <EnrichedRecommendationsSection cityName={city.cityName} />
         </TabsContent>
@@ -1564,37 +1638,54 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                       </Card>
                     ) : (
                       <div className="space-y-2">
-                        {(instagramPosts || []).slice(0, 10).map((post) => (
-                          <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
-                            <CardContent className="py-3 px-4">
-                              <div className="flex items-start gap-3">
-                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                                  <Camera className="h-4 w-4 text-white" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-semibold text-sm">Instagram</span>
-                                    <span className="text-[10px] font-bold bg-gradient-to-r from-pink-500 to-purple-600 text-white px-1.5 py-0.5 rounded">IG</span>
-                                    <span className="text-xs text-muted-foreground ml-auto">
-                                      {formatDistanceToNow(new Date(post.postedAt), { addSuffix: true })}
-                                    </span>
+                        {(instagramPosts || []).slice(0, 10).map((post) => {
+                          const igMatched = matchActivityToText(post.content, cachedActivities);
+                          return (
+                            <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
+                              <CardContent className="py-3 px-4">
+                                <div className="flex items-start gap-3">
+                                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                                    <Camera className="h-4 w-4 text-white" />
                                   </div>
-                                  <p className="text-sm text-muted-foreground leading-snug line-clamp-3">{post.content}</p>
-                                  <a
-                                    href={post.postUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="mt-2 text-xs text-primary hover:underline flex items-center gap-1 w-fit"
-                                    data-testid={`link-view-ig-${post.id}`}
-                                  >
-                                    View on Instagram
-                                    <ExternalLink className="h-3 w-3" />
-                                  </a>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="font-semibold text-sm">Instagram</span>
+                                      <span className="text-[10px] font-bold bg-gradient-to-r from-pink-500 to-purple-600 text-white px-1.5 py-0.5 rounded">IG</span>
+                                      <span className="text-xs text-muted-foreground ml-auto">
+                                        {formatDistanceToNow(new Date(post.postedAt), { addSuffix: true })}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground leading-snug line-clamp-3">{post.content}</p>
+                                    <a
+                                      href={post.postUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="mt-2 text-xs text-primary hover:underline flex items-center gap-1 w-fit"
+                                      data-testid={`link-view-ig-${post.id}`}
+                                    >
+                                      View on Instagram
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                    {igMatched && (
+                                      <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between gap-2" data-testid={`ig-match-${post.id}`}>
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <Ticket className="h-3 w-3 text-primary flex-shrink-0" />
+                                          <span className="text-xs text-muted-foreground truncate">
+                                            Book: <span className="font-medium text-foreground">{igMatched.title}</span>
+                                            {igMatched.price != null && igMatched.price > 0 && ` · from ${igMatched.currency === 'USD' ? '$' : igMatched.currency}${igMatched.price.toFixed(0)}`}
+                                          </span>
+                                        </div>
+                                        <a href={igMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
+                                          <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
+                                        </a>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1637,6 +1728,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                       <div className="space-y-2">
                         {(socialPosts || []).filter(p => p.source === 'twitter').slice(0, 10).map((post) => {
                           const initials = post.authorName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                          const xMatched = matchActivityToText(post.content, cachedActivities);
                           return (
                             <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
                               <CardContent className="py-3 px-4">
@@ -1698,6 +1790,20 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                                       <ExternalLink className="h-3 w-3" />
                                     </a>
                                   </div>
+                                  {xMatched && (
+                                    <div className="pl-12 pt-1 border-t border-border/50 flex items-center justify-between gap-2" data-testid={`x-match-${post.id}`}>
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <Ticket className="h-3 w-3 text-primary flex-shrink-0" />
+                                        <span className="text-xs text-muted-foreground truncate">
+                                          Book: <span className="font-medium text-foreground">{xMatched.title}</span>
+                                          {xMatched.price != null && xMatched.price > 0 && ` · from ${xMatched.currency === 'USD' ? '$' : xMatched.currency}${xMatched.price.toFixed(0)}`}
+                                        </span>
+                                      </div>
+                                      <a href={xMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
+                                        <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
+                                      </a>
+                                    </div>
+                                  )}
                                 </div>
                               </CardContent>
                             </Card>
