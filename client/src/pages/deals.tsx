@@ -216,8 +216,11 @@ export default function DealsPage() {
 
   const { data, isLoading, isError } = useQuery<DealsResponse>({
     queryKey: ["/api/deals", activeCategory],
-    queryFn: () =>
-      fetch(`/api/deals?category=${activeCategory}&limit=50`).then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/deals?category=${activeCategory}&limit=50`);
+      if (!r.ok) throw new Error(`Failed to fetch deals: ${r.status}`);
+      return r.json();
+    },
     staleTime: 5 * 60 * 1000,
   });
 
