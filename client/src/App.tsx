@@ -10,7 +10,6 @@ import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
 
 import LandingPage from "@/pages/landing";
-import LandingMockups from "@/pages/landing-mockups";
 import Dashboard from "@/pages/dashboard";
 import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
@@ -87,7 +86,6 @@ import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
 import ExperienceTemplatePage from "@/pages/experience-template";
-import ArchitectureDiagram from "@/pages/architecture-diagram";
 import ExperiencesPage from "@/pages/experiences";
 import ExperienceDiscoveryPage from "@/pages/experience-discovery";
 import DealsPage from "@/pages/deals";
@@ -114,7 +112,6 @@ import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
-import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
 import SpontaneousPage from "@/pages/spontaneous";
@@ -129,7 +126,6 @@ import PressPage from "@/pages/press";
 import HelpPage from "@/pages/help";
 import ExpertDetailPage from "@/pages/expert-detail";
 import QuickStartItinerary from "@/pages/quick-start-itinerary";
-import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import ItineraryViewPage from "@/pages/itinerary-view";
 import {
@@ -199,9 +195,6 @@ function Router() {
       <Route path="/">
         <Layout><LandingPage /></Layout>
       </Route>
-      <Route path="/landing-mockups">
-        <LandingMockups />
-      </Route>
       <Route path="/how-it-works">
         <Layout><HowItWorks /></Layout>
       </Route>
@@ -210,9 +203,6 @@ function Router() {
       </Route>
       <Route path="/about">
         <Layout><About /></Layout>
-      </Route>
-      <Route path="/architecture">
-        <ArchitectureDiagram />
       </Route>
       <Route path="/optimize">
         <OptimizePage />
@@ -352,10 +342,6 @@ function Router() {
       <Route path="/payment">
         <PaymentPage />
       </Route>
-      <Route path="/booking-demo">
-        <BookingDemo />
-      </Route>
-      
       {/* Application pages for becoming an expert or provider */}
       <Route path="/become-expert">
         <TravelExpertsPage />
@@ -364,10 +350,6 @@ function Router() {
         <ServicesProviderPage />
       </Route>
       
-      <Route path="/layout-mock">
-        <LayoutMock />
-      </Route>
-
       {/* Trip/Itinerary detail pages — must be BEFORE catch-all routes */}
       <Route path="/trip/:id">
         {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}

@@ -6,6 +6,9 @@ Traveloure is an AI-powered, full-stack travel planning platform designed to off
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 
+## Recent Changes (April 2026)
+- **Codebase Cleanup (Task #55)**: Removed 6 dead frontend files (`GuestInvitePage.tsx`, `layout-mock.tsx`, `architecture-diagram.tsx`, `landing-mockups.tsx`, `booking-demo.tsx`, `PlanningWithBooking.tsx`) and their route registrations from `App.tsx`. Removed 101-line duplicate provider availability block from `server/routes.ts`. Extracted itinerary comparison & optimization routes (7 endpoints: POST/GET `/api/itinerary-comparisons`, GET `/api/dashboard/trip-scores`, and related routes) into `server/routes/itinerary-comparisons.ts`. routes.ts reduced from 15,626 to 15,151 lines.
+
 ## Recent Changes (March 2026)
 - **Stripe Checkout Flow Fixes**: Standardized all Stripe API versions to `2024-12-18.acacia`. Cart checkout now creates a Stripe PaymentIntent and renders the StripeCheckout component for in-page payment. Credit purchase flow wired up with server-side package validation (prices enforced server-side, not client-trusted) via `/api/credits/purchase` endpoint creating Stripe Checkout Sessions. Pricing page auth check fixed: logged-in users navigate to `/credits`, unauthenticated users see sign-in modal. `getBaseUrl()` helper in stripe.service.ts reads REPLIT_DOMAINS for dynamic URL resolution.
 - **QA Endpoint Fixes**: Added missing API routes: `GET /api/bookings/user`, `GET /api/service-bookings`, `POST /api/cart/items`, `GET /api/expert/dashboard`, `GET /api/provider/dashboard`, `GET /api/admin/bookings`, `GET /api/admin/revenue`. These complement existing routes (`/api/my-bookings`, `POST /api/cart`, `/api/expert/analytics/dashboard`, `/api/provider/analytics/dashboard`, `/api/admin/revenue/dashboard`).
