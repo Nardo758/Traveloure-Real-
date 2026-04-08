@@ -1334,7 +1334,7 @@ export default function ExperienceTemplatePage() {
         toast({ variant: "destructive", title: "Failed to add to cart" });
       }
     }
-    // Store experience context and navigate to full cart page
+    // Store experience context for later use (e.g. when user navigates to cart)
     sessionStorage.setItem("experienceContext", JSON.stringify({
       title: `${experienceType?.name || slug} Experience`,
       experienceType: experienceType?.name || slug,
@@ -1344,7 +1344,6 @@ export default function ExperienceTemplatePage() {
       endDate: endDate?.toISOString().split('T')[0],
       travelers: adults + kids
     }));
-    setLocation("/cart");
   };
 
   const removeFromCart = async (id: string) => {
