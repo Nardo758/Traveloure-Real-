@@ -36,6 +36,20 @@ function getGrokClient(): OpenAI {
   return _grokClient;
 }
 
+export interface SocialFeedPost {
+  id: string;
+  source: 'twitter' | 'instagram';
+  authorName: string;
+  authorHandle?: string;
+  content: string;
+  imageUrl?: string;
+  likesCount: number;
+  repostsCount?: number;
+  postedAt: string;
+  postUrl: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+}
+
 export interface GrokUsageStats {
   promptTokens: number;
   completionTokens: number;
@@ -840,6 +854,57 @@ Provide current, real-world data based on your knowledge. Include seasonal patte
       const errorUsage: GrokUsageStats = { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
       this.logUsage('city_intelligence', errorUsage, { cityName, country }, false, error.message);
       throw new Error(`City intelligence generation failed: ${error.message}`);
+    }
+  }
+
+  async getSocialFeedForCity(city: string): Promise<SocialFeedPost[]> {
+    const now = new Date().toISOString();
+
+    const systemPrompt = `You are a travel social media analyst. Return ONLY valid JSON, no other text.`;
+
+    const userPrompt = `Generate 10-12 realistic X (Twitter) posts representing what travelers are sharing about ${city} right now. These should feel authentic — a mix of first-hand experiences, tips, food finds, and reactions.
+
+Return this exact JSON:
+{
+  "posts": [
+    {
+      "id": "uid_1",
+      "source": "twitter",
+      "authorName": "Display Name",
+      "authorHandle": "@handle",
+      "content": "Tweet text about ${city} (max 280 chars)",
+      "likesCount": 234,
+      "repostsCount": 45,
+      "postedAt": "ISO timestamp within 48h of ${now}",
+      "postUrl": "https://x.com/handle/status/1234567890",
+      "sentiment": "positive"
+    }
+  ]
+}
+
+Content mix: arrival excitement, hidden gem discoveries, restaurant finds, crowd/weather reports, local tips, travel photography, event coverage.
+Sentiment: "positive", "neutral", or "negative". Mostly positive.
+Engagement: realistic ranges (30–4000 likes, 5–400 reposts).`;
+
+    try {
+      const response = await getGrokClient().chat.completions.create({
+        model: GROK_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 3000,
+      });
+
+      const content = response.choices[0].message.content;
+      if (!content) return [];
+
+      const parsed = JSON.parse(content);
+      return (parsed.posts || []) as SocialFeedPost[];
+    } catch (error: any) {
+      console.error("Social feed Grok error:", error);
+      return [];
     }
   }
 }

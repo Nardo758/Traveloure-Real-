@@ -1372,4 +1372,77 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
       res.status(500).json({ message: "Failed to get jobs", error: error.message });
     }
   });
+
+  const _socialFeedCache = new Map<string, { data: any[]; expiresAt: number }>();
+
+  app.get("/api/travelpulse/social-feed/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const cacheKey = city.toLowerCase().replace(/\s+/g, "-");
+      const cached = _socialFeedCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return res.json(cached.data);
+      }
+
+      const posts = await grokService.getSocialFeedForCity(city);
+      _socialFeedCache.set(cacheKey, { data: posts, expiresAt: Date.now() + 5 * 60 * 1000 });
+      res.json(posts);
+    } catch (error: any) {
+      console.error("Social feed route error:", error);
+      res.status(500).json({ message: "Failed to fetch social feed" });
+    }
+  });
+
+  app.get("/api/travelpulse/instagram-feed/:city", async (req, res) => {
+    try {
+      const { city } = req.params;
+      const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+      const userId = process.env.INSTAGRAM_USER_ID;
+
+      if (!accessToken || !userId) {
+        return res.json([]);
+      }
+
+      const citySlug = city.toLowerCase().replace(/\s+/g, "");
+      const hashtags = [citySlug, `${citySlug}travel`, `${citySlug}life`];
+      const allPosts: any[] = [];
+
+      for (const tag of hashtags.slice(0, 2)) {
+        try {
+          const hashtagRes = await fetch(
+            `https://graph.facebook.com/v19.0/ig_hashtag_search?user_id=${userId}&q=${tag}&access_token=${accessToken}`
+          );
+          const hashtagData = await hashtagRes.json();
+          if (!hashtagData.data?.[0]?.id) continue;
+
+          const tagId = hashtagData.data[0].id;
+          const mediaRes = await fetch(
+            `https://graph.facebook.com/v19.0/${tagId}/recent_media?user_id=${userId}&fields=id,caption,media_type,timestamp,permalink&limit=6&access_token=${accessToken}`
+          );
+          const mediaData = await mediaRes.json();
+          if (mediaData.data) {
+            for (const post of mediaData.data) {
+              allPosts.push({
+                id: `ig_${post.id}`,
+                source: "instagram",
+                authorName: "Instagram",
+                content: (post.caption || "").slice(0, 120),
+                likesCount: 0,
+                postedAt: post.timestamp,
+                postUrl: post.permalink,
+                sentiment: "positive",
+              });
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      res.json(allPosts.slice(0, 8));
+    } catch (error: any) {
+      console.error("Instagram feed route error:", error);
+      res.status(500).json({ message: "Failed to fetch Instagram feed" });
+    }
+  });
 }
