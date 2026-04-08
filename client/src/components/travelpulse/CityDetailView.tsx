@@ -831,6 +831,28 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
     staleTime: 2 * 60 * 1000,
   });
 
+  // Safety scores — loaded on demand when AI Insights tab is active
+  const { data: safetyScores } = useQuery<{
+    city: string;
+    neighborhoodCount: number;
+    overall: number | null;
+    lgbtq: number | null;
+    medical: number | null;
+    physicalHarm: number | null;
+    politicalFreedom: number | null;
+    theft: number | null;
+    women: number | null;
+  } | null>({
+    queryKey: ["/api/travelpulse/safety", cityName],
+    queryFn: async () => {
+      const res = await fetch(`/api/travelpulse/safety/${encodeURIComponent(cityName)}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: activeTab === 'ai-insights',
+    staleTime: 60 * 60 * 1000,
+  });
+
   // Track Unsplash downloads for API compliance (when Unsplash media is displayed)
   const trackedDownloadsRef = useRef<Set<string>>(new Set());
   
@@ -1731,6 +1753,52 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground" data-testid="text-local-insights">{city.aiLocalInsights}</p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {safetyScores && safetyScores.overall != null && (
+                <Card data-testid="card-safety-scores">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-green-600" />
+                      Safety Scores
+                      <span className="ml-auto text-xs text-muted-foreground font-normal">
+                        Amadeus data · {safetyScores.neighborhoodCount} {safetyScores.neighborhoodCount === 1 ? "neighborhood" : "neighborhoods"}
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span>Overall Safety</span>
+                        <span data-testid="score-overall">{safetyScores.overall}/100</span>
+                      </div>
+                      <Progress value={safetyScores.overall} className="h-2" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                      {([
+                        { key: "theft", label: "Theft Risk", invert: true },
+                        { key: "physicalHarm", label: "Physical Safety", invert: true },
+                        { key: "medical", label: "Medical Access" },
+                        { key: "women", label: "Women's Safety" },
+                        { key: "lgbtq", label: "LGBTQ+ Safety" },
+                        { key: "politicalFreedom", label: "Political Freedom" },
+                      ] as { key: keyof typeof safetyScores; label: string; invert?: boolean }[]).map(({ key, label, invert }) => {
+                        const raw = safetyScores[key] as number | null;
+                        if (raw == null) return null;
+                        const displayScore = invert ? Math.max(0, 100 - raw) : raw;
+                        return (
+                          <div key={key} className="space-y-0.5">
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>{label}</span>
+                              <span data-testid={`score-${key}`}>{displayScore}</span>
+                            </div>
+                            <Progress value={displayScore} className="h-1.5" />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </CardContent>
                 </Card>
               )}
