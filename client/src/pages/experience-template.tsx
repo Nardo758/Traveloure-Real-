@@ -1314,7 +1314,7 @@ export default function ExperienceTemplatePage() {
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
         toast({ title: "Cart updated", description: "Item quantity increased" });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update cart" });
@@ -1328,7 +1328,7 @@ export default function ExperienceTemplatePage() {
           payload.serviceId = item.id;
         }
         await apiRequest("POST", "/api/cart", payload);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to add to cart" });
@@ -1357,7 +1357,7 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("DELETE", `/api/cart/${item.cartItemId}`);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to remove from cart" });
       }
@@ -1378,7 +1378,7 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${item.cartItemId}`, { quantity: clampedQty });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update quantity" });
       }
