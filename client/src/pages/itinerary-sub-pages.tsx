@@ -3204,7 +3204,7 @@ export function ReviewChangesPage() {
 
   if (!data.expertDiff) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6" data-testid="review-changes-page">
         <div className="text-center">
           <History className="w-10 h-10 text-gray-300 mx-auto mb-3" />
           <p className="text-[14px] font-semibold text-gray-700 mb-2">No changes to review</p>
