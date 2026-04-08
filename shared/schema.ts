@@ -5159,3 +5159,13 @@ export const platformSettings = pgTable("platform_settings", {
 export type PlatformSetting = typeof platformSettings.$inferSelect;
 export const insertPlatformSettingSchema = createInsertSchema(platformSettings);
 export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
+
+export const instagramCityCache = pgTable("instagram_city_cache", {
+  cityKey: text("city_key").primaryKey(),
+  posts: jsonb("posts").notNull().default([]),
+  volume: integer("volume").notNull().default(0),
+  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export type InstagramCityCache = typeof instagramCityCache.$inferSelect;

@@ -84,6 +84,8 @@ import {
   itineraryChanges, activityComments,
   type ItineraryChange, type InsertItineraryChange,
   type ActivityComment, type InsertActivityComment,
+  instagramCityCache,
+  type InstagramCityCache,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -487,6 +489,11 @@ export interface IStorage {
   getActivityCommentCounts(tripId: string): Promise<Record<string, number>>;
   createActivityComment(comment: InsertActivityComment): Promise<ActivityComment>;
   deleteActivityComment(id: string): Promise<void>;
+
+  // Instagram City Cache (Travel Pulse Live tab — 24h TTL, persisted for LiveScore enrichment)
+  getInstagramCache(cityKey: string): Promise<InstagramCityCache | undefined>;
+  setInstagramCache(cityKey: string, posts: unknown[], volume: number, expiresAt: Date): Promise<void>;
+  getInstagramVolume(cityKey: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3344,6 +3351,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteActivityComment(id: string): Promise<void> {
     await db.delete(activityComments).where(eq(activityComments.id, id));
+  }
+
+  async getInstagramCache(cityKey: string): Promise<InstagramCityCache | undefined> {
+    const rows = await db
+      .select()
+      .from(instagramCityCache)
+      .where(eq(instagramCityCache.cityKey, cityKey))
+      .limit(1);
+    return rows[0];
+  }
+
+  async setInstagramCache(cityKey: string, posts: unknown[], volume: number, expiresAt: Date): Promise<void> {
+    await db
+      .insert(instagramCityCache)
+      .values({ cityKey, posts, volume, expiresAt, fetchedAt: new Date() })
+      .onConflictDoUpdate({
+        target: instagramCityCache.cityKey,
+        set: { posts, volume, expiresAt, fetchedAt: new Date() },
+      });
+  }
+
+  async getInstagramVolume(cityKey: string): Promise<number> {
+    const rows = await db
+      .select({ volume: instagramCityCache.volume })
+      .from(instagramCityCache)
+      .where(eq(instagramCityCache.cityKey, cityKey))
+      .limit(1);
+    return rows[0]?.volume ?? 0;
   }
 }
 
