@@ -265,8 +265,11 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
   app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const slots = await storage.getProviderAvailabilitySlots(userId);
-      res.json(slots);
+      const [schedule, blackoutDates] = await Promise.all([
+        storage.getProviderAvailability(userId),
+        storage.getProviderBlackoutDates(userId),
+      ]);
+      res.json({ schedule, blackoutDates });
     } catch (error) {
       console.error("Error fetching provider availability:", error);
       res.status(500).json({ message: "Failed to fetch availability" });
@@ -277,61 +280,60 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
     try {
       const userId = (req.user as any).claims.sub;
       const availabilityInput = z.object({
-        serviceId: z.string().min(1),
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().min(1),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        dayOfWeek: z.number().min(0).max(6),
+        startTime: z.string().min(1),
+        endTime: z.string().min(1),
+        isAvailable: z.boolean().optional().default(true),
+        pricingModifier: z.number().optional().default(0),
+        pricingReason: z.string().max(255).optional(),
       }).parse(req.body);
-      const slot = await storage.createVendorAvailabilitySlot({ ...availabilityInput, providerId: userId });
-      res.status(201).json(slot);
+      const entry = await storage.setProviderAvailability({ ...availabilityInput, providerId: userId });
+      res.status(201).json(entry);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      console.error("Error creating availability slot:", error);
-      res.status(500).json({ message: "Failed to create availability slot" });
-    }
-  });
-
-  app.patch("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const updateInput = z.object({
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().optional(),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
-      }).parse(req.body);
-      const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
-      if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
-      if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      const slot = await storage.updateVendorAvailabilitySlot(req.params.id, updateInput);
-      res.json(slot);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Validation error", errors: error.errors });
-      }
-      console.error("Error updating availability slot:", error);
-      res.status(500).json({ message: "Failed to update availability slot" });
+      console.error("Error creating availability schedule:", error);
+      res.status(500).json({ message: "Failed to create availability schedule" });
     }
   });
 
   app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
-      const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
-      if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
-      if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
-      await storage.deleteVendorAvailabilitySlot(req.params.id);
-      res.json({ message: "Slot deleted" });
+      await storage.deleteProviderAvailability(req.params.id);
+      res.json({ message: "Schedule entry deleted" });
     } catch (error) {
-      console.error("Error deleting availability slot:", error);
-      res.status(500).json({ message: "Failed to delete availability slot" });
+      console.error("Error deleting availability schedule:", error);
+      res.status(500).json({ message: "Failed to delete availability schedule" });
+    }
+  });
+
+  app.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const blackoutInput = z.object({
+        startDate: z.string().min(1),
+        endDate: z.string().min(1),
+        reason: z.string().max(500).nullable().optional(),
+      }).parse(req.body);
+      const blackout = await storage.addProviderBlackoutDate({ ...blackoutInput, providerId: userId });
+      res.status(201).json(blackout);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error adding blackout date:", error);
+      res.status(500).json({ message: "Failed to add blackout date" });
+    }
+  });
+
+  app.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteProviderBlackoutDate(req.params.id);
+      res.json({ message: "Blackout date deleted" });
+    } catch (error) {
+      console.error("Error deleting blackout date:", error);
+      res.status(500).json({ message: "Failed to delete blackout date" });
     }
   });
 
