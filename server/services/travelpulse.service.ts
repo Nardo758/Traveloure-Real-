@@ -1287,7 +1287,7 @@ Return JSON:
       const metricsToTrack = [
         { metricType: "trend_score", metricValue: String(result.pulseMetrics.trendingScore || 0) },
         { metricType: "pulse_score", metricValue: String(result.pulseMetrics.pulseScore || 0) },
-        { metricType: "crowd_level", metricValue: String(result.pulseMetrics.crowdLevel || 0) },
+        { metricType: "crowd_level", metricValue: String(({ quiet: 1, moderate: 2, busy: 3, packed: 4 } as Record<string, number>)[result.pulseMetrics.crowdLevel as string] ?? 0) },
         { metricType: "weather_score", metricValue: String(result.pulseMetrics.weatherScore || 0) },
         { metricType: "avg_hotel_price", metricValue: String(result.priceIntelligence.avgHotelPriceUsd || 0) },
       ];
