@@ -6656,7 +6656,6 @@ Respond with this exact JSON structure:
     "jakarta": { lat: -6.2088, lng: 106.8456, formattedAddress: "Jakarta, Indonesia" },
     "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
     "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
-    "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
     "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
     "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
     "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
@@ -6683,7 +6682,6 @@ Respond with this exact JSON structure:
     "cancun": { lat: 21.1619, lng: -86.8515, formattedAddress: "Cancun, Mexico" },
     "phuket": { lat: 7.8804, lng: 98.3923, formattedAddress: "Phuket, Thailand" },
     "chiang mai": { lat: 18.7883, lng: 98.9853, formattedAddress: "Chiang Mai, Thailand" },
-    "maldives": { lat: 3.2028, lng: 73.2207, formattedAddress: "Maldives" },
     // Countries — resolve to capital or major tourism hub
     "thailand": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
     "japan": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
