@@ -67,6 +67,12 @@ import path from "path";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+// Module-scoped caches for Live tab social feeds (persist across requests, survive route re-registration)
+const _socialFeedCacheGlobal = new Map<string, { data: any[]; expiresAt: number }>();
+const _instagramCacheGlobal = new Map<string, { data: any[]; volume: number; expiresAt: number }>();
+// Instagram hashtag volume map — used to boost city trendingScore in LiveScore enrichment
+const _instagramVolumeGlobal = new Map<string, { volume: number; fetchedAt: number }>();
+
 const contactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   email: z.string().email("Invalid email"),
@@ -505,6 +511,23 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
       
       if (!intelligence) {
         return res.status(404).json({ message: "City not found" });
+      }
+
+      // LiveScore enrichment: boost trendingScore based on cached Instagram hashtag volume
+      // Volume is fetched lazily when the Live tab is opened; max +5 points bonus
+      const cacheKey = cityName.toLowerCase().replace(/\s+/g, "-");
+      const volumeData = _instagramVolumeGlobal.get(cacheKey);
+      if (volumeData && volumeData.volume > 0 && intelligence.city) {
+        const volumeBonus = Math.min(5, Math.floor(volumeData.volume / 3));
+        const boosted = {
+          ...intelligence,
+          city: {
+            ...intelligence.city,
+            trendingScore: Math.min(100, (intelligence.city.trendingScore || 0) + volumeBonus),
+            instagramVolume: volumeData.volume,
+          },
+        };
+        return res.json(boosted);
       }
       
       res.json(intelligence);
@@ -1236,6 +1259,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
       const city = req.query.city as string | undefined;
       const lat = req.query.lat ? parseFloat(req.query.lat as string) : undefined;
       const lng = req.query.lng ? parseFloat(req.query.lng as string) : undefined;
+      const categories = req.query.categories as string | undefined;
       
       const userId = (req.user as any)?.claims?.sub || null;
       
@@ -1244,7 +1268,8 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
         lng,
         city,
         timeWindow: window,
-        limit: 12,
+        limit: 20,
+        categories: categories ? categories.split(",") : undefined,
       });
       
       res.json({
@@ -1373,19 +1398,18 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
     }
   });
 
-  const _socialFeedCache = new Map<string, { data: any[]; expiresAt: number }>();
-
   app.get("/api/travelpulse/social-feed/:city", async (req, res) => {
     try {
       const { city } = req.params;
       const cacheKey = city.toLowerCase().replace(/\s+/g, "-");
-      const cached = _socialFeedCache.get(cacheKey);
+      const cached = _socialFeedCacheGlobal.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) {
         return res.json(cached.data);
       }
 
       const posts = await grokService.getSocialFeedForCity(city);
-      _socialFeedCache.set(cacheKey, { data: posts, expiresAt: Date.now() + 5 * 60 * 1000 });
+      // 30-min cache for real search data; fall back already handled in service
+      _socialFeedCacheGlobal.set(cacheKey, { data: posts, expiresAt: Date.now() + 30 * 60 * 1000 });
       res.json(posts);
     } catch (error: any) {
       console.error("Social feed route error:", error);
@@ -1396,38 +1420,53 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
   app.get("/api/travelpulse/instagram-feed/:city", async (req, res) => {
     try {
       const { city } = req.params;
+      const cacheKey = city.toLowerCase().replace(/\s+/g, "-");
+
+      // Serve from 24h in-memory cache
+      const cached = _instagramCacheGlobal.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return res.json(cached.data);
+      }
+
       const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
       const userId = process.env.INSTAGRAM_USER_ID;
 
       if (!accessToken || !userId) {
+        // Cache the empty result so we don't check env vars every request
+        _instagramCacheGlobal.set(cacheKey, { data: [], volume: 0, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
         return res.json([]);
       }
 
       const citySlug = city.toLowerCase().replace(/\s+/g, "");
+      // Query all 3 hashtags (Instagram allows up to 30/week — we use 3 per city)
       const hashtags = [citySlug, `${citySlug}travel`, `${citySlug}life`];
       const allPosts: any[] = [];
+      let totalHashtagVolume = 0;
 
-      for (const tag of hashtags.slice(0, 2)) {
+      for (const tag of hashtags) {
         try {
           const hashtagRes = await fetch(
             `https://graph.facebook.com/v19.0/ig_hashtag_search?user_id=${userId}&q=${tag}&access_token=${accessToken}`
           );
-          const hashtagData = await hashtagRes.json();
+          const hashtagData = await hashtagRes.json() as any;
           if (!hashtagData.data?.[0]?.id) continue;
 
           const tagId = hashtagData.data[0].id;
+
+          // Fetch recent media with post count for volume tracking
           const mediaRes = await fetch(
-            `https://graph.facebook.com/v19.0/${tagId}/recent_media?user_id=${userId}&fields=id,caption,media_type,timestamp,permalink&limit=6&access_token=${accessToken}`
+            `https://graph.facebook.com/v19.0/${tagId}/recent_media?user_id=${userId}&fields=id,caption,media_type,timestamp,permalink,like_count&limit=6&access_token=${accessToken}`
           );
-          const mediaData = await mediaRes.json();
+          const mediaData = await mediaRes.json() as any;
           if (mediaData.data) {
+            totalHashtagVolume += mediaData.data.length;
             for (const post of mediaData.data) {
               allPosts.push({
                 id: `ig_${post.id}`,
                 source: "instagram",
                 authorName: "Instagram",
-                content: (post.caption || "").slice(0, 120),
-                likesCount: 0,
+                content: (post.caption || "").slice(0, 140),
+                likesCount: post.like_count || 0,
                 postedAt: post.timestamp,
                 postUrl: post.permalink,
                 sentiment: "positive",
@@ -1439,7 +1478,15 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
         }
       }
 
-      res.json(allPosts.slice(0, 8));
+      // Cap combined posts at 20
+      const result = allPosts.slice(0, 20);
+
+      // Store hashtag volume for LiveScore enrichment (24h TTL)
+      _instagramVolumeGlobal.set(cacheKey, { volume: totalHashtagVolume, fetchedAt: Date.now() });
+
+      // 24h cache to stay within Instagram's 7-day / 30-hashtag rate limits
+      _instagramCacheGlobal.set(cacheKey, { data: result, volume: totalHashtagVolume, expiresAt: Date.now() + 24 * 60 * 60 * 1000 });
+      res.json(result);
     } catch (error: any) {
       console.error("Instagram feed route error:", error);
       res.status(500).json({ message: "Failed to fetch Instagram feed" });

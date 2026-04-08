@@ -743,10 +743,24 @@ function CityDetailSkeleton() {
   );
 }
 
+const VIBE_TO_CATEGORY: Record<string, string> = {
+  foodie: "food",
+  nightlife: "entertainment",
+  cultural: "cultural",
+  adventure: "outdoor",
+  luxury: "luxury",
+  romantic: "experience",
+  nature: "outdoor",
+  family: "family",
+  budget: "budget",
+  relaxation: "wellness",
+};
+
 export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
   const [activeTab, setActiveTab] = useState("hidden-gems");
   const [socialSource, setSocialSource] = useState<'all' | 'twitter' | 'instagram'>('all');
   const [spontaneousWindow, setSpontaneousWindow] = useState<'tonight' | 'tomorrow' | 'weekend'>('tonight');
+  const [spontaneousVibe, setSpontaneousVibe] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery<CityIntelligence>({
     queryKey: ["/api/travelpulse/cities", cityName],
@@ -783,10 +797,13 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
   });
 
   // Spontaneous opportunities — loaded on demand when Spontaneous tab is active
+  const spontaneousCategories = spontaneousVibe ? VIBE_TO_CATEGORY[spontaneousVibe] || spontaneousVibe : undefined;
   const { data: spontaneousData, isLoading: spontaneousLoading } = useQuery<{ opportunities: SpontaneousOpp[]; total: number }>({
-    queryKey: ["/api/spontaneous/quick-search", spontaneousWindow, cityName],
+    queryKey: ["/api/spontaneous/quick-search", spontaneousWindow, cityName, spontaneousVibe],
     queryFn: async () => {
-      const res = await fetch(`/api/spontaneous/quick-search/${spontaneousWindow}?city=${encodeURIComponent(cityName)}`);
+      const params = new URLSearchParams({ city: cityName });
+      if (spontaneousCategories) params.set("categories", spontaneousCategories);
+      const res = await fetch(`/api/spontaneous/quick-search/${spontaneousWindow}?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch opportunities");
       return res.json();
     },
@@ -1087,7 +1104,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
 
         <TabsContent value="spontaneous" className="mt-4">
           <div className="space-y-4">
-            <div className="flex items-center gap-2" data-testid="spontaneous-window-toggle">
+            <div className="flex items-center gap-2 flex-wrap" data-testid="spontaneous-window-toggle">
               {(["tonight", "tomorrow", "weekend"] as const).map((w) => (
                 <Button
                   key={w}
@@ -1101,6 +1118,33 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                 </Button>
               ))}
             </div>
+
+            {city.vibeTags && city.vibeTags.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap" data-testid="spontaneous-vibe-filter">
+                <Button
+                  key="all"
+                  size="sm"
+                  variant={spontaneousVibe === null ? "secondary" : "ghost"}
+                  onClick={() => setSpontaneousVibe(null)}
+                  data-testid="button-vibe-all"
+                  className="text-xs h-7 capitalize"
+                >
+                  All Vibes
+                </Button>
+                {city.vibeTags.map((vibe) => (
+                  <Button
+                    key={vibe}
+                    size="sm"
+                    variant={spontaneousVibe === vibe ? "secondary" : "ghost"}
+                    onClick={() => setSpontaneousVibe(prev => prev === vibe ? null : vibe)}
+                    data-testid={`button-vibe-${vibe}`}
+                    className="text-xs h-7 capitalize"
+                  >
+                    {vibe}
+                  </Button>
+                ))}
+              </div>
+            )}
 
             {spontaneousLoading ? (
               <div className="space-y-3">
