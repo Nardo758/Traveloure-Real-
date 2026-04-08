@@ -609,6 +609,11 @@ function EnrichedRecommendationCard({ rec, idx }: { rec: EnrichedRecommendation;
 function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
   const { data, isLoading, error } = useQuery<CityEnrichedContent>({
     queryKey: ["/api/travelpulse/enriched", cityName],
+    queryFn: async () => {
+      const res = await fetch(`/api/travelpulse/enriched/${encodeURIComponent(cityName)}`);
+      if (!res.ok) throw new Error("Failed to fetch enriched content");
+      return res.json();
+    },
     enabled: !!cityName,
     staleTime: 5 * 60 * 1000,
   });
@@ -626,9 +631,16 @@ function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
     );
   }
 
-  if (error || !data) {
-    return null;
+  if (error) {
+    return (
+      <Card className="p-6 text-center mt-6">
+        <ExternalLink className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">Enriched content not available for {cityName} yet</p>
+      </Card>
+    );
   }
+
+  if (!data) return null;
 
   const hasContent = 
     data.restaurants.length > 0 || 
@@ -638,7 +650,13 @@ function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
     data.trendingNow.length > 0;
 
   if (!hasContent) {
-    return null;
+    return (
+      <Card className="p-6 text-center mt-6">
+        <ExternalLink className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+        <p className="text-sm text-muted-foreground">No enriched recommendations yet for {cityName}</p>
+        <p className="text-xs text-muted-foreground mt-1">Content is generated on next AI refresh</p>
+      </Card>
+    );
   }
 
   return (
