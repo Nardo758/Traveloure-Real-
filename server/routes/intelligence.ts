@@ -512,21 +512,26 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
       // LiveScore enrichment: boost trendingScore based on persisted Instagram hashtag volume
       // Volume is written to DB when Live tab fetches Instagram feed; max +5 points bonus
-      const cacheKey = cityName.toLowerCase().replace(/\s+/g, "-");
-      const volume = await storage.getInstagramVolume(cacheKey);
-      if (volume > 0 && intelligence.city) {
-        const volumeBonus = Math.min(5, Math.floor(volume / 3));
-        const boosted = {
-          ...intelligence,
-          city: {
-            ...intelligence.city,
-            trendingScore: Math.min(100, (intelligence.city.trendingScore || 0) + volumeBonus),
-            instagramVolume: volume,
-          },
-        };
-        return res.json(boosted);
+      // Wrapped in try/catch so city detail never 500s if instagram_city_cache table is missing
+      try {
+        const cacheKey = cityName.toLowerCase().replace(/\s+/g, "-");
+        const volume = await storage.getInstagramVolume(cacheKey);
+        if (volume > 0 && intelligence.city) {
+          const volumeBonus = Math.min(5, Math.floor(volume / 3));
+          return res.json({
+            ...intelligence,
+            city: {
+              ...intelligence.city,
+              trendingScore: Math.min(100, (intelligence.city.trendingScore || 0) + volumeBonus),
+              instagramVolume: volume,
+            },
+          });
+        }
+      } catch (volumeErr: any) {
+        // Non-fatal — city data still returned without volume enrichment
+        console.warn("Instagram volume enrichment skipped:", volumeErr?.message);
       }
-      
+
       res.json(intelligence);
     } catch (error: any) {
       console.error("Error fetching city intelligence:", error);

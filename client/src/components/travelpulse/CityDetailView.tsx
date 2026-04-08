@@ -1273,13 +1273,18 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                   {(() => {
                     const twitter = (socialPosts || []).filter(p => p.source === 'twitter');
                     const instagram = (instagramPosts || []).filter(p => p.source === 'instagram');
+                    // Combined "All" view: X/Twitter posts weighted higher for recency —
+                    // X posts sort at 2× their actual recency vs Instagram posts
                     const combined = (socialSource === 'twitter'
                       ? twitter
                       : socialSource === 'instagram'
                       ? instagram
-                      : [...twitter, ...instagram].sort(
-                          (a, b) => new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime()
-                        )).slice(0, 20);
+                      : [...twitter, ...instagram].sort((a, b) => {
+                          const tA = new Date(a.postedAt).getTime() * (a.source === 'twitter' ? 2 : 1);
+                          const tB = new Date(b.postedAt).getTime() * (b.source === 'twitter' ? 2 : 1);
+                          return tB - tA;
+                        })
+                    ).slice(0, 20);
 
                     if (combined.length === 0) {
                       return (
@@ -1316,6 +1321,15 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                                       <span className="text-[10px] font-bold ml-auto bg-black text-white dark:bg-white dark:text-black px-1.5 py-0.5 rounded">𝕏</span>
                                     </div>
                                     <p className="text-sm leading-snug">{post.content}</p>
+                                    {post.imageUrl && (
+                                      <img
+                                        src={post.imageUrl}
+                                        alt="Post media"
+                                        className="mt-2 rounded-lg max-h-48 w-full object-cover"
+                                        data-testid={`img-post-${post.id}`}
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                      />
+                                    )}
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-4 pl-12 text-xs text-muted-foreground">
