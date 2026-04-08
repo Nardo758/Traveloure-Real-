@@ -5,7 +5,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
-import { amadeusService, type Activity as AmadeusActivity, type SafetyRating as AmadeusSafetyRating } from "../services/amadeus.service";
+import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { claudeService } from "../services/claude.service";
