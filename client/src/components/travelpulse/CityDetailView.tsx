@@ -407,12 +407,26 @@ function AIRecommendationsSection({ cityName, country }: { cityName: string; cou
                     bestTimeMatch={hotel.bestTimeMatch}
                     showScore={true}
                   />
-                  {hotel.price && (
-                    <p className="text-sm font-semibold mt-2">
-                      ${typeof hotel.price === 'string' ? hotel.price : hotel.price.toFixed(0)}
-                      <span className="text-xs text-muted-foreground font-normal">/night</span>
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between mt-2">
+                    {hotel.price && (
+                      <p className="text-sm font-semibold">
+                        ${typeof hotel.price === 'string' ? hotel.price : hotel.price.toFixed(0)}
+                        <span className="text-xs text-muted-foreground font-normal">/night</span>
+                      </p>
+                    )}
+                    <a
+                      href={`https://www.booking.com/search.html?ss=${encodeURIComponent((hotel.name || '') + ' ' + cityName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto"
+                      data-testid={`link-book-hotel-${hotel.id}`}
+                    >
+                      <Button size="sm" className="text-xs h-7">
+                        Book Hotel
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    </a>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -456,11 +470,25 @@ function AIRecommendationsSection({ cityName, country }: { cityName: string; cou
                     preferenceMatch={activity.preferenceMatch}
                     showScore={true}
                   />
-                  {activity.price && (
-                    <p className="text-sm font-semibold mt-2">
-                      ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between mt-2">
+                    {activity.price && (
+                      <p className="text-sm font-semibold">
+                        ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
+                      </p>
+                    )}
+                    <a
+                      href={`https://www.viator.com/searchResults/all?text=${encodeURIComponent((activity.title || activity.name || '') + ' ' + cityName)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto"
+                      data-testid={`link-book-activity-${activity.id}`}
+                    >
+                      <Button size="sm" variant="outline" className="text-xs h-7">
+                        Book Activity
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    </a>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -1326,6 +1354,18 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                           {gem.touristMentions} tourist mentions
                         </span>
                         {gem.priceRange && <span>{gem.priceRange}</span>}
+                        <a
+                          href={`https://www.google.com/maps/search/${encodeURIComponent(gem.placeName + ' ' + city.cityName)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-auto"
+                          data-testid={`link-explore-gem-${gem.id}`}
+                        >
+                          <Button size="sm" variant="outline" className="text-xs h-7">
+                            Explore
+                            <MapPin className="h-3 w-3 ml-1" />
+                          </Button>
+                        </a>
                       </div>
                     </CardContent>
                   </div>
