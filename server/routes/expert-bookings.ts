@@ -58,6 +58,13 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 
 
+const delegateTaskSchema = z.object({
+  taskType: z.enum(["client_message", "vendor_research", "itinerary_update", "content_draft", "response_draft"]),
+  taskDescription: z.string().min(10, "Task description must be at least 10 characters"),
+  clientName: z.string().optional(),
+  context: z.record(z.any()).optional(),
+});
+
 export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;

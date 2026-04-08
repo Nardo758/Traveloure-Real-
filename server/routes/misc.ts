@@ -84,8 +84,134 @@ const contactSchema = z.object({
   preferredContactMethod: z.enum(["email", "phone"]).optional(),
 });
 
+const transportPackageSegmentSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  from: z.object({ name: z.string(), type: z.string() }),
+  to: z.object({ name: z.string(), type: z.string() }),
+  date: z.string().optional(),
+});
+
+const transportPackageRequestSchema = z.object({
+  segments: z.array(transportPackageSegmentSchema).min(1),
+  destination: z.string().min(1),
+  travelers: z.number().int().min(1).default(1),
+  tripDays: z.number().int().min(1).default(1),
+});
+
+const multiTransitSchema = z.object({
+  origin: z.object({
+    lat: z.number(),
+    lng: z.number(),
+    name: z.string().optional(),
+  }),
+  destinations: z.array(z.object({
+    id: z.string(),
+    lat: z.number(),
+    lng: z.number(),
+    name: z.string(),
+  })),
+});
+
+const geocodeSchema = z.object({
+  address: z.string().min(1),
+});
+
+const FALLBACK_COORDINATES: Record<string, { lat: number; lng: number; formattedAddress: string }> = {
+  "rome": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
+  "paris": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
+  "london": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
+  "tokyo": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
+  "new york": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
+  "nyc": { lat: 40.7128, lng: -74.0060, formattedAddress: "New York, NY, USA" },
+  "barcelona": { lat: 41.3874, lng: 2.1686, formattedAddress: "Barcelona, Spain" },
+  "madrid": { lat: 40.4168, lng: -3.7038, formattedAddress: "Madrid, Spain" },
+  "bangkok": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
+  "sydney": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
+  "dubai": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
+  "marrakech": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
+  "bali": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
+  "jakarta": { lat: -6.2088, lng: 106.8456, formattedAddress: "Jakarta, Indonesia" },
+  "istanbul": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
+  "lisbon": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
+  "los angeles": { lat: 34.0522, lng: -118.2437, formattedAddress: "Los Angeles, CA, USA" },
+  "miami": { lat: 25.7617, lng: -80.1918, formattedAddress: "Miami, FL, USA" },
+  "amsterdam": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
+  "berlin": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
+  "hong kong": { lat: 22.3193, lng: 114.1694, formattedAddress: "Hong Kong" },
+  "goa": { lat: 15.2993, lng: 74.1240, formattedAddress: "Goa, India" },
+  "mumbai": { lat: 19.0760, lng: 72.8777, formattedAddress: "Mumbai, India" },
+  "delhi": { lat: 28.6139, lng: 77.2090, formattedAddress: "New Delhi, India" },
+  "athens": { lat: 37.9838, lng: 23.7275, formattedAddress: "Athens, Greece" },
+  "cairo": { lat: 30.0444, lng: 31.2357, formattedAddress: "Cairo, Egypt" },
+  "cape town": { lat: -33.9249, lng: 18.4241, formattedAddress: "Cape Town, South Africa" },
+  "rio de janeiro": { lat: -22.9068, lng: -43.1729, formattedAddress: "Rio de Janeiro, Brazil" },
+  "mexico city": { lat: 19.4326, lng: -99.1332, formattedAddress: "Mexico City, Mexico" },
+  "beijing": { lat: 39.9042, lng: 116.4074, formattedAddress: "Beijing, China" },
+  "shanghai": { lat: 31.2304, lng: 121.4737, formattedAddress: "Shanghai, China" },
+  "seoul": { lat: 37.5665, lng: 126.9780, formattedAddress: "Seoul, South Korea" },
+  "prague": { lat: 50.0755, lng: 14.4378, formattedAddress: "Prague, Czech Republic" },
+  "vienna": { lat: 48.2082, lng: 16.3738, formattedAddress: "Vienna, Austria" },
+  "zurich": { lat: 47.3769, lng: 8.5417, formattedAddress: "Zurich, Switzerland" },
+  "toronto": { lat: 43.6532, lng: -79.3832, formattedAddress: "Toronto, Canada" },
+  "vancouver": { lat: 49.2827, lng: -123.1207, formattedAddress: "Vancouver, Canada" },
+  "san francisco": { lat: 37.7749, lng: -122.4194, formattedAddress: "San Francisco, CA, USA" },
+  "chicago": { lat: 41.8781, lng: -87.6298, formattedAddress: "Chicago, IL, USA" },
+  "cancun": { lat: 21.1619, lng: -86.8515, formattedAddress: "Cancun, Mexico" },
+  "phuket": { lat: 7.8804, lng: 98.3923, formattedAddress: "Phuket, Thailand" },
+  "chiang mai": { lat: 18.7883, lng: 98.9853, formattedAddress: "Chiang Mai, Thailand" },
+  "thailand": { lat: 13.7563, lng: 100.5018, formattedAddress: "Bangkok, Thailand" },
+  "japan": { lat: 35.6762, lng: 139.6503, formattedAddress: "Tokyo, Japan" },
+  "france": { lat: 48.8566, lng: 2.3522, formattedAddress: "Paris, France" },
+  "italy": { lat: 41.9028, lng: 12.4964, formattedAddress: "Rome, Italy" },
+  "spain": { lat: 40.4168, lng: -3.7038, formattedAddress: "Madrid, Spain" },
+  "uk": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
+  "united kingdom": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
+  "england": { lat: 51.5074, lng: -0.1278, formattedAddress: "London, United Kingdom" },
+  "australia": { lat: -33.8688, lng: 151.2093, formattedAddress: "Sydney, Australia" },
+  "germany": { lat: 52.5200, lng: 13.4050, formattedAddress: "Berlin, Germany" },
+  "portugal": { lat: 38.7223, lng: -9.1393, formattedAddress: "Lisbon, Portugal" },
+  "turkey": { lat: 41.0082, lng: 28.9784, formattedAddress: "Istanbul, Turkey" },
+  "india": { lat: 19.0760, lng: 72.8777, formattedAddress: "Mumbai, India" },
+  "greece": { lat: 37.9838, lng: 23.7275, formattedAddress: "Athens, Greece" },
+  "morocco": { lat: 31.6295, lng: -7.9811, formattedAddress: "Marrakech, Morocco" },
+  "uae": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
+  "united arab emirates": { lat: 25.2048, lng: 55.2708, formattedAddress: "Dubai, UAE" },
+  "china": { lat: 39.9042, lng: 116.4074, formattedAddress: "Beijing, China" },
+  "mexico": { lat: 19.4326, lng: -99.1332, formattedAddress: "Mexico City, Mexico" },
+  "brazil": { lat: -22.9068, lng: -43.1729, formattedAddress: "Rio de Janeiro, Brazil" },
+  "south africa": { lat: -33.9249, lng: 18.4241, formattedAddress: "Cape Town, South Africa" },
+  "egypt": { lat: 30.0444, lng: 31.2357, formattedAddress: "Cairo, Egypt" },
+  "indonesia": { lat: -8.3405, lng: 115.0920, formattedAddress: "Bali, Indonesia" },
+  "netherlands": { lat: 52.3676, lng: 4.9041, formattedAddress: "Amsterdam, Netherlands" },
+  "singapore": { lat: 1.3521, lng: 103.8198, formattedAddress: "Singapore" },
+  "south korea": { lat: 37.5665, lng: 126.9780, formattedAddress: "Seoul, South Korea" },
+  "korea": { lat: 37.5665, lng: 126.9780, formattedAddress: "Seoul, South Korea" },
+  "switzerland": { lat: 47.3769, lng: 8.5417, formattedAddress: "Zurich, Switzerland" },
+  "austria": { lat: 48.2082, lng: 16.3738, formattedAddress: "Vienna, Austria" },
+  "czech republic": { lat: 50.0755, lng: 14.4378, formattedAddress: "Prague, Czech Republic" },
+  "canada": { lat: 43.6532, lng: -79.3832, formattedAddress: "Toronto, Canada" },
+  "vietnam": { lat: 21.0285, lng: 105.8542, formattedAddress: "Hanoi, Vietnam" },
+  "cambodia": { lat: 11.5564, lng: 104.9282, formattedAddress: "Phnom Penh, Cambodia" },
+  "malaysia": { lat: 3.1390, lng: 101.6869, formattedAddress: "Kuala Lumpur, Malaysia" },
+  "philippines": { lat: 14.5995, lng: 120.9842, formattedAddress: "Manila, Philippines" },
+  "sri lanka": { lat: 6.9271, lng: 79.8612, formattedAddress: "Colombo, Sri Lanka" },
+  "croatia": { lat: 45.8150, lng: 15.9819, formattedAddress: "Zagreb, Croatia" },
+};
+
+const quickStartItinerarySchema = z.object({
+  destination: z.string().min(1),
+  country: z.string().optional(),
+  dates: z.object({
+    start: z.string(),
+    end: z.string(),
+  }).optional(),
+  travelers: z.number().min(1).default(2),
+  interests: z.array(z.string()).default([]),
+  pacePreference: z.enum(["relaxed", "moderate", "packed"]).default("moderate"),
+});
+
 export function registerMiscRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
-  app.get("/api/health", (_req, res) => {
   registerTripRoutes(app, resolveSlug);
   registerIntelligenceRoutes(app, resolveSlug);
   registerAiRoutes(app, resolveSlug);
@@ -95,6 +221,8 @@ export function registerMiscRoutes(app: Express, resolveSlug: (slug: string) => 
   registerAffiliateRoutes(app, resolveSlug);
   registerContentTypeRoutes(app, resolveSlug);
   registerServiceBookingRoutes(app, resolveSlug);
+
+  app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
