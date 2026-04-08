@@ -874,7 +874,7 @@ Provide current, real-world data based on your knowledge. Include seasonal patte
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'grok-3-fast',
+          model: 'grok-4',
           input: [{
             role: 'user',
             content: `Search X for recent posts from travelers visiting or discussing ${city} in the past 48 hours. Find 10-12 real posts about the travel experience — food, sights, vibes, tips, or reactions.
