@@ -232,7 +232,8 @@ class OpportunityEngineService {
         const type = this.determineActivityType(activity, urgencyScore);
 
         const provider = activity.provider === 'amadeus' ? 'amadeus' : 'viator';
-        const bookingUrl = (activity.rawData as any)?.bookingLink ?? null;
+        const rawData = activity.rawData as Record<string, unknown> | null;
+        const bookingUrl = (rawData?.bookingLink as string | undefined) ?? null;
         return {
           id: `${provider}-${activity.productCode}`,
           city: activity.destination || activity.city || params.city || "Unknown",
@@ -651,8 +652,8 @@ class OpportunityEngineService {
       
       // Viator activities: construct booking URL or use cached rawData
       if (activity) {
-        const rawData = activity.rawData as any;
-        redirectUrl = rawData?.productUrl || `https://www.viator.com/tours/${externalId}`;
+        const rawData = activity.rawData as Record<string, unknown> | null;
+        redirectUrl = (rawData?.productUrl as string | undefined) || `https://www.viator.com/tours/${externalId}`;
       }
     } else if (provider === "fever") {
       const [event] = await db

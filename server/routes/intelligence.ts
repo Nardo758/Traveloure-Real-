@@ -5,7 +5,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
-import { amadeusService } from "../services/amadeus.service";
+import { amadeusService, type Activity as AmadeusActivity, type SafetyRating as AmadeusSafetyRating } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { claudeService } from "../services/claude.service";
@@ -1678,7 +1678,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
                   imageUrl: act.pictures?.[0] ?? null,
                   provider: "amadeus",
                   category: act.type || "EXPERIENCE",
-                  rawData: act as any,
+                  rawData: act as unknown as Record<string, unknown>,
                   expiresAt,
                 })
                 .onConflictDoUpdate({
@@ -1689,7 +1689,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
                     price: act.price?.amount ?? null,
                     rating: act.rating?.toString() ?? null,
                     imageUrl: act.pictures?.[0] ?? null,
-                    rawData: act as any,
+                    rawData: act as unknown as Record<string, unknown>,
                     expiresAt,
                     lastUpdated: new Date(),
                   },
@@ -1753,7 +1753,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
                   politicalFreedomScore: rating.safetyScores?.politicalFreedom ?? null,
                   theftScore: rating.safetyScores?.theft ?? null,
                   womenSafetyScore: rating.safetyScores?.women ?? null,
-                  rawData: rating as any,
+                  rawData: rating as unknown as Record<string, unknown>,
                   expiresAt,
                 })
                 .onConflictDoUpdate({
@@ -1766,7 +1766,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
                     politicalFreedomScore: rating.safetyScores?.politicalFreedom ?? null,
                     theftScore: rating.safetyScores?.theft ?? null,
                     womenSafetyScore: rating.safetyScores?.women ?? null,
-                    rawData: rating as any,
+                    rawData: rating as unknown as Record<string, unknown>,
                     expiresAt,
                     lastUpdated: new Date(),
                   },
@@ -1793,10 +1793,14 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
   app.get("/api/travelpulse/safety/:city", async (req, res) => {
     try {
       const { city } = req.params;
+      const now = new Date();
       const rows = await db
         .select()
         .from(safetyCache)
-        .where(sql`lower(${safetyCache.city}) = lower(${city})`);
+        .where(and(
+          sql`lower(${safetyCache.city}) = lower(${city})`,
+          gte(safetyCache.expiresAt, now),
+        ));
 
       if (rows.length === 0) {
         return res.json(null);
