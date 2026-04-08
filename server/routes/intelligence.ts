@@ -1528,7 +1528,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
   app.get("/api/deals", async (req, res) => {
     try {
       const category = (req.query.category as string | undefined) || "all";
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 50);
       const now = new Date();
       const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
 
