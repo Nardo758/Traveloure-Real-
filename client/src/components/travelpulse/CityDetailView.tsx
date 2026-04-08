@@ -757,7 +757,7 @@ interface BookableActivity {
   bookingUrl: string | null;
 }
 
-const CATEGORY_FILTERS = ["All", "Activity", "Tour", "Experience", "Outdoor", "Cultural"] as const;
+const CATEGORY_FILTERS = ["All", "Activity", "Tour", "Experience"] as const;
 type CategoryFilter = typeof CATEGORY_FILTERS[number];
 
 const PROVIDER_COLORS: Record<string, string> = {

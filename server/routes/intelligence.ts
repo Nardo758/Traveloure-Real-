@@ -1829,6 +1829,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
       const activities = rows.map((row) => {
         const raw = row.rawData as Record<string, unknown> | null;
         const bookingUrl =
+          (raw?.affiliateUrl as string | undefined) ??
           (raw?.bookingLink as string | undefined) ??
           (raw?.productUrl as string | undefined) ??
           null;
