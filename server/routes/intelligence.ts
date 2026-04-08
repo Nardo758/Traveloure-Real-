@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
-import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
@@ -40,7 +40,8 @@ import {
   expertPayouts, providerPayouts, platformSettings,
   expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow,
   transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries,
-  accessAuditLogs, contentRegistry
+  accessAuditLogs, contentRegistry,
+  hotelCache, hotelOfferCache, feverEventCache
 } from "@shared/schema";
 import { 
   insertTripParticipantSchema, 
@@ -1497,6 +1498,145 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
     } catch (error: any) {
       console.error("Instagram feed route error:", error);
       res.status(500).json({ message: "Failed to fetch Instagram feed" });
+    }
+  });
+
+  // ─── Deals Feed ───────────────────────────────────────────────────────────
+  // Unified deals from Fever events and Amadeus hotel offers
+  const IATA_TO_CITY: Record<string, string> = {
+    NYC: "New York",
+    LON: "London",
+    PAR: "Paris",
+    LAX: "Los Angeles",
+    BCN: "Barcelona",
+    MAD: "Madrid",
+    TYO: "Tokyo",
+    SYD: "Sydney",
+    DXB: "Dubai",
+    SIN: "Singapore",
+    AMS: "Amsterdam",
+    ROM: "Rome",
+    MIL: "Milan",
+    BKK: "Bangkok",
+    CDG: "Paris",
+    LIS: "Lisbon",
+    PRG: "Prague",
+    VIE: "Vienna",
+    CPT: "Cape Town",
+  };
+
+  app.get("/api/deals", async (req, res) => {
+    try {
+      const category = (req.query.category as string | undefined) || "all";
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const now = new Date();
+      const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+      const results: any[] = [];
+
+      const wantEvents =
+        category === "all" || category === "experiences" || category === "concerts" || category === "last-minute";
+      const wantHotels = category === "all" || category === "hotels" || category === "last-minute";
+
+      // ── Fever events ──────────────────────────────────────────────────────
+      if (wantEvents) {
+        const feverConditions: any[] = [gte(feverEventCache.expiresAt, now)];
+        if (category === "experiences") {
+          feverConditions.push(eq(feverEventCache.category, "experiences"));
+        } else if (category === "concerts") {
+          feverConditions.push(eq(feverEventCache.category, "concerts"));
+        } else if (category === "last-minute") {
+          feverConditions.push(
+            and(
+              isNotNull(feverEventCache.startDate),
+              lte(feverEventCache.startDate, threeDaysFromNow)
+            )!
+          );
+        }
+
+        const eventLimit = wantHotels ? Math.ceil(limit * 0.65) : limit;
+        const events = await db
+          .select()
+          .from(feverEventCache)
+          .where(and(...feverConditions))
+          .orderBy(asc(feverEventCache.minPrice))
+          .limit(eventLimit);
+
+        for (const event of events) {
+          results.push({
+            id: `fever-${event.eventId}`,
+            type: "event",
+            source: event.category === "concerts" ? "concerts" : "experiences",
+            title: event.title,
+            destination: `${event.city}, ${event.country}`,
+            city: event.city,
+            imageUrl: event.imageUrl || event.thumbnailUrl || null,
+            price: event.minPrice ? parseFloat(event.minPrice) : 0,
+            currency: event.currency || "USD",
+            bookingUrl: event.affiliateUrl || event.bookingUrl,
+            rating: event.rating ? parseFloat(event.rating as string) : null,
+            isFree: event.isFree,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            category: event.category,
+            tags: (event.tags as string[]) || [],
+          });
+        }
+      }
+
+      // ── Hotel offers (join hotel_offer_cache + hotel_cache) ───────────────
+      if (wantHotels) {
+        const hotelLimit = wantEvents ? Math.ceil(limit * 0.35) : limit;
+        const hotelsWithOffers = await db
+          .select({
+            hotelId: hotelCache.hotelId,
+            cityCode: hotelCache.cityCode,
+            hotelName: hotelCache.name,
+            starRating: hotelCache.starRating,
+            rating: hotelCache.rating,
+            price: hotelOfferCache.price,
+            currency: hotelOfferCache.currency,
+            checkIn: hotelOfferCache.checkInDate,
+            checkOut: hotelOfferCache.checkOutDate,
+            roomType: hotelOfferCache.roomType,
+            offerId: hotelOfferCache.offerId,
+          })
+          .from(hotelOfferCache)
+          .innerJoin(hotelCache, eq(hotelOfferCache.hotelCacheId, hotelCache.id))
+          .where(gte(hotelOfferCache.expiresAt, now))
+          .orderBy(asc(hotelOfferCache.price))
+          .limit(hotelLimit);
+
+        for (const hotel of hotelsWithOffers) {
+          const city = IATA_TO_CITY[hotel.cityCode] || hotel.cityCode;
+          results.push({
+            id: `amadeus-${hotel.offerId}`,
+            type: "hotel",
+            source: "hotels",
+            title: hotel.hotelName,
+            destination: city,
+            city,
+            imageUrl: null,
+            price: hotel.price ? parseFloat(hotel.price) : 0,
+            currency: hotel.currency || "USD",
+            bookingUrl: null,
+            rating: hotel.rating ? parseFloat(hotel.rating as string) : null,
+            starRating: hotel.starRating,
+            checkIn: hotel.checkIn,
+            checkOut: hotel.checkOut,
+            category: "hotels",
+            tags: [],
+          });
+        }
+      }
+
+      // Sort all results by price ascending
+      results.sort((a, b) => a.price - b.price);
+      const deals = results.slice(0, limit);
+      res.json({ deals, total: deals.length });
+    } catch (error: any) {
+      console.error("Deals API error:", error);
+      res.status(500).json({ message: "Failed to fetch deals" });
     }
   });
 }
