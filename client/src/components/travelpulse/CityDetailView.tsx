@@ -975,29 +975,41 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
     enabled: !!data?.city?.country,
   });
 
-  // Social feed (X/Twitter via Grok) — loaded on demand when Live tab is active
-  const { data: socialPosts, isLoading: socialLoading } = useQuery<SocialPost[]>({
+  // Social feed (X/Twitter via Grok) — pre-warmed on city card open so Grok
+  // fetch is already in flight when the user clicks the Live tab.
+  const { data: socialPosts, isLoading: xLoading } = useQuery<SocialPost[]>({
     queryKey: ["/api/travelpulse/social-feed", cityName],
     queryFn: async () => {
       const res = await fetch(`/api/travelpulse/social-feed/${encodeURIComponent(cityName)}`);
       if (!res.ok) throw new Error("Failed to fetch social feed");
       return res.json();
     },
-    enabled: activeTab === 'live',
-    staleTime: 5 * 60 * 1000,
+    enabled: true,
+    staleTime: 28 * 60 * 1000,
   });
 
-  // Instagram feed — loaded on demand when Live tab is active
-  const { data: instagramPosts } = useQuery<SocialPost[]>({
+  // Instagram feed — pre-warmed on city card open; resolves instantly from 24h DB cache
+  const { data: instagramPosts, isLoading: igLoading } = useQuery<SocialPost[]>({
     queryKey: ["/api/travelpulse/instagram-feed", cityName],
     queryFn: async () => {
       const res = await fetch(`/api/travelpulse/instagram-feed/${encodeURIComponent(cityName)}`);
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: activeTab === 'live',
+    enabled: true,
     staleTime: 24 * 60 * 60 * 1000,
   });
+
+  // 45-second timeout fallback for the X section only
+  const [xTimedOut, setXTimedOut] = useState(false);
+  useEffect(() => {
+    if (!xLoading) {
+      setXTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => setXTimedOut(true), 45_000);
+    return () => clearTimeout(timer);
+  }, [xLoading]);
 
   // Spontaneous opportunities — loaded on demand when Spontaneous tab is active
   const spontaneousFilter = spontaneousVibe ? VIBE_TO_FILTER[spontaneousVibe] : undefined;
@@ -1486,113 +1498,35 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
               ))}
             </div>
 
-            {socialLoading ? (
-              <div className="space-y-3" data-testid="live-loading-skeleton">
-                <p className="text-sm text-muted-foreground text-center py-2">Loading live feed...</p>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-28 w-full" />
-                ))}
-              </div>
-            ) : (
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-3 pr-2">
-                  {(() => {
-                    const twitter = (socialPosts || []).filter(p => p.source === 'twitter');
-                    const instagram = (instagramPosts || []).filter(p => p.source === 'instagram');
-                    // Combined "All" view: X/Twitter posts weighted higher for recency —
-                    // X posts sort at 2× their actual recency vs Instagram posts
-                    const combined = (socialSource === 'twitter'
-                      ? twitter
-                      : socialSource === 'instagram'
-                      ? instagram
-                      : [...twitter, ...instagram].sort((a, b) => {
-                          const tA = new Date(a.postedAt).getTime() * (a.source === 'twitter' ? 2 : 1);
-                          const tB = new Date(b.postedAt).getTime() * (b.source === 'twitter' ? 2 : 1);
-                          return tB - tA;
-                        })
-                    ).slice(0, 20);
+            <ScrollArea className="h-[600px]">
+              <div className="space-y-6 pr-2">
 
-                    if (combined.length === 0) {
-                      return (
-                        <Card className="p-8 text-center" data-testid="card-no-social">
-                          <Radio className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                          <p className="text-muted-foreground font-medium">
-                            {socialLoading ? "Loading live feed..." : `No ${socialSource === 'all' ? '' : socialSource + ' '}posts found for ${city.cityName}`}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {socialSource === 'instagram' && 'Instagram requires setup — see configuration notes.'}
-                          </p>
-                        </Card>
-                      );
-                    }
+                {/* ── Instagram section ── */}
+                {(socialSource === 'all' || socialSource === 'instagram') && (
+                  <div className="space-y-3" data-testid="instagram-section">
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                        <Camera className="h-3 w-3 text-white" />
+                      </div>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Instagram</h3>
+                    </div>
 
-                    return combined.map((post) => {
-                      const isTwitter = post.source === 'twitter';
-                      const initials = post.authorName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                      return (
-                        <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
-                          <CardContent className="py-3 px-4">
-                            {isTwitter ? (
-                              <div className="space-y-2">
-                                <div className="flex items-start gap-3">
-                                  <div className="w-9 h-9 rounded-full bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center flex-shrink-0">
-                                    <span className="text-xs font-bold text-sky-700 dark:text-sky-400">{initials}</span>
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
-                                      <span className="font-semibold text-sm">{post.authorName}</span>
-                                      {post.authorHandle && (
-                                        <span className="text-xs text-muted-foreground">{post.authorHandle}</span>
-                                      )}
-                                      <span className="text-[10px] font-bold ml-auto bg-black text-white dark:bg-white dark:text-black px-1.5 py-0.5 rounded">𝕏</span>
-                                    </div>
-                                    <p className="text-sm leading-snug">{post.content}</p>
-                                    {post.imageUrl && (
-                                      <img
-                                        src={post.imageUrl}
-                                        alt="Post media"
-                                        className="mt-2 rounded-lg max-h-48 w-full object-cover"
-                                        data-testid={`img-post-${post.id}`}
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                      />
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-4 pl-12 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <Heart className="h-3 w-3" />
-                                    {post.likesCount.toLocaleString()}
-                                  </span>
-                                  {post.repostsCount !== undefined && (
-                                    <span className="flex items-center gap-1">
-                                      <Activity className="h-3 w-3" />
-                                      {post.repostsCount.toLocaleString()}
-                                    </span>
-                                  )}
-                                  <span>{formatDistanceToNow(new Date(post.postedAt), { addSuffix: true })}</span>
-                                  {post.sentiment && (
-                                    <Badge className={cn(
-                                      "text-[10px] px-1.5 py-0",
-                                      post.sentiment === 'positive' ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                                      post.sentiment === 'negative' ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                                      "bg-muted text-muted-foreground"
-                                    )}>
-                                      {post.sentiment}
-                                    </Badge>
-                                  )}
-                                  <a
-                                    href={post.postUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="ml-auto text-primary hover:underline flex items-center gap-0.5"
-                                    data-testid={`link-view-post-${post.id}`}
-                                  >
-                                    View on 𝕏
-                                    <ExternalLink className="h-3 w-3" />
-                                  </a>
-                                </div>
-                              </div>
-                            ) : (
+                    {igLoading ? (
+                      <div className="space-y-2" data-testid="ig-loading-skeleton">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <Skeleton key={i} className="h-20 w-full" />
+                        ))}
+                      </div>
+                    ) : (instagramPosts || []).length === 0 ? (
+                      <Card className="p-4 text-center" data-testid="card-no-instagram">
+                        <p className="text-sm text-muted-foreground">No Instagram posts found for {city.cityName}</p>
+                        <p className="text-xs text-muted-foreground mt-1">Instagram requires API setup to show posts.</p>
+                      </Card>
+                    ) : (
+                      <div className="space-y-2">
+                        {(instagramPosts || []).slice(0, 10).map((post) => (
+                          <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
+                            <CardContent className="py-3 px-4">
                               <div className="flex items-start gap-3">
                                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
                                   <Camera className="h-4 w-4 text-white" />
@@ -1618,15 +1552,124 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                                   </a>
                                 </div>
                               </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      );
-                    });
-                  })()}
-                </div>
-              </ScrollArea>
-            )}
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── X / Twitter section ── */}
+                {(socialSource === 'all' || socialSource === 'twitter') && (
+                  <div className="space-y-3" data-testid="x-section">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold bg-black text-white dark:bg-white dark:text-black px-1.5 py-0.5 rounded">𝕏</span>
+                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">X / Twitter</h3>
+                      {xLoading && !xTimedOut && (
+                        <span
+                          className="text-xs text-muted-foreground animate-pulse flex items-center gap-1"
+                          data-testid="x-scanning-indicator"
+                        >
+                          <Radio className="h-3 w-3" />
+                          Scanning X...
+                        </span>
+                      )}
+                    </div>
+
+                    {xLoading && !xTimedOut ? (
+                      <div className="space-y-2" data-testid="x-loading-skeleton">
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <Skeleton key={i} className="h-28 w-full" />
+                        ))}
+                      </div>
+                    ) : xTimedOut ? (
+                      <Card className="p-6 text-center" data-testid="card-x-timeout">
+                        <Radio className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                        <p className="text-sm font-medium text-muted-foreground">Live feed temporarily unavailable</p>
+                        <p className="text-xs text-muted-foreground mt-1">X/Twitter data is taking longer than expected. Check back shortly.</p>
+                      </Card>
+                    ) : (socialPosts || []).filter(p => p.source === 'twitter').length === 0 ? (
+                      <Card className="p-4 text-center" data-testid="card-no-x">
+                        <p className="text-sm text-muted-foreground">No X posts found for {city.cityName}</p>
+                      </Card>
+                    ) : (
+                      <div className="space-y-2">
+                        {(socialPosts || []).filter(p => p.source === 'twitter').slice(0, 10).map((post) => {
+                          const initials = post.authorName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                          return (
+                            <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
+                              <CardContent className="py-3 px-4">
+                                <div className="space-y-2">
+                                  <div className="flex items-start gap-3">
+                                    <div className="w-9 h-9 rounded-full bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center flex-shrink-0">
+                                      <span className="text-xs font-bold text-sky-700 dark:text-sky-400">{initials}</span>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-0.5">
+                                        <span className="font-semibold text-sm">{post.authorName}</span>
+                                        {post.authorHandle && (
+                                          <span className="text-xs text-muted-foreground">{post.authorHandle}</span>
+                                        )}
+                                        <span className="text-[10px] font-bold ml-auto bg-black text-white dark:bg-white dark:text-black px-1.5 py-0.5 rounded">𝕏</span>
+                                      </div>
+                                      <p className="text-sm leading-snug">{post.content}</p>
+                                      {post.imageUrl && (
+                                        <img
+                                          src={post.imageUrl}
+                                          alt="Post media"
+                                          className="mt-2 rounded-lg max-h-48 w-full object-cover"
+                                          data-testid={`img-post-${post.id}`}
+                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-4 pl-12 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1">
+                                      <Heart className="h-3 w-3" />
+                                      {post.likesCount.toLocaleString()}
+                                    </span>
+                                    {post.repostsCount !== undefined && (
+                                      <span className="flex items-center gap-1">
+                                        <Activity className="h-3 w-3" />
+                                        {post.repostsCount.toLocaleString()}
+                                      </span>
+                                    )}
+                                    <span>{formatDistanceToNow(new Date(post.postedAt), { addSuffix: true })}</span>
+                                    {post.sentiment && (
+                                      <Badge className={cn(
+                                        "text-[10px] px-1.5 py-0",
+                                        post.sentiment === 'positive' ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                                        post.sentiment === 'negative' ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                                        "bg-muted text-muted-foreground"
+                                      )}>
+                                        {post.sentiment}
+                                      </Badge>
+                                    )}
+                                    <a
+                                      href={post.postUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ml-auto text-primary hover:underline flex items-center gap-0.5"
+                                      data-testid={`link-view-post-${post.id}`}
+                                    >
+                                      View on 𝕏
+                                      <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            </ScrollArea>
           </div>
         </TabsContent>
 
