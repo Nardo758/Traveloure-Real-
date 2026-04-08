@@ -1280,7 +1280,8 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
             </div>
 
             {socialLoading ? (
-              <div className="space-y-3">
+              <div className="space-y-3" data-testid="live-loading-skeleton">
+                <p className="text-sm text-muted-foreground text-center py-2">Loading live feed...</p>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Skeleton key={i} className="h-28 w-full" />
                 ))}
