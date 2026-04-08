@@ -1789,6 +1789,73 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
     }
   });
 
+  // ── Bookable activities for For You tab ──────────────────────────────────────
+  app.get("/api/travelpulse/activities/:cityName", async (req, res) => {
+    try {
+      const { cityName } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 12, 30);
+      const now = new Date();
+
+      const rows = await db
+        .select({
+          id: activityCache.id,
+          productCode: activityCache.productCode,
+          title: activityCache.title,
+          description: activityCache.description,
+          price: activityCache.price,
+          currency: activityCache.currency,
+          rating: activityCache.rating,
+          reviewCount: activityCache.reviewCount,
+          imageUrl: activityCache.imageUrl,
+          provider: activityCache.provider,
+          category: activityCache.category,
+          durationMinutes: activityCache.durationMinutes,
+          rawData: activityCache.rawData,
+        })
+        .from(activityCache)
+        .where(and(
+          or(
+            sql`lower(${activityCache.destination}) = lower(${cityName})`,
+            sql`lower(${activityCache.city}) = lower(${cityName})`,
+          ),
+          gte(activityCache.expiresAt, now),
+        ))
+        .orderBy(
+          sql`CASE WHEN ${activityCache.price} IS NULL OR ${activityCache.price} = 0 THEN 1 ELSE 0 END`,
+          asc(activityCache.price),
+        )
+        .limit(limit);
+
+      const activities = rows.map((row) => {
+        const raw = row.rawData as Record<string, unknown> | null;
+        const bookingUrl =
+          (raw?.bookingLink as string | undefined) ??
+          (raw?.productUrl as string | undefined) ??
+          null;
+        return {
+          id: row.id,
+          productCode: row.productCode,
+          title: row.title,
+          description: row.description,
+          price: row.price ? parseFloat(row.price) : null,
+          currency: row.currency ?? "USD",
+          rating: row.rating ? parseFloat(row.rating) : null,
+          reviewCount: row.reviewCount ?? 0,
+          imageUrl: row.imageUrl,
+          provider: row.provider ?? "viator",
+          category: row.category,
+          durationMinutes: row.durationMinutes,
+          bookingUrl,
+        };
+      });
+
+      res.json({ activities, total: activities.length, city: cityName });
+    } catch (error: any) {
+      console.error("Bookable activities API error:", error);
+      res.status(500).json({ message: "Failed to fetch activities" });
+    }
+  });
+
   // ── Safety scores API ────────────────────────────────────────────────────────
   app.get("/api/travelpulse/safety/:city", async (req, res) => {
     try {
