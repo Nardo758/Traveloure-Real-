@@ -23,6 +23,7 @@ export interface OpportunitySearchParams {
   types?: string[]; // last_minute, trending, local_event, flash_deal
   categories?: string[];
   maxPrice?: number;
+  minPrice?: number; // For luxury/premium vibe filtering (show high-end experiences only)
   timeWindow?: "tonight" | "tomorrow" | "weekend" | "week" | "surprise_me";
 }
 
@@ -165,6 +166,10 @@ class OpportunityEngineService {
       
       if (params.maxPrice) {
         conditions.push(lte(activityCache.price, params.maxPrice.toString()));
+      }
+
+      if (params.minPrice) {
+        conditions.push(gte(activityCache.price, params.minPrice.toString()));
       }
       
       if (params.categories && params.categories.length > 0) {
