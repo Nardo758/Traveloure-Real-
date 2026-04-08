@@ -40,7 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { ExpertCard } from "@/components/expert-card";
+import { ExpertCard } from "@/components/expert-card-v2";
 import { ExpertMatchCard } from "@/components/expert-match-card";
 import { format } from "date-fns";
 
