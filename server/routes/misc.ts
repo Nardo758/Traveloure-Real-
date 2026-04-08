@@ -1555,4 +1555,60 @@ Respond with this exact JSON structure:
     }
   });
 
+  // === Chats Routes ===
+  app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
+    const userId = (req.user as any).claims.sub;
+    const userRole = (req.user as any).claims.role || 'user';
+    const chats = await storage.getChats(userId);
+    storage.logAccess({
+      actorId: userId,
+      actorRole: userRole,
+      action: 'view_chats',
+      resourceType: 'chat',
+      ipAddress: req.ip,
+      userAgent: req.get('User-Agent'),
+    });
+    const enrichedChats = await Promise.all(chats.map(async (chat) => {
+      const otherUserId = chat.senderId === userId ? chat.receiverId : chat.senderId;
+      const redactedMessage = redactContactInfo(chat.message);
+      let participant = null;
+      if (otherUserId) {
+        const otherUser = await storage.getUser(otherUserId);
+        if (otherUser) {
+          const sanitizedUser = sanitizeUserForRole(otherUser, userRole, false);
+          participant = {
+            ...sanitizedUser,
+            displayName: getDisplayName(otherUser.firstName, otherUser.lastName)
+          };
+        }
+      }
+      return { ...chat, message: redactedMessage, participant };
+    }));
+    res.json(enrichedChats);
+  });
+
+  app.post(api.chats.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.chats.create.input.parse(req.body);
+      const chat = await storage.createChat(input);
+      res.status(201).json(chat);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      throw err;
+    }
+  });
+
+  // === Help Guide Trips ===
+  app.get(api.helpGuideTrips.list.path, async (req, res) => {
+    const trips = await storage.getHelpGuideTrips();
+    res.json(trips);
+  });
+
+  app.get(api.helpGuideTrips.get.path, async (req, res) => {
+    const trip = await storage.getHelpGuideTrip(req.params.id);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+    res.json(trip);
+  });
 }
