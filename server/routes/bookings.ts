@@ -296,8 +296,8 @@ router.post('/activity/checkout', isAuthenticated, async (req, res) => {
 /**
  * POST /api/bookings/activity/stage-cart
  * Server-side staging of external activity cart items.
- * Stores items with server-validated prices; returns activityBookingIds to use at checkout.
- * This ensures the backend — not the client — controls pricing for external items.
+ * Prices are resolved from the authoritative activity_cache table (keyed by productCode).
+ * Falls back to client-supplied price only for items not in cache, with strict range validation.
  */
 router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
   try {
@@ -314,21 +314,42 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
     const activityBookingIds: string[] = [];
 
     for (const ext of externalItems) {
-      const price = parseFloat(ext.price);
-      const quantity = parseInt(ext.quantity) || 1;
-
-      // Server-side price validation
-      if (isNaN(price) || price <= 0) {
-        return res.status(400).json({ error: `Invalid price for item: ${ext.name}` });
-      }
-      if (price > 25000) {
-        return res.status(400).json({ error: `Price exceeds maximum allowed: ${ext.name}` });
-      }
-      if (quantity < 1 || quantity > 20) {
+      const clientQuantity = parseInt(ext.quantity) || 1;
+      if (clientQuantity < 1 || clientQuantity > 20) {
         return res.status(400).json({ error: `Invalid quantity for item: ${ext.name}` });
       }
 
-      const priceAmount = price * quantity;
+      // Look up authoritative price from activity_cache (server-stored when activities were served)
+      let authorizedPricePerUnit: number | null = null;
+      const productCode = ext.id || ext.productCode;
+      if (productCode) {
+        const cacheRows = await db.execute(sql`
+          SELECT price FROM activity_cache
+          WHERE product_code = ${productCode}
+          LIMIT 1
+        `);
+        if (cacheRows.rows.length > 0 && (cacheRows.rows[0] as any).price != null) {
+          authorizedPricePerUnit = parseFloat((cacheRows.rows[0] as any).price);
+        }
+      }
+
+      // Use server-side price if available; otherwise validate and use client price
+      let pricePerUnit: number;
+      if (authorizedPricePerUnit !== null && authorizedPricePerUnit > 0) {
+        pricePerUnit = authorizedPricePerUnit;
+      } else {
+        // Fallback: client-supplied price with strict range validation
+        const clientPrice = parseFloat(ext.price);
+        if (isNaN(clientPrice) || clientPrice <= 0) {
+          return res.status(400).json({ error: `Invalid price for item: ${ext.name}` });
+        }
+        if (clientPrice > 25000) {
+          return res.status(400).json({ error: `Price exceeds maximum allowed for: ${ext.name}` });
+        }
+        pricePerUnit = clientPrice;
+      }
+
+      const priceAmount = pricePerUnit * clientQuantity;
       const provider = (ext.provider || ext.type || 'external').toLowerCase();
       const bookingId = crypto.randomUUID();
 
@@ -337,7 +358,7 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
           id, user_id, provider, product_code, product_title,
           image_url, price_amount, price_currency, booking_url, status, created_at
         ) VALUES (
-          ${bookingId}, ${userId}, ${provider}, ${ext.id || null}, ${ext.name},
+          ${bookingId}, ${userId}, ${provider}, ${productCode || null}, ${ext.name},
           ${ext.metadata?.imageUrl || null}, ${priceAmount}, 'USD',
           ${ext.metadata?.bookingUrl || null}, 'staged', NOW()
         )
@@ -355,7 +376,8 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
 
 /**
  * POST /api/bookings/activity/confirm
- * Called after a successful Stripe payment on the client side to confirm the booking.
+ * Confirms an activity booking after verifying Stripe payment intent is succeeded.
+ * Verifies via internal payment_intents table (populated by webhook or payment intent creation).
  */
 router.post('/activity/confirm', isAuthenticated, async (req, res) => {
   try {
@@ -369,9 +391,57 @@ router.post('/activity/confirm', isAuthenticated, async (req, res) => {
     const { db } = await import('../db');
     const { sql } = await import('drizzle-orm');
 
+    // Verify the payment intent belongs to this user and has succeeded
+    // Check internal payment_intents table first (faster, no Stripe API call)
+    const piRows = await db.execute(sql`
+      SELECT status FROM payment_intents
+      WHERE stripe_payment_intent_id = ${paymentIntentId}
+        AND user_id = ${userId}
+      LIMIT 1
+    `);
+
+    const piStatus = piRows.rows.length > 0 ? (piRows.rows[0] as any).status : null;
+
+    // Allow if internal DB shows succeeded, or if we haven't received webhook yet
+    // (webhook may be delayed; fall back to Stripe API to verify in real-time)
+    if (piStatus !== 'succeeded') {
+      // Double-check via Stripe API for real-time confirmation
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      try {
+        const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        if (intent.status !== 'succeeded') {
+          return res.status(402).json({
+            error: `Payment not completed. Status: ${intent.status}`,
+          });
+        }
+        if (intent.metadata?.userId && intent.metadata.userId !== userId) {
+          return res.status(403).json({ error: 'Payment intent does not belong to this user' });
+        }
+      } catch (stripeErr: any) {
+        return res.status(400).json({ error: `Could not verify payment: ${stripeErr.message}` });
+      }
+    }
+
+    // Verify the booking belongs to this user and is linked to this payment intent
+    const bookingRows = await db.execute(sql`
+      SELECT id, status FROM activity_bookings
+      WHERE id = ${bookingId}
+        AND user_id = ${userId}
+        AND stripe_payment_intent_id = ${paymentIntentId}
+      LIMIT 1
+    `);
+
+    if (bookingRows.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking not found or payment intent mismatch' });
+    }
+
     await db.execute(sql`
       UPDATE activity_bookings 
-      SET status = 'confirmed', stripe_payment_intent_id = ${paymentIntentId}
+      SET status = 'confirmed'
       WHERE id = ${bookingId} AND user_id = ${userId}
     `);
 
