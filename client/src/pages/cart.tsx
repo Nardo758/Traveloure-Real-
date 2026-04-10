@@ -226,6 +226,7 @@ export default function CartPage() {
     amount: number;
   } | null>(null);
   const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
+  const [checkoutActivityBookingIds, setCheckoutActivityBookingIds] = useState<string[]>([]);
 
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
@@ -270,8 +271,26 @@ export default function CartPage() {
       if ((cart?.items?.length || 0) === 0 && externalItems.length === 0) {
         throw new Error("Cart is empty");
       }
+
+      // Stage external items server-side to capture validated prices
+      let stagedActivityIds: string[] = [];
+      if (externalItems.length > 0) {
+        const stageRes = await fetch("/api/bookings/activity/stage-cart", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ externalItems }),
+        });
+        if (!stageRes.ok) {
+          const err = await stageRes.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to prepare external items for checkout");
+        }
+        const stageData = await stageRes.json();
+        stagedActivityIds = stageData.activityBookingIds || [];
+      }
+
       const res = await apiRequest("POST", "/api/checkout", {
-        externalItems: externalItems.length > 0 ? externalItems : undefined,
+        activityBookingIds: stagedActivityIds.length > 0 ? stagedActivityIds : undefined,
       });
       return res.json();
     },
@@ -283,6 +302,7 @@ export default function CartPage() {
         setCheckoutPaymentIntent(data.paymentIntent);
         const platformIds = data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [];
         const activityIds = data.activityBookingIds || [];
+        setCheckoutActivityBookingIds(activityIds);
         setCheckoutBookingIds([...platformIds, ...activityIds]);
         setFlowStep("payment");
       } else {
@@ -310,8 +330,9 @@ export default function CartPage() {
   const externalSubtotal = externalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const platformSubtotal = parseFloat(cart?.subtotal || "0");
   const combinedSubtotal = platformSubtotal + externalSubtotal;
-  const platformFee = parseFloat(cart?.platformFee || "0");
-  const combinedTotal = combinedSubtotal + platformFee;
+  // Fee is computed on the combined subtotal (matching server-side /api/checkout logic)
+  const combinedFee = combinedSubtotal * 0.20;
+  const combinedTotal = combinedSubtotal + combinedFee;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const [creatingComparison, setCreatingComparison] = useState(false);
@@ -817,7 +838,7 @@ export default function CartPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span data-testid="text-platform-fee">${platformFee.toFixed(2)}</span>
+                        <span data-testid="text-platform-fee">${combinedFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
@@ -986,7 +1007,7 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>${platformFee.toFixed(2)}</span>
+                        <span>${combinedFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
@@ -1045,10 +1066,28 @@ export default function CartPage() {
                         <StripeCheckout
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
-                          onSuccess={(paymentIntentId) => {
+                          onSuccess={async (paymentIntentId) => {
+                            // Confirm activity bookings client-side (webhook also handles this)
+                            if (checkoutActivityBookingIds.length > 0) {
+                              await Promise.allSettled(
+                                checkoutActivityBookingIds.map(id =>
+                                  fetch("/api/bookings/activity/confirm", {
+                                    method: "POST",
+                                    credentials: "include",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ bookingId: id, paymentIntentId }),
+                                  })
+                                )
+                              );
+                            }
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+                            queryClient.invalidateQueries({ queryKey: ["/api/my-activity-bookings"] });
+                            // Clear external cart after payment
+                            if (experienceSlug) {
+                              sessionStorage.removeItem(`externalCart_${experienceSlug}`);
+                            }
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
-                            setLocation("/bookings");
+                            setLocation("/my-bookings");
                           }}
                           onError={(error) => {
                             toast({ variant: "destructive", title: "Payment failed", description: error });
@@ -1129,7 +1168,7 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>${platformFee.toFixed(2)}</span>
+                        <span>${combinedFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">

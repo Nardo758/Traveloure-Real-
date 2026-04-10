@@ -214,30 +214,40 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
   app.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { tripId, notes, externalItems: rawExternalItems } = req.body;
+      const { tripId, notes, activityBookingIds: stagedIds } = req.body;
       
       // Get platform cart items
       const cartData = await storage.getCartItems(userId);
-      
-      // Parse optional external items (Viator/Amadeus/Fever from sessionStorage)
-      const externalItems: Array<{
-        id: string; name: string; price: number; quantity: number;
-        provider?: string; type?: string; metadata?: any;
-      }> = Array.isArray(rawExternalItems) ? rawExternalItems : [];
 
-      if (cartData.length === 0 && externalItems.length === 0) {
+      // Resolve staged activity booking IDs (server-validated prices)
+      const stagedActivityIds: string[] = Array.isArray(stagedIds) ? stagedIds : [];
+
+      if (cartData.length === 0 && stagedActivityIds.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
+      }
+
+      const { sql: sqlTag } = await import("drizzle-orm");
+
+      // Fetch staged activity bookings from DB — use server-stored prices, not client prices
+      let externalSubtotal = 0;
+      const validStagedIds: string[] = [];
+      if (stagedActivityIds.length > 0) {
+        for (const id of stagedActivityIds) {
+          const rows = await db.execute(sqlTag`
+            SELECT id, price_amount FROM activity_bookings
+            WHERE id = ${id} AND user_id = ${userId} AND status = 'staged'
+          `);
+          if (rows.rows.length > 0) {
+            externalSubtotal += parseFloat((rows.rows[0] as any).price_amount);
+            validStagedIds.push(id);
+          }
+        }
       }
       
       // Calculate totals from platform items
       const platformSubtotal = cartData.reduce((sum, item) => {
         const price = parseFloat(item.service?.price || "0");
         return sum + (price * (item.quantity || 1));
-      }, 0);
-
-      // Calculate totals from external items
-      const externalSubtotal = externalItems.reduce((sum, item) => {
-        return sum + ((item.price || 0) * (item.quantity || 1));
       }, 0);
 
       const subtotal = platformSubtotal + externalSubtotal;
@@ -290,20 +300,11 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
         bookings.push({ booking, contract });
       }
 
-      // Create activityBookings records for external items
-      const activityBookingIds: string[] = [];
-      if (externalItems.length > 0) {
-        const { sql: sqlTag } = await import("drizzle-orm");
-        for (const ext of externalItems) {
-          const actBookingId = crypto.randomUUID();
-          const provider = ext.provider || ext.type || "external";
-          const priceAmount = (ext.price || 0) * (ext.quantity || 1);
-          await db.execute(sqlTag`
-            INSERT INTO activity_bookings (id, user_id, provider, product_code, product_title, image_url, price_amount, price_currency, booking_url, status, created_at)
-            VALUES (${actBookingId}, ${userId}, ${provider}, ${ext.id}, ${ext.name}, ${ext.metadata?.imageUrl || null}, ${priceAmount}, 'USD', ${ext.metadata?.bookingUrl || null}, 'pending', NOW())
-          `);
-          activityBookingIds.push(actBookingId);
-        }
+      // Promote staged activity bookings to 'pending' (waiting for payment)
+      for (const id of validStagedIds) {
+        await db.execute(sqlTag`
+          UPDATE activity_bookings SET status = 'pending' WHERE id = ${id} AND user_id = ${userId}
+        `);
       }
       
       // Clear platform cart after successful checkout
@@ -312,7 +313,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
       // Build combined booking list for payment intent metadata
       const allBookingObjects = [
         ...bookings.map((b: any) => b.booking),
-        ...activityBookingIds.map(id => ({ id })),
+        ...validStagedIds.map(id => ({ id })),
       ];
 
       // Create Stripe payment intent for the combined total
@@ -325,9 +326,8 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
       );
 
       // Link payment intent to activity bookings
-      if (activityBookingIds.length > 0 && paymentIntent.paymentIntentId) {
-        const { sql: sqlTag } = await import("drizzle-orm");
-        for (const id of activityBookingIds) {
+      if (validStagedIds.length > 0 && paymentIntent.paymentIntentId) {
+        for (const id of validStagedIds) {
           await db.execute(sqlTag`
             UPDATE activity_bookings SET stripe_payment_intent_id = ${paymentIntent.paymentIntentId}
             WHERE id = ${id}
@@ -338,7 +338,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
       res.status(201).json({
         success: true,
         bookings,
-        activityBookingIds,
+        activityBookingIds: validStagedIds,
         total: total.toFixed(2),
         paymentIntent,
         message: "Booking created successfully. Complete payment.",

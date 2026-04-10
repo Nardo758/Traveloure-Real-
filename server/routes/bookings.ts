@@ -294,6 +294,66 @@ router.post('/activity/checkout', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * POST /api/bookings/activity/stage-cart
+ * Server-side staging of external activity cart items.
+ * Stores items with server-validated prices; returns activityBookingIds to use at checkout.
+ * This ensures the backend — not the client — controls pricing for external items.
+ */
+router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { externalItems } = req.body;
+
+    if (!Array.isArray(externalItems) || externalItems.length === 0) {
+      return res.status(400).json({ error: 'externalItems must be a non-empty array' });
+    }
+
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    const activityBookingIds: string[] = [];
+
+    for (const ext of externalItems) {
+      const price = parseFloat(ext.price);
+      const quantity = parseInt(ext.quantity) || 1;
+
+      // Server-side price validation
+      if (isNaN(price) || price <= 0) {
+        return res.status(400).json({ error: `Invalid price for item: ${ext.name}` });
+      }
+      if (price > 25000) {
+        return res.status(400).json({ error: `Price exceeds maximum allowed: ${ext.name}` });
+      }
+      if (quantity < 1 || quantity > 20) {
+        return res.status(400).json({ error: `Invalid quantity for item: ${ext.name}` });
+      }
+
+      const priceAmount = price * quantity;
+      const provider = (ext.provider || ext.type || 'external').toLowerCase();
+      const bookingId = crypto.randomUUID();
+
+      await db.execute(sql`
+        INSERT INTO activity_bookings (
+          id, user_id, provider, product_code, product_title,
+          image_url, price_amount, price_currency, booking_url, status, created_at
+        ) VALUES (
+          ${bookingId}, ${userId}, ${provider}, ${ext.id || null}, ${ext.name},
+          ${ext.metadata?.imageUrl || null}, ${priceAmount}, 'USD',
+          ${ext.metadata?.bookingUrl || null}, 'staged', NOW()
+        )
+      `);
+
+      activityBookingIds.push(bookingId);
+    }
+
+    res.status(201).json({ activityBookingIds });
+  } catch (error: any) {
+    console.error('Activity stage-cart error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /api/bookings/activity/confirm
  * Called after a successful Stripe payment on the client side to confirm the booking.
  */
@@ -333,7 +393,9 @@ router.get('/my-activity-bookings', isAuthenticated, async (req, res) => {
     const { sql } = await import('drizzle-orm');
 
     const result = await db.execute(sql`
-      SELECT * FROM activity_bookings WHERE user_id = ${userId} ORDER BY created_at DESC
+      SELECT * FROM activity_bookings
+      WHERE user_id = ${userId} AND status != 'staged'
+      ORDER BY created_at DESC
     `);
 
     res.json(result.rows);
