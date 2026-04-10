@@ -238,17 +238,7 @@ export default function CartPage() {
     enabled: !!user,
   });
 
-  // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
-  // But skip this check if we already have a payment intent (post-checkout state)
-  useEffect(() => {
-    if (flowStep === "payment" && !isLoading && (cart?.items?.length || 0) === 0 && !checkoutPaymentIntent) {
-      setFlowStep("cart");
-      toast({
-        title: "External bookings only",
-        description: "Complete external bookings on their provider websites. Platform checkout requires at least one platform service."
-      });
-    }
-  }, [flowStep, cart?.items?.length, isLoading, toast, checkoutPaymentIntent]);
+  // No-op: external-only carts can now proceed to payment via Stripe
 
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
@@ -277,18 +267,23 @@ export default function CartPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      if ((cart?.items?.length || 0) === 0) {
-        throw new Error("No platform items to checkout");
+      if ((cart?.items?.length || 0) === 0 && externalItems.length === 0) {
+        throw new Error("Cart is empty");
       }
-      const res = await apiRequest("POST", "/api/checkout", {});
+      const res = await apiRequest("POST", "/api/checkout", {
+        externalItems: externalItems.length > 0 ? externalItems : undefined,
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-activity-bookings"] });
       if (data.paymentIntent) {
         setCheckoutPaymentIntent(data.paymentIntent);
-        setCheckoutBookingIds(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []);
+        const platformIds = data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [];
+        const activityIds = data.activityBookingIds || [];
+        setCheckoutBookingIds([...platformIds, ...activityIds]);
         setFlowStep("payment");
       } else {
         toast({ title: "Booking created!", description: "Your services have been booked." });
@@ -296,11 +291,7 @@ export default function CartPage() {
       }
     },
     onError: (error: any) => {
-      if (error?.message === "No platform items to checkout") {
-        toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
-      } else {
-        toast({ variant: "destructive", title: "Checkout failed" });
-      }
+      toast({ variant: "destructive", title: "Checkout failed", description: error?.message });
     },
   });
 
@@ -860,7 +851,7 @@ export default function CartPage() {
                           {creatingComparison ? "Creating..." : "Generate Itinerary"}
                         </Button>
                       </div>
-                      {(cart?.items?.length || 0) > 0 && (
+                      {((cart?.items?.length || 0) > 0 || externalItems.length > 0) && (
                         <>
                           <Separator />
                           <Button
@@ -1014,7 +1005,7 @@ export default function CartPage() {
                           </div>
                         </div>
                       )}
-                      {(cart?.items?.length || 0) > 0 ? (
+                      {((cart?.items?.length || 0) > 0 || externalItems.length > 0) && (
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
@@ -1024,10 +1015,6 @@ export default function CartPage() {
                           <CreditCard className="w-4 h-4 mr-2" />
                           Proceed to Payment
                         </Button>
-                      ) : (
-                        <div className="w-full text-center text-muted-foreground text-sm">
-                          External bookings must be completed on provider websites
-                        </div>
                       )}
                       {optimizationResult?.warnings && optimizationResult.warnings.length > 0 && (
                         <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -1161,7 +1148,7 @@ export default function CartPage() {
                           </div>
                         </div>
                       )}
-                      {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
+                      {!checkoutPaymentIntent && ((cart?.items?.length || 0) > 0 || externalItems.length > 0) && (
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
@@ -1181,11 +1168,7 @@ export default function CartPage() {
                             </>
                           )}
                         </Button>
-                      ) : !checkoutPaymentIntent ? (
-                        <div className="w-full text-center text-muted-foreground text-sm">
-                          External bookings must be completed on provider websites
-                        </div>
-                      ) : null}
+                      )}
                     </CardFooter>
                   </Card>
                 </div>
