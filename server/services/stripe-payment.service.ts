@@ -131,33 +131,40 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update bookings
-    const bookingIdList = bookingIds.split(',');
-    for (const bookingId of bookingIdList) {
-      if (isDeposit === 'true') {
-        await db.execute(sql`
-          UPDATE bookings SET
-            status = 'confirmed',
-            payment_status = 'succeeded',
-            confirmed_at = NOW(),
-            deposit_paid = true
-          WHERE id = ${bookingId}
-        `);
-      } else {
-        await db.execute(sql`
-          UPDATE bookings SET
-            status = 'confirmed',
-            payment_status = 'succeeded',
-            confirmed_at = NOW(),
-            deposit_paid = true,
-            balance_paid = true
-          WHERE id = ${bookingId}
-        `);
+    // Update platform bookings
+    if (bookingIds) {
+      const bookingIdList = bookingIds.split(',').filter(id => id.trim());
+      for (const bookingId of bookingIdList) {
+        if (isDeposit === 'true') {
+          await db.execute(sql`
+            UPDATE bookings SET
+              status = 'confirmed',
+              payment_status = 'succeeded',
+              confirmed_at = NOW(),
+              deposit_paid = true
+            WHERE id = ${bookingId.trim()}
+          `);
+        } else {
+          await db.execute(sql`
+            UPDATE bookings SET
+              status = 'confirmed',
+              payment_status = 'succeeded',
+              confirmed_at = NOW(),
+              deposit_paid = true,
+              balance_paid = true
+            WHERE id = ${bookingId.trim()}
+          `);
+        }
       }
-
-      // TODO: Notify user and provider
-      // TODO: Update provider earnings
     }
+
+    // Confirm any activity bookings linked to this payment intent
+    await db.execute(sql`
+      UPDATE activity_bookings
+      SET status = 'confirmed'
+      WHERE stripe_payment_intent_id = ${paymentIntent.id}
+        AND status IN ('pending', 'staged')
+    `);
   }
 
   /**
@@ -171,18 +178,25 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update bookings
-    const bookingIdList = bookingIds.split(',');
-    for (const bookingId of bookingIdList) {
-      await db.execute(sql`
-        UPDATE bookings SET
-          status = 'payment_failed',
-          payment_status = 'failed'
-        WHERE id = ${bookingId}
-      `);
+    // Update platform bookings
+    if (bookingIds) {
+      const bookingIdList = bookingIds.split(',').filter(id => id.trim());
+      for (const bookingId of bookingIdList) {
+        await db.execute(sql`
+          UPDATE bookings SET
+            status = 'payment_failed',
+            payment_status = 'failed'
+          WHERE id = ${bookingId.trim()}
+        `);
+      }
     }
 
-    // TODO: Notify user of payment failure
+    // Mark any linked activity bookings as failed
+    await db.execute(sql`
+      UPDATE activity_bookings SET status = 'failed'
+      WHERE stripe_payment_intent_id = ${paymentIntent.id}
+        AND status IN ('pending', 'staged')
+    `);
   }
 
   /**
@@ -196,16 +210,25 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update bookings
-    const bookingIdList = bookingIds.split(',');
-    for (const bookingId of bookingIdList) {
-      await db.execute(sql`
-        UPDATE bookings SET
-          status = 'canceled',
-          payment_status = 'canceled'
-        WHERE id = ${bookingId}
-      `);
+    // Update platform bookings
+    if (bookingIds) {
+      const bookingIdList = bookingIds.split(',').filter(id => id.trim());
+      for (const bookingId of bookingIdList) {
+        await db.execute(sql`
+          UPDATE bookings SET
+            status = 'canceled',
+            payment_status = 'canceled'
+          WHERE id = ${bookingId.trim()}
+        `);
+      }
     }
+
+    // Mark any linked activity bookings as cancelled
+    await db.execute(sql`
+      UPDATE activity_bookings SET status = 'cancelled'
+      WHERE stripe_payment_intent_id = ${paymentIntent.id}
+        AND status IN ('pending', 'staged')
+    `);
   }
 
   /**
