@@ -994,6 +994,166 @@ function CityDetailSkeleton() {
   );
 }
 
+// ── Fever Events ──────────────────────────────────────────────────────────────
+
+interface FeverEventItem {
+  id: string;
+  source: 'fever' | 'travelpulse';
+  title: string;
+  description?: string | null;
+  eventType: string;
+  specificDate?: string | null;
+  pricing?: {
+    currency: string;
+    minPrice?: number;
+    maxPrice?: number;
+    priceRange?: string;
+  } | null;
+  bookingUrl?: string | null;
+  imageUrl?: string | null;
+  rating?: number | null;
+  isFree?: boolean;
+  tags?: string[];
+}
+
+interface FeverEventsResponse {
+  city: string;
+  feverSupported: boolean;
+  feverCity: { code: string; name: string; country: string } | null;
+  events: FeverEventItem[];
+  count: number;
+  feverCount: number;
+  travelpulseCount: number;
+}
+
+function getFeverCategoryStyle(eventType: string): string {
+  switch (eventType) {
+    case 'concert': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+    case 'exhibition': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+    case 'theater': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
+    case 'festival': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
+    case 'sport': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    case 'food-drink': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+    case 'nightlife': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
+    case 'wellness': return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400';
+    default: return 'bg-muted text-muted-foreground';
+  }
+}
+
+function FeverEventsSection({ cityName }: { cityName: string }) {
+  const { data, isLoading } = useQuery<FeverEventsResponse>({
+    queryKey: ["/api/travelpulse/fever-events", cityName],
+    queryFn: async () => {
+      const res = await fetch(`/api/travelpulse/fever-events/${encodeURIComponent(cityName)}`);
+      if (!res.ok) throw new Error("Failed to fetch events");
+      return res.json();
+    },
+    enabled: !!cityName,
+    staleTime: 60 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="mt-6 space-y-3" data-testid="fever-events-loading">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!data?.feverSupported || !data.events || data.events.length === 0) return null;
+
+  const events = data.events.slice(0, 8);
+
+  return (
+    <div className="mt-6 space-y-4" data-testid="fever-events-section">
+      <div className="flex items-center gap-2">
+        <Ticket className="h-5 w-5 text-primary" />
+        <h3 className="text-lg font-semibold">Events & Experiences</h3>
+        <Badge variant="outline" className="text-xs">Fever</Badge>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {events.map((event) => {
+          const ticketUrl = event.bookingUrl || '#';
+          const formattedDate = event.specificDate
+            ? new Date(event.specificDate + 'T00:00:00').toLocaleDateString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+              })
+            : null;
+          const priceDisplay = event.isFree
+            ? 'Free'
+            : event.pricing?.priceRange
+              || (event.pricing?.minPrice != null
+                ? `from ${event.pricing.currency === 'USD' ? '$' : event.pricing.currency}${event.pricing.minPrice}`
+                : null);
+
+          return (
+            <Card key={event.id} className="overflow-hidden flex flex-col hover-elevate" data-testid={`fever-event-${event.id}`}>
+              {event.imageUrl ? (
+                <div className="h-36 overflow-hidden flex-shrink-0">
+                  <img
+                    src={event.imageUrl}
+                    alt={event.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                </div>
+              ) : (
+                <div className="h-36 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center flex-shrink-0">
+                  <Ticket className="h-10 w-10 text-primary/30" />
+                </div>
+              )}
+              <CardContent className="p-4 flex flex-col flex-1">
+                <div className="mb-2">
+                  <Badge className={cn("text-xs capitalize mb-1", getFeverCategoryStyle(event.eventType))}>
+                    {event.eventType.replace('-', ' ')}
+                  </Badge>
+                  <h4 className="font-medium text-sm line-clamp-2 leading-snug">{event.title}</h4>
+                </div>
+                <div className="space-y-1 text-xs text-muted-foreground flex-1">
+                  {formattedDate && (
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3 flex-shrink-0" />
+                      <span>{formattedDate}</span>
+                    </div>
+                  )}
+                  {event.rating != null && (
+                    <div className="flex items-center gap-1">
+                      <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />
+                      <span>{event.rating.toFixed(1)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
+                  {priceDisplay && (
+                    <span className="text-sm font-semibold">{priceDisplay}</span>
+                  )}
+                  <a
+                    href={ticketUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-auto"
+                    data-testid={`link-fever-tickets-${event.id}`}
+                  >
+                    <Button size="sm" className="text-xs h-7">
+                      Get Tickets
+                      <ExternalLink className="h-3 w-3 ml-1" />
+                    </Button>
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Activity Matching ─────────────────────────────────────────────────────────
 // Cross-reference free-text (social posts, gem names, AI recommendations)
 // against cached Viator/Amadeus activities. Returns the best match that also
@@ -1466,6 +1626,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
         <TabsContent value="recommendations" className="mt-4">
           <AIRecommendationsSection cityName={city.cityName} country={city.country} cachedActivities={cachedActivities} />
           <BookableActivitiesSection cityName={city.cityName} />
+          <FeverEventsSection cityName={city.cityName} />
           <EnrichedRecommendationsSection cityName={city.cityName} />
         </TabsContent>
 
