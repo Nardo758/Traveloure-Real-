@@ -497,18 +497,37 @@ function AIRecommendationsSection({ cityName, country, cachedActivities = [] }: 
                           ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
                         </p>
                       )}
-                      <a
-                        href={bookingHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-auto"
-                        data-testid={`link-book-activity-${activity.id}`}
-                      >
-                        <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
-                          {matched ? "Book Now" : "Find & Book"}
-                          <ExternalLink className="h-3 w-3 ml-1" />
-                        </Button>
-                      </a>
+                      {matched && matched.price != null && matched.price > 0 ? (
+                        <BookActivityModal
+                          activity={{
+                            provider: matched.provider,
+                            productCode: matched.productCode || null,
+                            title: matched.title,
+                            price: matched.price,
+                            currency: matched.currency || "USD",
+                            imageUrl: matched.imageUrl || null,
+                            bookingUrl: matched.bookingUrl || '',
+                          }}
+                          trigger={
+                            <Button size="sm" className="text-xs h-7 ml-auto" data-testid={`button-book-rec-activity-${activity.id}`}>
+                              Book Now
+                            </Button>
+                          }
+                        />
+                      ) : (
+                        <a
+                          href={bookingHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-auto"
+                          data-testid={`link-book-activity-${activity.id}`}
+                        >
+                          <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
+                            {matched ? "Book Now" : "Find & Book"}
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                          </Button>
+                        </a>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1648,6 +1667,26 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                         {gem.priceRange && <span>{gem.priceRange}</span>}
                         {(() => {
                           const matched = matchActivityToText(gem.placeName + ' ' + (gem.placeType ?? '') + ' ' + (gem.description ?? ''), cachedActivities);
+                          if (matched && matched.price != null && matched.price > 0) {
+                            return (
+                              <BookActivityModal
+                                activity={{
+                                  provider: matched.provider,
+                                  productCode: matched.productCode || null,
+                                  title: matched.title,
+                                  price: matched.price,
+                                  currency: matched.currency || "USD",
+                                  imageUrl: matched.imageUrl || null,
+                                  bookingUrl: matched.bookingUrl || '',
+                                }}
+                                trigger={
+                                  <Button size="sm" className="text-xs h-7 ml-auto" data-testid={`button-book-gem-${gem.id}`}>
+                                    Book
+                                  </Button>
+                                }
+                              />
+                            );
+                          }
                           const href = matched?.bookingUrl
                             ?? `https://www.google.com/maps/search/${encodeURIComponent(gem.placeName + ' ' + city.cityName)}`;
                           return (
@@ -1901,9 +1940,26 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                                             {igMatched.price != null && igMatched.price > 0 && ` · from ${igMatched.currency === 'USD' ? '$' : igMatched.currency}${igMatched.price.toFixed(0)}`}
                                           </span>
                                         </div>
-                                        <a href={igMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
-                                          <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
-                                        </a>
+                                        {igMatched.price != null && igMatched.price > 0 ? (
+                                          <BookActivityModal
+                                            activity={{
+                                              provider: igMatched.provider,
+                                              productCode: igMatched.productCode || null,
+                                              title: igMatched.title,
+                                              price: igMatched.price,
+                                              currency: igMatched.currency || "USD",
+                                              imageUrl: igMatched.imageUrl || null,
+                                              bookingUrl: igMatched.bookingUrl || '',
+                                            }}
+                                            trigger={
+                                              <Button size="sm" className="text-xs h-6 flex-shrink-0" data-testid={`button-book-ig-${post.id}`}>Book</Button>
+                                            }
+                                          />
+                                        ) : (
+                                          <a href={igMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
+                                            <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
+                                          </a>
+                                        )}
                                       </div>
                                     )}
                                   </div>
@@ -2025,9 +2081,26 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                                           {xMatched.price != null && xMatched.price > 0 && ` · from ${xMatched.currency === 'USD' ? '$' : xMatched.currency}${xMatched.price.toFixed(0)}`}
                                         </span>
                                       </div>
-                                      <a href={xMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
-                                        <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
-                                      </a>
+                                      {xMatched.price != null && xMatched.price > 0 ? (
+                                        <BookActivityModal
+                                          activity={{
+                                            provider: xMatched.provider,
+                                            productCode: xMatched.productCode || null,
+                                            title: xMatched.title,
+                                            price: xMatched.price,
+                                            currency: xMatched.currency || "USD",
+                                            imageUrl: xMatched.imageUrl || null,
+                                            bookingUrl: xMatched.bookingUrl || '',
+                                          }}
+                                          trigger={
+                                            <Button size="sm" className="text-xs h-6 flex-shrink-0" data-testid={`button-book-x-${post.id}`}>Book</Button>
+                                          }
+                                        />
+                                      ) : (
+                                        <a href={xMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
+                                          <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
+                                        </a>
+                                      )}
                                     </div>
                                   )}
                                 </div>
