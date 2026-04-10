@@ -1003,12 +1003,16 @@ interface FeverEventItem {
   description?: string | null;
   eventType: string;
   specificDate?: string | null;
+  startTime?: string | null;
+  venueName?: string | null;
+  venueAddress?: string | null;
   pricing?: {
     currency: string;
     minPrice?: number;
     maxPrice?: number;
     priceRange?: string;
   } | null;
+  affiliateUrl?: string | null;
   bookingUrl?: string | null;
   imageUrl?: string | null;
   rating?: number | null;
@@ -1078,12 +1082,15 @@ function FeverEventsSection({ cityName }: { cityName: string }) {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {events.map((event) => {
-          const ticketUrl = event.bookingUrl || '#';
+          const ticketUrl = event.affiliateUrl ?? event.bookingUrl ?? null;
           const formattedDate = event.specificDate
             ? new Date(event.specificDate + 'T00:00:00').toLocaleDateString('en-US', {
                 month: 'short', day: 'numeric', year: 'numeric',
               })
             : null;
+          const formattedDateTime = formattedDate && event.startTime
+            ? `${formattedDate} · ${event.startTime}`
+            : formattedDate;
           const priceDisplay = event.isFree
             ? 'Free'
             : event.pricing?.priceRange
@@ -1115,10 +1122,16 @@ function FeverEventsSection({ cityName }: { cityName: string }) {
                   <h4 className="font-medium text-sm line-clamp-2 leading-snug">{event.title}</h4>
                 </div>
                 <div className="space-y-1 text-xs text-muted-foreground flex-1">
-                  {formattedDate && (
+                  {formattedDateTime && (
                     <div className="flex items-center gap-1">
                       <Calendar className="h-3 w-3 flex-shrink-0" />
-                      <span>{formattedDate}</span>
+                      <span>{formattedDateTime}</span>
+                    </div>
+                  )}
+                  {event.venueName && (
+                    <div className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{event.venueName}</span>
                     </div>
                   )}
                   {event.rating != null && (
@@ -1132,18 +1145,24 @@ function FeverEventsSection({ cityName }: { cityName: string }) {
                   {priceDisplay && (
                     <span className="text-sm font-semibold">{priceDisplay}</span>
                   )}
-                  <a
-                    href={ticketUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-auto"
-                    data-testid={`link-fever-tickets-${event.id}`}
-                  >
-                    <Button size="sm" className="text-xs h-7">
-                      Get Tickets
-                      <ExternalLink className="h-3 w-3 ml-1" />
+                  {ticketUrl ? (
+                    <a
+                      href={ticketUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto"
+                      data-testid={`link-fever-tickets-${event.id}`}
+                    >
+                      <Button size="sm" className="text-xs h-7">
+                        Get Tickets
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    </a>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-xs h-7 ml-auto" disabled data-testid={`link-fever-tickets-${event.id}`}>
+                      Sold Out
                     </Button>
-                  </a>
+                  )}
                 </div>
               </CardContent>
             </Card>
