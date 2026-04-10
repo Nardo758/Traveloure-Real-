@@ -5169,3 +5169,27 @@ export const instagramCityCache = pgTable("instagram_city_cache", {
 });
 
 export type InstagramCityCache = typeof instagramCityCache.$inferSelect;
+
+// Activity bookings — captures on-platform Stripe payment for external activity providers
+// (Viator, Amadeus, Fever). Actual fulfillment uses bookingUrl as reference link.
+export const activityBookings = pgTable("activity_bookings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 50 }).notNull(), // viator | amadeus | fever | external
+  productCode: varchar("product_code", { length: 255 }),
+  productTitle: text("product_title").notNull(),
+  imageUrl: text("image_url"),
+  priceAmount: decimal("price_amount", { precision: 10, scale: 2 }).notNull(),
+  priceCurrency: varchar("price_currency", { length: 10 }).notNull().default("USD"),
+  bookingUrl: text("booking_url"),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | confirmed | failed
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type ActivityBooking = typeof activityBookings.$inferSelect;
+export const insertActivityBookingSchema = createInsertSchema(activityBookings).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertActivityBooking = z.infer<typeof insertActivityBookingSchema>;

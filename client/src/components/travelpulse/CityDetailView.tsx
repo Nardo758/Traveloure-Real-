@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { DestinationCalendar } from "./DestinationCalendar";
 import { AIRecommendationBadges, SeasonalInsightBanner } from "./AIRecommendationBadges";
+import BookActivityModal from "@/components/booking/BookActivityModal";
 
 interface TravelPulseCity {
   id: string;
@@ -946,15 +947,32 @@ function BookableActivitiesSection({ cityName }: { cityName: string }) {
                       </p>
                     )}
                   </div>
-                  {act.bookingUrl ? (
+                  {act.bookingUrl && act.price != null && act.price > 0 ? (
+                    <BookActivityModal
+                      activity={{
+                        provider: act.provider,
+                        productCode: act.productCode || null,
+                        title: act.title,
+                        price: act.price,
+                        currency: act.currency || "USD",
+                        imageUrl: act.imageUrl || null,
+                        bookingUrl: act.bookingUrl,
+                      }}
+                      trigger={
+                        <Button size="sm" className="text-xs h-7" data-testid={`button-book-activity-${act.id}`}>
+                          Book
+                        </Button>
+                      }
+                    />
+                  ) : act.bookingUrl ? (
                     <a
                       href={act.bookingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       data-testid={`link-book-activity-${act.id}`}
                     >
-                      <Button size="sm" className="text-xs h-7">
-                        Book
+                      <Button size="sm" variant="outline" className="text-xs h-7">
+                        View
                         <ExternalLink className="h-3 w-3 ml-1" />
                       </Button>
                     </a>

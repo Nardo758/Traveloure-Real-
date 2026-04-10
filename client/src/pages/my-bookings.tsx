@@ -22,13 +22,15 @@ import {
   Calendar, 
   Clock, 
   DollarSign, 
+  ExternalLink,
   FileText, 
   MessageSquare,
   CheckCircle2,
   XCircle,
   Loader2,
   Package,
-  Star
+  Star,
+  Ticket,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -58,6 +60,21 @@ interface Booking {
   hasReview?: boolean;
 }
 
+interface ActivityBooking {
+  id: string;
+  userId: string;
+  provider: string;
+  productCode: string | null;
+  productTitle: string;
+  imageUrl: string | null;
+  priceAmount: string;
+  priceCurrency: string;
+  bookingUrl: string | null;
+  stripePaymentIntentId: string | null;
+  status: string;
+  createdAt: string;
+}
+
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
   pending: { label: "Pending", variant: "secondary", icon: Clock },
   confirmed: { label: "Confirmed", variant: "default", icon: CheckCircle2 },
@@ -75,6 +92,16 @@ export default function MyBookingsPage() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/my-bookings"],
+    enabled: !!user,
+  });
+
+  const { data: activityBookings, isLoading: activityLoading } = useQuery<ActivityBooking[]>({
+    queryKey: ["/api/my-activity-bookings"],
+    queryFn: async () => {
+      const res = await fetch("/api/bookings/my-activity-bookings", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch activity bookings");
+      return res.json();
+    },
     enabled: !!user,
   });
 
@@ -121,7 +148,7 @@ export default function MyBookingsPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : !bookings || bookings.length === 0 ? (
+        ) : (!bookings || bookings.length === 0) && (!activityBookings || activityBookings.length === 0) ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -136,7 +163,7 @@ export default function MyBookingsPage() {
           <Tabs defaultValue="all" className="space-y-4">
             <TabsList data-testid="tabs-booking-status">
               <TabsTrigger value="all" data-testid="tab-all">
-                All ({bookings.length})
+                All ({bookings?.length ?? 0})
               </TabsTrigger>
               <TabsTrigger value="pending" data-testid="tab-pending">
                 Pending ({pendingBookings.length})
@@ -147,12 +174,19 @@ export default function MyBookingsPage() {
               <TabsTrigger value="completed" data-testid="tab-completed">
                 Completed ({completedBookings.length})
               </TabsTrigger>
+              <TabsTrigger value="activities" data-testid="tab-activities">
+                Activities ({activityBookings?.length ?? 0})
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="all" className="space-y-4">
-              {bookings.map((booking) => (
-                <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
-              ))}
+              {(bookings?.length ?? 0) === 0 ? (
+                <EmptyState message="No bookings yet" />
+              ) : (
+                bookings!.map((booking) => (
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
+                ))
+              )}
             </TabsContent>
 
             <TabsContent value="pending" className="space-y-4">
@@ -184,6 +218,20 @@ export default function MyBookingsPage() {
                 ))
               )}
             </TabsContent>
+
+            <TabsContent value="activities" className="space-y-4">
+              {activityLoading ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+                </div>
+              ) : !activityBookings || activityBookings.length === 0 ? (
+                <EmptyState message="No activity bookings yet" />
+              ) : (
+                activityBookings.map((ab) => (
+                  <ActivityBookingCard key={ab.id} booking={ab} />
+                ))
+              )}
+            </TabsContent>
           </Tabs>
         )}
       </div>
@@ -194,6 +242,70 @@ export default function MyBookingsPage() {
         booking={selectedBooking}
       />
     </DashboardLayout>
+  );
+}
+
+function ActivityBookingCard({ booking }: { booking: ActivityBooking }) {
+  const status = statusConfig[booking.status] || statusConfig.pending;
+  const StatusIcon = status.icon;
+  const formattedPrice = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: booking.priceCurrency || "USD",
+    minimumFractionDigits: 0,
+  }).format(parseFloat(booking.priceAmount));
+
+  return (
+    <Card data-testid={`card-activity-booking-${booking.id}`}>
+      <CardContent className="p-4">
+        <div className="flex items-start gap-4">
+          {booking.imageUrl ? (
+            <img
+              src={booking.imageUrl}
+              alt={booking.productTitle}
+              className="w-20 h-16 object-cover rounded-md flex-shrink-0"
+            />
+          ) : (
+            <div className="w-20 h-16 bg-muted rounded-md flex-shrink-0 flex items-center justify-center">
+              <Ticket className="w-6 h-6 text-muted-foreground/40" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <Badge variant={status.variant} data-testid={`badge-activity-status-${booking.id}`}>
+                <StatusIcon className="w-3 h-3 mr-1" />
+                {status.label}
+              </Badge>
+              <Badge variant="outline" className="text-xs capitalize">{booking.provider}</Badge>
+            </div>
+            <h3 className="font-semibold text-sm line-clamp-2" data-testid={`text-activity-title-${booking.id}`}>
+              {booking.productTitle}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Booked {format(new Date(booking.createdAt), "MMM d, yyyy")}
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="font-bold text-lg" data-testid={`text-activity-amount-${booking.id}`}>
+              {formattedPrice}
+            </p>
+            {booking.bookingUrl && (
+              <a
+                href={booking.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block"
+                data-testid={`link-activity-provider-${booking.id}`}
+              >
+                <Button size="sm" variant="outline" className="text-xs">
+                  <ExternalLink className="w-3 h-3 mr-1" />
+                  View with Provider
+                </Button>
+              </a>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
