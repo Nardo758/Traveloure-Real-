@@ -31,6 +31,7 @@ import {
   Package,
   Star,
   Ticket,
+  Users,
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -65,12 +66,16 @@ interface ActivityBooking {
   userId: string;
   provider: string;
   productCode: string | null;
+  productOptionCode: string | null;
   productTitle: string;
   imageUrl: string | null;
   priceAmount: string;
   priceCurrency: string;
   bookingUrl: string | null;
   stripePaymentIntentId: string | null;
+  providerBookingRef: string | null;
+  travelDate: string | null;
+  travelerCount: number | null;
   status: string;
   createdAt: string;
 }
@@ -254,9 +259,13 @@ function ActivityBookingCard({ booking }: { booking: ActivityBooking }) {
     minimumFractionDigits: 0,
   }).format(parseFloat(booking.priceAmount));
 
+  const formattedDate = booking.travelDate
+    ? format(new Date(booking.travelDate + "T12:00:00"), "MMM d, yyyy")
+    : null;
+
   return (
     <Card data-testid={`card-activity-booking-${booking.id}`}>
-      <CardContent className="p-4">
+      <CardContent className="p-4 space-y-3">
         <div className="flex items-start gap-4">
           {booking.imageUrl ? (
             <img
@@ -280,7 +289,20 @@ function ActivityBookingCard({ booking }: { booking: ActivityBooking }) {
             <h3 className="font-semibold text-sm line-clamp-2" data-testid={`text-activity-title-${booking.id}`}>
               {booking.productTitle}
             </h3>
-            <p className="text-xs text-muted-foreground mt-1">
+            <div className="flex flex-wrap gap-3 mt-1">
+              {formattedDate && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {formattedDate}
+                </p>
+              )}
+              {booking.travelerCount && booking.travelerCount > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {booking.travelerCount} traveler{booking.travelerCount > 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
               Booked {format(new Date(booking.createdAt), "MMM d, yyyy")}
             </p>
           </div>
@@ -304,6 +326,17 @@ function ActivityBookingCard({ booking }: { booking: ActivityBooking }) {
             )}
           </div>
         </div>
+        {/* Viator booking reference */}
+        {booking.providerBookingRef && (
+          <div className="rounded-md bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-3 py-2">
+            <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+              Viator Booking Ref:{" "}
+              <span className="font-mono font-bold text-green-900 dark:text-green-200" data-testid={`text-viator-ref-${booking.id}`}>
+                {booking.providerBookingRef}
+              </span>
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
