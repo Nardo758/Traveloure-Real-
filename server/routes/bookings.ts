@@ -236,14 +236,47 @@ router.post('/webhooks/stripe', async (req, res) => {
 });
 
 /**
+ * POST /api/bookings/activity/check-availability
+ * Check real-time Viator availability for a product on a given date before payment.
+ * Returns available productOptionCodes so the booking step can use the correct one.
+ */
+router.post('/activity/check-availability', isAuthenticated, async (req, res) => {
+  try {
+    const { productCode, travelDate, adults = 1, currency = 'USD' } = req.body;
+
+    if (!productCode || !travelDate) {
+      return res.status(400).json({ error: 'productCode and travelDate are required' });
+    }
+
+    const { viatorService } = await import('../services/viator.service');
+    const result = await viatorService.checkAvailabilityForBooking(
+      productCode,
+      travelDate,
+      Math.max(1, parseInt(adults) || 1),
+      currency
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Availability check error:', error);
+    res.status(500).json({ error: error.message, available: false, options: [] });
+  }
+});
+
+/**
  * POST /api/bookings/activity/checkout
  * Create a Stripe Payment Intent for a single external activity (Viator/Amadeus/Fever)
  * and persist a pending activityBookings record.
+ * Now accepts travelDate, travelerCount, and productOptionCode for Viator bookings.
  */
 router.post('/activity/checkout', isAuthenticated, async (req, res) => {
   try {
     const userId = (req.user as any).claims.sub;
-    const { provider, productCode, title, price, currency = 'USD', imageUrl, bookingUrl } = req.body;
+    const {
+      provider, productCode, productOptionCode, title, price,
+      currency = 'USD', imageUrl, bookingUrl,
+      travelDate, travelerCount = 1,
+    } = req.body;
 
     if (!provider || !title || !price) {
       return res.status(400).json({ error: 'provider, title, and price are required' });
@@ -274,11 +307,21 @@ router.post('/activity/checkout', isAuthenticated, async (req, res) => {
       automatic_payment_methods: { enabled: true },
     });
 
-    // Persist a pending activity booking record
+    // Persist a pending activity booking record (with new travel fields)
     const bookingId = crypto.randomUUID();
     await db.execute(sql`
-      INSERT INTO activity_bookings (id, user_id, provider, product_code, product_title, image_url, price_amount, price_currency, booking_url, stripe_payment_intent_id, status, created_at)
-      VALUES (${bookingId}, ${userId}, ${provider}, ${productCode || null}, ${title}, ${imageUrl || null}, ${amount}, ${currency}, ${bookingUrl || null}, ${paymentIntent.id}, 'pending', NOW())
+      INSERT INTO activity_bookings (
+        id, user_id, provider, product_code, product_option_code, product_title,
+        image_url, price_amount, price_currency, booking_url,
+        stripe_payment_intent_id, travel_date, traveler_count, status, created_at
+      )
+      VALUES (
+        ${bookingId}, ${userId}, ${provider}, ${productCode || null},
+        ${productOptionCode || null}, ${title}, ${imageUrl || null},
+        ${amount}, ${currency}, ${bookingUrl || null},
+        ${paymentIntent.id}, ${travelDate || null}, ${Math.max(1, parseInt(travelerCount) || 1)},
+        'pending', NOW()
+      )
     `);
 
     res.status(201).json({
@@ -290,6 +333,118 @@ router.post('/activity/checkout', isAuthenticated, async (req, res) => {
   } catch (error: any) {
     console.error('Activity checkout error:', error);
     res.status(500).json({ error: `Checkout failed: ${error.message}` });
+  }
+});
+
+/**
+ * POST /api/bookings/activity/viator-book
+ * Called after successful Stripe payment for a Viator activity.
+ * Makes the actual booking with Viator's API and stores their bookingRef (BR-XXXXXXXXX).
+ * Attribution is automatic via the exp-api-key header on all Viator API calls.
+ */
+router.post('/activity/viator-book', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { bookingId } = req.body;
+
+    if (!bookingId) {
+      return res.status(400).json({ error: 'bookingId is required' });
+    }
+
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    // Load the booking + user profile in parallel
+    const [bookingRows, userRows] = await Promise.all([
+      db.execute(sql`
+        SELECT * FROM activity_bookings
+        WHERE id = ${bookingId} AND user_id = ${userId} AND status = 'confirmed'
+        LIMIT 1
+      `),
+      db.execute(sql`
+        SELECT first_name, last_name, email, phone FROM users WHERE id = ${userId} LIMIT 1
+      `),
+    ]);
+
+    if (bookingRows.rows.length === 0) {
+      return res.status(404).json({ error: 'Confirmed booking not found' });
+    }
+
+    const booking = bookingRows.rows[0] as any;
+    const user = userRows.rows[0] as any;
+
+    // Only call Viator API for Viator activities with a productCode
+    if (booking.provider !== 'viator' || !booking.product_code) {
+      return res.json({
+        success: true,
+        skipped: true,
+        reason: 'Non-Viator provider or missing productCode — no API booking needed',
+      });
+    }
+
+    // We need travelDate and productOptionCode to call Viator
+    if (!booking.travel_date) {
+      return res.status(400).json({ error: 'travel_date is required for Viator booking' });
+    }
+
+    const { viatorService } = await import('../services/viator.service');
+
+    // If we don't have a productOptionCode yet, fetch availability to get one
+    let productOptionCode = booking.product_option_code;
+    let startTime: string | undefined;
+
+    if (!productOptionCode) {
+      const avail = await viatorService.checkAvailabilityForBooking(
+        booking.product_code,
+        booking.travel_date,
+        booking.traveler_count || 1,
+        booking.price_currency || 'USD'
+      );
+      if (!avail.available || avail.options.length === 0) {
+        await db.execute(sql`
+          UPDATE activity_bookings SET status = 'failed' WHERE id = ${bookingId}
+        `);
+        return res.status(422).json({ error: 'Activity not available on selected date' });
+      }
+      productOptionCode = avail.options[0].productOptionCode;
+      startTime = avail.options[0].startTime;
+    }
+
+    // Make the Viator booking — partnerBookingRef is our internal ID for reconciliation
+    const viatorResult = await viatorService.createBooking({
+      productCode: booking.product_code,
+      productOptionCode,
+      startTime,
+      travelDate: booking.travel_date,
+      currency: booking.price_currency || 'USD',
+      adults: booking.traveler_count || 1,
+      partnerBookingRef: bookingId,
+      firstName: user?.first_name || 'Guest',
+      lastName: user?.last_name || 'Traveler',
+      email: user?.email || '',
+      phone: user?.phone || '+10000000000',
+    });
+
+    // Store Viator's booking reference for commission reconciliation
+    await db.execute(sql`
+      UPDATE activity_bookings
+      SET provider_booking_ref = ${viatorResult.bookingRef},
+          product_option_code = ${productOptionCode}
+      WHERE id = ${bookingId}
+    `);
+
+    const isConfirmed = ['CONFIRMED', 'PENDING', 'IN_PROGRESS'].includes(viatorResult.status);
+
+    res.json({
+      success: isConfirmed,
+      viatorStatus: viatorResult.status,
+      viatorBookingRef: viatorResult.bookingRef,
+      partnerBookingRef: viatorResult.partnerBookingRef,
+      rejectionReason: viatorResult.rejectionReasonCode,
+    });
+  } catch (error: any) {
+    console.error('Viator booking error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
