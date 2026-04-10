@@ -5177,13 +5177,17 @@ export const activityBookings = pgTable("activity_bookings", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   provider: varchar("provider", { length: 50 }).notNull(), // viator | amadeus | fever | external
   productCode: varchar("product_code", { length: 255 }),
+  productOptionCode: varchar("product_option_code", { length: 100 }), // Viator option code
   productTitle: text("product_title").notNull(),
   imageUrl: text("image_url"),
   priceAmount: decimal("price_amount", { precision: 10, scale: 2 }).notNull(),
   priceCurrency: varchar("price_currency", { length: 10 }).notNull().default("USD"),
   bookingUrl: text("booking_url"),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | confirmed | failed
+  providerBookingRef: varchar("provider_booking_ref", { length: 100 }), // e.g. Viator BR-XXXXXXXXX
+  travelDate: varchar("travel_date", { length: 20 }), // ISO date YYYY-MM-DD
+  travelerCount: integer("traveler_count").default(1),
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // staged | pending | confirmed | failed | cancelled
   createdAt: timestamp("created_at").defaultNow(),
 });
 
