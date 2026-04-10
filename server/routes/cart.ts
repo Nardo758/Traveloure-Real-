@@ -214,24 +214,37 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
   app.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const { tripId, notes } = req.body;
+      const { tripId, notes, externalItems: rawExternalItems } = req.body;
       
-      // Get cart items
+      // Get platform cart items
       const cartData = await storage.getCartItems(userId);
       
-      if (cartData.length === 0) {
+      // Parse optional external items (Viator/Amadeus/Fever from sessionStorage)
+      const externalItems: Array<{
+        id: string; name: string; price: number; quantity: number;
+        provider?: string; type?: string; metadata?: any;
+      }> = Array.isArray(rawExternalItems) ? rawExternalItems : [];
+
+      if (cartData.length === 0 && externalItems.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
       }
       
-      // Calculate totals
-      const subtotal = cartData.reduce((sum, item) => {
+      // Calculate totals from platform items
+      const platformSubtotal = cartData.reduce((sum, item) => {
         const price = parseFloat(item.service?.price || "0");
         return sum + (price * (item.quantity || 1));
       }, 0);
+
+      // Calculate totals from external items
+      const externalSubtotal = externalItems.reduce((sum, item) => {
+        return sum + ((item.price || 0) * (item.quantity || 1));
+      }, 0);
+
+      const subtotal = platformSubtotal + externalSubtotal;
       const platformFee = subtotal * 0.20;
       const total = subtotal + platformFee;
       
-      // Create bookings for each cart item
+      // Create bookings for each platform cart item
       const bookings = [];
       for (const item of cartData) {
         if (!item.service) continue;
@@ -239,7 +252,6 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
         const fee = price * 0.20;
         
-        // Create contract for this booking
         const contract = await storage.createContract({
           title: `Booking: ${item.service.serviceName}`,
           tripTo: item.service.location || "N/A",
@@ -247,7 +259,6 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
           amount: price.toFixed(2),
         });
         
-        // Create booking
         const booking = await storage.createServiceBooking({
           serviceId: item.serviceId,
           travelerId: userId,
@@ -265,10 +276,8 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
           status: "pending",
         });
         
-        // Increment bookings count for the service
         await storage.incrementServiceBookings(item.serviceId, 1);
         
-        // Create notification for provider
         await storage.createNotification({
           userId: item.service.userId,
           type: "booking_created",
@@ -280,22 +289,56 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
         
         bookings.push({ booking, contract });
       }
+
+      // Create activityBookings records for external items
+      const activityBookingIds: string[] = [];
+      if (externalItems.length > 0) {
+        const { sql: sqlTag } = await import("drizzle-orm");
+        for (const ext of externalItems) {
+          const actBookingId = crypto.randomUUID();
+          const provider = ext.provider || ext.type || "external";
+          const priceAmount = (ext.price || 0) * (ext.quantity || 1);
+          await db.execute(sqlTag`
+            INSERT INTO activity_bookings (id, user_id, provider, product_code, product_title, image_url, price_amount, price_currency, booking_url, status, created_at)
+            VALUES (${actBookingId}, ${userId}, ${provider}, ${ext.id}, ${ext.name}, ${ext.metadata?.imageUrl || null}, ${priceAmount}, 'USD', ${ext.metadata?.bookingUrl || null}, 'pending', NOW())
+          `);
+          activityBookingIds.push(actBookingId);
+        }
+      }
       
-      // Clear cart after successful checkout
+      // Clear platform cart after successful checkout
       await storage.clearCart(userId);
 
-      // Create Stripe payment intent for the total
+      // Build combined booking list for payment intent metadata
+      const allBookingObjects = [
+        ...bookings.map((b: any) => b.booking),
+        ...activityBookingIds.map(id => ({ id })),
+      ];
+
+      // Create Stripe payment intent for the combined total
       const { stripePaymentService } = await import("../services/stripe-payment.service");
       const paymentIntent = await stripePaymentService.createPaymentIntent(
         userId,
-        bookings.map((b: any) => b.booking),
+        allBookingObjects,
         total,
         false
       );
+
+      // Link payment intent to activity bookings
+      if (activityBookingIds.length > 0 && paymentIntent.paymentIntentId) {
+        const { sql: sqlTag } = await import("drizzle-orm");
+        for (const id of activityBookingIds) {
+          await db.execute(sqlTag`
+            UPDATE activity_bookings SET stripe_payment_intent_id = ${paymentIntent.paymentIntentId}
+            WHERE id = ${id}
+          `);
+        }
+      }
       
       res.status(201).json({
         success: true,
         bookings,
+        activityBookingIds,
         total: total.toFixed(2),
         paymentIntent,
         message: "Booking created successfully. Complete payment.",

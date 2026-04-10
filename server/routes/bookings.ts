@@ -236,6 +236,114 @@ router.post('/webhooks/stripe', async (req, res) => {
 });
 
 /**
+ * POST /api/bookings/activity/checkout
+ * Create a Stripe Payment Intent for a single external activity (Viator/Amadeus/Fever)
+ * and persist a pending activityBookings record.
+ */
+router.post('/activity/checkout', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { provider, productCode, title, price, currency = 'USD', imageUrl, bookingUrl } = req.body;
+
+    if (!provider || !title || !price) {
+      return res.status(400).json({ error: 'provider, title, and price are required' });
+    }
+
+    const amount = parseFloat(price);
+    if (isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ error: 'Invalid price' });
+    }
+
+    // Create Stripe Payment Intent
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      apiVersion: '2024-12-18.acacia' as any,
+    });
+
+    const userResult = await db.execute(sql`SELECT email FROM users WHERE id = ${userId}`);
+    const userEmail = (userResult.rows[0] as any)?.email || `user${userId}@traveloure.com`;
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100),
+      currency: currency.toLowerCase(),
+      metadata: { userId, type: 'activity_booking', provider, productCode: productCode || '' },
+      description: `Activity Booking: ${title}`,
+      receipt_email: userEmail,
+      automatic_payment_methods: { enabled: true },
+    });
+
+    // Persist a pending activity booking record
+    const bookingId = crypto.randomUUID();
+    await db.execute(sql`
+      INSERT INTO activity_bookings (id, user_id, provider, product_code, product_title, image_url, price_amount, price_currency, booking_url, stripe_payment_intent_id, status, created_at)
+      VALUES (${bookingId}, ${userId}, ${provider}, ${productCode || null}, ${title}, ${imageUrl || null}, ${amount}, ${currency}, ${bookingUrl || null}, ${paymentIntent.id}, 'pending', NOW())
+    `);
+
+    res.status(201).json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      amount: paymentIntent.amount,
+      bookingId,
+    });
+  } catch (error: any) {
+    console.error('Activity checkout error:', error);
+    res.status(500).json({ error: `Checkout failed: ${error.message}` });
+  }
+});
+
+/**
+ * POST /api/bookings/activity/confirm
+ * Called after a successful Stripe payment on the client side to confirm the booking.
+ */
+router.post('/activity/confirm', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { bookingId, paymentIntentId } = req.body;
+
+    if (!bookingId || !paymentIntentId) {
+      return res.status(400).json({ error: 'bookingId and paymentIntentId are required' });
+    }
+
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    await db.execute(sql`
+      UPDATE activity_bookings 
+      SET status = 'confirmed', stripe_payment_intent_id = ${paymentIntentId}
+      WHERE id = ${bookingId} AND user_id = ${userId}
+    `);
+
+    res.json({ success: true, bookingId, status: 'confirmed' });
+  } catch (error: any) {
+    console.error('Activity confirm error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/my-activity-bookings
+ * Return the current user's activity bookings (sorted newest first)
+ */
+router.get('/my-activity-bookings', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims.sub;
+    const { db } = await import('../db');
+    const { sql } = await import('drizzle-orm');
+
+    const result = await db.execute(sql`
+      SELECT * FROM activity_bookings WHERE user_id = ${userId} ORDER BY created_at DESC
+    `);
+
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('My activity bookings error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * POST /api/bookings/refund
  * Create refund for a booking
  */
