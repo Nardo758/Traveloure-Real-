@@ -1,0 +1,17 @@
+Good — the hardcoded user_id=1 is only in map_data.py, not in the checkout/report flow. Now let me copy the fixed file to outputs and create a summary of all the changes:Orchestrated coherent summary for LeonOrchestrated coherent summary for Leon
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0.25s;
+    animation-timing-function: cubic-bezier(0.19, 1, 0.22, 1);
+  }
+VvisualizeVvisualize show_widgetHere's the breakdown of what was broken and what the fix does:
+Root cause: The ReportSelectionPanel.tsx was completely disconnected from the backend's checkout-state system. It fetched public pricing, then blindly called generate-free-report for everyone — no email collection for guests, no credit awareness for subscribers, no Stripe redirect for paid purchases.
+What the new panel does:
+On mount (and whenever the selected report changes), it calls GET /report-pricing/checkout-state?report_type=X — the backend returns one of four states with all the UI config pre-computed:
+Guest → Shows email input field, full price, CTA is "Pay $X & generate" → redirects to /studio-report-checkout which creates a Stripe session and auto-creates their account on payment success.
+Free tier (logged in, no subscription) → Shows email on file, full price, "Subscribe & save 20%+" secondary CTA → same Stripe checkout path.
+Subscriber with credits → Shows credit allocation badge ("3 of 5 remaining"), price shows "$0 (included)", CTA is "Generate report (use 1 credit)" → calls /generate-free-report directly, no payment.
+Subscriber, no credits → Shows discounted overage price with strikethrough original, upsell message, "Upgrade plan" secondary CTA → Stripe checkout at the discounted rate.
+Backend status: The /checkout-state endpoint was already correctly implemented — it uses the fungible credit model (is_paid_tier + has_credits) and doesn't touch the broken is_report_included_for_tier() function. The /studio-report-checkout endpoint already handles both guest and authenticated users with proper email resolution. No backend changes needed for this flow.
+Still on your radar (not part of this fix): the is_report_included_for_tier() function in core/report_pricing.py is dead code for the studio flow but is still used by the legacy /report-pricing/ authenticated pricing endpoint — safe to delete when you clean that up. The hardcoded user_id=1 in map_data.py is a separate issue.
