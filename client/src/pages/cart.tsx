@@ -1087,7 +1087,7 @@ export default function CartPage() {
                               sessionStorage.removeItem(`externalCart_${experienceSlug}`);
                             }
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
-                            setLocation("/my-bookings");
+                            setLocation("/bookings");
                           }}
                           onError={(error) => {
                             toast({ variant: "destructive", title: "Payment failed", description: error });
