@@ -1045,7 +1045,7 @@ function getFeverCategoryStyle(eventType: string): string {
 }
 
 function FeverEventsSection({ cityName }: { cityName: string }) {
-  const { data, isLoading } = useQuery<FeverEventsResponse>({
+  const { data, isLoading, isError } = useQuery<FeverEventsResponse>({
     queryKey: ["/api/travelpulse/fever-events", cityName],
     queryFn: async () => {
       const res = await fetch(`/api/travelpulse/fever-events/${encodeURIComponent(cityName)}`);
@@ -1065,6 +1065,15 @@ function FeverEventsSection({ cityName }: { cityName: string }) {
             <Skeleton key={i} className="h-48 w-full" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="mt-6 text-sm text-muted-foreground flex items-center gap-2" data-testid="fever-events-error">
+        <Ticket className="h-4 w-4 flex-shrink-0" />
+        <span>Could not load events for this city. Try again later.</span>
       </div>
     );
   }
@@ -1095,7 +1104,12 @@ function FeverEventsSection({ cityName }: { cityName: string }) {
             ? 'Free'
             : event.pricing?.priceRange
               || (event.pricing?.minPrice != null
-                ? `from ${event.pricing.currency === 'USD' ? '$' : event.pricing.currency}${event.pricing.minPrice}`
+                ? `from ${new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: event.pricing.currency || 'USD',
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  }).format(event.pricing.minPrice)}`
                 : null);
 
           return (
