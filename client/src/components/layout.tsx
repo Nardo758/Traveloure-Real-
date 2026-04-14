@@ -295,9 +295,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Button 
                     size="sm" 
                     onClick={() => openSignInModal()}
-                    data-testid="button-sign-in"
+                    data-testid="button-login"
                   >
-                    Sign In
+                    Login
                   </Button>
                 </div>
               )}
@@ -412,12 +412,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </div>
                     <Button 
                       variant="ghost"
-                      size="icon"
+                      size="sm"
                       onClick={() => logout()}
-                      className="text-destructive hover-elevate"
-                      data-testid="button-mobile-logout"
+                      className="text-destructive hover-elevate gap-1.5"
+                      data-testid="button-logout"
                     >
-                      <LogOut className="h-5 w-5" />
+                      <LogOut className="h-4 w-4" />
+                      Logout
                     </Button>
                   </div>
                 ) : (

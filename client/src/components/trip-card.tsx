@@ -36,7 +36,7 @@ export function TripCard({ trip }: TripCardProps) {
         transition={{ duration: 0.2 }}
       >
         <Card 
-          className="overflow-hidden cursor-pointer group border-border hover:shadow-xl transition-all duration-300"
+          className="trip-card overflow-hidden cursor-pointer group border-border hover:shadow-xl transition-all duration-300"
           data-testid={`card-trip-${trip.id}`}
         >
           {/* Image */}
