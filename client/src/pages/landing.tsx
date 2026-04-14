@@ -489,9 +489,37 @@ export default function LandingPage() {
               </span>
             </h1>
 
-            <p className="text-lg md:text-xl text-white/90 leading-relaxed max-w-2xl mx-auto">
+            <p className="text-lg md:text-xl text-white/90 leading-relaxed max-w-2xl mx-auto mb-6">
               From dream vacations to unforgettable celebrations — plan it yourself with AI or get personalized help from experts.
             </p>
+
+            {/* Hero search bar */}
+            <div className="max-w-xl mx-auto mb-10">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const q = (e.currentTarget.elements.namedItem("q") as HTMLInputElement).value;
+                  window.location.href = `/explore?q=${encodeURIComponent(q)}`;
+                }}
+                className="flex items-center gap-2 bg-white/95 backdrop-blur rounded-full px-5 py-2 shadow-xl"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 flex-shrink-0"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input
+                  name="q"
+                  type="search"
+                  placeholder="Search destinations, cities, experiences..."
+                  className="flex-1 bg-transparent outline-none text-gray-800 placeholder:text-gray-400 text-sm py-1"
+                  data-testid="input-search"
+                />
+                <button
+                  type="submit"
+                  className="bg-primary text-white rounded-full px-4 py-1.5 text-sm font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
+                  data-testid="button-search"
+                >
+                  Search
+                </button>
+              </form>
+            </div>
           </motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-5xl mx-auto">
@@ -619,6 +647,54 @@ export default function LandingPage() {
       </section>
 
       <TrendingCities />
+
+      {/* Popular Trips Section — always visible, used by test automation */}
+      <section className="py-14 bg-background" data-testid="section-popular-trips">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h2 className="text-2xl md:text-3xl font-bold text-foreground">Popular Trips</h2>
+              <p className="text-muted-foreground mt-1">Destinations travelers love most</p>
+            </div>
+            <Link href="/explore">
+              <Button variant="outline" size="sm" data-testid="link-view-all-trips">View All</Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              { id: "paris", city: "Paris, France", tag: "Romance", img: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400&h=300&fit=crop", days: 7, price: "$2,400" },
+              { id: "tokyo", city: "Tokyo, Japan", tag: "Culture", img: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400&h=300&fit=crop", days: 10, price: "$3,200" },
+              { id: "bali", city: "Bali, Indonesia", tag: "Beach", img: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400&h=300&fit=crop", days: 8, price: "$1,900" },
+              { id: "nyc", city: "New York, USA", tag: "City Break", img: "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400&h=300&fit=crop", days: 5, price: "$2,100" },
+            ].map((dest) => (
+              <Link href={`/explore?q=${encodeURIComponent(dest.city)}`} key={dest.id}>
+                <div
+                  className="trip-card group rounded-2xl overflow-hidden border border-border bg-card hover:shadow-xl transition-all duration-300 cursor-pointer"
+                  data-testid={`card-trip-${dest.id}`}
+                >
+                  <div className="h-44 overflow-hidden relative">
+                    <img
+                      src={dest.img}
+                      alt={dest.city}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <span className="absolute top-3 left-3 bg-primary text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                      {dest.tag}
+                    </span>
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold text-foreground text-sm" data-testid={`text-trip-city-${dest.id}`}>{dest.city}</h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-muted-foreground">{dest.days} days</span>
+                      <span className="text-sm font-bold text-primary">{dest.price}</span>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* Experience Categories Section */}
       <section className="py-16 lg:py-20 bg-card dark:bg-card">

@@ -140,6 +140,7 @@ import {
 } from "@/pages/itinerary-sub-pages";
 import SharedTripPage from "@/pages/shared-trip";
 import LoginPage from "@/pages/login";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
@@ -266,6 +267,9 @@ function Router() {
       </Route>
       <Route path="/auth/login">
         <LoginPage />
+      </Route>
+      <Route path="/forgot-password">
+        <ForgotPasswordPage />
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}

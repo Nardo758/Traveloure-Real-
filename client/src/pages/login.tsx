@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Compass, Mail, Lock, Loader2, LogIn } from "lucide-react";
+import { Compass, Mail, Lock, Loader2, LogIn, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,6 +29,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user, isLoading: authLoading } = useAuth();
@@ -42,6 +43,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMsg(null);
     setIsLoading(true);
     try {
       const response = await fetch("/api/auth/login", {
@@ -52,18 +54,16 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.message || "Authentication failed");
+        throw new Error(data.message || "Invalid email or password");
       }
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Welcome back!", description: data.message });
       const role = data.user?.role || "user";
       window.location.href = getDashboardUrl(role);
     } catch (error: any) {
-      toast({
-        title: "Sign in failed",
-        description: error.message || "Invalid email or password",
-        variant: "destructive",
-      });
+      const msg = error.message || "Invalid email or password";
+      setErrorMsg(msg);
+      toast({ title: "Login failed", description: msg, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -98,6 +98,18 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-card border border-border rounded-2xl shadow-sm p-6">
+          {/* Inline error message for test automation & accessibility */}
+          {errorMsg && (
+            <div
+              className="flex items-center gap-2 rounded-lg bg-destructive/10 text-destructive px-3 py-2 mb-4 text-sm"
+              data-testid="text-login-error"
+              role="alert"
+            >
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              {errorMsg}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4" data-testid="form-login">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -109,7 +121,7 @@ export default function LoginPage() {
                   placeholder="you@example.com"
                   className="pl-9"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setErrorMsg(null); }}
                   required
                   autoComplete="email"
                   data-testid="input-email"
@@ -118,7 +130,16 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <a
+                  href="/forgot-password"
+                  className="text-xs text-primary hover:underline"
+                  data-testid="link-forgot-password"
+                >
+                  Forgot Password?
+                </a>
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -127,7 +148,7 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   className="pl-9"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setErrorMsg(null); }}
                   required
                   autoComplete="current-password"
                   data-testid="input-password"
@@ -139,17 +160,17 @@ export default function LoginPage() {
               type="submit"
               className="w-full"
               disabled={isLoading}
-              data-testid="button-sign-in-submit"
+              data-testid="button-login"
             >
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Signing in…
+                  Logging in…
                 </>
               ) : (
                 <>
                   <LogIn className="h-4 w-4 mr-2" />
-                  Sign In
+                  Login
                 </>
               )}
             </Button>
