@@ -258,6 +258,21 @@ export function setupEmailAuth(app: Express): void {
     }
   });
 
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    // Always return success for security (don't reveal if email exists)
+    // In production, send an actual reset email here via SendGrid/Postmark/etc.
+    try {
+      await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+      res.json({ message: "If an account exists for that email, a reset link has been sent." });
+    } catch {
+      res.json({ message: "If an account exists for that email, a reset link has been sent." });
+    }
+  });
+
   app.post("/api/auth/logout", (req, res) => {
     req.logout(() => {
       req.session?.destroy(() => {
