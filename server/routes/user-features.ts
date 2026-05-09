@@ -75,6 +75,13 @@ const contactSchema = z.object({
   preferredContactMethod: z.enum(["email", "phone"]).optional(),
 });
 
+const CREDIT_PACKAGES = [
+  { id: 1, credits: 50,  price: 49  },
+  { id: 2, credits: 100, price: 89  },
+  { id: 3, credits: 250, price: 199 },
+  { id: 4, credits: 500, price: 349 },
+];
+
 
 export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/user-experiences", isAuthenticated, async (req, res) => {
@@ -291,5 +298,41 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   app.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
     await storage.deleteNotification(req.params.id);
     res.json({ success: true });
+  });
+
+  // /api/chats — used by useChats hook and shared/routes.ts contract
+  app.get("/api/chats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const chats = await db
+        .select()
+        .from(userAndExpertChats)
+        .where(
+          or(
+            eq(userAndExpertChats.senderId, userId),
+            eq(userAndExpertChats.receiverId, userId)
+          )
+        )
+        .orderBy(desc(userAndExpertChats.createdAt));
+      res.json(chats);
+    } catch (err) {
+      console.error("Error fetching chats:", err);
+      res.status(500).json({ message: "Failed to fetch chats" });
+    }
+  });
+
+  app.post("/api/chats", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const parsed = insertUserAndExpertChatSchema.safeParse({ ...req.body, senderId: userId });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+      }
+      const [chat] = await db.insert(userAndExpertChats).values(parsed.data).returning();
+      res.status(201).json(chat);
+    } catch (err) {
+      console.error("Error creating chat:", err);
+      res.status(500).json({ message: "Failed to create chat" });
+    }
   });
 }
