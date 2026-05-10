@@ -160,7 +160,7 @@ export default function LoginPage() {
               type="submit"
               className="w-full"
               disabled={isLoading}
-              data-testid="button-login"
+              data-testid="button-sign-in-submit"
             >
               {isLoading ? (
                 <>
