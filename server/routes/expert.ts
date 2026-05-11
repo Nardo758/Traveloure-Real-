@@ -536,6 +536,23 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
         availableAt: new Date(),
       });
 
+      // Record platform revenue event (non-blocking)
+      (async () => {
+        try {
+          const { revenueTrackingService } = await import('../services/revenue-tracking.service');
+          await revenueTrackingService.recordRevenueEvent({
+            sourceType: 'template_commission',
+            sourceId: purchase.id,
+            grossAmount: price,
+            expertId: template.expertId,
+            expertShare: expertEarnings,
+            description: `Template purchase: ${template.title}`,
+          });
+        } catch (revErr) {
+          console.error('[Revenue] Template purchase recording failed:', revErr);
+        }
+      })();
+
       res.json({ purchase, template });
     } catch (err) {
       console.error("Error purchasing template:", err);

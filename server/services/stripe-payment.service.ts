@@ -106,6 +106,8 @@ class StripePaymentService {
             await this.handleExpertServicePayment(session);
           } else if (session.metadata?.type === 'transport_booking') {
             await handleStripePaymentSuccess(session.id);
+          } else if (session.metadata?.type === 'credit_purchase') {
+            await this.handleCreditPurchase(session);
           }
           break;
 
@@ -436,6 +438,46 @@ class StripePaymentService {
     } catch (error: any) {
       console.error('Stripe checkout session error:', error);
       throw new Error(`Checkout session creation failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Handle credit package purchase (called from webhook checkout.session.completed)
+   * Adds credits to user wallet and records platform revenue.
+   */
+  private async handleCreditPurchase(session: Stripe.Checkout.Session) {
+    try {
+      const { userId, credits, packageId } = session.metadata || {};
+      if (!userId || !credits) {
+        console.error('[Revenue] Credit purchase webhook missing userId/credits metadata');
+        return;
+      }
+
+      const creditAmount = parseInt(credits, 10);
+      if (isNaN(creditAmount) || creditAmount <= 0) return;
+
+      const gross = (session.amount_total || 0) / 100;
+
+      // Add credits to the user's wallet
+      const { storage } = await import('../storage');
+      await storage.addCredits(
+        userId,
+        creditAmount,
+        `Credit package purchase – ${creditAmount} credits (pkg ${packageId || '?'})`,
+      );
+
+      console.log(`[Credits] Added ${creditAmount} credits to user ${userId}`);
+
+      // Record platform revenue
+      const { revenueTrackingService } = await import('./revenue-tracking.service');
+      await revenueTrackingService.recordRevenueEvent({
+        sourceType: 'subscription',
+        sourceId: session.id,
+        grossAmount: gross,
+        description: `Credit package – ${creditAmount} credits purchased`,
+      });
+    } catch (error: any) {
+      console.error('[Revenue] Credit purchase webhook handling failed:', error);
     }
   }
 

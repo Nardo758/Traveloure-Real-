@@ -600,6 +600,33 @@ router.post('/activity/confirm', isAuthenticated, async (req, res) => {
       WHERE id = ${bookingId} AND user_id = ${userId}
     `);
 
+    // Record revenue event (non-blocking — never fail the booking confirmation)
+    (async () => {
+      try {
+        const { db: _db } = await import('../db');
+        const { sql: _sql } = await import('drizzle-orm');
+        const { revenueTrackingService } = await import('../services/revenue-tracking.service');
+        const bRows = await _db.execute(_sql`
+          SELECT price_amount, price_currency, provider, product_title
+          FROM activity_bookings WHERE id = ${bookingId} LIMIT 1
+        `);
+        if (bRows.rows.length > 0) {
+          const b = bRows.rows[0] as any;
+          const gross = parseFloat(b.price_amount || '0');
+          if (gross > 0) {
+            await revenueTrackingService.recordRevenueEvent({
+              sourceType: 'affiliate_commission',
+              sourceId: bookingId,
+              grossAmount: gross,
+              description: `Activity booking confirmed – ${b.provider}: ${b.product_title}`,
+            });
+          }
+        }
+      } catch (revErr) {
+        console.error('[Revenue] Activity confirm recording failed:', revErr);
+      }
+    })();
+
     res.json({ success: true, bookingId, status: 'confirmed' });
   } catch (error: any) {
     console.error('Activity confirm error:', error);

@@ -97,6 +97,29 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
       }
       const { status, reason } = req.body;
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
+
+      // Record revenue when a service booking is marked completed (non-blocking)
+      if (status === 'completed' && updated) {
+        (async () => {
+          try {
+            const { revenueTrackingService } = await import('../services/revenue-tracking.service');
+            const gross = parseFloat((updated as any).totalAmount || (updated as any).total_amount || '0');
+            if (gross > 0) {
+              await revenueTrackingService.recordRevenueEvent({
+                sourceType: 'booking_commission',
+                sourceId: updated.id,
+                grossAmount: gross,
+                expertId: booking.providerId,
+                expertShare: gross * 0.85,
+                description: `Service booking completed`,
+              });
+            }
+          } catch (revErr) {
+            console.error('[Revenue] Service booking completion recording failed:', revErr);
+          }
+        })();
+      }
+
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
