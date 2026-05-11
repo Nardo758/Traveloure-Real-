@@ -68,10 +68,11 @@ export function SignInModal({
         credentials: "include",
       });
 
-      const data = await response.json();
+      let data: any = {};
+      try { data = await response.json(); } catch { /* non-JSON body (e.g. 502/rate-limit) */ }
 
       if (!response.ok) {
-        throw new Error(data.message || "Authentication failed");
+        throw new Error(data.message || (response.status === 429 ? "Too many attempts — please wait and try again" : "Authentication failed"));
       }
 
       // Invalidate user query to refresh auth state
@@ -111,7 +112,8 @@ export function SignInModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: formData.email, newPassword }),
       });
-      const data = await response.json();
+      let data: any = {};
+      try { data = await response.json(); } catch { /* non-JSON body */ }
       if (!response.ok) throw new Error(data.message || "Reset failed");
       toast({ title: "Password Reset", description: data.message });
       setNewPassword("");

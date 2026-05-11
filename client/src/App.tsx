@@ -378,6 +378,9 @@ function Router() {
       <Route path="/profile">
         {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
       </Route>
+      <Route path="/settings">
+        {() => <Redirect to="/profile" />}
+      </Route>
       
       {/* Consolidated Credits page */}
       <Route path="/credits">

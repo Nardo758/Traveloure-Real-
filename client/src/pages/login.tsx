@@ -52,9 +52,10 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
         credentials: "include",
       });
-      const data = await response.json();
+      let data: any = {};
+      try { data = await response.json(); } catch { /* non-JSON body (e.g. 502/rate-limit) */ }
       if (!response.ok) {
-        throw new Error(data.message || "Invalid email or password");
+        throw new Error(data.message || (response.status === 429 ? "Too many attempts — please wait and try again" : "Invalid email or password"));
       }
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Welcome back!", description: data.message });
