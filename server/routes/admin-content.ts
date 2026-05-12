@@ -593,14 +593,14 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
       if (status && !validStatuses.includes(status)) {
         return res.status(400).json({ error: "Invalid status filter" });
       }
-      const [expertPayouts, providerPayouts] = await Promise.all([
+      const [expertPayoutsResult, providerPayoutsResult] = await Promise.all([
         storage.getAllExpertPayouts(status),
         storage.getAllProviderPayouts(status),
       ]);
       const allPayouts = [
-        ...expertPayouts.map(p => ({ ...p, requesterType: 'expert' as const })),
-        ...providerPayouts.map(p => ({ ...p, requesterType: 'provider' as const })),
-      ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
+        ...expertPayoutsResult.map(p => ({ ...p, requesterType: 'expert' as const })),
+        ...providerPayoutsResult.map(p => ({ ...p, requesterType: 'provider' as const })),
+      ].sort((a, b) => new Date((b as any).requestedAt || 0).getTime() - new Date((a as any).requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get payouts", error: error.message });

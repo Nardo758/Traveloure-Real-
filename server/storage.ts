@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, pool } from "./db";
 import { sql } from "drizzle-orm";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
@@ -2602,49 +2602,19 @@ export class DatabaseStorage implements IStorage {
 
   // Admin Payouts
   async getAllExpertPayouts(status?: string): Promise<(ExpertPayout & { requesterName?: string; requesterEmail?: string })[]> {
-    const conditions = status ? [eq(expertPayouts.status, status)] : [];
-    const payouts = await db.select({
-      id: expertPayouts.id,
-      expertId: expertPayouts.expertId,
-      amount: expertPayouts.amount,
-      currency: expertPayouts.currency,
-      payoutMethod: expertPayouts.payoutMethod,
-      status: expertPayouts.status,
-      processedAt: expertPayouts.processedAt,
-      failureReason: expertPayouts.failureReason,
-      transactionId: expertPayouts.transactionId,
-      metadata: expertPayouts.metadata,
-      requestedAt: expertPayouts.requestedAt,
-      requesterName: users.name,
-      requesterEmail: users.email,
-    }).from(expertPayouts)
-      .leftJoin(users, eq(expertPayouts.expertId, users.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(expertPayouts.requestedAt));
-    return payouts;
+    const query = status
+      ? `SELECT ep.id, ep.expert_id as "expertId", ep.amount, ep.currency, ep.payout_method as "payoutMethod", ep.status, ep.processed_at as "processedAt", ep.failure_reason as "failureReason", ep.transaction_id as "transactionId", ep.requested_at as "requestedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM expert_payouts ep LEFT JOIN users u ON ep.expert_id = u.id WHERE ep.status = $1 ORDER BY ep.requested_at DESC`
+      : `SELECT ep.id, ep.expert_id as "expertId", ep.amount, ep.currency, ep.payout_method as "payoutMethod", ep.status, ep.processed_at as "processedAt", ep.failure_reason as "failureReason", ep.transaction_id as "transactionId", ep.requested_at as "requestedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM expert_payouts ep LEFT JOIN users u ON ep.expert_id = u.id ORDER BY ep.requested_at DESC`;
+    const result = status ? await pool.query(query, [status]) : await pool.query(query);
+    return result.rows;
   }
 
   async getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]> {
-    const conditions = status ? [eq(providerPayouts.status, status)] : [];
-    const payouts = await db.select({
-      id: providerPayouts.id,
-      providerId: providerPayouts.providerId,
-      amount: providerPayouts.amount,
-      currency: providerPayouts.currency,
-      payoutMethod: providerPayouts.payoutMethod,
-      status: providerPayouts.status,
-      payoutReference: providerPayouts.payoutReference,
-      notes: providerPayouts.notes,
-      requestedAt: providerPayouts.requestedAt,
-      processedAt: providerPayouts.processedAt,
-      completedAt: providerPayouts.completedAt,
-      requesterName: users.name,
-      requesterEmail: users.email,
-    }).from(providerPayouts)
-      .leftJoin(users, eq(providerPayouts.providerId, users.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(providerPayouts.requestedAt));
-    return payouts;
+    const query = status
+      ? `SELECT pp.id, pp.provider_id as "providerId", pp.amount, pp.currency, pp.payout_method as "payoutMethod", pp.status, pp.payout_reference as "payoutReference", pp.notes, pp.requested_at as "requestedAt", pp.processed_at as "processedAt", pp.completed_at as "completedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM provider_payouts pp LEFT JOIN users u ON pp.provider_id = u.id WHERE pp.status = $1 ORDER BY pp.requested_at DESC`
+      : `SELECT pp.id, pp.provider_id as "providerId", pp.amount, pp.currency, pp.payout_method as "payoutMethod", pp.status, pp.payout_reference as "payoutReference", pp.notes, pp.requested_at as "requestedAt", pp.processed_at as "processedAt", pp.completed_at as "completedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM provider_payouts pp LEFT JOIN users u ON pp.provider_id = u.id ORDER BY pp.requested_at DESC`;
+    const result = status ? await pool.query(query, [status]) : await pool.query(query);
+    return result.rows;
   }
 
   async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout> {

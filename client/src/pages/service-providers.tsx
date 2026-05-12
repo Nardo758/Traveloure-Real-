@@ -52,14 +52,15 @@ type ServiceCategory = {
 type Service = {
   id: string;
   userId: string;
-  name: string;
+  serviceName: string;
+  shortDescription: string;
   description: string;
   categoryId: string;
-  basePrice: string;
+  price: string;
   duration: number;
   location: string;
-  rating: string;
-  totalReviews: number;
+  averageRating: string;
+  reviewCount: number;
   status: string;
 };
 
@@ -82,8 +83,9 @@ const categoryIcons: Record<string, React.ElementType> = {
 };
 
 function ServiceCard({ service }: { service: Service }) {
-  const rating = parseFloat(service.rating) || 0;
-  const price = parseFloat(service.basePrice) || 0;
+  const rating = parseFloat(service.averageRating) || 0;
+  const price = parseFloat(service.price) || 0;
+  const displayName = service.serviceName || service.shortDescription || 'Service';
 
   return (
     <Link href={`/services/${service.id}`} data-testid={`link-service-${service.id}`}>
@@ -93,7 +95,7 @@ function ServiceCard({ service }: { service: Service }) {
             <Avatar className="w-16 h-16 rounded-md">
               <AvatarImage src="" />
               <AvatarFallback className="rounded-md bg-muted">
-                {service.name.slice(0, 2).toUpperCase()}
+                {displayName.slice(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
@@ -101,10 +103,10 @@ function ServiceCard({ service }: { service: Service }) {
                 className="font-semibold text-foreground truncate"
                 data-testid={`text-service-name-${service.id}`}
               >
-                {service.name}
+                {displayName}
               </h3>
               <p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-                {service.description}
+                {service.shortDescription || service.description}
               </p>
               <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
@@ -123,7 +125,7 @@ function ServiceCard({ service }: { service: Service }) {
               <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
               <span className="font-medium">{rating.toFixed(1)}</span>
               <span className="text-muted-foreground text-sm">
-                ({service.totalReviews || 0})
+                ({service.reviewCount || 0})
               </span>
             </div>
             <div className="flex items-center gap-1 font-semibold">
@@ -195,10 +197,9 @@ export default function ServiceProviders() {
   const filteredServices = services?.filter((service) => {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      if (
-        !service.name.toLowerCase().includes(query) &&
-        !service.description?.toLowerCase().includes(query)
-      ) {
+      const name = (service.serviceName || service.shortDescription || '').toLowerCase();
+      const desc = (service.description || '').toLowerCase();
+      if (!name.includes(query) && !desc.includes(query)) {
         return false;
       }
     }
@@ -217,13 +218,13 @@ export default function ServiceProviders() {
   const sortedServices = [...(filteredServices || [])].sort((a, b) => {
     switch (sortBy) {
       case "rating":
-        return parseFloat(b.rating) - parseFloat(a.rating);
+        return parseFloat(b.averageRating) - parseFloat(a.averageRating);
       case "price_low":
-        return parseFloat(a.basePrice) - parseFloat(b.basePrice);
+        return parseFloat(a.price) - parseFloat(b.price);
       case "price_high":
-        return parseFloat(b.basePrice) - parseFloat(a.basePrice);
+        return parseFloat(b.price) - parseFloat(a.price);
       case "reviews":
-        return (b.totalReviews || 0) - (a.totalReviews || 0);
+        return (b.reviewCount || 0) - (a.reviewCount || 0);
       default:
         return 0;
     }
