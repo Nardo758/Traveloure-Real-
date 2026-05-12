@@ -211,6 +211,9 @@ function Router() {
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
       </Route>
+      <Route path="/local-experts">
+        {() => <Redirect to="/experts" />}
+      </Route>
       <Route path="/experts/:id">
         <ExpertDetailPage />
       </Route>
@@ -374,6 +377,9 @@ function Router() {
       </Route>
       <Route path="/my-trips">
         {() => <ProtectedRoute component={MyTrips} />}
+      </Route>
+      <Route path="/trips">
+        {() => <Redirect to="/my-trips" />}
       </Route>
       <Route path="/profile">
         {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
