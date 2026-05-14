@@ -8,7 +8,7 @@ import { DashboardLayout } from "@/components/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
-import { ErrorBoundary } from "@/components/error-boundary";
+import { ErrorBoundary, RouteErrorBoundary } from "@/components/error-boundary";
 
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -682,9 +682,9 @@ function App() {
           <SignInModalProvider>
             <TooltipProvider>
               <Toaster />
-              <ErrorBoundary>
+              <RouteErrorBoundary>
                 <Router />
-              </ErrorBoundary>
+              </RouteErrorBoundary>
             </TooltipProvider>
           </SignInModalProvider>
         </TripQueueProvider>

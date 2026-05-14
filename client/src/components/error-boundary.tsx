@@ -1,10 +1,12 @@
 import { Component, type ReactNode, type ErrorInfo } from "react";
-import { AlertTriangle, RefreshCw, Home } from "lucide-react";
+import { useLocation } from "wouter";
+import { AlertTriangle, RefreshCw, Home, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  section?: string;
 }
 
 interface State {
@@ -37,6 +39,11 @@ export class ErrorBoundary extends Component<Props, State> {
     window.location.href = "/";
   };
 
+  handleBack = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    window.history.back();
+  };
+
   handleRetry = () => {
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
@@ -45,21 +52,24 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
 
+      const { section } = this.props;
+
       return (
         <div
           className="min-h-screen flex flex-col items-center justify-center bg-gray-50 text-center px-4"
           data-testid="error-boundary"
         >
-          <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center mb-6">
-            <AlertTriangle className="w-12 h-12 text-[#FF385C]" />
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center mb-6">
+            <AlertTriangle className="w-10 h-10 text-[#FF385C]" />
           </div>
 
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
             Something went wrong
           </h1>
           <p className="text-slate-500 max-w-md mb-2">
-            An unexpected error occurred on this page. You can try refreshing,
-            going back, or returning home.
+            {section
+              ? `An error occurred in the ${section} section. Other parts of the app are unaffected — use the buttons below to recover.`
+              : "An unexpected error occurred. You can try going back, refreshing, or returning home."}
           </p>
 
           {this.state.error && (
@@ -72,6 +82,15 @@ export class ErrorBoundary extends Component<Props, State> {
           )}
 
           <div className="flex flex-wrap gap-3 justify-center">
+            <Button
+              onClick={this.handleBack}
+              variant="outline"
+              className="rounded-full px-6 gap-2"
+              data-testid="error-boundary-back"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Go Back
+            </Button>
             <Button
               onClick={this.handleRetry}
               variant="outline"
@@ -104,6 +123,20 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
+}
+
+/**
+ * Route-level error boundary that automatically resets whenever the user
+ * navigates to a different URL. A crash on one page will never bleed into
+ * another — navigating away always gives a fresh start.
+ */
+export function RouteErrorBoundary({ children, section }: { children: ReactNode; section?: string }) {
+  const [location] = useLocation();
+  return (
+    <ErrorBoundary key={location} section={section}>
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 export default ErrorBoundary;
