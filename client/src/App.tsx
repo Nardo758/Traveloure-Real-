@@ -8,6 +8,7 @@ import { DashboardLayout } from "@/components/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -675,16 +676,20 @@ function Router() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TripQueueProvider>
-        <SignInModalProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </SignInModalProvider>
-      </TripQueueProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TripQueueProvider>
+          <SignInModalProvider>
+            <TooltipProvider>
+              <Toaster />
+              <ErrorBoundary>
+                <Router />
+              </ErrorBoundary>
+            </TooltipProvider>
+          </SignInModalProvider>
+        </TripQueueProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 
