@@ -1306,6 +1306,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
          "sunset_spots", "historic_gems", "nature_escapes", "nightlife_secrets"].includes(c)
       );
 
+      const { grokDiscoveryService } = await import("../services/grok-discovery.service");
       const result = await grokDiscoveryService.discoverGemsForDestination(
         destination,
         validCategories?.length > 0 ? validCategories : undefined
@@ -1336,6 +1337,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
   app.get("/api/discovery/gems", async (req, res) => {
     try {
       const { destination, category, limit, offset } = req.query;
+      const { grokDiscoveryService } = await import("../services/grok-discovery.service");
 
       if (destination) {
         const result = await grokDiscoveryService.getGemsForDestination(
@@ -1366,6 +1368,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
       const { id } = req.params;
       const { aiDiscoveredGems } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
+      const { grokDiscoveryService } = await import("../services/grok-discovery.service");
 
       const [gem] = await db.select()
         .from(aiDiscoveredGems)
@@ -1387,6 +1390,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/discovery/destinations", async (_req, res) => {
     try {
+      const { grokDiscoveryService } = await import("../services/grok-discovery.service");
       const destinations = await grokDiscoveryService.getDestinationsWithGems();
       res.json({ destinations });
     } catch (error: any) {
@@ -1398,6 +1402,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
   app.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
     try {
       const { limit } = req.query;
+      const { grokDiscoveryService } = await import("../services/grok-discovery.service");
       const jobs = await grokDiscoveryService.getDiscoveryJobs(
         limit ? parseInt(limit as string) : undefined
       );
