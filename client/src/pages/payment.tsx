@@ -45,11 +45,12 @@ export default function PaymentPage() {
   const [agreeToTerms, setAgreeToTerms] = useState(false);
 
   // Fetch real cart items from API
-  const { data: cartData, isLoading: cartLoading } = useQuery<any[]>({
+  const { data: cartData, isLoading: cartLoading } = useQuery<any>({
     queryKey: ["/api/cart"],
   });
 
-  const cartItems = (cartData || []).map((item: any) => ({
+  const rawItems = Array.isArray(cartData) ? cartData : (cartData?.items || []);
+  const cartItems = rawItems.map((item: any) => ({
     id: item.id,
     name: item.service?.name || item.name || "Service",
     category: item.service?.categoryId || "Service",
