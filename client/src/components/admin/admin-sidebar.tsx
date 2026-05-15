@@ -56,8 +56,13 @@ export function AdminSidebar() {
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      // proceed regardless
+    }
+    window.location.href = "/";
   };
 
   return (
