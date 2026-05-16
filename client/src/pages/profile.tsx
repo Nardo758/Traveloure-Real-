@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Mail, Save, Loader2, Trash2 } from "lucide-react";
+import { Camera, Mail, Save, Loader2, Trash2, Lock, Eye, EyeOff } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,10 +17,11 @@ export default function Profile() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Local preview — null means "use server value"
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-
   const [form, setForm] = useState({ firstName: "", lastName: "", bio: "" });
+  const [pwForm, setPwForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -32,24 +33,18 @@ export default function Profile() {
     }
   }, [user]);
 
-  // Displayed avatar: local preview > server value > nothing
   const displayedAvatar = previewImage ?? user?.profileImageUrl ?? undefined;
 
   // ── Photo upload ─────────────────────────────────────────────────────────────
   const photoMutation = useMutation({
-    mutationFn: (imageData: string) =>
-      apiRequest("POST", "/api/profile/photo", { imageData }),
+    mutationFn: (imageData: string) => apiRequest("POST", "/api/profile/photo", { imageData }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Photo saved", description: "Your profile photo has been updated." });
     },
     onError: (err: any) => {
       setPreviewImage(null);
-      toast({
-        title: "Upload failed",
-        description: err?.message || "Could not save photo. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Upload failed", description: err?.message || "Could not save photo.", variant: "destructive" });
     },
   });
 
@@ -61,11 +56,7 @@ export default function Profile() {
       toast({ title: "Photo removed", description: "Your profile photo has been removed." });
     },
     onError: (err: any) => {
-      toast({
-        title: "Remove failed",
-        description: err?.message || "Could not remove photo.",
-        variant: "destructive",
-      });
+      toast({ title: "Remove failed", description: err?.message || "Could not remove photo.", variant: "destructive" });
     },
   });
 
@@ -93,15 +84,40 @@ export default function Profile() {
       toast({ title: "Profile updated", description: "Your changes have been saved." });
     },
     onError: (err: any) => {
-      toast({
-        title: "Save failed",
-        description: err?.message || "Could not save profile. Please try again.",
-        variant: "destructive",
-      });
+      toast({ title: "Save failed", description: err?.message || "Could not save profile.", variant: "destructive" });
     },
   });
 
+  // ── Change password ───────────────────────────────────────────────────────────
+  const changePasswordMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/profile/change-password", {
+        currentPassword: pwForm.currentPassword,
+        newPassword: pwForm.newPassword,
+      }),
+    onSuccess: () => {
+      setPwForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast({ title: "Password changed", description: "Your password has been updated successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Password change failed", description: err?.message || "Could not change password.", variant: "destructive" });
+    },
+  });
+
+  const handleChangePassword = () => {
+    if (pwForm.newPassword.length < 8) {
+      toast({ title: "Password too short", description: "New password must be at least 8 characters.", variant: "destructive" });
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      toast({ title: "Passwords don't match", description: "New password and confirmation must match.", variant: "destructive" });
+      return;
+    }
+    changePasswordMutation.mutate();
+  };
+
   const isPhotoChanging = photoMutation.isPending || removePhotoMutation.isPending;
+  const isEmailAccount = (user as any)?.authProvider === "email" || (!(user as any)?.authProvider && !!(user as any)?.password);
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
@@ -166,7 +182,7 @@ export default function Profile() {
                 <><Camera className="w-4 h-4 mr-2" />Upload Photo</>
               )}
             </Button>
-            {(displayedAvatar) && (
+            {displayedAvatar && (
               <Button
                 variant="ghost"
                 className="text-red-500 hover:text-red-600 hover:bg-red-50"
@@ -247,6 +263,118 @@ export default function Profile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Change Password — only for email/password accounts */}
+      {isEmailAccount && (
+        <Card className="border border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-lg text-[#111827] dark:text-white flex items-center gap-2">
+              <Lock className="w-5 h-5 text-[#6B7280]" />
+              Change Password
+            </CardTitle>
+            <CardDescription className="text-[#6B7280]">
+              Update your password. You'll need your current password to confirm the change.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword" className="text-[#111827] dark:text-white">
+                Current Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="currentPassword"
+                  type={showCurrent ? "text" : "password"}
+                  value={pwForm.currentPassword}
+                  onChange={e => setPwForm(f => ({ ...f, currentPassword: e.target.value }))}
+                  placeholder="Enter your current password"
+                  className="border-[#E5E7EB] pr-10"
+                  autoComplete="current-password"
+                  data-testid="input-current-password"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-3 flex items-center text-[#6B7280] hover:text-[#111827]"
+                  onClick={() => setShowCurrent(v => !v)}
+                  tabIndex={-1}
+                  data-testid="button-toggle-current-password"
+                >
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="newPassword" className="text-[#111827] dark:text-white">
+                New Password
+              </Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showNew ? "text" : "password"}
+                  value={pwForm.newPassword}
+                  onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
+                  placeholder="At least 8 characters"
+                  className="border-[#E5E7EB] pr-10"
+                  autoComplete="new-password"
+                  data-testid="input-new-password"
+                />
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-3 flex items-center text-[#6B7280] hover:text-[#111827]"
+                  onClick={() => setShowNew(v => !v)}
+                  tabIndex={-1}
+                  data-testid="button-toggle-new-password"
+                >
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {pwForm.newPassword.length > 0 && pwForm.newPassword.length < 8 && (
+                <p className="text-xs text-red-500">Password must be at least 8 characters</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-[#111827] dark:text-white">
+                Confirm New Password
+              </Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={pwForm.confirmPassword}
+                onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                placeholder="Re-enter your new password"
+                className="border-[#E5E7EB]"
+                autoComplete="new-password"
+                data-testid="input-confirm-password"
+              />
+              {pwForm.confirmPassword.length > 0 && pwForm.newPassword !== pwForm.confirmPassword && (
+                <p className="text-xs text-red-500">Passwords don't match</p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+                onClick={handleChangePassword}
+                disabled={
+                  changePasswordMutation.isPending ||
+                  !pwForm.currentPassword ||
+                  !pwForm.newPassword ||
+                  !pwForm.confirmPassword
+                }
+                data-testid="button-change-password"
+              >
+                {changePasswordMutation.isPending ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Changing…</>
+                ) : (
+                  <><Lock className="w-4 h-4 mr-2" />Change Password</>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Travel Preferences */}
       <Card className="border border-[#E5E7EB]">
