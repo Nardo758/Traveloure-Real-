@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -19,15 +19,22 @@ interface SignInModalProps {
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
+  defaultMode?: "signin" | "signup";
 }
 
 export function SignInModal({
   open,
   onOpenChange,
-  title = "Sign in to continue",
-  description = "Create an account or sign in to access this feature and personalize your travel experience.",
+  title,
+  description,
+  defaultMode = "signin",
 }: SignInModalProps) {
-  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "reset">(defaultMode);
+
+  const resolvedTitle = title ?? (mode === "signup" ? "Create your account" : "Sign in to continue");
+  const resolvedDescription = description ?? (mode === "signup"
+    ? "Join Traveloure and start planning unforgettable experiences."
+    : "Create an account or sign in to access this feature and personalize your travel experience.");
   const [isLoading, setIsLoading] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
@@ -40,6 +47,16 @@ export function SignInModal({
   const [newPassword, setNewPassword] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Reset mode to defaultMode every time the modal opens
+  useEffect(() => {
+    if (open) {
+      setMode(defaultMode);
+      setAcceptTerms(false);
+      setAcceptPrivacy(false);
+      setFormData({ email: "", password: "", firstName: "", lastName: "" });
+    }
+  }, [open, defaultMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,10 +154,10 @@ export function SignInModal({
             <LogIn className="h-6 w-6 text-primary" />
           </div>
           <DialogTitle className="text-xl" data-testid="text-sign-in-title">
-            {mode === "reset" ? "Reset your password" : mode === "signin" ? title : "Create your account"}
+            {mode === "reset" ? "Reset your password" : resolvedTitle}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {mode === "reset" ? "Enter your email and a new password." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
+            {mode === "reset" ? "Enter your email and a new password." : resolvedDescription}
           </DialogDescription>
         </DialogHeader>
 

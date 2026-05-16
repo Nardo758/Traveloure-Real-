@@ -4,6 +4,7 @@ import { SignInModal } from "@/components/SignInModal";
 interface SignInModalOptions {
   title?: string;
   description?: string;
+  defaultMode?: "signin" | "signup";
 }
 
 interface SignInModalContextType {
@@ -35,6 +36,7 @@ export function SignInModalProvider({ children }: { children: ReactNode }) {
         onOpenChange={setIsOpen}
         title={options.title}
         description={options.description}
+        defaultMode={options.defaultMode}
       />
     </SignInModalContext.Provider>
   );
