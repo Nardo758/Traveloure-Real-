@@ -1405,7 +1405,7 @@ Respond with this exact JSON structure:
   app.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       // Verify ownership: the variant must belong to a comparison owned by the requesting user
       const [variant] = await db
