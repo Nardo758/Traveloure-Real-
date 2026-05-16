@@ -300,6 +300,41 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
     res.json({ success: true });
   });
 
+  // PATCH /api/profile — update authenticated user's profile fields
+  app.patch("/api/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const schema = z.object({
+        firstName: z.string().min(1).max(100).optional(),
+        lastName: z.string().min(1).max(100).optional(),
+        bio: z.string().max(500).optional(),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+      }
+      const updates: Record<string, unknown> = {};
+      if (parsed.data.firstName !== undefined) updates.firstName = parsed.data.firstName;
+      if (parsed.data.lastName !== undefined) updates.lastName = parsed.data.lastName;
+      if (parsed.data.bio !== undefined) updates.bio = parsed.data.bio;
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No fields to update" });
+      }
+      const { users } = await import("../../shared/models/auth");
+      const [updated] = await db
+        .update(users)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      const { password: _pw, instagramAccessToken: _ig, ...safeUser } = updated as any;
+      res.json(safeUser);
+    } catch (err) {
+      console.error("PATCH /api/profile error:", err);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
   // /api/chats — used by useChats hook and shared/routes.ts contract
   app.get("/api/chats", isAuthenticated, async (req, res) => {
     try {

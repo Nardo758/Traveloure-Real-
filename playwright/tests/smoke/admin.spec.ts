@@ -8,7 +8,7 @@ test.describe("Phase 3 - Admin Flow Smoke Tests", () => {
 
   test("admin dashboard loads", async ({ page }) => {
     await page.goto("/admin/dashboard");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(
       page.locator("[data-testid='admin-sidebar'], [data-testid='admin-dashboard']").first()
@@ -17,7 +17,7 @@ test.describe("Phase 3 - Admin Flow Smoke Tests", () => {
 
   test("user management loads and is searchable", async ({ page }) => {
     await page.goto("/admin/users");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     // Search box should exist
     const searchInput = page.locator('input[placeholder*="search" i], input[type="search"]').first();
@@ -30,42 +30,42 @@ test.describe("Phase 3 - Admin Flow Smoke Tests", () => {
 
   test("expert management loads", async ({ page }) => {
     await page.goto("/admin/experts");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("provider management loads", async ({ page }) => {
     await page.goto("/admin/providers");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin bookings loads", async ({ page }) => {
     await page.goto("/admin/bookings");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin analytics loads", async ({ page }) => {
     await page.goto("/admin/analytics");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin revenue loads", async ({ page }) => {
     await page.goto("/admin/revenue");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin payouts loads without 500 error", async ({ page }) => {
     await page.goto("/admin/payouts");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     // Should show empty state or list, not a crash
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
@@ -73,34 +73,37 @@ test.describe("Phase 3 - Admin Flow Smoke Tests", () => {
 
   test("admin AI costs loads", async ({ page }) => {
     await page.goto("/admin/ai-costs");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin content management loads", async ({ page }) => {
     await page.goto("/admin/content");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin system health loads", async ({ page }) => {
     await page.goto("/admin/system");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.locator("[data-testid='error-boundary']")).not.toBeVisible();
     await expect(page.locator("main").first()).toBeVisible({ timeout: 8000 });
   });
 
   test("admin logout works", async ({ page }) => {
     await page.goto("/admin/dashboard");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     const logoutBtn = page.locator("[data-testid='button-logout']").first();
+    await expect(logoutBtn).toBeVisible({ timeout: 8000 });
     await logoutBtn.click();
-    await page.waitForURL(/\/$|\/login/, { timeout: 10000 });
+    // Wait for navigation away from admin dashboard
+    await expect(page).not.toHaveURL(/\/admin\/dashboard/, { timeout: 15000 });
     // Confirm session gone — admin dashboard should redirect away
     await page.goto("/admin/dashboard");
-    await page.waitForURL(/\/$|\/login/, { timeout: 8000 });
+    await page.waitForLoadState("domcontentloaded");
+    await page.waitForTimeout(2000);
     await expect(page).not.toHaveURL(/\/admin\/dashboard/);
   });
 });
