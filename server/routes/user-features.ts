@@ -300,6 +300,55 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
     res.json({ success: true });
   });
 
+  // POST /api/profile/photo — upload a base64 profile photo (saved directly to DB)
+  app.post("/api/profile/photo", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const schema = z.object({
+        imageData: z.string().min(1), // base64 data URL, e.g. "data:image/jpeg;base64,..."
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });
+      }
+      // Validate it's actually an image data URL
+      if (!parsed.data.imageData.startsWith("data:image/")) {
+        return res.status(400).json({ message: "Only image files are accepted" });
+      }
+      // Rough size guard: base64 overhead is ~1.37x, so 5 MB image ≈ 6.85 MB base64
+      if (parsed.data.imageData.length > 7 * 1024 * 1024) {
+        return res.status(400).json({ message: "Image too large. Please choose an image under 5 MB." });
+      }
+      const { users } = await import("../../shared/models/auth");
+      const [updated] = await db
+        .update(users)
+        .set({ profileImageUrl: parsed.data.imageData, updatedAt: new Date() })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      res.json({ profileImageUrl: updated.profileImageUrl });
+    } catch (err) {
+      console.error("POST /api/profile/photo error:", err);
+      res.status(500).json({ message: "Failed to save photo" });
+    }
+  });
+
+  // DELETE /api/profile/photo — remove the profile photo
+  app.delete("/api/profile/photo", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const { users } = await import("../../shared/models/auth");
+      await db
+        .update(users)
+        .set({ profileImageUrl: null, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DELETE /api/profile/photo error:", err);
+      res.status(500).json({ message: "Failed to remove photo" });
+    }
+  });
+
   // PATCH /api/profile — update authenticated user's profile fields
   app.patch("/api/profile", isAuthenticated, async (req, res) => {
     try {
