@@ -240,7 +240,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
     // Atomically mark saved trip as converted — prevents duplicate conversions under concurrent requests
     const markResult = await db.execute(sql`
       UPDATE saved_trips
-      SET status = 'converted'
+      SET status = 'booked'
       WHERE id = ${id}
         AND user_id = ${userId}
         AND status = 'active'
@@ -248,7 +248,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
     `);
 
     if (!markResult.rows || markResult.rows.length === 0) {
-      return res.status(409).json({ error: 'Already converted or not eligible' });
+      return res.status(409).json({ error: 'Already booked or not eligible' });
     }
 
     // Create a Trip record in planning status
