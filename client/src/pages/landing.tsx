@@ -908,7 +908,7 @@ export default function LandingPage() {
               <Button
                 size="lg"
                 className="bg-white text-[#FF385C] font-semibold px-8 h-12 shadow-xl"
-                onClick={() => openSignInModal()}
+                onClick={() => openSignInModal({ defaultMode: "signup" })}
                 data-testid="button-cta-get-started"
               >
                 Get Started - Free
