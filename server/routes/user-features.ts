@@ -300,6 +300,61 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
     res.json({ success: true });
   });
 
+  // POST /api/profile/change-password — change password for email/password accounts
+  app.post("/api/profile/change-password", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const schema = z.object({
+        currentPassword: z.string().min(1, "Current password is required"),
+        newPassword: z.string().min(8, "New password must be at least 8 characters"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: parsed.error.errors[0]?.message || "Invalid request" });
+      }
+
+      const { users } = await import("../../shared/models/auth");
+      const crypto = await import("crypto");
+
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      // Only email/password accounts can change password here
+      if (!user.password) {
+        return res.status(400).json({
+          message: "Your account uses social login. Password changes are not supported.",
+        });
+      }
+
+      // Verify current password (scrypt, same as emailAuth.ts)
+      const isValid = await new Promise<boolean>((resolve, reject) => {
+        const [salt, key] = user.password!.split(":");
+        crypto.scrypt(parsed.data.currentPassword, salt, 64, (err, derived) => {
+          if (err) reject(err);
+          else resolve(key === derived.toString("hex"));
+        });
+      });
+      if (!isValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+
+      // Hash new password
+      const newHash = await new Promise<string>((resolve, reject) => {
+        const salt = crypto.randomBytes(16).toString("hex");
+        crypto.scrypt(parsed.data.newPassword, salt, 64, (err, derived) => {
+          if (err) reject(err);
+          else resolve(`${salt}:${derived.toString("hex")}`);
+        });
+      });
+
+      await db.update(users).set({ password: newHash, updatedAt: new Date() }).where(eq(users.id, userId));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("POST /api/profile/change-password error:", err);
+      res.status(500).json({ message: "Failed to change password" });
+    }
+  });
+
   // POST /api/profile/photo — upload a base64 profile photo (saved directly to DB)
   app.post("/api/profile/photo", isAuthenticated, async (req, res) => {
     try {
