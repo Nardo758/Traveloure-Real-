@@ -23,6 +23,7 @@ import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builde
 import { generateKml } from "../services/kml-generator";
 import { generateGpx } from "../services/gpx-generator";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "../infrastructure";
+import { affiliateScraperService } from "../services/affiliate-scraper.service";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
