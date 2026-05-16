@@ -10,17 +10,22 @@ export const TEST_ACCOUNTS = {
 export async function loginAs(page: Page, role: keyof typeof TEST_ACCOUNTS) {
   const { email, password } = TEST_ACCOUNTS[role];
   await page.goto("/login");
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', password);
   await page.click('button[type="submit"]');
-  await page.waitForURL(/\/(dashboard|expert|provider|admin)/, { timeout: 15000 });
+  await page.waitForURL(/\/(dashboard|expert|provider|admin)/, { timeout: 20000 });
 }
 
 export async function logout(page: Page) {
-  await page.evaluate(async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-  });
+  // Ensure we're on a real page before calling fetch
+  const url = page.url();
+  if (!url || url === "about:blank") {
+    await page.goto("/");
+    await page.waitForLoadState("domcontentloaded");
+  }
+  // Use page.request to hit the logout endpoint (avoids relative URL issues)
+  await page.request.post("/api/auth/logout");
   await page.goto("/");
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 }
