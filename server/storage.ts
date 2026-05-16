@@ -2649,9 +2649,13 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db.select({
       stripeAccountId: users.stripeAccountId,
       stripeAccountStatus: users.stripeAccountStatus,
-      canReceivePayments: users.canReceivePayments,
     }).from(users).where(eq(users.id, userId));
-    return user || { stripeAccountId: null, stripeAccountStatus: null, canReceivePayments: null };
+    if (!user) return { stripeAccountId: null, stripeAccountStatus: null, canReceivePayments: null };
+    return {
+      stripeAccountId: user.stripeAccountId ?? null,
+      stripeAccountStatus: user.stripeAccountStatus ?? null,
+      canReceivePayments: user.stripeAccountStatus === 'active',
+    };
   }
 
   // === Platform Revenue ===
