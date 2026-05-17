@@ -172,6 +172,14 @@ export default function QuickStartItinerary() {
   const [selectedDay, setSelectedDay] = useState(0);
   const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
   const [showCustomization, setShowCustomization] = useState(!destination);
+  const [lastGenerationParams, setLastGenerationParams] = useState<{
+    destination: string;
+    country?: string;
+    dates?: { start: string; end: string };
+    travelers: number;
+    interests: string[];
+    pacePreference: string;
+  } | null>(null);
   
   // Customization options
   const [customDestination, setCustomDestination] = useState(destination);
@@ -223,13 +231,15 @@ export default function QuickStartItinerary() {
   // Auto-generate if destination is provided
   useEffect(() => {
     if (destination && !generateMutation.data && !generateMutation.isPending) {
-      generateMutation.mutate({
+      const params = {
         destination,
         country: country || undefined,
         travelers: adults + kids,
         interests: ["culture", "food", "nature"],
         pacePreference: "moderate",
-      });
+      };
+      setLastGenerationParams(params);
+      generateMutation.mutate(params);
       setShowCustomization(false);
     }
   }, [destination, country]);
@@ -242,7 +252,7 @@ export default function QuickStartItinerary() {
       return; // Invalid date range, button should be disabled
     }
     
-    generateMutation.mutate({
+    const params = {
       destination: customDestination,
       country: customCountry || undefined,
       dates: startDate && endDate ? {
@@ -252,8 +262,15 @@ export default function QuickStartItinerary() {
       travelers: adults + kids,
       interests,
       pacePreference,
-    });
+    };
+    setLastGenerationParams(params);
+    generateMutation.mutate(params);
     setShowCustomization(false);
+  };
+
+  const handleRegenerate = () => {
+    if (!lastGenerationParams) return;
+    generateMutation.mutate(lastGenerationParams);
   };
 
   // Validate form
@@ -846,6 +863,20 @@ export default function QuickStartItinerary() {
             {/* Action Buttons */}
             <Card className="mt-4">
               <CardContent className="pt-4 space-y-3">
+                <Button
+                  onClick={handleRegenerate}
+                  variant="outline"
+                  className="w-full"
+                  disabled={generateMutation.isPending || !lastGenerationParams}
+                  data-testid="button-regenerate"
+                >
+                  {generateMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  {generateMutation.isPending ? "Regenerating..." : "Regenerate Itinerary"}
+                </Button>
                 <Button
                   onClick={handleCustomize}
                   variant="outline"
