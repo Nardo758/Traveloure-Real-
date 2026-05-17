@@ -5,6 +5,8 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
 
 jobs:
@@ -74,10 +76,120 @@ jobs:
           done
 
       - name: Run smoke tests (batched)
-        run: bash playwright/run-smoke.sh --reporter=list
+        id: tests
+        run: |
+          bash playwright/run-smoke.sh --reporter=list 2>&1 | tee /tmp/smoke-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
         env:
           BASE_URL: http://localhost:5000
           TIMEOUT: 60000
+        continue-on-error: true
+
+      - name: Write job summary
+        if: always()
+        run: |
+          EXIT="${{ steps.tests.outputs.exit_code }}"
+          STATUS="✅ All smoke tests passed"
+          [ "$EXIT" != "0" ] && STATUS="❌ Smoke tests FAILED"
+
+          TRIGGER="${{ github.event_name }}"
+          LABEL="Push"
+          [ "$TRIGGER" = "pull_request" ] && LABEL="PR #${{ github.event.number }}"
+          [ "$TRIGGER" = "schedule" ]     && LABEL="Nightly (03:00 UTC)"
+          [ "$TRIGGER" = "workflow_dispatch" ] && LABEL="Manual run"
+
+          echo "## $STATUS" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Trigger | $LABEL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | \`${{ github.sha }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Suites | 35 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tests | 560 |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -f /tmp/smoke-output.txt ]; then
+            echo "### Runner output" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            grep -E "Batch:|✅|❌|passed|FAILED|Total|Passed|Failed|Duration" /tmp/smoke-output.txt \
+              | head -60 >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Open GitHub issue on nightly failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const date = new Date().toISOString().split('T')[0];
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'smoke-failure',
+              state: 'open',
+            });
+
+            if (issues.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issues[0].number,
+                body: `Nightly run still failing on ${date}. [View run](${runUrl})`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🚨 Nightly smoke tests failing (${date})`,
+                body: [
+                  '## Nightly smoke tests are failing',
+                  '',
+                  `**Date:** ${date}`,
+                  `**Run:** [View in GitHub Actions](${runUrl})`,
+                  '',
+                  '### What to do',
+                  '1. Open the run link above',
+                  '2. Check the **Job Summary** tab for the batch breakdown',
+                  '3. Download the **playwright-report** artifact for full details',
+                  '',
+                  '---',
+                  '*This issue was opened automatically by the nightly smoke-test workflow.*',
+                  '*It will be closed automatically once the nightly run passes again.*',
+                ].join('\n'),
+                labels: ['smoke-failure'],
+              });
+            }
+
+      - name: Close smoke-failure issue on nightly success
+        if: success() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'smoke-failure',
+              state: 'open',
+            });
+
+            for (const issue of issues) {
+              const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `✅ Nightly run passed. Closing. [View run](${runUrl})`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+              });
+            }
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -85,7 +197,7 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report/
-          retention-days: 7
+          retention-days: 14
 
       - name: Upload test results on failure
         if: failure()
@@ -93,4 +205,8 @@ jobs:
         with:
           name: test-results
           path: test-results/
-          retention-days: 7
+          retention-days: 14
+
+      - name: Fail job if tests failed
+        if: steps.tests.outputs.exit_code != '0'
+        run: exit 1
