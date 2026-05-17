@@ -23,7 +23,11 @@ import {
   Sparkles,
   LayoutDashboard,
   CalendarDays,
+  Copy,
+  Check,
+  Link as LinkIcon,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -140,7 +144,49 @@ export default function ItineraryPage() {
   const [isRequestingExpert, setIsRequestingExpert] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showChanges, setShowChanges] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+  const [isShareLoading, setIsShareLoading] = useState(false);
   const { toast } = useToast();
+
+  const handleShare = async () => {
+    setIsShareLoading(true);
+    try {
+      const res = await fetch(`/api/trips/${tripId}/itinerary-token`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to get share token");
+      const data = await res.json();
+      if (data.shareToken) {
+        const url = `${window.location.origin}/itinerary-view/${data.shareToken}`;
+        setShareUrl(url);
+        setShowShareDialog(true);
+      } else {
+        toast({
+          title: "Share not available yet",
+          description: "Generate an AI itinerary plan for this trip first — the share link will be ready once a plan variant is selected.",
+        });
+      }
+    } catch {
+      toast({
+        title: "Could not generate share link",
+        description: "Please try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsShareLoading(false);
+    }
+  };
+
+  const handleCopyShareUrl = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch {
+      toast({ title: "Copy failed", description: "Please copy the link manually.", variant: "destructive" });
+    }
+  };
 
   interface TripTransportLeg {
     id: string;
@@ -482,8 +528,15 @@ export default function ItineraryPage() {
             >
               <Heart className={cn("w-4 h-4", isSaved && "fill-primary text-primary")} />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-share">
-              <Share2 className="w-4 h-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleShare}
+              disabled={isShareLoading}
+              data-testid="button-share"
+            >
+              {isShareLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-download">
               <Download className="w-4 h-4" />
@@ -986,6 +1039,71 @@ export default function ItineraryPage() {
             >
               <CheckCircle2 className="w-4 h-4 mr-2" />
               {rejectedDiffIds.size > 0 ? `Accept ${Object.keys(reviewActivityDiffs).length + Object.keys(reviewTransportDiffs).length - rejectedDiffIds.size} Changes` : "Accept All"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Share Dialog */}
+      <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-share">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <LinkIcon className="w-4 h-4 text-primary" />
+              Share Itinerary
+            </DialogTitle>
+            <DialogDescription>
+              Anyone with this link can view your itinerary — no sign-in required.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center gap-2 mt-2">
+            <Input
+              readOnly
+              value={shareUrl ?? ""}
+              className="flex-1 text-sm font-mono bg-muted"
+              onClick={(e) => (e.target as HTMLInputElement).select()}
+              data-testid="input-share-url"
+            />
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={handleCopyShareUrl}
+              className="shrink-0"
+              data-testid="button-copy-share-url"
+            >
+              {isCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            </Button>
+          </div>
+
+          {isCopied && (
+            <p className="text-xs text-green-600 dark:text-green-400 text-center" data-testid="text-copied-confirm">
+              Link copied to clipboard!
+            </p>
+          )}
+
+          <DialogFooter className="mt-2 flex-wrap gap-2 sm:justify-between">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              data-testid="button-open-share-link"
+            >
+              <a href={shareUrl ?? "#"} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                Open link
+              </a>
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleCopyShareUrl}
+              data-testid="button-copy-share-url-footer"
+            >
+              {isCopied ? (
+                <><Check className="w-3.5 h-3.5 mr-1.5" />Copied!</>
+              ) : (
+                <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy link</>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
