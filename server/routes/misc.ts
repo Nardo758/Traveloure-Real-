@@ -11,6 +11,7 @@ import { cacheService } from "../services/cache.service";
 import { claudeService } from "../services/claude.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
+import { travelPulseService } from "../services/travelpulse.service";
 import { feverService } from "../services/fever.service";
 import { feverCacheService } from "../services/fever-cache.service";
 import { coordinationService } from "../services/coordination.service";
