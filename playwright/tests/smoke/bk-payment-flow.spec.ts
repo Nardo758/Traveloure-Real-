@@ -90,11 +90,20 @@ async function triggerAndWaitForStripe(page: Page): Promise<StripeState> {
 
   if (!iframeAppeared) return "no-stripe";
 
-  // Give Stripe 3 s to fire onReady, then snapshot whether button is enabled
-  await page.waitForTimeout(3000);
+  // Wait up to 30 s for Stripe's onReady callback to enable the Pay button
   const payBtn = page.locator('button[type="submit"]').filter({ hasText: /Pay/ });
-  const isEnabled = await payBtn.isEnabled().catch(() => false);
-  return isEnabled ? "ready" : "loading";
+  try {
+    await expect(payBtn).toBeEnabled({ timeout: 30000 });
+    return "ready";
+  } catch {
+    // Also check if a Stripe load-error message appeared (onLoadError was fired instead)
+    const loadErr = page.locator('[class*="red-50"], [class*="red-800"]').first();
+    const hasErr = await loadErr.isVisible({ timeout: 2000 }).catch(() => false);
+    if (hasErr) {
+      console.log("Stripe load error:", (await loadErr.textContent().catch(() => "")).trim().slice(0, 120));
+    }
+    return "loading";
+  }
 }
 
 /** Fill Stripe PaymentElement card fields inside its iframe. */
@@ -245,6 +254,7 @@ test.describe("BK-04 through BK-07: Checkout & Payment", () => {
 
   // ── BK-06: Successful Payment ────────────────────────────────────────────────
   test("BK-06: Successful Payment — 4242 4242 4242 4242 → confirmation shown", async ({ page }) => {
+    test.setTimeout(90000); // Stripe onReady + card processing can take 20–30 s
     await loginAs(page, "user");
     const { usedExternal, slug } = await setupCartItem(page);
 
@@ -292,6 +302,7 @@ test.describe("BK-04 through BK-07: Checkout & Payment", () => {
   test("BK-07: Declined Card — 4000 0000 0000 0002 → decline error shown, not redirected", async ({
     page,
   }) => {
+    test.setTimeout(90000); // Stripe onReady + decline response can take 20–30 s
     await loginAs(page, "user");
     const { usedExternal, slug } = await setupCartItem(page);
 
