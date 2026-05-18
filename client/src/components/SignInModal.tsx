@@ -14,12 +14,15 @@ import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2, FileText } f
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
+export const RETURN_TO_KEY = "signInReturnTo";
+
 interface SignInModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
   defaultMode?: "signin" | "signup";
+  returnTo?: string;
 }
 
 export function SignInModal({
@@ -28,6 +31,7 @@ export function SignInModal({
   title,
   description,
   defaultMode = "signin",
+  returnTo,
 }: SignInModalProps) {
   const [mode, setMode] = useState<"signin" | "signup" | "reset">(defaultMode);
 
@@ -101,9 +105,9 @@ export function SignInModal({
       });
 
       onOpenChange(false);
-      
-      // Redirect to dashboard
-      window.location.href = "/dashboard";
+
+      // Redirect to returnTo or dashboard
+      window.location.href = returnTo || "/dashboard";
     } catch (error: any) {
       toast({
         title: "Error",
@@ -143,6 +147,10 @@ export function SignInModal({
   };
 
   const handleReplitSignIn = () => {
+    const dest = returnTo || window.location.pathname + window.location.search;
+    if (dest && dest !== "/dashboard") {
+      sessionStorage.setItem(RETURN_TO_KEY, dest);
+    }
     window.location.href = "/api/login";
   };
 

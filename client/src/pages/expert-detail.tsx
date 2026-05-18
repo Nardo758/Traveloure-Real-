@@ -62,7 +62,7 @@ export default function ExpertDetailPage() {
 
   const handleContactExpert = () => {
     if (!isAuthenticated) {
-      openSignInModal();
+      openSignInModal({ returnTo: window.location.pathname + window.location.search });
       return;
     }
     navigate(`/chat?expertId=${expertId}`);
@@ -70,7 +70,7 @@ export default function ExpertDetailPage() {
 
   const handleScheduleConsultation = () => {
     if (!isAuthenticated) {
-      openSignInModal();
+      openSignInModal({ returnTo: window.location.pathname + window.location.search });
       return;
     }
     if (services.length > 0) {

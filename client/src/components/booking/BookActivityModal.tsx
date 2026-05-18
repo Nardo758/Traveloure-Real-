@@ -73,7 +73,7 @@ export default function BookActivityModal({ activity, trigger }: BookActivityMod
 
   const handleOpen = () => {
     if (!user) {
-      openSignInModal();
+      openSignInModal({ returnTo: window.location.pathname + window.location.search });
       return;
     }
     setOpen(true);
