@@ -128,6 +128,7 @@ interface CartItem {
     meetingPointCoordinates?: { lat: number; lng: number };
     affiliateUrl?: string;
     rawData?: any;
+    pricePerPerson?: number;
   };
 }
 
@@ -847,6 +848,24 @@ export default function ExperienceTemplatePage() {
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
+
+  // Recalculate per-traveler activity prices whenever adult/kid count changes
+  useEffect(() => {
+    setLocalExternalCart(prev =>
+      prev.map(item => {
+        const ppp = item.metadata?.pricePerPerson;
+        if (item.id.startsWith("activity-") && typeof ppp === "number") {
+          return {
+            ...item,
+            price: ppp * (adults + kids),
+            metadata: { ...item.metadata, travelers: adults + kids },
+          };
+        }
+        return item;
+      })
+    );
+  }, [adults, kids]);
+
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
   
@@ -2496,11 +2515,12 @@ export default function ExperienceTemplatePage() {
                     }
                   }
                   
+                  const pricePerPerson = activity.pricing?.summary?.fromPrice || 0;
                   addToCart({
                     id: `activity-${activity.productCode}`,
                     type: "activities",
                     name: activity.title,
-                    price: (activity.pricing?.summary?.fromPrice || 0) * (adults + kids),
+                    price: pricePerPerson * (adults + kids),
                     quantity: 1,
                     provider: "Viator",
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
@@ -2510,6 +2530,7 @@ export default function ExperienceTemplatePage() {
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
                       duration: durationHours ? `${durationHours} hours` : undefined,
                       travelers: adults + kids,
+                      pricePerPerson,
                       meetingPoint,
                       meetingPointCoordinates,
                       rawData: activity,
