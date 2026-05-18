@@ -85,8 +85,32 @@ export async function seedDatabase() {
       role: "admin",
       emailVerified: new Date(),
       authProvider: "email",
+      termsAcceptedAt: new Date(),
+      privacyAcceptedAt: new Date(),
     });
     console.log("Admin account created: admin@traveloure.test");
+  }
+
+  const testUserCheck = await db.select().from(users).where(eq(users.email, "testuser@traveloure.test")).limit(1);
+  if (testUserCheck.length === 0) {
+    const hashedPassword = await hashPassword("TestPass123!");
+    await db.insert(users).values({
+      email: "testuser@traveloure.test",
+      password: hashedPassword,
+      firstName: "Test",
+      lastName: "User",
+      role: "user",
+      emailVerified: new Date(),
+      authProvider: "email",
+      termsAcceptedAt: new Date(),
+      privacyAcceptedAt: new Date(),
+    });
+    console.log("Test user account created: testuser@traveloure.test");
+  } else if (!testUserCheck[0].termsAcceptedAt || !testUserCheck[0].privacyAcceptedAt) {
+    await db.update(users)
+      .set({ termsAcceptedAt: new Date(), privacyAcceptedAt: new Date() })
+      .where(eq(users.email, "testuser@traveloure.test"));
+    console.log("Test user terms updated: testuser@traveloure.test");
   }
 
   const existingTrips = await storage.getHelpGuideTrips();

@@ -106,8 +106,13 @@ export function SignInModal({
 
       onOpenChange(false);
 
-      // Redirect to returnTo or dashboard
-      window.location.href = returnTo || "/dashboard";
+      // Save returnTo in sessionStorage so ReturnToHandler can recover it
+      // even if the user passes through /accept-terms before landing
+      const dest = returnTo || "/dashboard";
+      if (dest !== "/dashboard") {
+        sessionStorage.setItem(RETURN_TO_KEY, dest);
+      }
+      window.location.href = dest;
     } catch (error: any) {
       toast({
         title: "Error",
