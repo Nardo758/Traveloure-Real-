@@ -1,11 +1,12 @@
 /**
- * BK-08 through BK-12: Post-Booking & Auth Tests
+ * BK-08 through BK-13: Post-Booking & Auth Tests
  *
  * BK-08: Booking confirmation email
  * BK-09: View booking history (My Bookings page)
  * BK-10: Cancel a booking
  * BK-11: Book on unavailable / past date
  * BK-12: Book without login → sign-in shown
+ * BK-13: returnTo redirect after sign-in
  */
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../helpers/auth";
@@ -342,10 +343,91 @@ test("BK-12: Book Without Login", async ({ page }) => {
   console.log("BK-12: ── Summary ──");
   console.log(`BK-12: My Bookings auth gate: ${hasSignInBtn || hasSignInText ? "✓" : "✗"}`);
   console.log("BK-12: Experience addToCart auth guard: code-confirmed (toast + redirect)");
-  console.log("BK-12: Post-login redirect: hardcoded → /dashboard (no returnTo, known gap)");
   // Cart page auth gate is confirmed — also counts as valid intercept
   const overallIntercept = hasSignInBtn || hasSignInText || cartSignIn;
   console.log(`BK-12: ${overallIntercept ? "PASS — Unauthenticated booking blocked ✓" : "FAIL — No auth intercept found ✗"}`);
 
   expect(overallIntercept).toBe(true);
+});
+
+// ─── BK-13: returnTo Redirect After Sign-In ───────────────────────────────────
+test("BK-13: returnTo redirect after sign-in", async ({ page }) => {
+  test.setTimeout(70000);
+  const { email, password } = { email: "testuser@traveloure.test", password: "TestPass123!" };
+
+  // ── Scenario A: /bookings page — email/password login via SignInModal ──
+  await page.goto("/bookings");
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(2000);
+
+  // The unauthenticated gate should show a Sign In button
+  const signInBtn = page.getByTestId("button-sign-in");
+  await expect(signInBtn).toBeVisible({ timeout: 8000 });
+  console.log("BK-13: ✓ /bookings unauthenticated — Sign In button visible");
+
+  // Open the sign-in modal
+  await signInBtn.click();
+  await page.waitForTimeout(500);
+
+  const modal = page.getByTestId("modal-sign-in");
+  await expect(modal).toBeVisible({ timeout: 5000 });
+  console.log("BK-13: ✓ Sign-in modal opened");
+
+  // Fill in credentials and submit
+  await page.getByTestId("input-email").fill(email);
+  await page.getByTestId("input-password").fill(password);
+  await page.getByTestId("button-auth-submit").click();
+
+  // Wait for the redirect — should land on /bookings, not /dashboard
+  await page.waitForTimeout(4000);
+  const urlAfterLogin = page.url();
+  console.log(`BK-13: URL after sign-in: ${urlAfterLogin}`);
+
+  const landedOnBookings = urlAfterLogin.includes("/bookings");
+  const landedOnDashboard = urlAfterLogin.includes("/dashboard");
+
+  console.log(`BK-13: Landed on /bookings: ${landedOnBookings ? "✓" : "✗"}`);
+  console.log(`BK-13: Incorrectly sent to /dashboard: ${landedOnDashboard ? "✗ FAIL" : "✓ not /dashboard"}`);
+
+  // ── Scenario B: /cart page — same flow ──
+  // Log out first
+  await page.request.post("/api/auth/logout");
+  await page.goto("/cart");
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(2000);
+
+  const cartSignInBtn = page.getByTestId("button-sign-in");
+  const cartHasBtn = await cartSignInBtn.isVisible({ timeout: 6000 }).catch(() => false);
+  console.log(`BK-13: /cart unauthenticated — Sign In button: ${cartHasBtn ? "✓" : "✗"}`);
+
+  if (cartHasBtn) {
+    await cartSignInBtn.click();
+    await page.waitForTimeout(500);
+
+    const cartModal = page.getByTestId("modal-sign-in");
+    const cartModalVisible = await cartModal.isVisible({ timeout: 5000 }).catch(() => false);
+
+    if (cartModalVisible) {
+      await page.getByTestId("input-email").fill(email);
+      await page.getByTestId("input-password").fill(password);
+      await page.getByTestId("button-auth-submit").click();
+
+      await page.waitForTimeout(4000);
+      const cartUrlAfter = page.url();
+      const cartLanded = cartUrlAfter.includes("/cart");
+      const cartDashboard = cartUrlAfter.includes("/dashboard");
+      console.log(`BK-13: /cart returnTo URL: ${cartUrlAfter}`);
+      console.log(`BK-13: Landed on /cart: ${cartLanded ? "✓" : "✗"}`);
+      console.log(`BK-13: Sent to /dashboard instead: ${cartDashboard ? "✗ FAIL" : "✓ not /dashboard"}`);
+    }
+  }
+
+  // ── Verdict ──
+  console.log("BK-13: ── Summary ──");
+  console.log(`BK-13: /bookings returnTo: ${landedOnBookings ? "PASS ✓" : "FAIL ✗"}`);
+  if (landedOnDashboard) {
+    console.log("BK-13: FAIL — returnTo not working, user sent to /dashboard ✗");
+  }
+
+  expect(landedOnBookings).toBe(true);
 });

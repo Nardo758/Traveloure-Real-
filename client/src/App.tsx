@@ -158,6 +158,11 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   if (!user) {
+    // Save the intended destination so ReturnToHandler can redirect after login
+    const intended = window.location.pathname + window.location.search;
+    if (intended && intended !== "/" && intended !== "/dashboard") {
+      sessionStorage.setItem(RETURN_TO_KEY, intended);
+    }
     window.location.href = "/";
     return null;
   }
