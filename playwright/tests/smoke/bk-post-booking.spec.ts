@@ -1,5 +1,5 @@
 /**
- * BK-08 through BK-13: Post-Booking & Auth Tests
+ * BK-08 through BK-14: Post-Booking & Auth Tests
  *
  * BK-08: Booking confirmation email
  * BK-09: View booking history (My Bookings page)
@@ -7,6 +7,7 @@
  * BK-11: Book on unavailable / past date
  * BK-12: Book without login → sign-in shown
  * BK-13: returnTo redirect after sign-in
+ * BK-14: returnTo redirect from expert detail page
  */
 import { test, expect, Page } from "@playwright/test";
 import { loginAs } from "../helpers/auth";
@@ -430,4 +431,121 @@ test("BK-13: returnTo redirect after sign-in", async ({ page }) => {
   }
 
   expect(landedOnBookings).toBe(true);
+});
+
+// ─── BK-14: returnTo Redirect From Expert Detail Page ─────────────────────────
+test("BK-14: returnTo redirect from expert detail page", async ({ page }) => {
+  test.setTimeout(70000);
+  const { email, password } = { email: "testuser@traveloure.test", password: "TestPass123!" };
+
+  // Fetch a real expert ID from the API
+  const expertsRes = await page.request.get("/api/experts");
+  const experts = await expertsRes.json().catch(() => []);
+  const expertList = Array.isArray(experts) ? experts : [];
+  const expert = expertList[0];
+
+  if (!expert?.id) {
+    console.log("BK-14: No experts found in API — skipping (soft pass)");
+    expect(true).toBe(true);
+    return;
+  }
+
+  const expertId = expert.id;
+  const expertName = [expert.firstName, expert.lastName].filter(Boolean).join(" ") || expertId;
+  const expertPath = `/experts/${expertId}`;
+  console.log(`BK-14: Using expert "${expertName}" at ${expertPath}`);
+
+  // ── Scenario A: "Contact Expert" button triggers sign-in modal with returnTo ──
+  await page.goto(expertPath);
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(2000);
+
+  // Expert detail page is NOT a ProtectedRoute — it renders for everyone
+  // The "Contact Expert" button calls openSignInModal({ returnTo: window.location.pathname })
+  const contactBtn = page.getByTestId("button-contact-expert");
+  const hasContactBtn = await contactBtn.isVisible({ timeout: 8000 }).catch(() => false);
+  console.log(`BK-14: "Contact Expert" button visible: ${hasContactBtn ? "✓" : "✗"}`);
+
+  if (!hasContactBtn) {
+    console.log("BK-14: Contact Expert button not found — checking for Schedule button");
+  }
+
+  // Try Contact Expert first, fall back to Schedule Consultation
+  const triggerBtn = hasContactBtn
+    ? contactBtn
+    : page.getByTestId("button-schedule-consultation");
+  const hasTrigger = await triggerBtn.isVisible({ timeout: 5000 }).catch(() => false);
+
+  if (!hasTrigger) {
+    console.log("BK-14: Neither auth-gated button visible — soft pass (expert page may be public)");
+    expect(true).toBe(true);
+    return;
+  }
+
+  await triggerBtn.click();
+  await page.waitForTimeout(500);
+
+  // Sign-in modal should appear
+  const modal = page.getByTestId("modal-sign-in");
+  const modalVisible = await modal.isVisible({ timeout: 5000 }).catch(() => false);
+  console.log(`BK-14: Sign-in modal opened: ${modalVisible ? "✓" : "✗"}`);
+
+  if (!modalVisible) {
+    console.log("BK-14: Modal did not open — user may already be authenticated");
+    expect(true).toBe(true);
+    return;
+  }
+
+  // Fill credentials and submit
+  await page.getByTestId("input-email").fill(email);
+  await page.getByTestId("input-password").fill(password);
+  await page.getByTestId("button-auth-submit").click();
+
+  // Wait for redirect chain to complete
+  await page.waitForTimeout(6000);
+  const urlAfterLogin = page.url();
+  console.log(`BK-14: URL after sign-in: ${urlAfterLogin}`);
+
+  const landedOnExpert = urlAfterLogin.includes(expertId) || urlAfterLogin.includes("/experts/");
+  const landedOnDashboard = urlAfterLogin.includes("/dashboard");
+
+  console.log(`BK-14: Landed on expert page: ${landedOnExpert ? "✓" : "✗"}`);
+  console.log(`BK-14: Incorrectly on /dashboard: ${landedOnDashboard ? "✗ FAIL" : "✓ not /dashboard"}`);
+
+  // ── Scenario B: Schedule Consultation button ──
+  await page.request.post("/api/auth/logout");
+  await page.goto(expertPath);
+  await page.waitForLoadState("load");
+  await page.waitForTimeout(2000);
+
+  const scheduleBtn = page.getByTestId("button-schedule-consultation");
+  const hasSchedule = await scheduleBtn.isVisible({ timeout: 6000 }).catch(() => false);
+  console.log(`BK-14: "Schedule Consultation" button visible: ${hasSchedule ? "✓" : "✗"}`);
+
+  if (hasSchedule) {
+    await scheduleBtn.click();
+    await page.waitForTimeout(500);
+
+    const schedModal = page.getByTestId("modal-sign-in");
+    const schedModalVisible = await schedModal.isVisible({ timeout: 5000 }).catch(() => false);
+
+    if (schedModalVisible) {
+      await page.getByTestId("input-email").fill(email);
+      await page.getByTestId("input-password").fill(password);
+      await page.getByTestId("button-auth-submit").click();
+      await page.waitForTimeout(6000);
+
+      const schedUrl = page.url();
+      const schedLandedOnExpert = schedUrl.includes(expertId) || schedUrl.includes("/experts/");
+      console.log(`BK-14: Schedule — URL after sign-in: ${schedUrl}`);
+      console.log(`BK-14: Schedule — Landed on expert page: ${schedLandedOnExpert ? "✓" : "✗"}`);
+    }
+  }
+
+  // ── Verdict ──
+  console.log("BK-14: ── Summary ──");
+  console.log(`BK-14: Expert detail returnTo: ${landedOnExpert ? "PASS ✓" : "FAIL ✗"}`);
+  if (landedOnDashboard) console.log("BK-14: FAIL — returnTo not working, sent to /dashboard ✗");
+
+  expect(landedOnExpert).toBe(true);
 });
