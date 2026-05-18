@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { 
+  AlertTriangle,
   Calendar, 
   Clock, 
   DollarSign, 
@@ -31,6 +32,7 @@ import {
   Package,
   Star,
   Ticket,
+  Trash2,
   Users,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -94,6 +96,29 @@ export default function MyBookingsPage() {
   const { openSignInModal } = useSignInModal();
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancellingBooking, setCancellingBooking] = useState<Booking | null>(null);
+
+  const { toast } = useToast();
+
+  const cancelMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest("POST", `/api/bookings/${id}/cancel`, { reason }),
+    onSuccess: () => {
+      toast({ title: "Booking cancelled", description: "Your booking has been cancelled." });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      setCancelDialogOpen(false);
+      setCancellingBooking(null);
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not cancel this booking. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const openCancelDialog = useCallback((booking: Booking) => {
+    setCancellingBooking(booking);
+    setCancelDialogOpen(true);
+  }, []);
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/my-bookings"],
@@ -189,7 +214,7 @@ export default function MyBookingsPage() {
                 <EmptyState message="No bookings yet" />
               ) : (
                 bookings!.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} onCancel={openCancelDialog} />
                 ))
               )}
             </TabsContent>
@@ -199,7 +224,7 @@ export default function MyBookingsPage() {
                 <EmptyState message="No pending bookings" />
               ) : (
                 pendingBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} onCancel={openCancelDialog} />
                 ))
               )}
             </TabsContent>
@@ -209,7 +234,7 @@ export default function MyBookingsPage() {
                 <EmptyState message="No active bookings" />
               ) : (
                 activeBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} onCancel={openCancelDialog} />
                 ))
               )}
             </TabsContent>
@@ -219,7 +244,7 @@ export default function MyBookingsPage() {
                 <EmptyState message="No completed bookings" />
               ) : (
                 completedBookings.map((booking) => (
-                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} />
+                  <BookingCard key={booking.id} booking={booking} onReview={openReviewDialog} onCancel={openCancelDialog} />
                 ))
               )}
             </TabsContent>
@@ -245,6 +270,15 @@ export default function MyBookingsPage() {
         open={reviewDialogOpen}
         onOpenChange={setReviewDialogOpen}
         booking={selectedBooking}
+      />
+      <CancelDialog
+        open={cancelDialogOpen}
+        onOpenChange={setCancelDialogOpen}
+        booking={cancellingBooking}
+        isPending={cancelMutation.isPending}
+        onConfirm={(reason) => {
+          if (cancellingBooking) cancelMutation.mutate({ id: cancellingBooking.id, reason });
+        }}
       />
     </DashboardLayout>
   );
@@ -342,10 +376,21 @@ function ActivityBookingCard({ booking }: { booking: ActivityBooking }) {
   );
 }
 
-function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
+const CANCELLABLE_STATUSES = new Set(["pending", "confirmed"]);
+
+function BookingCard({
+  booking,
+  onReview,
+  onCancel,
+}: {
+  booking: Booking;
+  onReview: (booking: Booking) => void;
+  onCancel: (booking: Booking) => void;
+}) {
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
+  const canCancel = CANCELLABLE_STATUSES.has(booking.status);
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
@@ -367,7 +412,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 Booked on {format(new Date(booking.createdAt), "MMM d, yyyy")}
               </span>
             </div>
-            
+
             <div className="text-sm text-muted-foreground space-y-1">
               {booking.bookingDetails?.scheduledDate && (
                 <div className="flex items-center gap-1">
@@ -376,22 +421,20 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 </div>
               )}
               {booking.bookingDetails?.notes && (
-                <p className="line-clamp-2">
-                  Notes: {booking.bookingDetails.notes}
-                </p>
+                <p className="line-clamp-2">Notes: {booking.bookingDetails.notes}</p>
               )}
             </div>
           </div>
-          
+
           <div className="text-right">
             <p className="font-bold text-lg" data-testid={`text-amount-${booking.id}`}>
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
               {canReview && (
-                <Button 
-                  variant="default" 
-                  size="sm" 
+                <Button
+                  variant="default"
+                  size="sm"
                   onClick={() => onReview(booking)}
                   data-testid={`button-review-${booking.id}`}
                 >
@@ -421,6 +464,18 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   Message
                 </Link>
               </Button>
+              {canCancel && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onCancel(booking)}
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30"
+                  data-testid={`button-cancel-booking-${booking.id}`}
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Cancel
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -540,6 +595,91 @@ function ReviewDialog({
               </>
             ) : (
               "Submit Review"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CancelDialog({
+  open,
+  onOpenChange,
+  booking,
+  isPending,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  booking: Booking | null;
+  isPending: boolean;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+
+  const handleConfirm = () => {
+    onConfirm(reason.trim());
+    setReason("");
+  };
+
+  const handleClose = (v: boolean) => {
+    if (!v) setReason("");
+    onOpenChange(v);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2" data-testid="text-cancel-dialog-title">
+            <AlertTriangle className="w-5 h-5 text-destructive" />
+            Cancel Booking
+          </DialogTitle>
+          <DialogDescription>
+            Are you sure you want to cancel this booking? This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="py-2">
+          <Label htmlFor="cancel-reason" className="mb-2 block text-sm">
+            Reason for cancellation <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <Textarea
+            id="cancel-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Let us know why you're cancelling…"
+            rows={3}
+            data-testid="input-cancel-reason"
+          />
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            onClick={() => handleClose(false)}
+            disabled={isPending}
+            data-testid="button-cancel-dialog-dismiss"
+          >
+            Keep Booking
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={handleConfirm}
+            disabled={isPending}
+            data-testid="button-cancel-dialog-confirm"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Cancelling…
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-4 h-4 mr-2" />
+                Cancel Booking
+              </>
             )}
           </Button>
         </DialogFooter>
