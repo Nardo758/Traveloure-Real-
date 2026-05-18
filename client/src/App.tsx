@@ -1,4 +1,5 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
+import { useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -9,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
 import { ErrorBoundary, RouteErrorBoundary } from "@/components/error-boundary";
+import { RETURN_TO_KEY } from "@/components/SignInModal";
 
 import LandingPage from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
@@ -188,6 +190,23 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   return <Component {...rest} />;
+}
+
+/** After OAuth or email login, navigate to the stored returnTo URL if one was saved. */
+function ReturnToHandler() {
+  const { user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+    const dest = sessionStorage.getItem(RETURN_TO_KEY);
+    if (dest) {
+      sessionStorage.removeItem(RETURN_TO_KEY);
+      navigate(dest);
+    }
+  }, [user, isLoading, navigate]);
+
+  return null;
 }
 
 function Router() {
@@ -683,6 +702,7 @@ function App() {
             <TooltipProvider>
               <Toaster />
               <RouteErrorBoundary>
+                <ReturnToHandler />
                 <Router />
               </RouteErrorBoundary>
             </TooltipProvider>

@@ -575,7 +575,7 @@ export default function CartPage() {
           <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">Your Cart</h1>
           <p className="text-muted-foreground mb-6">Please sign in to view your cart</p>
-          <Button onClick={() => openSignInModal()} data-testid="button-sign-in">Sign In</Button>
+          <Button onClick={() => openSignInModal({ returnTo: "/cart" })} data-testid="button-sign-in">Sign In</Button>
         </div>
       </DashboardLayout>
     );
