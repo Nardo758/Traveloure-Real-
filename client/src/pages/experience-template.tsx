@@ -1973,8 +1973,13 @@ export default function ExperienceTemplatePage() {
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <Label className="text-xs text-muted-foreground">Quantity: {item.quantity}</Label>
-                                  <span className="text-sm font-medium">${item.price * item.quantity}</span>
+                                  <span className="text-sm font-medium">${(item.price * item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                 </div>
+                                {item.metadata?.pricePerPerson && (adults + kids) > 0 && (
+                                  <p className="text-xs text-muted-foreground" data-testid={`text-price-breakdown-${item.id}`}>
+                                    ${item.metadata.pricePerPerson.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} × {adults + kids} {adults + kids === 1 ? "guest" : "guests"}
+                                  </p>
+                                )}
                                 <Slider
                                   value={[item.quantity]}
                                   onValueChange={([val]) => updateCartQuantity(item.id, val)}
