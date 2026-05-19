@@ -75,6 +75,36 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * POST /api/bookings/send-confirmation
+ * (Re-)send a booking confirmation email for a given bookingId.
+ * Works in stub mode by default; swap email.service.ts provider to go live.
+ */
+router.post('/send-confirmation', isAuthenticated, async (req, res) => {
+  try {
+    const { bookingId } = req.body;
+    if (!bookingId) {
+      return res.status(400).json({ error: 'bookingId is required' });
+    }
+
+    const { emailService } = await import('../services/email.service');
+    const { bookingService: bsvc } = await import('../services/booking.service');
+
+    // sendConfirmationEmail looks up booking + user from the DB
+    await bsvc.sendConfirmationEmail(bookingId);
+
+    return res.json({
+      success: true,
+      message: 'Confirmation email queued',
+      bookingId,
+      provider: (emailService as any).provider ?? 'stub',
+    });
+  } catch (error: any) {
+    console.error('send-confirmation error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/bookings/availability/:providerId
  * Check availability for a provider
  */
