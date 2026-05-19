@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -25,10 +26,12 @@ import {
   Globe,
   Briefcase
 } from "lucide-react";
+import { format } from "date-fns";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
+import { ExpertAvailabilityPicker } from "@/components/expert/ExpertAvailabilityPicker";
 
 export default function ExpertDetailPage() {
   const [, params] = useRoute("/experts/:id");
@@ -37,6 +40,13 @@ export default function ExpertDetailPage() {
   const { isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
+
+  const handleSlotSelect = (date: Date, slot: string) => {
+    setSelectedDate(date);
+    setSelectedSlot(slot);
+  };
 
   // Fetch expert details
   const { data: expert, isLoading } = useQuery<any>({
@@ -74,7 +84,15 @@ export default function ExpertDetailPage() {
       return;
     }
     if (services.length > 0) {
-      navigate(`/cart?expertId=${expertId}&serviceId=${services[0]?.id || ""}`);
+      const params = new URLSearchParams({
+        expertId: expertId!,
+        serviceId: services[0]?.id || "",
+      });
+      if (selectedDate && selectedSlot) {
+        params.set("date", format(selectedDate, "yyyy-MM-dd"));
+        params.set("time", selectedSlot);
+      }
+      navigate(`/cart?${params.toString()}`);
     } else {
       toast({
         title: "No services available",
@@ -408,12 +426,13 @@ export default function ExpertDetailPage() {
 
               {/* Right Column - Booking Card */}
               <div>
-                <Card className="sticky top-4">
+                <Card className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
                   <CardHeader>
                     <CardTitle>Book with {expert.firstName}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2">
+                    {/* Price */}
+                    <div className="space-y-1">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Starting from</span>
                         <span className="text-2xl font-bold">
@@ -427,17 +446,38 @@ export default function ExpertDetailPage() {
                       )}
                     </div>
 
-                    <Button className="w-full" size="lg" onClick={handleContactExpert} data-testid="button-contact-expert">
-                      <MessageCircle className="w-4 h-4 mr-2" />
-                      Contact Expert
-                    </Button>
+                    {/* Availability slot picker */}
+                    {expertId && (
+                      <div className="border-t pt-4">
+                        <ExpertAvailabilityPicker
+                          expertId={expertId}
+                          onSlotSelect={handleSlotSelect}
+                        />
+                      </div>
+                    )}
 
-                    <Button variant="outline" className="w-full" size="lg" onClick={handleScheduleConsultation} data-testid="button-schedule-consultation">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      Schedule Consultation
-                    </Button>
+                    {/* Action Buttons */}
+                    <div className="space-y-2 pt-1">
+                      <Button className="w-full" size="lg" onClick={handleContactExpert} data-testid="button-contact-expert">
+                        <MessageCircle className="w-4 h-4 mr-2" />
+                        Contact Expert
+                      </Button>
 
-                    <div className="pt-4 border-t space-y-2 text-sm">
+                      <Button
+                        variant={selectedSlot ? "default" : "outline"}
+                        className={`w-full ${selectedSlot ? "bg-primary hover:bg-primary/90" : ""}`}
+                        size="lg"
+                        onClick={handleScheduleConsultation}
+                        data-testid="button-schedule-consultation"
+                      >
+                        <Calendar className="w-4 h-4 mr-2" />
+                        {selectedSlot
+                          ? `Book ${selectedDate ? format(selectedDate, "MMM d") : ""} at ${selectedSlot}`
+                          : "Schedule Consultation"}
+                      </Button>
+                    </div>
+
+                    <div className="pt-2 border-t space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CheckCircle className="w-4 h-4 text-green-600" />
                         <span>Free cancellation up to 24h</span>

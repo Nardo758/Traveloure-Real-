@@ -215,6 +215,20 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
     }
   });
 
+  app.get("/api/experts/:id/availability", async (req, res) => {
+    try {
+      const expertId = req.params.id;
+      const [schedule, blackoutDates] = await Promise.all([
+        storage.getProviderAvailability(expertId),
+        storage.getProviderBlackoutDates(expertId),
+      ]);
+      res.json({ schedule, blackoutDates });
+    } catch (err) {
+      console.error("Error fetching expert availability:", err);
+      res.json({ schedule: [], blackoutDates: [] });
+    }
+  });
+
   app.get("/api/experts/:id/reviews", async (req, res) => {
     try {
       const expertId = req.params.id;
