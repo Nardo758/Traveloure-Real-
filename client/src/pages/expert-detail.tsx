@@ -32,6 +32,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
 import { ExpertAvailabilityPicker } from "@/components/expert/ExpertAvailabilityPicker";
+import { SiInstagram, SiLinkedin, SiFacebook, SiTiktok, SiYoutube } from "react-icons/si";
 
 export default function ExpertDetailPage() {
   const [, params] = useRoute("/experts/:id");
@@ -163,6 +164,29 @@ export default function ExpertDetailPage() {
   const superExpert = expert.superExpert || false;
   const verified = expert.verified || true;
 
+  const socialLinks = [
+    expert.expertForm?.instagramLink && {
+      platform: "Instagram", href: expert.expertForm.instagramLink,
+      Icon: SiInstagram, color: "text-pink-500 hover:text-pink-600",
+    },
+    expert.expertForm?.linkedinLink && {
+      platform: "LinkedIn", href: expert.expertForm.linkedinLink,
+      Icon: SiLinkedin, color: "text-blue-600 hover:text-blue-700",
+    },
+    expert.expertForm?.facebookLink && {
+      platform: "Facebook", href: expert.expertForm.facebookLink,
+      Icon: SiFacebook, color: "text-blue-500 hover:text-blue-600",
+    },
+    expert.expertForm?.tiktokLink && {
+      platform: "TikTok", href: expert.expertForm.tiktokLink,
+      Icon: SiTiktok, color: "text-foreground hover:text-foreground/80",
+    },
+    expert.expertForm?.youtubeLink && {
+      platform: "YouTube", href: expert.expertForm.youtubeLink,
+      Icon: SiYoutube, color: "text-red-600 hover:text-red-700",
+    },
+  ].filter(Boolean) as { platform: string; href: string; Icon: React.ComponentType<{ className?: string }>; color: string }[];
+
   return (
     <Layout>
       <div className="min-h-screen bg-background">
@@ -259,6 +283,26 @@ export default function ExpertDetailPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Social Links Row — shown in hero when expert has social profiles */}
+                {socialLinks.length > 0 && (
+                  <div className="flex items-center gap-3 mt-4" data-testid="social-links-hero">
+                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Follow</span>
+                    {socialLinks.map(({ platform, href, Icon, color }) => (
+                      <a
+                        key={platform}
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={platform}
+                        data-testid={`social-link-${platform.toLowerCase()}`}
+                        className={`transition-colors ${color}`}
+                      >
+                        <Icon className="w-5 h-5" />
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -318,6 +362,27 @@ export default function ExpertDetailPage() {
                           <div>
                             <h3 className="font-semibold mb-2">Certifications</h3>
                             <p className="text-muted-foreground">{expert.expertForm.certifications}</p>
+                          </div>
+                        )}
+
+                        {socialLinks.length > 0 && (
+                          <div data-testid="social-links-about">
+                            <h3 className="font-semibold mb-3">Connect with {expert.firstName}</h3>
+                            <div className="flex flex-wrap gap-3">
+                              {socialLinks.map(({ platform, href, Icon, color }) => (
+                                <a
+                                  key={platform}
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  data-testid={`social-about-${platform.toLowerCase()}`}
+                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/40 hover:bg-muted transition-colors text-sm font-medium ${color}`}
+                                >
+                                  <Icon className="w-4 h-4" />
+                                  {platform}
+                                </a>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </CardContent>
