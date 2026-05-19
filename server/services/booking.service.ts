@@ -454,13 +454,53 @@ class BookingService {
 
       // TODO: Update provider earnings
       // TODO: Decrease availability
-      // TODO: Send notifications
+
+      // Send confirmation email (non-blocking — failure does not roll back the booking)
+      this.sendConfirmationEmail(bookingId, confirmationCode).catch((err) =>
+        console.warn('[BookingService] Confirmation email failed (non-fatal):', err)
+      );
 
       return true;
     } catch (error) {
       console.error('Error confirming booking:', error);
       return false;
     }
+  }
+
+  /**
+   * Look up booking + user and dispatch a confirmation email via emailService.
+   * Separated so payment confirmation is never blocked by email delivery.
+   */
+  async sendConfirmationEmail(bookingId: string, confirmationCode?: string): Promise<void> {
+    const { emailService } = await import('./email.service');
+
+    const row = await db.execute(sql`
+      SELECT
+        b.id, b.confirmation_code, b.total_amount, b.currency,
+        b.created_at AS booking_date,
+        u.email AS user_email,
+        u.first_name, u.last_name,
+        sp.name AS service_name
+      FROM bookings b
+      LEFT JOIN users u ON u.id = b.user_id
+      LEFT JOIN service_providers sp ON sp.id = b.service_provider_id
+      WHERE b.id = ${bookingId}
+      LIMIT 1
+    `);
+
+    const booking = row.rows?.[0] as any;
+    if (!booking?.user_email) return;
+
+    await emailService.sendBookingConfirmation({
+      to: booking.user_email,
+      guestName: [booking.first_name, booking.last_name].filter(Boolean).join(' ') || 'Traveller',
+      bookingId,
+      confirmationCode: confirmationCode ?? booking.confirmation_code ?? bookingId,
+      serviceName: booking.service_name ?? 'Your Booking',
+      bookingDate: booking.booking_date,
+      totalAmount: booking.total_amount ? Number(booking.total_amount) : null,
+      currency: booking.currency ?? 'USD',
+    });
   }
 
   /**
