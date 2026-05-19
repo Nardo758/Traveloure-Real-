@@ -25,6 +25,7 @@ import {
   DollarSign, 
   ExternalLink,
   FileText, 
+  Mail,
   MessageSquare,
   CheckCircle2,
   XCircle,
@@ -387,10 +388,30 @@ function BookingCard({
   onReview: (booking: Booking) => void;
   onCancel: (booking: Booking) => void;
 }) {
+  const { toast } = useToast();
   const status = statusConfig[booking.status] || statusConfig.pending;
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
   const canCancel = CANCELLABLE_STATUSES.has(booking.status);
+  const canResendEmail = booking.status === "confirmed";
+
+  const resendEmailMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/bookings/send-confirmation", { bookingId: booking.id }),
+    onSuccess: () => {
+      toast({
+        title: "Confirmation sent",
+        description: "A confirmation email has been queued to your inbox.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Could not send email",
+        description: "Please try again in a moment.",
+        variant: "destructive",
+      });
+    },
+  });
 
   return (
     <Card data-testid={`card-booking-${booking.id}`}>
@@ -456,6 +477,22 @@ function BookingCard({
                     <FileText className="w-4 h-4 mr-1" />
                     Contract
                   </Link>
+                </Button>
+              )}
+              {canResendEmail && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => resendEmailMutation.mutate()}
+                  disabled={resendEmailMutation.isPending}
+                  data-testid={`button-resend-email-${booking.id}`}
+                >
+                  {resendEmailMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Mail className="w-4 h-4 mr-1" />
+                  )}
+                  Resend Email
                 </Button>
               )}
               <Button variant="outline" size="sm" asChild data-testid={`button-message-${booking.id}`}>
