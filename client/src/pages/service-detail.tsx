@@ -6,20 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { 
   ArrowLeft, 
   MapPin, 
   Clock, 
   Star, 
-  DollarSign, 
   ShoppingCart,
   MessageSquare,
   CheckCircle,
   Loader2,
-  User
+  User,
+  Send,
+  Lock
 } from "lucide-react";
 import { format } from "date-fns";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -56,10 +59,64 @@ interface Review {
   createdAt: string;
 }
 
+interface ServiceBooking {
+  id: string;
+  serviceId: string;
+  status: string;
+  hasReview: boolean;
+}
+
+function StarPicker({
+  value,
+  onChange,
+  size = "md",
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  size?: "sm" | "md" | "lg";
+}) {
+  const [hovered, setHovered] = useState(0);
+  const sz = size === "lg" ? "w-8 h-8" : size === "md" ? "w-6 h-6" : "w-4 h-4";
+  const active = hovered || value;
+  return (
+    <div className="flex items-center gap-1" data-testid="star-picker">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          aria-label={`${star} star`}
+          data-testid={`star-input-${star}`}
+          className="focus:outline-none transition-transform hover:scale-110"
+          onMouseEnter={() => setHovered(star)}
+          onMouseLeave={() => setHovered(0)}
+          onClick={() => onChange(star)}
+        >
+          <Star
+            className={`${sz} transition-colors ${
+              star <= active
+                ? "text-amber-400 fill-amber-400"
+                : "text-muted-foreground/40"
+            }`}
+          />
+        </button>
+      ))}
+      {value > 0 && (
+        <span className="ml-2 text-sm text-muted-foreground">
+          {["", "Poor", "Fair", "Good", "Very good", "Excellent"][value]}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function ServiceDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [showForm, setShowForm] = useState(false);
 
   const { data: service, isLoading: serviceLoading } = useQuery<Service>({
     queryKey: ["/api/services", id],
@@ -71,6 +128,21 @@ export default function ServiceDetailPage() {
     enabled: !!id,
   });
 
+  const { data: myBookings } = useQuery<ServiceBooking[]>({
+    queryKey: ["/api/bookings/user"],
+    enabled: !!user,
+  });
+
+  const eligibleBooking = myBookings?.find(
+    (b) => b.serviceId === id && b.status === "completed" && !b.hasReview
+  );
+  const alreadyReviewed = myBookings?.some(
+    (b) => b.serviceId === id && b.hasReview
+  );
+  const hasCompletedBooking = !!myBookings?.find(
+    (b) => b.serviceId === id && b.status === "completed"
+  );
+
   const addToCartMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", "/api/cart", { serviceId: id, quantity: 1 });
@@ -81,6 +153,37 @@ export default function ServiceDetailPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to add to cart", variant: "destructive" });
+    },
+  });
+
+  const submitReviewMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/services/${id}/reviews`, {
+        rating: reviewRating,
+        reviewText: reviewText.trim() || null,
+        bookingId: eligibleBooking?.id,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Review submitted!", description: "Thank you for your feedback." });
+      setReviewRating(0);
+      setReviewText("");
+      setShowForm(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/services", id, "reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/services", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/user"] });
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to submit review";
+      if (msg.includes("completed")) {
+        toast({
+          title: "Booking required",
+          description: "You need a completed booking to review this service.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Error", description: msg, variant: "destructive" });
+      }
     },
   });
 
@@ -183,6 +286,7 @@ export default function ServiceDetailPage() {
               </Card>
             )}
 
+            {/* ── Reviews ── */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
@@ -196,14 +300,119 @@ export default function ServiceDetailPage() {
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-4">
+
+                {/* ── Write a Review CTA / Form ── */}
+                {user && !alreadyReviewed && (
+                  <div className="border rounded-lg p-4 bg-muted/30" data-testid="review-form-section">
+                    {!showForm ? (
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                          <p className="text-sm font-medium">Share your experience</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {hasCompletedBooking
+                              ? "You've completed this service — leave a review!"
+                              : "Book and complete this service to leave a review"}
+                          </p>
+                        </div>
+                        {hasCompletedBooking ? (
+                          <Button
+                            size="sm"
+                            onClick={() => setShowForm(true)}
+                            data-testid="button-write-review"
+                          >
+                            <Star className="w-4 h-4 mr-1.5" />
+                            Write a Review
+                          </Button>
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>Requires a completed booking</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <form
+                        data-testid="review-form"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (reviewRating === 0) {
+                            toast({ title: "Please select a star rating", variant: "destructive" });
+                            return;
+                          }
+                          submitReviewMutation.mutate();
+                        }}
+                        className="space-y-4"
+                      >
+                        <div>
+                          <p className="text-sm font-medium mb-2">Your rating</p>
+                          <StarPicker value={reviewRating} onChange={setReviewRating} size="lg" />
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-medium mb-2">
+                            Your review <span className="text-muted-foreground font-normal">(optional)</span>
+                          </p>
+                          <Textarea
+                            data-testid="input-review-text"
+                            placeholder="Share details about your experience — what went well, what could improve..."
+                            value={reviewText}
+                            onChange={(e) => setReviewText(e.target.value)}
+                            rows={3}
+                            maxLength={1000}
+                          />
+                          {reviewText.length > 0 && (
+                            <p className="text-xs text-muted-foreground text-right mt-1">
+                              {reviewText.length}/1000
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 justify-end">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => { setShowForm(false); setReviewRating(0); setReviewText(""); }}
+                            data-testid="button-cancel-review"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={submitReviewMutation.isPending || reviewRating === 0}
+                            data-testid="button-submit-review"
+                          >
+                            {submitReviewMutation.isPending ? (
+                              <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" />Submitting...</>
+                            ) : (
+                              <><Send className="w-4 h-4 mr-1.5" />Submit Review</>
+                            )}
+                          </Button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+                )}
+
+                {user && alreadyReviewed && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground border rounded-lg p-3 bg-muted/20" data-testid="already-reviewed-notice">
+                    <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                    <span>You've already reviewed this service.</span>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* ── Review list ── */}
                 {reviewsLoading ? (
                   <div className="space-y-4">
                     <Skeleton className="h-20 w-full" />
                     <Skeleton className="h-20 w-full" />
                   </div>
                 ) : !reviews || reviews.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-8">
+                  <p className="text-muted-foreground text-center py-8" data-testid="text-no-reviews">
                     No reviews yet. Be the first to review this service!
                   </p>
                 ) : (
