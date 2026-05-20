@@ -232,9 +232,23 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
   app.get("/api/experts/:id/reviews", async (req, res) => {
     try {
       const expertId = req.params.id;
-      // For now, return empty array - can be implemented with actual review system
-      // TODO: Implement storage.getExpertReviews(expertId)
-      res.json([]);
+      const rows = await db.execute(sql`
+        SELECT
+          rr.id,
+          rr.local_expert_id  AS "expertId",
+          rr.reviewer_id      AS "reviewerId",
+          rr.review,
+          rr.rating,
+          rr.created_at       AS "createdAt",
+          u.first_name        AS "reviewerFirstName",
+          u.last_name         AS "reviewerLastName",
+          u.profile_image_url AS "reviewerAvatar"
+        FROM review_ratings rr
+        LEFT JOIN users u ON u.id = rr.reviewer_id
+        WHERE rr.local_expert_id = ${expertId}
+        ORDER BY rr.created_at DESC
+      `);
+      res.json(rows.rows ?? rows);
     } catch (err) {
       console.error("Error fetching expert reviews:", err);
       res.json([]);
