@@ -154,8 +154,11 @@ export default function ExpertDetailPage() {
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim();
   const initials = `${expert.firstName?.[0] || ""}${expert.lastName?.[0] || ""}`.toUpperCase();
-  const averageRating = expert.averageRating ? parseFloat(expert.averageRating) : 0;
-  const totalReviews = expert.reviewCount || reviews.length || 0;
+  const liveAvgRating = reviews.length > 0
+    ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
+    : 0;
+  const averageRating = liveAvgRating || (expert.averageRating ? parseFloat(expert.averageRating) : 0);
+  const totalReviews = reviews.length || expert.reviewCount || 0;
   const responseTime = expert.expertForm?.responseTime || "< 24 hours";
   const languages = expert.expertForm?.languages || ["English"];
   const specializations = expert.expertForm?.specializations || [];
@@ -441,41 +444,78 @@ export default function ExpertDetailPage() {
                   {/* Reviews Tab */}
                   <TabsContent value="reviews">
                     {reviews.length > 0 ? (
-                      <div className="space-y-4">
-                        {reviews.map((review: any) => (
-                          <Card key={review.id}>
-                            <CardContent className="p-6">
-                              <div className="flex items-start gap-4">
-                                <Avatar>
-                                  <AvatarFallback>
-                                    {review.userName?.[0]?.toUpperCase() || "U"}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-2">
-                                    <span className="font-semibold">{review.userName || "Anonymous"}</span>
-                                    <div className="flex items-center gap-1">
-                                      {[...Array(5)].map((_, i) => (
-                                        <Star
-                                          key={i}
-                                          className={`w-4 h-4 ${
-                                            i < review.rating
-                                              ? "text-amber-500 fill-amber-500"
-                                              : "text-gray-300"
-                                          }`}
-                                        />
-                                      ))}
+                      <div className="space-y-4" data-testid="expert-reviews-list">
+                        {/* Average summary bar */}
+                        <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg mb-2">
+                          <div className="flex items-center gap-1">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-5 h-5 ${
+                                  i < Math.round(averageRating)
+                                    ? "text-amber-500 fill-amber-500"
+                                    : "text-gray-300"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-lg font-semibold" data-testid="text-expert-avg-rating">
+                            {averageRating.toFixed(1)}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            ({totalReviews} {totalReviews === 1 ? "review" : "reviews"})
+                          </span>
+                        </div>
+
+                        {reviews.map((review: any) => {
+                          const reviewerName = review.reviewerFirstName
+                            ? `${review.reviewerFirstName} ${review.reviewerLastName || ""}`.trim()
+                            : review.userName || "Anonymous";
+                          const initial = reviewerName[0]?.toUpperCase() || "U";
+                          const reviewText = review.review || review.comment || "";
+                          return (
+                            <Card key={review.id} data-testid={`card-expert-review-${review.id}`}>
+                              <CardContent className="p-6">
+                                <div className="flex items-start gap-4">
+                                  <Avatar>
+                                    {review.reviewerAvatar ? (
+                                      <img src={review.reviewerAvatar} alt={reviewerName} className="w-full h-full object-cover rounded-full" />
+                                    ) : (
+                                      <AvatarFallback>{initial}</AvatarFallback>
+                                    )}
+                                  </Avatar>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                      <span className="font-semibold text-sm" data-testid={`text-reviewer-name-${review.id}`}>
+                                        {reviewerName}
+                                      </span>
+                                      <div className="flex items-center gap-0.5">
+                                        {[...Array(5)].map((_, i) => (
+                                          <Star
+                                            key={i}
+                                            className={`w-4 h-4 ${
+                                              i < review.rating
+                                                ? "text-amber-500 fill-amber-500"
+                                                : "text-gray-300"
+                                            }`}
+                                          />
+                                        ))}
+                                      </div>
                                     </div>
+                                    {reviewText && (
+                                      <p className="text-muted-foreground text-sm mb-2" data-testid={`text-expert-review-${review.id}`}>
+                                        {reviewText}
+                                      </p>
+                                    )}
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(review.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                    </span>
                                   </div>
-                                  <p className="text-muted-foreground text-sm mb-2">{review.comment}</p>
-                                  <span className="text-xs text-muted-foreground">
-                                    {new Date(review.createdAt).toLocaleDateString()}
-                                  </span>
                                 </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
                       </div>
                     ) : (
                       <Card>
