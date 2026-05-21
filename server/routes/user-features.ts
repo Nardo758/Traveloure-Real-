@@ -474,4 +474,16 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
       res.status(500).json({ message: "Failed to create chat" });
     }
   });
+
+  // Dev-only: reset reviewer2 test review so REV-03 can always re-submit
+  if (process.env.NODE_ENV !== "production") {
+    app.delete("/api/dev/reset-test-review", async (req, res) => {
+      const REVIEWER2_ID = "rev2-test-user-0000-0000-000000000002";
+      const SERVICE_ID   = "24717f66-4741-400e-9f58-97224f8a2856";
+      await db.execute(
+        sql`DELETE FROM service_reviews WHERE traveler_id = ${REVIEWER2_ID} AND service_id = ${SERVICE_ID}`
+      );
+      res.json({ ok: true });
+    });
+  }
 }
