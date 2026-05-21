@@ -102,41 +102,37 @@ test("WLT-02: Transaction history tab shows records", async ({ page }) => {
   await page.goto("/credits");
   await page.waitForSelector('[data-testid="tab-history"]', { timeout: 10000 });
 
-  // Click the history tab
+  // Click the history tab and wait for content to render
   await page.locator('[data-testid="tab-history"]').click();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1500);
 
-  // API check
-  const apiTx = await (await page.request.get("/api/wallet/transactions")).json();
-  console.log(`WLT-02: API wallet transactions: ${Array.isArray(apiTx) ? apiTx.length : "?"}`);
-
-  // Transaction rows (hardcoded mock data in component: ids 1-6)
-  let txCount = 0;
-  for (let i = 1; i <= 6; i++) {
-    const row = page.locator(`[data-testid="row-transaction-${i}"]`);
-    if (await row.count() > 0) {
-      txCount++;
-      const text = (await row.first().textContent() || "").trim().replace(/\s+/g, " ").substring(0, 60);
-      console.log(`WLT-02: Row ${i}: ✓  "${text}"`);
-    }
-  }
-  console.log(`WLT-02: Transaction rows rendered: ${txCount}`);
+  // API check — get live transaction IDs
+  const apiTx = await (await page.request.get("/api/wallet/transactions")).json() as Array<{ id: string }>;
+  const apiCount = Array.isArray(apiTx) ? apiTx.length : 0;
+  console.log(`WLT-02: API wallet transactions: ${apiCount}`);
 
   // Export button
   const exportBtn = page.locator('[data-testid="button-export-history"]');
-  console.log(`WLT-02: Export history button: ${await exportBtn.count() > 0 ? "✓" : "✗"}`);
+  const hasExport = await exportBtn.count() > 0;
+  console.log(`WLT-02: Export history button: ${hasExport ? "✓" : "✗"}`);
 
-  if (Array.isArray(apiTx) && apiTx.length === 0 && txCount > 0) {
-    console.log("WLT-02: Gap — Page shows hardcoded mock transactions (live API has 0 records)");
+  // Count rendered rows using live IDs from API
+  let txCount = 0;
+  for (const tx of apiTx) {
+    const row = page.locator(`[data-testid="row-transaction-${tx.id}"]`);
+    if (await row.count() > 0) {
+      txCount++;
+      const text = (await row.first().textContent() || "").trim().replace(/\s+/g, " ").substring(0, 70);
+      console.log(`WLT-02: Row ${txCount}: ✓  "${text}"`);
+    }
   }
+  console.log(`WLT-02: Transaction rows rendered: ${txCount} / ${apiCount}`);
 
-  if (txCount > 0) {
-    console.log(`WLT-02: ── PASS ✓ — ${txCount} transaction rows visible in history tab ──`);
-  } else {
-    console.log("WLT-02: ── PARTIAL ✓ — History tab loads but no rows found ──");
-  }
+  expect(hasExport, "Export history button should be present").toBe(true);
+  expect(apiCount, "API should return at least one transaction").toBeGreaterThan(0);
+  expect(txCount, `All ${apiCount} API transactions should render as rows`).toBe(apiCount);
 
-  expect(true).toBe(true); // informational — page structure test
+  console.log(`WLT-02: ── PASS ✓ — ${txCount} transaction rows match live API ──`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
