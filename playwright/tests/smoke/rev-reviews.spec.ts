@@ -2,19 +2,25 @@ import { test, expect } from "@playwright/test";
 
 const TESTUSER_EMAIL    = "testuser123@mailinator.com";
 const TESTUSER_PASSWORD = "Test@1234";
+const REVIEWER2_EMAIL    = "reviewer2@mailinator.com";
+const REVIEWER2_PASSWORD = "Review@1234";
 const SERVICE_ID = "24717f66-4741-400e-9f58-97224f8a2856"; // Alcatraz VIP Early-Access Tour
 const EXPERT_ID  = "43352454-f6c0-46ff-a97a-2c027b67671f"; // Maria Santos
 
-async function loginAsTestUser123(page: any) {
+async function loginAs(page: any, email: string, password: string) {
   await page.goto("/login");
   await page.waitForLoadState("domcontentloaded");
   const emailInput = page.locator('input[type="email"]').first();
   await expect(emailInput).toBeVisible({ timeout: 10000 });
-  await emailInput.fill(TESTUSER_EMAIL);
-  await page.locator('input[type="password"]').first().fill(TESTUSER_PASSWORD);
+  await emailInput.fill(email);
+  await page.locator('input[type="password"]').first().fill(password);
   await page.locator('button[type="submit"]').first().click();
   await page.waitForURL(/\/dashboard/, { timeout: 20000 });
   console.log("Logged in — URL:", page.url());
+}
+
+async function loginAsTestUser123(page: any) {
+  return loginAs(page, TESTUSER_EMAIL, TESTUSER_PASSWORD);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,57 +138,36 @@ test("REV-02: View Reviews on Activity (Service Detail Page)", async ({ page }) 
 // REV-03 — Submit a Valid Review (5 stars + text) via UI form
 // ─────────────────────────────────────────────────────────────────────────────
 test("REV-03: Submit a Valid Review (5 stars + text)", async ({ page }) => {
-  await loginAsTestUser123(page);
+  // Reset reviewer2's previous review so this test is always re-runnable
+  await loginAs(page, REVIEWER2_EMAIL, REVIEWER2_PASSWORD);
+  const resetResp = await page.request.delete("/api/dev/reset-test-review");
+  console.log(`REV-03: Reset reviewer2 review → ${resetResp.status()}`);
+
   await page.goto(`/services/${SERVICE_ID}`);
   await page.waitForLoadState("domcontentloaded");
   await page.waitForTimeout(2500); // let /api/bookings/user query settle
 
-  // ── Check review form section ──
-  const formSection = page.locator('[data-testid="review-form-section"]');
-  const formSectionVisible = await formSection.count() > 0;
-  console.log(`REV-03: Review form section present: ${formSectionVisible ? "✓" : "✗"}`);
-
-  // ── Check "Write a Review" CTA button ──
+  // ── "Write a Review" button should be visible (reviewer2 has a completed booking) ──
   const writeBtn = page.locator('[data-testid="button-write-review"]');
-  const writeBtnVisible = await writeBtn.count() > 0;
-  console.log(`REV-03: "Write a Review" button visible: ${writeBtnVisible ? "✓" : "✗"}`);
-
   const alreadyReviewed = page.locator('[data-testid="already-reviewed-notice"]');
-  if (await alreadyReviewed.count() > 0) {
-    console.log("REV-03: Already-reviewed notice visible — testuser has already submitted a review");
-    console.log("REV-03: ── PASS (idempotent guard) ✓ — platform correctly prevents duplicate reviews ──");
-    return;
-  }
 
-  if (!writeBtnVisible) {
-    // Check if lock message is shown (no completed booking)
-    const lockMsg = page.locator('text=Requires a completed booking');
-    if (await lockMsg.count() > 0) {
-      console.log("REV-03: ── FAIL — testuser has no completed booking; lock message shown ──");
-    } else {
-      console.log("REV-03: ── FAIL — Neither write button nor lock message found; form section absent ──");
-    }
-    return;
-  }
+  const hasWrite   = await writeBtn.count() > 0;
+  const hasAlready = await alreadyReviewed.count() > 0;
+  console.log(`REV-03: Write button: ${hasWrite ? "✓" : "✗"}  Already-reviewed: ${hasAlready ? "✓" : "✗"}`);
 
-  // ── Click "Write a Review" to open the form ──
+  expect(hasWrite, "Write a Review button should appear after reset").toBe(true);
+
+  // ── Open form ──
   await writeBtn.click();
-  await page.waitForTimeout(400);
-
+  await page.waitForTimeout(500);
   const reviewForm = page.locator('[data-testid="review-form"]');
-  const formVisible = await reviewForm.count() > 0;
-  console.log(`REV-03: Review form expanded: ${formVisible ? "✓" : "✗"}`);
+  console.log(`REV-03: Review form expanded: ${await reviewForm.count() > 0 ? "✓" : "✗"}`);
 
   // ── Select 5 stars ──
   const star5 = page.locator('[data-testid="star-input-5"]');
   await expect(star5).toBeVisible({ timeout: 5000 });
   await star5.click();
   console.log("REV-03: ✓ Clicked 5th star");
-
-  // Check label updates
-  const starLabel = page.locator('[data-testid="star-picker"] ~ span, [data-testid="star-picker"] + span');
-  const labelAfterClick = await starLabel.count() > 0 ? await starLabel.first().textContent() : "";
-  console.log(`REV-03: Star label after click: "${labelAfterClick?.trim()}"`);
 
   // ── Fill review text ──
   const reviewTextarea = page.locator('[data-testid="input-review-text"]');
@@ -197,36 +182,29 @@ test("REV-03: Submit a Valid Review (5 stars + text)", async ({ page }) => {
   await submitBtn.click();
   console.log("REV-03: ✓ Clicked Submit Review");
 
-  // Wait for success toast or form disappear
   await page.waitForTimeout(2000);
 
   const formGone = await page.locator('[data-testid="review-form"]').count() === 0;
   console.log(`REV-03: Form dismissed after submit: ${formGone ? "✓" : "✗"}`);
 
-  const successToast = page.locator('text=Review submitted!, text=Thank you');
-  const toastShown = await successToast.count() > 0;
-  console.log(`REV-03: Success toast shown: ${toastShown ? "✓" : "✗"}`);
-
-  // Verify review appears in the list
   const newCards = page.locator('[data-testid^="card-review-"]');
   const newCount = await newCards.count();
-  console.log(`REV-03: Review cards after submit: ${newCount}`);
+  console.log(`REV-03: Review cards visible after submit: ${newCount}`);
 
-  const alreadyReviewedAfter = page.locator('[data-testid="already-reviewed-notice"]');
-  const alreadyShown = await alreadyReviewedAfter.count() > 0;
-  console.log(`REV-03: "Already reviewed" guard shown: ${alreadyShown ? "✓" : "✗"}`);
+  const alreadyAfter = await page.locator('[data-testid="already-reviewed-notice"]').count() > 0;
+  console.log(`REV-03: Duplicate guard shown after submit: ${alreadyAfter ? "✓" : "✗"}`);
 
-  if (formGone && newCount > 0) {
-    console.log("REV-03: ── PASS ✓ ──");
-    console.log("  Form opened:          ✓");
-    console.log("  5 stars selectable:   ✓");
-    console.log("  Text field works:     ✓");
-    console.log("  Submit worked:        ✓");
-    console.log(`  Review appeared:      ✓ (${newCount} cards visible)`);
-    console.log("  Duplicate guard:      ✓ (already-reviewed notice shown)");
-  } else {
-    console.log(`REV-03: ── PARTIAL — form dismissed:${formGone} cards:${newCount} ──`);
-  }
+  expect(formGone, "Form should dismiss after successful submit").toBe(true);
+  expect(newCount, "At least one review card should be visible").toBeGreaterThan(0);
+
+  console.log(`REV-03: ── PASS ✓ ──
+  Account:         reviewer2@mailinator.com (fresh review each run)
+  Form opened:     ✓
+  5 stars:         ✓
+  Text filled:     ✓ "Excellent experience, highly recommended!"
+  Submitted:       ✓
+  Review appeared: ✓ (${newCount} card(s) visible)
+  Duplicate guard: ${alreadyAfter ? "✓ shown" : "✗ not shown"}`);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
