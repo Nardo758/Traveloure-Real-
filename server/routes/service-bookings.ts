@@ -433,7 +433,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       // Verify user has a completed booking for this service
       const bookings = await storage.getServiceBookings({ 
@@ -465,6 +465,38 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       }
       console.error("Error creating review:", err);
       res.status(500).json({ message: "Failed to create review" });
+    }
+  });
+
+  app.patch("/api/services/:serviceId/reviews/:reviewId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const { reviewId } = req.params;
+      const review = await storage.getServiceReview(reviewId);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (review.travelerId !== userId) return res.status(403).json({ message: "You can only edit your own reviews" });
+      const { rating, reviewText } = req.body;
+      if (!rating || rating < 1 || rating > 5) return res.status(400).json({ message: "Rating must be between 1 and 5" });
+      const updated = await storage.updateServiceReview(reviewId, { rating: Number(rating), reviewText: reviewText?.trim() || null });
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating review:", err);
+      res.status(500).json({ message: "Failed to update review" });
+    }
+  });
+
+  app.delete("/api/services/:serviceId/reviews/:reviewId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const { reviewId } = req.params;
+      const review = await storage.getServiceReview(reviewId);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (review.travelerId !== userId) return res.status(403).json({ message: "You can only delete your own reviews" });
+      await storage.deleteServiceReview(reviewId);
+      res.status(204).send();
+    } catch (err) {
+      console.error("Error deleting review:", err);
+      res.status(500).json({ message: "Failed to delete review" });
     }
   });
 

@@ -19,8 +19,21 @@ import {
   Loader2,
   User,
   Send,
-  Lock
+  Lock,
+  Pencil,
+  Trash2,
+  X
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -418,7 +431,12 @@ export default function ServiceDetailPage() {
                 ) : (
                   <div className="space-y-4">
                     {reviews.map((review) => (
-                      <ReviewCard key={review.id} review={review} />
+                      <ReviewCard
+                        key={review.id}
+                        review={review}
+                        currentUserId={(user as any)?.claims?.sub ?? (user as any)?.id ?? ""}
+                        serviceId={id!}
+                      />
                     ))}
                   </div>
                 )}
@@ -485,55 +503,205 @@ export default function ServiceDetailPage() {
   );
 }
 
-function ReviewCard({ review }: { review: Review }) {
+function ReviewCard({
+  review,
+  currentUserId,
+  serviceId,
+}: {
+  review: Review;
+  currentUserId: string;
+  serviceId: string;
+}) {
+  const { toast } = useToast();
+  const isOwner = !!currentUserId && review.travelerId === currentUserId;
+
+  const [editing, setEditing]               = useState(false);
+  const [editRating, setEditRating]         = useState(review.rating);
+  const [editText, setEditText]             = useState(review.reviewText ?? "");
+  const [confirmDelete, setConfirmDelete]   = useState(false);
+  const [deleted, setDeleted]               = useState(false);
+  const [displayRating, setDisplayRating]   = useState(review.rating);
+  const [displayText, setDisplayText]       = useState(review.reviewText ?? "");
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/services/${serviceId}/reviews/${review.id}`, {
+        rating: editRating,
+        reviewText: editText.trim() || null,
+      }),
+    onSuccess: () => {
+      toast({ title: "Review updated!" });
+      setDisplayRating(editRating);
+      setDisplayText(editText.trim());
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/services", serviceId, "reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/services", serviceId] });
+    },
+    onError: () => toast({ title: "Failed to update review", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("DELETE", `/api/services/${serviceId}/reviews/${review.id}`),
+    onSuccess: () => {
+      toast({ title: "Review deleted", description: "The average rating has been recalculated." });
+      setDeleted(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/services", serviceId, "reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/services", serviceId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/user"] });
+    },
+    onError: () => toast({ title: "Failed to delete review", variant: "destructive" }),
+  });
+
+  if (deleted) return null;
+
   return (
-    <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
-      <div className="flex items-start gap-3">
-        <Avatar className="w-10 h-10">
-          <AvatarFallback>
-            <User className="w-5 h-5" />
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Star 
-                  key={star}
-                  className={`w-4 h-4 ${
-                    star <= review.rating 
-                      ? "text-amber-500 fill-amber-500" 
-                      : "text-muted-foreground"
-                  }`}
-                />
-              ))}
+    <>
+      <div className="border-b last:border-0 pb-4 last:pb-0" data-testid={`card-review-${review.id}`}>
+        <div className="flex items-start gap-3">
+          <Avatar className="w-10 h-10">
+            <AvatarFallback>
+              <User className="w-5 h-5" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            {/* ── Header row: stars + verified + owner actions ── */}
+            <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-0.5">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      className={`w-4 h-4 ${
+                        star <= displayRating
+                          ? "text-amber-500 fill-amber-500"
+                          : "text-muted-foreground"
+                      }`}
+                    />
+                  ))}
+                </div>
+                {review.isVerified && (
+                  <Badge variant="secondary" className="text-xs">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Verified
+                  </Badge>
+                )}
+              </div>
+
+              {/* Owner-only edit / delete buttons */}
+              {isOwner && !editing && (
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                    onClick={() => { setEditRating(review.rating); setEditText(review.reviewText ?? ""); setEditing(true); }}
+                    data-testid={`button-edit-review-${review.id}`}
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => setConfirmDelete(true)}
+                    data-testid={`button-delete-review-${review.id}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    Delete
+                  </Button>
+                </div>
+              )}
             </div>
-            {review.isVerified && (
-              <Badge variant="secondary" className="text-xs">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Verified
-              </Badge>
+
+            <p className="text-sm text-muted-foreground mb-1">
+              {format(new Date(review.createdAt), "MMM d, yyyy")}
+            </p>
+
+            {/* ── Inline edit form ── */}
+            {editing ? (
+              <div className="space-y-3 mt-2 border rounded-lg p-3 bg-muted/20" data-testid={`edit-form-${review.id}`}>
+                <div>
+                  <p className="text-xs font-medium mb-1 text-muted-foreground">Update rating</p>
+                  <StarPicker value={editRating} onChange={setEditRating} size="md" />
+                </div>
+                <Textarea
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  placeholder="Update your review text (optional)…"
+                  rows={3}
+                  maxLength={1000}
+                  data-testid={`input-edit-review-text-${review.id}`}
+                />
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing(false)}
+                    data-testid={`button-cancel-edit-${review.id}`}
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={updateMutation.isPending || editRating === 0}
+                    onClick={() => updateMutation.mutate()}
+                    data-testid={`button-save-review-${review.id}`}
+                  >
+                    {updateMutation.isPending ? (
+                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Send className="w-3.5 h-3.5 mr-1" />
+                    )}
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {displayText && (
+                  <p className="text-sm" data-testid={`text-review-${review.id}`}>
+                    {displayText}
+                  </p>
+                )}
+                {review.responseText && (
+                  <div className="mt-3 pl-4 border-l-2 border-primary/20">
+                    <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
+                    <p className="text-sm" data-testid={`text-response-${review.id}`}>
+                      {review.responseText}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
-          <p className="text-sm text-muted-foreground mb-1">
-            {format(new Date(review.createdAt), "MMM d, yyyy")}
-          </p>
-          {review.reviewText && (
-            <p className="text-sm" data-testid={`text-review-${review.id}`}>
-              {review.reviewText}
-            </p>
-          )}
-          
-          {review.responseText && (
-            <div className="mt-3 pl-4 border-l-2 border-primary/20">
-              <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
-              <p className="text-sm" data-testid={`text-response-${review.id}`}>
-                {review.responseText}
-              </p>
-            </div>
-          )}
         </div>
       </div>
-    </div>
+
+      {/* ── Delete confirmation dialog ── */}
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent data-testid={`dialog-delete-review-${review.id}`}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this review?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove your review and recalculate the service's average rating. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid={`button-cancel-delete-${review.id}`}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => { setConfirmDelete(false); deleteMutation.mutate(); }}
+              data-testid={`button-confirm-delete-${review.id}`}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Delete Review"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
