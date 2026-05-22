@@ -206,6 +206,8 @@ export interface IStorage {
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
   getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
+  updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined>;
+  deleteServiceReview(id: string): Promise<void>;
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
 
   // Unified Discovery
@@ -1190,6 +1192,36 @@ export class DatabaseStorage implements IStorage {
       .where(eq(providerServices.id, review.serviceId));
     
     return newReview;
+  }
+
+  async updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined> {
+    const [updated] = await db.update(serviceReviews)
+      .set({ rating: data.rating, reviewText: data.reviewText ?? null })
+      .where(eq(serviceReviews.id, id))
+      .returning();
+    if (updated) {
+      // Recalculate service average rating
+      const allReviews = await this.getServiceReviews(updated.serviceId);
+      const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
+      await db.update(providerServices)
+        .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: allReviews.length, updatedAt: new Date() })
+        .where(eq(providerServices.id, updated.serviceId));
+    }
+    return updated;
+  }
+
+  async deleteServiceReview(id: string): Promise<void> {
+    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
+    if (!review) return;
+    await db.delete(serviceReviews).where(eq(serviceReviews.id, id));
+    // Recalculate service average rating + count
+    const remaining = await this.getServiceReviews(review.serviceId);
+    const avgRating = remaining.length > 0
+      ? remaining.reduce((sum, r) => sum + r.rating, 0) / remaining.length
+      : 0;
+    await db.update(providerServices)
+      .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: remaining.length, updatedAt: new Date() })
+      .where(eq(providerServices.id, review.serviceId));
   }
 
   async addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined> {
