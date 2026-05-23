@@ -8,6 +8,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   ArrowLeft, 
   MapPin, 
@@ -131,6 +138,8 @@ export default function ServiceDetailPage() {
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [reviewSort, setReviewSort] = useState<"newest" | "oldest" | "highest" | "lowest">("newest");
+  const [reviewFilter, setReviewFilter] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
 
   const { data: service, isLoading: serviceLoading } = useQuery<Service>({
     queryKey: ["/api/services", id],
@@ -424,6 +433,57 @@ export default function ServiceDetailPage() {
 
                 <Separator />
 
+                {/* ── Sort & Filter controls ── */}
+                {reviews && reviews.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-3" data-testid="review-controls">
+                    {/* Star filter pills */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {([0, 5, 4, 3, 2, 1] as const).map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          data-testid={`filter-star-${star}`}
+                          onClick={() => setReviewFilter(star)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                            reviewFilter === star
+                              ? "bg-amber-400 border-amber-400 text-white"
+                              : "border-border text-muted-foreground hover:border-amber-300 hover:text-amber-600"
+                          }`}
+                        >
+                          {star === 0 ? (
+                            "All"
+                          ) : (
+                            <>
+                              {star}
+                              <Star className="w-3 h-3 fill-current" />
+                            </>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="ml-auto shrink-0">
+                      <Select
+                        value={reviewSort}
+                        onValueChange={(v) => setReviewSort(v as typeof reviewSort)}
+                      >
+                        <SelectTrigger
+                          className="h-8 text-xs w-[140px]"
+                          data-testid="select-review-sort"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="newest">Newest first</SelectItem>
+                          <SelectItem value="oldest">Oldest first</SelectItem>
+                          <SelectItem value="highest">Highest rated</SelectItem>
+                          <SelectItem value="lowest">Lowest rated</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Review list ── */}
                 {reviewsLoading ? (
                   <div className="space-y-4">
@@ -434,19 +494,48 @@ export default function ServiceDetailPage() {
                   <p className="text-muted-foreground text-center py-8" data-testid="text-no-reviews">
                     No reviews yet. Be the first to review this service!
                   </p>
-                ) : (
-                  <div className="space-y-4">
-                    {reviews.map((review) => (
-                      <ReviewCard
-                        key={review.id}
-                        review={review}
-                        currentUserId={(user as any)?.claims?.sub ?? (user as any)?.id ?? ""}
-                        serviceId={id!}
-                        serviceProviderId={service.userId}
-                      />
-                    ))}
-                  </div>
-                )}
+                ) : (() => {
+                    const filtered = reviewFilter === 0
+                      ? reviews
+                      : reviews.filter((r) => r.rating === reviewFilter);
+                    const sorted = [...filtered].sort((a, b) => {
+                      if (reviewSort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                      if (reviewSort === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                      if (reviewSort === "highest") return b.rating - a.rating;
+                      return a.rating - b.rating;
+                    });
+                    return sorted.length === 0 ? (
+                      <div className="text-center py-8 space-y-2" data-testid="text-no-matching-reviews">
+                        <p className="text-muted-foreground">No {reviewFilter}★ reviews yet.</p>
+                        <button
+                          type="button"
+                          className="text-sm text-primary underline"
+                          onClick={() => setReviewFilter(0)}
+                        >
+                          Show all reviews
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {reviewFilter !== 0 && (
+                          <p className="text-xs text-muted-foreground" data-testid="text-filter-count">
+                            Showing {sorted.length} of {reviews.length} reviews
+                          </p>
+                        )}
+                        <div className="space-y-4">
+                          {sorted.map((review) => (
+                            <ReviewCard
+                              key={review.id}
+                              review={review}
+                              currentUserId={(user as any)?.claims?.sub ?? (user as any)?.id ?? ""}
+                              serviceId={id!}
+                              serviceProviderId={service.userId}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
               </CardContent>
             </Card>
           </div>
