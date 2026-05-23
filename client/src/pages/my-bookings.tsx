@@ -62,6 +62,7 @@ interface Booking {
   cancellationReason: string | null;
   createdAt: string;
   hasReview?: boolean;
+  serviceName?: string | null;
 }
 
 interface ActivityBooking {
@@ -521,6 +522,16 @@ function BookingCard({
   );
 }
 
+const SENTIMENT_LABELS: Record<number, { label: string; color: string; placeholder: string }> = {
+  1: { label: "Poor", color: "text-red-500", placeholder: "What went wrong? Your honest feedback helps us improve." },
+  2: { label: "Fair", color: "text-orange-500", placeholder: "What could have been better?" },
+  3: { label: "Good", color: "text-yellow-500", placeholder: "What did you like or dislike?" },
+  4: { label: "Great", color: "text-lime-500", placeholder: "What stood out to you?" },
+  5: { label: "Excellent", color: "text-emerald-500", placeholder: "What did you love most about this experience?" },
+};
+
+const MAX_REVIEW_CHARS = 500;
+
 function ReviewDialog({ 
   open, 
   onOpenChange, 
@@ -531,9 +542,20 @@ function ReviewDialog({
   booking: Booking | null;
 }) {
   const { toast } = useToast();
-  const [rating, setRating] = useState(5);
+  const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [hoveredRating, setHoveredRating] = useState(0);
+  const [submitted, setSubmitted] = useState(false);
+
+  // Reset state when a different booking is opened
+  const bookingId = booking?.id;
+  const [lastBookingId, setLastBookingId] = useState<string | undefined>();
+  if (bookingId !== lastBookingId) {
+    setLastBookingId(bookingId);
+    setRating(0);
+    setReviewText("");
+    setSubmitted(false);
+  }
 
   const mutation = useMutation({
     mutationFn: async (data: { rating: number; reviewText: string }) => {
@@ -544,97 +566,166 @@ function ReviewDialog({
       });
     },
     onSuccess: () => {
-      toast({ title: "Review submitted", description: "Thank you for your feedback!" });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-      onOpenChange(false);
-      setRating(5);
-      setReviewText("");
+      setSubmitted(true);
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to submit review", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to submit review. Please try again.", variant: "destructive" });
     },
   });
 
   const handleSubmit = () => {
     if (rating < 1 || rating > 5) {
-      toast({ title: "Invalid rating", description: "Please select a rating", variant: "destructive" });
+      toast({ title: "Rating required", description: "Please select a star rating before submitting.", variant: "destructive" });
       return;
     }
-    mutation.mutate({ rating, reviewText });
+    mutation.mutate({ rating, reviewText: reviewText.trim() });
   };
 
+  const handleClose = (v: boolean) => {
+    if (!v) {
+      setRating(0);
+      setReviewText("");
+      setSubmitted(false);
+    }
+    onOpenChange(v);
+  };
+
+  const activeRating = hoveredRating || rating;
+  const sentiment = activeRating > 0 ? SENTIMENT_LABELS[activeRating] : null;
+  const charsLeft = MAX_REVIEW_CHARS - reviewText.length;
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle data-testid="text-review-dialog-title">Leave a Review</DialogTitle>
-          <DialogDescription>
-            Share your experience with this service
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-4">
-          <div>
-            <Label className="mb-2 block">Rating</Label>
-            <div className="flex gap-1" data-testid="input-rating-stars">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  type="button"
-                  onClick={() => setRating(star)}
-                  onMouseEnter={() => setHoveredRating(star)}
-                  onMouseLeave={() => setHoveredRating(0)}
-                  className="p-1 transition-transform hover:scale-110"
-                  data-testid={`button-star-${star}`}
-                >
-                  <Star 
-                    className={`w-8 h-8 ${
-                      star <= (hoveredRating || rating) 
-                        ? "fill-yellow-400 text-yellow-400" 
-                        : "text-muted-foreground"
-                    }`} 
-                  />
-                </button>
-              ))}
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-md">
+        {submitted ? (
+          /* ── Success state ── */
+          <div className="py-8 text-center space-y-4" data-testid="review-success-state">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
             </div>
-          </div>
-
-          <div>
-            <Label htmlFor="reviewText" className="mb-2 block">Your Review (optional)</Label>
-            <Textarea
-              id="reviewText"
-              value={reviewText}
-              onChange={(e) => setReviewText(e.target.value)}
-              placeholder="Tell others about your experience..."
-              rows={4}
-              data-testid="input-review-text"
-            />
-          </div>
-        </div>
-
-        <DialogFooter className="gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => onOpenChange(false)}
-            data-testid="button-cancel-review"
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={mutation.isPending}
-            data-testid="button-submit-review"
-          >
-            {mutation.isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Submit Review"
+            <div>
+              <h3 className="text-lg font-semibold" data-testid="text-review-success-heading">
+                Review submitted!
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Thank you for sharing your experience. Your feedback helps other travelers.
+              </p>
+            </div>
+            {rating > 0 && (
+              <div className="flex justify-center gap-1">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star key={s} className={`w-5 h-5 ${s <= rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground"}`} />
+                ))}
+              </div>
             )}
-          </Button>
-        </DialogFooter>
+            <Button onClick={() => handleClose(false)} className="w-full" data-testid="button-close-review-success">
+              Done
+            </Button>
+          </div>
+        ) : (
+          /* ── Form state ── */
+          <>
+            <DialogHeader>
+              <DialogTitle data-testid="text-review-dialog-title">
+                {booking?.serviceName ? `Review: ${booking.serviceName}` : "Leave a Review"}
+              </DialogTitle>
+              <DialogDescription>
+                {booking?.serviceName
+                  ? "Your honest review helps other travelers and rewards great providers."
+                  : "Share your experience with this service"}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-5 py-2">
+              {/* Star picker */}
+              <div>
+                <Label className="mb-3 block text-sm font-medium">
+                  How would you rate this experience?
+                </Label>
+                <div className="flex items-center gap-1" data-testid="input-rating-stars">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setRating(star)}
+                      onMouseEnter={() => setHoveredRating(star)}
+                      onMouseLeave={() => setHoveredRating(0)}
+                      className="p-1 transition-all hover:scale-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                      aria-label={`Rate ${star} star${star !== 1 ? "s" : ""}`}
+                      data-testid={`button-star-${star}`}
+                    >
+                      <Star
+                        className={`w-9 h-9 transition-colors ${
+                          star <= activeRating
+                            ? "fill-amber-400 text-amber-400"
+                            : "text-muted-foreground/40 hover:text-amber-200"
+                        }`}
+                      />
+                    </button>
+                  ))}
+                  {sentiment && (
+                    <span className={`ml-3 text-sm font-semibold ${sentiment.color}`} data-testid="text-sentiment-label">
+                      {sentiment.label}
+                    </span>
+                  )}
+                </div>
+                {rating === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">Click to select a rating</p>
+                )}
+              </div>
+
+              {/* Review text */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label htmlFor="reviewText" className="text-sm font-medium">
+                    Your review <span className="text-muted-foreground font-normal">(optional)</span>
+                  </Label>
+                  <span className={`text-xs ${charsLeft < 50 ? "text-destructive" : "text-muted-foreground"}`}>
+                    {charsLeft} left
+                  </span>
+                </div>
+                <Textarea
+                  id="reviewText"
+                  value={reviewText}
+                  onChange={(e) => {
+                    if (e.target.value.length <= MAX_REVIEW_CHARS) setReviewText(e.target.value);
+                  }}
+                  placeholder={sentiment?.placeholder ?? "Tell others about your experience…"}
+                  rows={4}
+                  className="resize-none"
+                  data-testid="input-review-text"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => handleClose(false)}
+                disabled={mutation.isPending}
+                data-testid="button-cancel-review"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={mutation.isPending || rating === 0}
+                className="bg-[#FF385C] hover:bg-[#e0314f] text-white"
+                data-testid="button-submit-review"
+              >
+                {mutation.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Submitting…
+                  </>
+                ) : (
+                  "Submit Review"
+                )}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
