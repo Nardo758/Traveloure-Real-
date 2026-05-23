@@ -1,19 +1,24 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Star, MessageSquare, TrendingUp, CheckCircle, ChevronDown, ChevronUp, Eye, EyeOff, Filter } from "lucide-react";
+import {
+  Star, MessageSquare, TrendingUp, CheckCircle,
+  ChevronDown, ChevronUp, EyeOff, Filter, Mail, Clock, Send
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface ReviewItem {
   id: string;
   serviceId: string;
+  bookingId: string;
   travelerId: string;
   rating: number;
   reviewText: string | null;
@@ -32,15 +37,32 @@ interface ReviewsData {
   total: number;
 }
 
+interface PendingReviewBooking {
+  id: string;
+  trackingNumber: string | null;
+  serviceId: string;
+  travelerId: string;
+  status: string;
+  totalAmount: string;
+  completedAt: string | null;
+  createdAt: string;
+  serviceName: string | null;
+  travelerFirstName: string | null;
+  travelerLastName: string | null;
+  travelerEmail: string | null;
+}
+
+interface PendingReviewsData {
+  pendingReviews: PendingReviewBooking[];
+  count: number;
+}
+
 function StarRow({ rating, size = "sm" }: { rating: number; size?: "sm" | "md" }) {
   const px = size === "md" ? "w-5 h-5" : "w-4 h-4";
   return (
     <div className="flex gap-0.5">
       {[1, 2, 3, 4, 5].map(n => (
-        <Star
-          key={n}
-          className={`${px} ${n <= rating ? "fill-amber-400 text-amber-400" : "text-gray-300"}`}
-        />
+        <Star key={n} className={`${px} ${n <= rating ? "fill-amber-400 text-amber-400" : "text-gray-300"}`} />
       ))}
     </div>
   );
@@ -80,12 +102,8 @@ function ReviewCard({ review, onRespond }: { review: ReviewItem; onRespond: (id:
   };
 
   return (
-    <Card
-      className={`border transition-colors ${review.isHidden ? "opacity-60 bg-gray-50" : ""}`}
-      data-testid={`card-review-${review.id}`}
-    >
+    <Card className={`border transition-colors ${review.isHidden ? "opacity-60 bg-gray-50" : ""}`} data-testid={`card-review-${review.id}`}>
       <CardContent className="p-5">
-        {/* Header row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-start gap-3">
             <div className="w-9 h-9 rounded-full bg-[#FF385C]/10 text-[#FF385C] flex items-center justify-center text-sm font-semibold flex-shrink-0">
@@ -94,9 +112,7 @@ function ReviewCard({ review, onRespond }: { review: ReviewItem; onRespond: (id:
             <div>
               <p className="font-medium text-gray-900 text-sm" data-testid={`text-traveler-${review.id}`}>{travelerName}</p>
               <p className="text-xs text-gray-500">
-                {review.serviceName && (
-                  <span className="text-gray-600 font-medium">{review.serviceName} · </span>
-                )}
+                {review.serviceName && <span className="text-gray-600 font-medium">{review.serviceName} · </span>}
                 {new Date(review.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
               </p>
             </div>
@@ -111,12 +127,8 @@ function ReviewCard({ review, onRespond }: { review: ReviewItem; onRespond: (id:
         </div>
 
         <StarRow rating={review.rating} />
+        {review.reviewText && <p className="mt-2 text-sm text-gray-700 leading-relaxed">{review.reviewText}</p>}
 
-        {review.reviewText && (
-          <p className="mt-2 text-sm text-gray-700 leading-relaxed">{review.reviewText}</p>
-        )}
-
-        {/* Response section */}
         {(isAnswered || editing) && (
           <div className="mt-4 pl-4 border-l-2 border-[#FF385C]/30">
             {editing ? (
@@ -143,38 +155,20 @@ function ReviewCard({ review, onRespond }: { review: ReviewItem; onRespond: (id:
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Your Response</p>
                 <p className="text-sm text-gray-700">{review.responseText}</p>
-                <button
-                  className="mt-1 text-xs text-[#FF385C] hover:underline"
-                  onClick={() => setEditing(true)}
-                  data-testid={`button-edit-response-${review.id}`}
-                >
-                  Edit response
-                </button>
+                <button className="mt-1 text-xs text-[#FF385C] hover:underline" onClick={() => setEditing(true)} data-testid={`button-edit-response-${review.id}`}>Edit response</button>
               </div>
             )}
           </div>
         )}
 
-        {/* Actions */}
         {!editing && (
           <div className="mt-3 flex items-center gap-2">
             {!isAnswered && !review.isHidden && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs gap-1"
-                onClick={() => setEditing(true)}
-                data-testid={`button-reply-${review.id}`}
-              >
-                <MessageSquare className="w-3 h-3" />
-                Reply
+              <Button variant="outline" size="sm" className="text-xs gap-1" onClick={() => setEditing(true)} data-testid={`button-reply-${review.id}`}>
+                <MessageSquare className="w-3 h-3" />Reply
               </Button>
             )}
-            <button
-              className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 ml-auto"
-              onClick={() => setExpanded(v => !v)}
-              data-testid={`button-expand-${review.id}`}
-            >
+            <button className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 ml-auto" onClick={() => setExpanded(v => !v)} data-testid={`button-expand-${review.id}`}>
               {expanded ? <><ChevronUp className="w-3 h-3" />Less</> : <><ChevronDown className="w-3 h-3" />Details</>}
             </button>
           </div>
@@ -183,10 +177,64 @@ function ReviewCard({ review, onRespond }: { review: ReviewItem; onRespond: (id:
         {expanded && (
           <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-400 space-y-1">
             <p>Review ID: {review.id}</p>
-            <p>Service ID: {review.serviceId}</p>
+            <p>Booking ID: {review.bookingId}</p>
             <p>Submitted: {new Date(review.createdAt).toLocaleString()}</p>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PendingReminderCard({ booking, onSend, isSending }: {
+  booking: PendingReviewBooking;
+  onSend: (bookingId: string) => void;
+  isSending: boolean;
+}) {
+  const travelerName = [booking.travelerFirstName, booking.travelerLastName].filter(Boolean).join(" ") || "Anonymous Traveler";
+  const initials = travelerName === "Anonymous Traveler" ? "AT" : travelerName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+  const completedDate = booking.completedAt
+    ? new Date(booking.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "Unknown date";
+  const daysSince = booking.completedAt
+    ? Math.floor((Date.now() - new Date(booking.completedAt).getTime()) / 86_400_000)
+    : null;
+
+  return (
+    <Card className="border" data-testid={`card-pending-${booking.id}`}>
+      <CardContent className="p-4 flex items-center gap-4">
+        <div className="w-9 h-9 rounded-full bg-sky-100 text-sky-600 flex items-center justify-center text-sm font-semibold flex-shrink-0">
+          {initials}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-gray-900 text-sm truncate">{travelerName}</p>
+          <p className="text-xs text-gray-500">
+            {booking.serviceName && <span className="font-medium text-gray-600">{booking.serviceName} · </span>}
+            Completed {completedDate}
+            {daysSince !== null && <span className="text-gray-400"> ({daysSince}d ago)</span>}
+          </p>
+          {booking.travelerEmail && (
+            <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+              <Mail className="w-3 h-3" />{booking.travelerEmail}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Badge variant="secondary" className="text-xs gap-1 hidden sm:flex">
+            <Clock className="w-3 h-3" />No review yet
+          </Badge>
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-xs gap-1 border-[#FF385C]/50 text-[#FF385C] hover:bg-[#FF385C]/5"
+            onClick={() => onSend(booking.id)}
+            disabled={isSending}
+            data-testid={`button-send-reminder-${booking.id}`}
+          >
+            <Send className="w-3 h-3" />
+            {isSending ? "Sending…" : "Send Reminder"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -198,9 +246,14 @@ export default function ProviderReviews() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterService, setFilterService] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery<ReviewsData>({
     queryKey: ["/api/provider/reviews"],
+  });
+
+  const { data: pendingData, isLoading: pendingLoading } = useQuery<PendingReviewsData>({
+    queryKey: ["/api/provider/pending-reviews"],
   });
 
   const respondMutation = useMutation({
@@ -216,16 +269,29 @@ export default function ProviderReviews() {
     },
   });
 
+  const sendReminderMutation = useMutation({
+    mutationFn: async (bookingId: string) => {
+      return apiRequest("POST", `/api/provider/bookings/${bookingId}/send-review-reminder`, {});
+    },
+    onMutate: (bookingId) => setSendingId(bookingId),
+    onSuccess: () => {
+      setSendingId(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/pending-reviews"] });
+      toast({ title: "Reminder sent", description: "The traveler has been emailed a review request." });
+    },
+    onError: () => {
+      setSendingId(null);
+      toast({ title: "Failed to send reminder", description: "Please try again.", variant: "destructive" });
+    },
+  });
+
   const handleRespond = (id: string, text: string, serviceId: string) => {
     respondMutation.mutate({ reviewId: id, responseText: text, serviceId });
   };
 
   const reviews = data?.reviews ?? [];
-
-  // Unique service names for filter
   const serviceNames = Array.from(new Set(reviews.map(r => r.serviceName).filter(Boolean))) as string[];
 
-  // Filter + sort
   const filtered = reviews
     .filter(r => filterRating === "all" || r.rating === Number(filterRating))
     .filter(r => {
@@ -243,43 +309,21 @@ export default function ProviderReviews() {
       return 0;
     });
 
-  // Rating distribution
   const ratingDist = [5, 4, 3, 2, 1].map(s => ({
     stars: s,
     count: reviews.filter(r => r.rating === s).length,
   }));
 
+  const pendingCount = pendingData?.count ?? 0;
+
   const stats = [
-    {
-      label: "Total Reviews",
-      value: isLoading ? "—" : String(data?.total ?? 0),
-      icon: Star,
-      color: "text-amber-500",
-      bg: "bg-amber-50",
-    },
-    {
-      label: "Average Rating",
-      value: isLoading ? "—" : String(data?.avgRating ?? "0.0"),
-      icon: TrendingUp,
-      color: "text-emerald-600",
-      bg: "bg-emerald-50",
-      suffix: "/ 5",
-    },
-    {
-      label: "Awaiting Reply",
-      value: isLoading ? "—" : String(data?.unansweredCount ?? 0),
-      icon: MessageSquare,
-      color: "text-[#FF385C]",
-      bg: "bg-rose-50",
-    },
+    { label: "Total Reviews", value: isLoading ? "—" : String(data?.total ?? 0), icon: Star, color: "text-amber-500", bg: "bg-amber-50" },
+    { label: "Average Rating", value: isLoading ? "—" : String(data?.avgRating ?? "0.0"), icon: TrendingUp, color: "text-emerald-600", bg: "bg-emerald-50", suffix: "/ 5" },
+    { label: "Awaiting Reply", value: isLoading ? "—" : String(data?.unansweredCount ?? 0), icon: MessageSquare, color: "text-[#FF385C]", bg: "bg-rose-50" },
     {
       label: "Response Rate",
-      value: isLoading ? "—" : (data?.total
-        ? `${Math.round(((data.total - (data.unansweredCount ?? 0)) / data.total) * 100)}%`
-        : "—"),
-      icon: CheckCircle,
-      color: "text-sky-600",
-      bg: "bg-sky-50",
+      value: isLoading ? "—" : (data?.total ? `${Math.round(((data.total - (data.unansweredCount ?? 0)) / data.total) * 100)}%` : "—"),
+      icon: CheckCircle, color: "text-sky-600", bg: "bg-sky-50",
     },
   ];
 
@@ -287,8 +331,8 @@ export default function ProviderReviews() {
     <ProviderLayout title="Reviews">
       <div className="p-6 space-y-6 max-w-5xl">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reviews Received</h1>
-          <p className="text-gray-500 text-sm mt-1">See what travelers say about your services and respond to build trust.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Reviews</h1>
+          <p className="text-gray-500 text-sm mt-1">Read traveler feedback, respond to reviews, and nudge guests to share their experience.</p>
         </div>
 
         {/* Stat cards */}
@@ -313,109 +357,155 @@ export default function ProviderReviews() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Rating breakdown */}
-          <Card className="border lg:col-span-1">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Rating Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {isLoading
-                ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)
-                : ratingDist.map(d => (
-                    <RatingBar key={d.stars} stars={d.stars} count={d.count} total={data?.total ?? 0} />
-                  ))
-              }
-            </CardContent>
-          </Card>
-
-          {/* Filters + list */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* Filter bar */}
-            <div className="flex flex-wrap gap-2 items-center" data-testid="filter-bar">
-              <Filter className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <Select value={filterRating} onValueChange={setFilterRating}>
-                <SelectTrigger className="h-8 text-xs w-28" data-testid="select-filter-rating">
-                  <SelectValue placeholder="All ratings" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All ratings</SelectItem>
-                  {[5, 4, 3, 2, 1].map(s => <SelectItem key={s} value={String(s)}>{s} stars</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="h-8 text-xs w-32" data-testid="select-filter-status">
-                  <SelectValue placeholder="All statuses" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="unanswered">Needs reply</SelectItem>
-                  <SelectItem value="answered">Responded</SelectItem>
-                  <SelectItem value="hidden">Hidden</SelectItem>
-                </SelectContent>
-              </Select>
-              {serviceNames.length > 1 && (
-                <Select value={filterService} onValueChange={setFilterService}>
-                  <SelectTrigger className="h-8 text-xs w-36" data-testid="select-filter-service">
-                    <SelectValue placeholder="All services" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All services</SelectItem>
-                    {serviceNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+        {/* Tabs */}
+        <Tabs defaultValue="received" className="w-full">
+          <TabsList className="bg-card border p-1">
+            <TabsTrigger value="received" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm gap-2" data-testid="tab-received-reviews">
+              <Star className="w-4 h-4" />
+              Received
+              {!isLoading && data && data.total > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 text-xs px-1.5">{data.total}</Badge>
               )}
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="h-8 text-xs w-28 ml-auto" data-testid="select-sort">
-                  <SelectValue placeholder="Sort" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Newest first</SelectItem>
-                  <SelectItem value="oldest">Oldest first</SelectItem>
-                  <SelectItem value="highest">Highest rated</SelectItem>
-                  <SelectItem value="lowest">Lowest rated</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            </TabsTrigger>
+            <TabsTrigger value="reminders" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-sm gap-2" data-testid="tab-pending-reminders">
+              <Mail className="w-4 h-4" />
+              Reminders
+              {!pendingLoading && pendingCount > 0 && (
+                <Badge className="ml-1 h-5 text-xs px-1.5 bg-[#FF385C] text-white">{pendingCount}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-            {/* Review list */}
-            {isLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="text-center py-16 border rounded-xl bg-gray-50" data-testid="no-reviews-empty-state">
-                <Star className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                <p className="font-semibold text-gray-700">
-                  {reviews.length === 0 ? "No reviews yet" : "No reviews match your filters"}
-                </p>
-                <p className="text-sm text-gray-400 mt-1">
-                  {reviews.length === 0
-                    ? "Reviews from travelers will appear here once they book and rate your services."
-                    : "Try adjusting the filters above."}
-                </p>
-                {reviews.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-4"
-                    onClick={() => { setFilterRating("all"); setFilterStatus("all"); setFilterService("all"); }}
-                    data-testid="button-clear-filters"
-                  >
-                    Clear Filters
-                  </Button>
+          {/* ── Received reviews tab ── */}
+          <TabsContent value="received" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Rating breakdown */}
+              <Card className="border lg:col-span-1 h-fit">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Rating Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {isLoading
+                    ? Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-5 w-full" />)
+                    : ratingDist.map(d => <RatingBar key={d.stars} stars={d.stars} count={d.count} total={data?.total ?? 0} />)
+                  }
+                </CardContent>
+              </Card>
+
+              {/* Filters + list */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="flex flex-wrap gap-2 items-center" data-testid="filter-bar">
+                  <Filter className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <Select value={filterRating} onValueChange={setFilterRating}>
+                    <SelectTrigger className="h-8 text-xs w-28" data-testid="select-filter-rating"><SelectValue placeholder="All ratings" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All ratings</SelectItem>
+                      {[5, 4, 3, 2, 1].map(s => <SelectItem key={s} value={String(s)}>{s} stars</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-8 text-xs w-32" data-testid="select-filter-status"><SelectValue placeholder="All statuses" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="unanswered">Needs reply</SelectItem>
+                      <SelectItem value="answered">Responded</SelectItem>
+                      <SelectItem value="hidden">Hidden</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {serviceNames.length > 1 && (
+                    <Select value={filterService} onValueChange={setFilterService}>
+                      <SelectTrigger className="h-8 text-xs w-36" data-testid="select-filter-service"><SelectValue placeholder="All services" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All services</SelectItem>
+                        {serviceNames.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="h-8 text-xs w-28 ml-auto" data-testid="select-sort"><SelectValue placeholder="Sort" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="newest">Newest first</SelectItem>
+                      <SelectItem value="oldest">Oldest first</SelectItem>
+                      <SelectItem value="highest">Highest rated</SelectItem>
+                      <SelectItem value="lowest">Lowest rated</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {isLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="text-center py-16 border rounded-xl bg-gray-50" data-testid="no-reviews-empty-state">
+                    <Star className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                    <p className="font-semibold text-gray-700">
+                      {reviews.length === 0 ? "No reviews yet" : "No reviews match your filters"}
+                    </p>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {reviews.length === 0
+                        ? "Reviews will appear here once travelers rate your services."
+                        : "Try adjusting the filters above."}
+                    </p>
+                    {reviews.length > 0 && (
+                      <Button variant="outline" size="sm" className="mt-4" onClick={() => { setFilterRating("all"); setFilterStatus("all"); setFilterService("all"); }} data-testid="button-clear-filters">
+                        Clear Filters
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3" data-testid="reviews-list">
+                    {filtered.map(r => <ReviewCard key={r.id} review={r} onRespond={handleRespond} />)}
+                    <p className="text-xs text-center text-gray-400">{filtered.length} review{filtered.length !== 1 ? "s" : ""}</p>
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-3" data-testid="reviews-list">
-                {filtered.map(r => (
-                  <ReviewCard key={r.id} review={r} onRespond={handleRespond} />
-                ))}
-                <p className="text-xs text-center text-gray-400">{filtered.length} review{filtered.length !== 1 ? "s" : ""}</p>
+            </div>
+          </TabsContent>
+
+          {/* ── Reminders tab ── */}
+          <TabsContent value="reminders" className="mt-6">
+            <div className="space-y-4">
+              <div className="bg-sky-50 border border-sky-200 rounded-xl p-4 flex gap-3">
+                <Mail className="w-5 h-5 text-sky-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-sky-900">How review reminders work</p>
+                  <p className="text-sm text-sky-700 mt-0.5">
+                    A reminder email is automatically sent when you mark a booking as completed. This tab shows bookings where no review has been received yet — you can manually re-send the prompt if needed.
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
+
+              {pendingLoading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}
+                </div>
+              ) : pendingCount === 0 ? (
+                <div className="text-center py-16 border rounded-xl bg-gray-50" data-testid="no-pending-reviews-state">
+                  <CheckCircle className="w-12 h-12 mx-auto text-emerald-400 mb-3" />
+                  <p className="font-semibold text-gray-700">All caught up!</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Every completed booking has either received a review or had a reminder sent.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3" data-testid="pending-reviews-list">
+                  <p className="text-sm text-gray-500">
+                    {pendingCount} completed booking{pendingCount !== 1 ? "s" : ""} without a review yet.
+                  </p>
+                  {pendingData?.pendingReviews.map(b => (
+                    <PendingReminderCard
+                      key={b.id}
+                      booking={b}
+                      onSend={id => sendReminderMutation.mutate(id)}
+                      isSending={sendingId === b.id}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
       </div>
     </ProviderLayout>
   );

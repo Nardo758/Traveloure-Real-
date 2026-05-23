@@ -118,6 +118,30 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
             console.error('[Revenue] Service booking completion recording failed:', revErr);
           }
         })();
+
+        // Send review reminder email to traveler (non-blocking)
+        (async () => {
+          try {
+            const { emailService } = await import('../services/email.service');
+            const traveler = await storage.getUser(updated.travelerId);
+            const service = await storage.getProviderServiceById(updated.serviceId);
+            if (traveler?.email && service) {
+              const firstName = traveler.firstName || traveler.email.split('@')[0];
+              const lastName = traveler.lastName || '';
+              const result = await emailService.sendReviewReminder({
+                to: traveler.email,
+                travelerName: [firstName, lastName].filter(Boolean).join(' '),
+                serviceName: service.serviceName,
+                bookingId: updated.id,
+                confirmationCode: updated.trackingNumber || updated.id.slice(0, 8).toUpperCase(),
+                completedAt: updated.completedAt || new Date(),
+              });
+              console.log(`[ReviewReminder] Sent to ${traveler.email} for booking ${updated.id}: ${result.message ?? result.provider}`);
+            }
+          } catch (reminderErr) {
+            console.error('[ReviewReminder] Failed to send reminder:', reminderErr);
+          }
+        })();
       }
 
       res.json(updated);
