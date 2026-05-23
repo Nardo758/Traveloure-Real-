@@ -46,7 +46,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -158,6 +158,25 @@ export default function ServiceDetailPage() {
     queryKey: ["/api/bookings/user"],
     enabled: !!user,
   });
+
+  // ── Track recently viewed in sessionStorage ──
+  useEffect(() => {
+    if (!service) return;
+    const KEY = "traveloure_recently_viewed";
+    const entry = {
+      id: service.id,
+      serviceName: service.serviceName,
+      location: service.location,
+      averageRating: service.averageRating,
+      reviewCount: service.reviewCount,
+      price: service.price,
+    };
+    try {
+      const existing: typeof entry[] = JSON.parse(sessionStorage.getItem(KEY) || "[]");
+      const deduped = existing.filter((e) => e.id !== entry.id);
+      sessionStorage.setItem(KEY, JSON.stringify([entry, ...deduped].slice(0, 5)));
+    } catch {}
+  }, [service]);
 
   const { data: similarServices } = useQuery<Service[]>({
     queryKey: ["/api/services", "similar", service?.categoryId],
