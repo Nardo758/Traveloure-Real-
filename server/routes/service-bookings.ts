@@ -256,10 +256,13 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ travelerId: userId, status });
     
-    // Enrich bookings with hasReview flag
+    // Enrich bookings with hasReview flag and service name
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-      const reviews = await storage.getReviewsByBookingId(booking.id);
-      return { ...booking, hasReview: reviews.length > 0 };
+      const [reviews, service] = await Promise.all([
+        storage.getReviewsByBookingId(booking.id),
+        storage.getProviderServiceById(booking.serviceId),
+      ]);
+      return { ...booking, hasReview: reviews.length > 0, serviceName: service?.serviceName ?? null };
     }));
     
     res.json(enrichedBookings);
