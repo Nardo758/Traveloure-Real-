@@ -97,6 +97,7 @@ import TravelExpertsPage from "@/pages/travel-experts";
 import ServicesProviderPage from "@/pages/services-provider";
 import ItineraryPage from "@/pages/itinerary";
 import CreditsBillingPage from "@/pages/credits-billing";
+import MyReviews from "@/pages/my-reviews";
 import ExpertStatusPage from "@/pages/expert-status";
 import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
@@ -416,6 +417,10 @@ function Router() {
       {/* Consolidated Credits page */}
       <Route path="/credits">
         {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
+      </Route>
+
+      <Route path="/my-reviews">
+        {() => <DashboardLayout><ProtectedRoute component={MyReviews} /></DashboardLayout>}
       </Route>
       
       <Route path="/notifications">

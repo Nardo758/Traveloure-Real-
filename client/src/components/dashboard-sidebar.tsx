@@ -27,6 +27,7 @@ import {
   ShoppingCart,
   Package,
   Sparkles,
+  Star,
 } from "lucide-react";
 
 const menuGroups = [
@@ -54,6 +55,7 @@ const menuGroups = [
       { title: "Messages", href: "/chat", icon: MessageSquare, badge: true },
       { title: "Notifications", href: "/notifications", icon: Bell, badge: true },
       { title: "Credits", href: "/credits", icon: CreditCard },
+      { title: "My Reviews", href: "/my-reviews", icon: Star },
       { title: "Profile", href: "/profile", icon: User },
     ],
   },
