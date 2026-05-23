@@ -22,7 +22,8 @@ import {
   Lock,
   Pencil,
   Trash2,
-  X
+  X,
+  ShieldCheck
 } from "lucide-react";
 import {
   AlertDialog,
@@ -605,7 +606,7 @@ function ReviewHighlights({ reviews }: { reviews: Review[] }) {
                     </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
+                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                       {[1, 2, 3, 4, 5].map((s) => (
                         <Star
                           key={s}
@@ -619,6 +620,12 @@ function ReviewHighlights({ reviews }: { reviews: Review[] }) {
                       <span className="text-xs text-muted-foreground ml-1">
                         {format(new Date(r.createdAt), "MMM d, yyyy")}
                       </span>
+                      {(r.bookingId || r.isVerified) && (
+                        <span className="inline-flex items-center gap-0.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                          <ShieldCheck className="w-3 h-3" />
+                          Verified
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground line-clamp-2 italic">
                       "{r.reviewText}"
@@ -739,10 +746,14 @@ function ReviewCard({
                     />
                   ))}
                 </div>
-                {review.isVerified && (
-                  <Badge variant="secondary" className="text-xs">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Verified
+                {(review.bookingId || review.isVerified) && (
+                  <Badge
+                    className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800 gap-1"
+                    variant="outline"
+                    data-testid={`badge-verified-traveler-${review.id}`}
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    Verified Traveler
                   </Badge>
                 )}
               </div>
