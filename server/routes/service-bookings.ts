@@ -500,6 +500,23 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  app.patch("/api/services/:serviceId/reviews/:reviewId/respond", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const { reviewId } = req.params;
+      const review = await storage.getServiceReview(reviewId);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (review.providerId !== userId) return res.status(403).json({ message: "Only the service provider can respond to this review" });
+      const { responseText } = req.body;
+      if (!responseText?.trim()) return res.status(400).json({ message: "Response text is required" });
+      const updated = await storage.addReviewResponse(reviewId, responseText.trim());
+      res.json(updated);
+    } catch (err) {
+      console.error("Error adding review response:", err);
+      res.status(500).json({ message: "Failed to add response" });
+    }
+  });
+
   app.get("/api/vendor-availability/:serviceId", async (req, res) => {
     try {
       const { serviceId } = req.params;

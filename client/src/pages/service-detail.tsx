@@ -436,6 +436,7 @@ export default function ServiceDetailPage() {
                         review={review}
                         currentUserId={(user as any)?.claims?.sub ?? (user as any)?.id ?? ""}
                         serviceId={id!}
+                        serviceProviderId={service.userId}
                       />
                     ))}
                   </div>
@@ -507,13 +508,16 @@ function ReviewCard({
   review,
   currentUserId,
   serviceId,
+  serviceProviderId,
 }: {
   review: Review;
   currentUserId: string;
   serviceId: string;
+  serviceProviderId: string;
 }) {
   const { toast } = useToast();
-  const isOwner = !!currentUserId && review.travelerId === currentUserId;
+  const isOwner    = !!currentUserId && review.travelerId === currentUserId;
+  const isProvider = !!currentUserId && review.providerId === currentUserId;
 
   const [editing, setEditing]               = useState(false);
   const [editRating, setEditRating]         = useState(review.rating);
@@ -522,6 +526,9 @@ function ReviewCard({
   const [deleted, setDeleted]               = useState(false);
   const [displayRating, setDisplayRating]   = useState(review.rating);
   const [displayText, setDisplayText]       = useState(review.reviewText ?? "");
+  const [displayResponse, setDisplayResponse] = useState(review.responseText ?? "");
+  const [responding, setResponding]           = useState(false);
+  const [responseInput, setResponseInput]     = useState("");
 
   const updateMutation = useMutation({
     mutationFn: () =>
@@ -551,6 +558,21 @@ function ReviewCard({
       queryClient.invalidateQueries({ queryKey: ["/api/bookings/user"] });
     },
     onError: () => toast({ title: "Failed to delete review", variant: "destructive" }),
+  });
+
+  const respondMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/services/${serviceId}/reviews/${review.id}/respond`, {
+        responseText: responseInput.trim(),
+      }),
+    onSuccess: () => {
+      toast({ title: "Response posted!" });
+      setDisplayResponse(responseInput.trim());
+      setResponseInput("");
+      setResponding(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/services", serviceId, "reviews"] });
+    },
+    onError: () => toast({ title: "Failed to post response", variant: "destructive" }),
   });
 
   if (deleted) return null;
@@ -613,6 +635,20 @@ function ReviewCard({
                   </Button>
                 </div>
               )}
+
+              {/* Provider-only respond button */}
+              {isProvider && !displayResponse && !responding && !editing && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setResponding(true)}
+                  data-testid={`button-respond-review-${review.id}`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 mr-1" />
+                  Respond
+                </Button>
+              )}
             </div>
 
             <p className="text-sm text-muted-foreground mb-1">
@@ -666,12 +702,51 @@ function ReviewCard({
                     {displayText}
                   </p>
                 )}
-                {review.responseText && (
+                {displayResponse && (
                   <div className="mt-3 pl-4 border-l-2 border-primary/20">
                     <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
                     <p className="text-sm" data-testid={`text-response-${review.id}`}>
-                      {review.responseText}
+                      {displayResponse}
                     </p>
+                  </div>
+                )}
+
+                {/* Provider inline respond form */}
+                {responding && (
+                  <div className="mt-3 space-y-2 border rounded-lg p-3 bg-muted/20" data-testid={`respond-form-${review.id}`}>
+                    <p className="text-xs font-medium text-muted-foreground">Your response (visible to all guests)</p>
+                    <Textarea
+                      value={responseInput}
+                      onChange={(e) => setResponseInput(e.target.value)}
+                      placeholder="Write a response to this review…"
+                      rows={3}
+                      maxLength={1000}
+                      data-testid={`input-response-text-${review.id}`}
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => { setResponding(false); setResponseInput(""); }}
+                        data-testid={`button-cancel-respond-${review.id}`}
+                      >
+                        <X className="w-3.5 h-3.5 mr-1" />
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={respondMutation.isPending || !responseInput.trim()}
+                        onClick={() => respondMutation.mutate()}
+                        data-testid={`button-submit-response-${review.id}`}
+                      >
+                        {respondMutation.isPending ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5 mr-1" />
+                        )}
+                        Submit Response
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
