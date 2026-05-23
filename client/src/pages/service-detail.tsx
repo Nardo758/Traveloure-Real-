@@ -32,7 +32,8 @@ import {
   X,
   ShieldCheck,
   Reply,
-  TrendingUp
+  TrendingUp,
+  Layers
 } from "lucide-react";
 import {
   AlertDialog,
@@ -156,6 +157,15 @@ export default function ServiceDetailPage() {
   const { data: myBookings } = useQuery<ServiceBooking[]>({
     queryKey: ["/api/bookings/user"],
     enabled: !!user,
+  });
+
+  const { data: similarServices } = useQuery<Service[]>({
+    queryKey: ["/api/services", "similar", service?.categoryId],
+    queryFn: () =>
+      fetch(`/api/services?categoryId=${service!.categoryId}`)
+        .then((r) => r.json())
+        .then((all: Service[]) => all.filter((s) => s.id !== id).slice(0, 3)),
+    enabled: !!service?.categoryId,
   });
 
   const eligibleBooking = myBookings?.find(
@@ -636,8 +646,64 @@ export default function ServiceDetailPage() {
             </Card>
           </div>
         </div>
+
+        {/* ── Similar Services ── */}
+        {similarServices && similarServices.length > 0 && (
+          <div className="mt-8" data-testid="similar-services">
+            <div className="flex items-center gap-2 mb-4">
+              <Layers className="w-4 h-4 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Similar Services</h2>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {similarServices.map((s) => (
+                <SimilarServiceCard key={s.id} service={s} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
+  );
+}
+
+function SimilarServiceCard({ service: s }: { service: Service }) {
+  const rating = parseFloat(s.averageRating || "0") || 0;
+  const price  = parseFloat(s.price || "0") || 0;
+  return (
+    <Link href={`/services/${s.id}`}>
+      <Card
+        className="cursor-pointer hover:shadow-md transition-shadow border hover:border-primary/30 h-full"
+        data-testid={`card-similar-service-${s.id}`}
+      >
+        <CardContent className="p-4 flex flex-col h-full">
+          <h3 className="font-semibold text-sm leading-snug line-clamp-2 mb-1" data-testid={`text-similar-name-${s.id}`}>
+            {s.serviceName}
+          </h3>
+
+          {s.location && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+              <MapPin className="w-3 h-3 shrink-0" />
+              <span className="truncate">{s.location}</span>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground line-clamp-2 flex-1 mb-3">
+            {s.shortDescription || s.description || ""}
+          </p>
+
+          <div className="flex items-center justify-between mt-auto">
+            <div className="flex items-center gap-1">
+              <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+              <span className="text-xs font-medium">{rating.toFixed(1)}</span>
+              {s.reviewCount > 0 && (
+                <span className="text-xs text-muted-foreground">({s.reviewCount})</span>
+              )}
+            </div>
+            <span className="text-sm font-bold">${price.toFixed(0)}</span>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
