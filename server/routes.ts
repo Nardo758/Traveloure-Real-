@@ -113,6 +113,16 @@ export async function seedDatabase() {
     console.log("Test user terms updated: testuser@traveloure.test");
   }
 
+  // Ensure the test provider account (pacific-rentals) has a login password
+  const providerCheck = await db.select().from(users).where(eq(users.email, "pacific-rentals@traveloure.test")).limit(1);
+  if (providerCheck.length > 0 && !providerCheck[0].password) {
+    const hashedPassword = await hashPassword("Provider@1234");
+    await db.update(users)
+      .set({ password: hashedPassword, emailVerified: new Date(), authProvider: "email", termsAcceptedAt: new Date(), privacyAcceptedAt: new Date() })
+      .where(eq(users.email, "pacific-rentals@traveloure.test"));
+    console.log("Provider password set: pacific-rentals@traveloure.test");
+  }
+
   const existingTrips = await storage.getHelpGuideTrips();
   if (existingTrips.length === 0) {
     const usersList = await db.select().from(users).limit(1);
