@@ -64,7 +64,7 @@ interface Booking {
   createdAt: string;
   hasReview?: boolean;
   serviceName?: string | null;
-  existingReview?: { id: string; rating: number; reviewText: string | null } | null;
+  existingReview?: { id: string; rating: number; reviewText: string | null; responseText: string | null } | null;
 }
 
 interface ActivityBooking {
@@ -449,6 +449,26 @@ function BookingCard({
                 <p className="line-clamp-2">Notes: {booking.bookingDetails.notes}</p>
               )}
             </div>
+
+            {/* Your review excerpt */}
+            {booking.existingReview?.reviewText && (
+              <p className="text-xs text-muted-foreground italic mt-2 line-clamp-2" data-testid={`text-review-excerpt-${booking.id}`}>
+                "{booking.existingReview.reviewText}"
+              </p>
+            )}
+
+            {/* Provider response */}
+            {booking.existingReview?.responseText && (
+              <div className="mt-2 rounded-md border border-blue-100 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20 px-3 py-2" data-testid={`provider-response-${booking.id}`}>
+                <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-1 mb-1">
+                  <MessageSquare className="w-3 h-3" />
+                  Provider replied
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-300 line-clamp-3">
+                  {booking.existingReview.responseText}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="text-right">
@@ -729,6 +749,19 @@ function ReviewDialog({
                   data-testid="input-review-text"
                 />
               </div>
+
+              {/* Provider response (read-only, edit mode only) */}
+              {isEditing && booking?.existingReview?.responseText && (
+                <div className="rounded-md border border-blue-100 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20 px-3 py-3" data-testid="dialog-provider-response">
+                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-1 mb-1.5">
+                    <MessageSquare className="w-3 h-3" />
+                    Provider's response
+                  </p>
+                  <p className="text-sm text-blue-800 dark:text-blue-300">
+                    {booking.existingReview.responseText}
+                  </p>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-2">
