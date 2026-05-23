@@ -483,6 +483,14 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
       await db.execute(
         sql`DELETE FROM service_reviews WHERE traveler_id = ${REVIEWER2_ID} AND service_id = ${SERVICE_ID}`
       );
+      // Recalculate aggregate so reviewCount/averageRating stay consistent
+      const remaining = await storage.getServiceReviews(SERVICE_ID);
+      const avgRating = remaining.length > 0
+        ? remaining.reduce((sum, r) => sum + r.rating, 0) / remaining.length
+        : 0;
+      await db.update(providerServices)
+        .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: remaining.length, updatedAt: new Date() })
+        .where(eq(providerServices.id, SERVICE_ID));
       res.json({ ok: true });
     });
 
