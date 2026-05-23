@@ -1297,6 +1297,9 @@ export default function DiscoverPage() {
           </section>
         )}
 
+        {/* Recently Viewed */}
+        <RecentlyViewedRow />
+
         {/* Main Content */}
         <section className="py-12">
           <div className="container mx-auto px-4 max-w-[1400px]">
@@ -2126,5 +2129,88 @@ export default function DiscoverPage() {
       </div>
       <TripQueueIndicator />
     </Layout>
+  );
+}
+
+interface RecentEntry {
+  id: string;
+  serviceName: string;
+  location: string;
+  averageRating: string;
+  reviewCount: number;
+  price: string;
+}
+
+function RecentlyViewedRow() {
+  const [items, setItems] = useState<RecentEntry[]>([]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(sessionStorage.getItem("traveloure_recently_viewed") || "[]");
+      setItems(stored);
+    } catch {}
+  }, []);
+
+  if (items.length === 0) return null;
+
+  return (
+    <section className="py-6 border-b bg-muted/20" data-testid="recently-viewed-section">
+      <div className="container mx-auto px-4 max-w-6xl">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Recently Viewed
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:text-foreground underline"
+            onClick={() => {
+              sessionStorage.removeItem("traveloure_recently_viewed");
+              setItems([]);
+            }}
+            data-testid="button-clear-recently-viewed"
+          >
+            Clear
+          </button>
+        </div>
+
+        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
+          {items.map((item) => {
+            const rating = parseFloat(item.averageRating || "0") || 0;
+            const price  = parseFloat(item.price || "0") || 0;
+            return (
+              <Link key={item.id} href={`/services/${item.id}`}>
+                <div
+                  className="shrink-0 w-52 rounded-xl border bg-card p-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer"
+                  data-testid={`card-recently-viewed-${item.id}`}
+                >
+                  <p className="text-sm font-medium line-clamp-2 leading-snug mb-1" data-testid={`text-recent-name-${item.id}`}>
+                    {item.serviceName}
+                  </p>
+                  {item.location && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+                      <MapPin className="w-3 h-3 shrink-0" />
+                      <span className="truncate">{item.location}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mt-auto">
+                    <div className="flex items-center gap-1">
+                      <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      <span className="text-xs font-medium">{rating.toFixed(1)}</span>
+                      {item.reviewCount > 0 && (
+                        <span className="text-xs text-muted-foreground">({item.reviewCount})</span>
+                      )}
+                    </div>
+                    <span className="text-xs font-bold">${price.toFixed(0)}</span>
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
