@@ -207,6 +207,7 @@ export interface IStorage {
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
   getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
   getReviewsByTravelerId(travelerId: string): Promise<(ServiceReview & { serviceName: string | null })[]>;
+  getReviewsByProviderId(providerId: string): Promise<(ServiceReview & { serviceName: string | null; travelerFirstName: string | null; travelerLastName: string | null })[]>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
   updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined>;
   deleteServiceReview(id: string): Promise<void>;
@@ -1186,6 +1187,27 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceReviews.travelerId, travelerId))
       .orderBy(desc(serviceReviews.createdAt));
     return results.map(r => ({ ...r.review, serviceName: r.serviceName ?? null }));
+  }
+
+  async getReviewsByProviderId(providerId: string): Promise<(ServiceReview & { serviceName: string | null; travelerFirstName: string | null; travelerLastName: string | null })[]> {
+    const results = await db
+      .select({
+        review: serviceReviews,
+        serviceName: providerServices.serviceName,
+        travelerFirstName: users.firstName,
+        travelerLastName: users.lastName,
+      })
+      .from(serviceReviews)
+      .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+      .leftJoin(users, eq(serviceReviews.travelerId, users.id))
+      .where(eq(serviceReviews.providerId, providerId))
+      .orderBy(desc(serviceReviews.createdAt));
+    return results.map(r => ({
+      ...r.review,
+      serviceName: r.serviceName ?? null,
+      travelerFirstName: r.travelerFirstName ?? null,
+      travelerLastName: r.travelerLastName ?? null,
+    }));
   }
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {

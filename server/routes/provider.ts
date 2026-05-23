@@ -408,6 +408,25 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
     }
   });
 
+  app.get("/api/provider/reviews", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
+      const reviews = await storage.getReviewsByProviderId(userId);
+      const unansweredCount = reviews.filter(r => !r.responseText && !r.isHidden).length;
+      const avgRating = reviews.length > 0
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        : 0;
+      res.json({ reviews, unansweredCount, avgRating: Math.round(avgRating * 10) / 10, total: reviews.length });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load reviews", error: error.message });
+    }
+  });
+
   app.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
