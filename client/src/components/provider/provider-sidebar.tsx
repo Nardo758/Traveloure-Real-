@@ -13,7 +13,8 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  Star
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,6 +36,7 @@ const navGroups = [
     items: [
       { icon: Package, label: "Services", href: "/provider/services" },
       { icon: DollarSign, label: "Earnings", href: "/provider/earnings" },
+      { icon: Star, label: "Reviews", href: "/provider/reviews" },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics" },
     ],
   },

@@ -61,6 +61,7 @@ import ProviderCalendar from "@/pages/provider/calendar";
 import ProviderProfile from "@/pages/provider/profile";
 import ProviderSettings from "@/pages/provider/settings";
 import ProviderResources from "@/pages/provider/resources";
+import ProviderReviews from "@/pages/provider/reviews";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
 import AdminExperts from "@/pages/admin/experts";
@@ -580,6 +581,9 @@ function Router() {
       </Route>
       <Route path="/provider/settings">
         {() => <ProtectedRoute component={ProviderSettings} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/reviews">
+        {() => <ProtectedRoute component={ProviderReviews} requiredRole="provider" />}
       </Route>
       <Route path="/provider/resources">
         {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
