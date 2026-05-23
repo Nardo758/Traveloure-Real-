@@ -206,6 +206,7 @@ export interface IStorage {
   getAllServiceReviews(): Promise<ServiceReview[]>;
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
   getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
+  getReviewsByTravelerId(travelerId: string): Promise<(ServiceReview & { serviceName: string | null })[]>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
   updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined>;
   deleteServiceReview(id: string): Promise<void>;
@@ -1175,6 +1176,16 @@ export class DatabaseStorage implements IStorage {
   async getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]> {
     return await db.select().from(serviceReviews)
       .where(eq(serviceReviews.bookingId, bookingId));
+  }
+
+  async getReviewsByTravelerId(travelerId: string): Promise<(ServiceReview & { serviceName: string | null })[]> {
+    const results = await db
+      .select({ review: serviceReviews, serviceName: providerServices.serviceName })
+      .from(serviceReviews)
+      .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+      .where(eq(serviceReviews.travelerId, travelerId))
+      .orderBy(desc(serviceReviews.createdAt));
+    return results.map(r => ({ ...r.review, serviceName: r.serviceName ?? null }));
   }
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
