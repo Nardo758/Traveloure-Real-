@@ -315,6 +315,11 @@ export default function ServiceDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
 
+                {/* ── Review Highlights Summary ── */}
+                {!reviewsLoading && reviews && reviews.length > 0 && (
+                  <ReviewHighlights reviews={reviews} />
+                )}
+
                 {/* ── Write a Review CTA / Form ── */}
                 {user && !alreadyReviewed && (
                   <div className="border rounded-lg p-4 bg-muted/30" data-testid="review-form-section">
@@ -501,6 +506,138 @@ export default function ServiceDetailPage() {
         </div>
       </div>
     </Layout>
+  );
+}
+
+function ReviewHighlights({ reviews }: { reviews: Review[] }) {
+  const total = reviews.length;
+  const avg = total > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / total : 0;
+
+  const breakdown = [5, 4, 3, 2, 1].map((star) => ({
+    star,
+    count: reviews.filter((r) => r.rating === star).length,
+  }));
+
+  const recent = [...reviews]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 3)
+    .filter((r) => r.reviewText && r.reviewText.trim().length > 0);
+
+  return (
+    <div
+      className="rounded-xl border bg-muted/20 p-5 space-y-5"
+      data-testid="review-highlights"
+    >
+      {/* ── Score + breakdown ── */}
+      <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
+        {/* Big average */}
+        <div className="flex flex-col items-center shrink-0 min-w-[80px]">
+          <span
+            className="text-5xl font-bold tabular-nums leading-none"
+            data-testid="text-avg-rating"
+          >
+            {avg.toFixed(1)}
+          </span>
+          <div className="flex items-center gap-0.5 mt-1.5">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                className={`w-4 h-4 ${
+                  s <= Math.round(avg)
+                    ? "text-amber-400 fill-amber-400"
+                    : "text-muted-foreground/30"
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-xs text-muted-foreground mt-1">
+            {total} {total === 1 ? "review" : "reviews"}
+          </span>
+        </div>
+
+        {/* Breakdown bars */}
+        <div className="flex-1 w-full space-y-1.5" data-testid="rating-breakdown">
+          {breakdown.map(({ star, count }) => {
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+            return (
+              <div
+                key={star}
+                className="flex items-center gap-2 text-sm"
+                data-testid={`breakdown-star-${star}`}
+              >
+                <span className="w-4 text-right text-muted-foreground font-medium shrink-0">
+                  {star}
+                </span>
+                <Star className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0" />
+                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-amber-400 transition-all duration-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="w-6 text-right text-xs text-muted-foreground shrink-0">
+                  {count}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── 3 recent review snippets ── */}
+      {recent.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Recent highlights
+            </p>
+            <div className="space-y-3">
+              {recent.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-start gap-3"
+                  data-testid={`highlight-review-${r.id}`}
+                >
+                  <Avatar className="w-7 h-7 shrink-0 mt-0.5">
+                    <AvatarFallback className="text-xs">
+                      <User className="w-3.5 h-3.5" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Star
+                          key={s}
+                          className={`w-3 h-3 ${
+                            s <= r.rating
+                              ? "text-amber-400 fill-amber-400"
+                              : "text-muted-foreground/30"
+                          }`}
+                        />
+                      ))}
+                      <span className="text-xs text-muted-foreground ml-1">
+                        {format(new Date(r.createdAt), "MMM d, yyyy")}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground line-clamp-2 italic">
+                      "{r.reviewText}"
+                    </p>
+                    {r.responseText && (
+                      <div className="mt-1.5 pl-2 border-l-2 border-blue-300">
+                        <p className="text-xs text-blue-700 dark:text-blue-400 line-clamp-1">
+                          Provider: {r.responseText}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
