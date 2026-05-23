@@ -575,6 +575,10 @@ export const serviceReviews = pgTable("service_reviews", {
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
   isVerified: boolean("is_verified").default(false),
+  isHidden: boolean("is_hidden").default(false),
+  hiddenReason: text("hidden_reason"),
+  hiddenBy: varchar("hidden_by"),
+  hiddenAt: timestamp("hidden_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

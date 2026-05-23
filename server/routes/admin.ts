@@ -628,4 +628,68 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
     }
   });
 
+  // ── Admin Review Moderation ───────────────────────────────────────────────
+
+  // GET /api/admin/reviews — list ALL reviews (including hidden) for admin
+  app.get("/api/admin/reviews", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = (req.user as any).claims?.sub;
+      const user   = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const reviews = await storage.getAllServiceReviews();
+      res.json(reviews);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to get reviews", error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/reviews/:reviewId/hide — hide (suppress) a review
+  app.patch("/api/admin/reviews/:reviewId/hide", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = (req.user as any).claims?.sub;
+      const user   = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { reviewId } = req.params;
+      const { reason }   = req.body as { reason?: string };
+      if (!reason || !reason.trim()) {
+        return res.status(400).json({ message: "reason is required" });
+      }
+      const updated = await storage.hideServiceReview(reviewId, reason.trim(), userId);
+      if (!updated) return res.status(404).json({ message: "Review not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to hide review", error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/reviews/:reviewId/unhide — restore a hidden review
+  app.patch("/api/admin/reviews/:reviewId/unhide", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const userId = (req.user as any).claims?.sub;
+      const user   = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { reviewId } = req.params;
+      const updated = await storage.unhideServiceReview(reviewId);
+      if (!updated) return res.status(404).json({ message: "Review not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to unhide review", error: error.message });
+    }
+  });
+
 }
