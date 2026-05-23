@@ -501,5 +501,12 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
       );
       res.json({ ok: true });
     });
+
+    // Dev-only: clear hidden state on any review (for REV-13 idempotency)
+    app.delete("/api/dev/reset-review-hidden/:reviewId", async (req, res) => {
+      const { reviewId } = req.params;
+      await storage.unhideServiceReview(reviewId);
+      res.json({ ok: true });
+    });
   }
 }
