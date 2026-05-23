@@ -30,7 +30,9 @@ import {
   Pencil,
   Trash2,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Reply,
+  TrendingUp
 } from "lucide-react";
 import {
   AlertDialog,
@@ -551,6 +553,46 @@ export default function ServiceDetailPage() {
                 </div>
 
                 <Separator className="my-4" />
+
+                {/* ── Provider stats ── */}
+                {reviews && reviews.length > 0 && (() => {
+                  const responded = reviews.filter((r) => r.responseText && r.responseText.trim().length > 0).length;
+                  const rate = Math.round((responded / reviews.length) * 100);
+                  const color = rate >= 80 ? "text-emerald-600 dark:text-emerald-400" : rate >= 50 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+                  const bgColor = rate >= 80 ? "bg-emerald-50 dark:bg-emerald-950/40" : rate >= 50 ? "bg-amber-50 dark:bg-amber-950/40" : "bg-muted/30";
+                  return (
+                    <div className={`rounded-lg p-3 mb-4 space-y-2 ${bgColor}`} data-testid="provider-stats">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <Reply className="w-3.5 h-3.5" />
+                          <span>Response rate</span>
+                        </div>
+                        <span className={`font-semibold ${color}`} data-testid="text-response-rate">
+                          {rate}%
+                        </span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ${rate >= 80 ? "bg-emerald-500" : rate >= 50 ? "bg-amber-400" : "bg-muted-foreground/40"}`}
+                          style={{ width: `${rate}%` }}
+                          data-testid="bar-response-rate"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" />
+                          <span>{responded} of {reviews.length} reviews answered</span>
+                        </div>
+                        {rate >= 80 && (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">Highly responsive</span>
+                        )}
+                        {rate >= 50 && rate < 80 && (
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">Moderately responsive</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="space-y-3">
                   <Button 
