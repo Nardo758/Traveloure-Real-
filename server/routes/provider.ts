@@ -408,12 +408,87 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
     }
   });
 
+  app.get("/api/provider/pending-reviews", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      const isProvider = user.role === "provider" || user.role === "service_provider" || user.role === "admin";
+      if (!user || !isProvider) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
+      // Completed bookings for this provider
+      const completed = await storage.getServiceBookings({ providerId: userId, status: "completed" });
+      // Reviews already submitted for those bookings
+      const allReviews = await storage.getReviewsByProviderId(userId);
+      const reviewedBookingIds = new Set(allReviews.map(r => r.bookingId));
+      // Filter to bookings without a review
+      const pending = completed.filter(b => !reviewedBookingIds.has(b.id));
+      // Enrich with service names and traveler names
+      const enriched = await Promise.all(pending.map(async b => {
+        const [service, traveler] = await Promise.all([
+          storage.getProviderServiceById(b.serviceId),
+          storage.getUser(b.travelerId),
+        ]);
+        return {
+          ...b,
+          serviceName: service?.serviceName ?? null,
+          travelerFirstName: traveler?.firstName ?? null,
+          travelerLastName: traveler?.lastName ?? null,
+          travelerEmail: traveler?.email ?? null,
+        };
+      }));
+      res.json({ pendingReviews: enriched, count: enriched.length });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to load pending reviews", error: error.message });
+    }
+  });
+
+  app.post("/api/provider/bookings/:bookingId/send-review-reminder", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      const isProviderRole = user.role === "provider" || user.role === "service_provider" || user.role === "admin";
+      if (!user || !isProviderRole) {
+        return res.status(403).json({ message: "Provider access required" });
+      }
+      const booking = await storage.getServiceBooking(req.params.bookingId);
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      if (booking.status !== "completed") {
+        return res.status(400).json({ message: "Reminders can only be sent for completed bookings" });
+      }
+      const { emailService } = await import('../services/email.service');
+      const [traveler, service] = await Promise.all([
+        storage.getUser(booking.travelerId),
+        storage.getProviderServiceById(booking.serviceId),
+      ]);
+      if (!traveler?.email || !service) {
+        return res.status(400).json({ message: "Could not resolve traveler email or service name" });
+      }
+      const result = await emailService.sendReviewReminder({
+        to: traveler.email,
+        travelerName: [traveler.firstName, traveler.lastName].filter(Boolean).join(' ') || traveler.email.split('@')[0],
+        serviceName: service.serviceName,
+        bookingId: booking.id,
+        confirmationCode: booking.trackingNumber || booking.id.slice(0, 8).toUpperCase(),
+        completedAt: booking.completedAt || new Date(),
+      });
+      res.json({ sent: true, result });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to send reminder", error: error.message });
+    }
+  });
+
   app.get("/api/provider/reviews", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      const canAccessReviews = user.role === "provider" || user.role === "service_provider" || user.role === "admin";
+      if (!user || !canAccessReviews) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const reviews = await storage.getReviewsByProviderId(userId);

@@ -18,6 +18,15 @@
  *   await resend.emails.send({ from, to, subject, html });
  */
 
+export interface ReviewReminderPayload {
+  to: string;
+  travelerName: string;
+  serviceName: string;
+  bookingId: string;
+  confirmationCode: string;
+  completedAt: Date;
+}
+
 export interface BookingConfirmationPayload {
   to: string;
   guestName: string;
@@ -56,6 +65,15 @@ class EmailService {
   }
 
   /**
+   * Send a review reminder email to a traveler after their booking completes.
+   */
+  async sendReviewReminder(payload: ReviewReminderPayload): Promise<EmailResult> {
+    const subject = `How was your experience with ${payload.serviceName}?`;
+    const html = this._buildReviewReminderHtml(payload);
+    return this._send({ to: payload.to, subject, html });
+  }
+
+  /**
    * Send a booking cancellation email.
    */
   async sendBookingCancellation(payload: {
@@ -77,6 +95,34 @@ class EmailService {
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
+
+  private _buildReviewReminderHtml(p: ReviewReminderPayload): string {
+    const baseUrl = process.env.REPLIT_DOMAINS
+      ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+      : "https://traveloure.com";
+    const reviewUrl = `${baseUrl}/my-bookings`;
+    const completedStr = new Date(p.completedAt).toLocaleDateString("en-US", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    });
+    return `
+<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#222">
+  <h2 style="color:#FF385C">How did it go? ⭐</h2>
+  <p>Hi ${p.travelerName},</p>
+  <p>Your booking for <strong>${p.serviceName}</strong> (ref: ${p.confirmationCode}) was completed on ${completedStr}.</p>
+  <p>We'd love to hear about your experience! Your review helps other travelers discover great services and helps providers improve.</p>
+  <p style="margin:24px 0">
+    <a href="${reviewUrl}"
+       style="background:#FF385C;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block">
+      Leave a Review
+    </a>
+  </p>
+  <p style="color:#666;font-size:14px">It only takes a minute, and your feedback makes a real difference.</p>
+  <p style="color:#999;font-size:12px;margin-top:32px">— The Traveloure Team<br>You're receiving this because you recently completed a booking on Traveloure.</p>
+</body>
+</html>`.trim();
+  }
 
   private async _send(opts: {
     to: string;
