@@ -757,9 +757,12 @@ export default function DiscoverPage() {
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
+  // Seed search from URL ?q= param (e.g. from homepage hero search)
+  const urlQ = urlParams.get("q") || "";
+
   // Search and filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(urlQ);
+  const [debouncedQuery, setDebouncedQuery] = useState(urlQ);
   const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
@@ -782,8 +785,8 @@ export default function DiscoverPage() {
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
-  // Tab navigation state (read from URL)
-  const urlTab = urlParams.get("tab") || "travelpulse";
+  // Tab navigation state (read from URL — if ?q= present, default to services tab)
+  const urlTab = urlParams.get("tab") || (urlQ ? "services" : "travelpulse");
   const urlCity = urlParams.get("city") || "";
   const [activeTab, setActiveTab] = useState(urlTab);
 
