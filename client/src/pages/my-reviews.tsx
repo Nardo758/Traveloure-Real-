@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Star, Pencil, Trash2, ChevronRight, MessageSquare, EyeOff } from "lucide-react";
+import { Star, Pencil, Trash2, ChevronRight, MessageSquare, EyeOff, ArrowUpDown, SlidersHorizontal, X } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -256,14 +263,73 @@ function ReviewCard({ review, onDeleted }: { review: MyReview; onDeleted: () => 
   );
 }
 
+type SortOption = "newest" | "oldest" | "highest" | "lowest";
+
+function StarFilterButton({
+  stars,
+  active,
+  count,
+  onClick,
+}: {
+  stars: number | null;
+  active: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={stars === null ? "filter-all" : `filter-star-${stars}`}
+      className={[
+        "inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
+        active
+          ? "bg-[#FF385C] border-[#FF385C] text-white shadow-sm"
+          : "bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50",
+      ].join(" ")}
+    >
+      {stars === null ? (
+        "All"
+      ) : (
+        <>
+          {stars}
+          <Star size={10} className={active ? "fill-white text-white" : "fill-amber-400 text-amber-400"} />
+        </>
+      )}
+      <span className={active ? "text-white/80" : "text-gray-400"}>({count})</span>
+    </button>
+  );
+}
+
 export default function MyReviews() {
   const { data: reviews, isLoading } = useQuery<MyReview[]>({
     queryKey: ["/api/my-reviews"],
   });
 
-  const [deletedCount, setDeletedCount] = useState(0);
+  const [filterStar, setFilterStar] = useState<number | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>("newest");
 
-  const visibleReviews = reviews ?? [];
+  const allReviews = reviews ?? [];
+
+  const starCounts = useMemo(() => {
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    allReviews.forEach(r => { counts[r.rating] = (counts[r.rating] || 0) + 1; });
+    return counts;
+  }, [allReviews]);
+
+  const processedReviews = useMemo(() => {
+    let list = filterStar === null ? allReviews : allReviews.filter(r => r.rating === filterStar);
+    list = [...list].sort((a, b) => {
+      if (sortBy === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (sortBy === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (sortBy === "highest") return b.rating - a.rating;
+      if (sortBy === "lowest") return a.rating - b.rating;
+      return 0;
+    });
+    return list;
+  }, [allReviews, filterStar, sortBy]);
+
+  const isFiltered = filterStar !== null;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8" data-testid="my-reviews-page">
@@ -282,7 +348,7 @@ export default function MyReviews() {
         </div>
       )}
 
-      {!isLoading && visibleReviews.length === 0 && (
+      {!isLoading && allReviews.length === 0 && (
         <div className="text-center py-16 text-gray-400" data-testid="my-reviews-empty">
           <Star size={40} className="mx-auto mb-3 opacity-30" />
           <p className="text-base font-medium text-gray-500">No reviews yet</p>
@@ -297,20 +363,105 @@ export default function MyReviews() {
         </div>
       )}
 
-      {!isLoading && visibleReviews.length > 0 && (
+      {!isLoading && allReviews.length > 0 && (
         <>
-          <p className="text-sm text-gray-500 mb-4" data-testid="reviews-count">
-            {visibleReviews.length} review{visibleReviews.length !== 1 ? "s" : ""}
-          </p>
-          <div className="space-y-4">
-            {visibleReviews.map(review => (
-              <ReviewCard
-                key={review.id}
-                review={review}
-                onDeleted={() => setDeletedCount(c => c + 1)}
+          {/* Filter + Sort bar */}
+          <div className="mb-5 space-y-3">
+            {/* Star filter pills */}
+            <div className="flex items-center gap-2 flex-wrap" data-testid="star-filter-bar">
+              <span className="flex items-center gap-1 text-xs text-gray-400 font-medium shrink-0">
+                <SlidersHorizontal size={12} /> Filter
+              </span>
+              <StarFilterButton
+                stars={null}
+                active={filterStar === null}
+                count={allReviews.length}
+                onClick={() => setFilterStar(null)}
               />
-            ))}
+              {([5, 4, 3, 2, 1] as const).map(s => (
+                starCounts[s] > 0 && (
+                  <StarFilterButton
+                    key={s}
+                    stars={s}
+                    active={filterStar === s}
+                    count={starCounts[s]}
+                    onClick={() => setFilterStar(filterStar === s ? null : s)}
+                  />
+                )
+              ))}
+            </div>
+
+            {/* Sort + result count row */}
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-500" data-testid="reviews-count">
+                {processedReviews.length === allReviews.length ? (
+                  <>{allReviews.length} review{allReviews.length !== 1 ? "s" : ""}</>
+                ) : (
+                  <>
+                    <span className="font-medium text-gray-800">{processedReviews.length}</span>
+                    {" of "}
+                    {allReviews.length} reviews
+                    <button
+                      className="ml-2 inline-flex items-center gap-0.5 text-xs text-[#FF385C] hover:underline"
+                      onClick={() => setFilterStar(null)}
+                      data-testid="clear-filter"
+                    >
+                      <X size={10} /> Clear filter
+                    </button>
+                  </>
+                )}
+              </p>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <ArrowUpDown size={12} className="text-gray-400" />
+                <Select
+                  value={sortBy}
+                  onValueChange={v => setSortBy(v as SortOption)}
+                >
+                  <SelectTrigger
+                    className="h-8 text-xs w-36 border-gray-200"
+                    data-testid="sort-select"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest" data-testid="sort-newest">Newest first</SelectItem>
+                    <SelectItem value="oldest" data-testid="sort-oldest">Oldest first</SelectItem>
+                    <SelectItem value="highest" data-testid="sort-highest">Highest rated</SelectItem>
+                    <SelectItem value="lowest" data-testid="sort-lowest">Lowest rated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
+
+          {/* No results after filtering */}
+          {processedReviews.length === 0 && isFiltered && (
+            <div className="text-center py-12 text-gray-400" data-testid="filter-empty">
+              <Star size={32} className="mx-auto mb-2 opacity-20" />
+              <p className="text-sm text-gray-500">No {filterStar}★ reviews found.</p>
+              <button
+                className="mt-3 text-xs text-[#FF385C] hover:underline"
+                onClick={() => setFilterStar(null)}
+                data-testid="clear-filter-empty"
+              >
+                Show all reviews
+              </button>
+            </div>
+          )}
+
+          {/* Review list */}
+          {processedReviews.length > 0 && (
+            <div className="space-y-4">
+              {processedReviews.map(review => (
+                <ReviewCard
+                  key={review.id}
+                  review={review}
+                  onDeleted={() => { /* cache invalidation handles re-render */ }}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
