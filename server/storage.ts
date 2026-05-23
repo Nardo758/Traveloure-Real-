@@ -203,12 +203,15 @@ export interface IStorage {
 
   // Service Reviews
   getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
+  getAllServiceReviews(): Promise<ServiceReview[]>;
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
   getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
   updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined>;
   deleteServiceReview(id: string): Promise<void>;
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
+  hideServiceReview(id: string, reason: string, adminId: string): Promise<ServiceReview | undefined>;
+  unhideServiceReview(id: string): Promise<ServiceReview | undefined>;
 
   // Unified Discovery
   unifiedSearch(filters: {
@@ -1155,7 +1158,12 @@ export class DatabaseStorage implements IStorage {
   // Service Reviews
   async getServiceReviews(serviceId: string): Promise<ServiceReview[]> {
     return await db.select().from(serviceReviews)
-      .where(eq(serviceReviews.serviceId, serviceId))
+      .where(and(eq(serviceReviews.serviceId, serviceId), eq(serviceReviews.isHidden, false)))
+      .orderBy(desc(serviceReviews.createdAt));
+  }
+
+  async getAllServiceReviews(): Promise<ServiceReview[]> {
+    return await db.select().from(serviceReviews)
       .orderBy(desc(serviceReviews.createdAt));
   }
 
@@ -1222,6 +1230,42 @@ export class DatabaseStorage implements IStorage {
     await db.update(providerServices)
       .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: remaining.length, updatedAt: new Date() })
       .where(eq(providerServices.id, review.serviceId));
+  }
+
+  async hideServiceReview(id: string, reason: string, adminId: string): Promise<ServiceReview | undefined> {
+    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
+    if (!review) return undefined;
+    const [updated] = await db.update(serviceReviews)
+      .set({ isHidden: true, hiddenReason: reason, hiddenBy: adminId, hiddenAt: new Date() })
+      .where(eq(serviceReviews.id, id))
+      .returning();
+    // Recalculate aggregate excluding this review
+    const visible = await this.getServiceReviews(review.serviceId);
+    const avgRating = visible.length > 0
+      ? visible.reduce((sum, r) => sum + r.rating, 0) / visible.length
+      : 0;
+    await db.update(providerServices)
+      .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: visible.length, updatedAt: new Date() })
+      .where(eq(providerServices.id, review.serviceId));
+    return updated;
+  }
+
+  async unhideServiceReview(id: string): Promise<ServiceReview | undefined> {
+    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
+    if (!review) return undefined;
+    const [updated] = await db.update(serviceReviews)
+      .set({ isHidden: false, hiddenReason: null, hiddenBy: null, hiddenAt: null })
+      .where(eq(serviceReviews.id, id))
+      .returning();
+    // Recalculate aggregate including this review again
+    const visible = await this.getServiceReviews(review.serviceId);
+    const avgRating = visible.length > 0
+      ? visible.reduce((sum, r) => sum + r.rating, 0) / visible.length
+      : 0;
+    await db.update(providerServices)
+      .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: visible.length, updatedAt: new Date() })
+      .where(eq(providerServices.id, review.serviceId));
+    return updated;
   }
 
   async addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined> {
