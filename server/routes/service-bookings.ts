@@ -241,6 +241,16 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  app.get("/api/my-reviews", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const reviews = await storage.getReviewsByTravelerId(userId);
+      res.json(reviews);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch reviews", error: error.message });
+    }
+  });
+
   app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
     const status = req.query.status as string | undefined;
