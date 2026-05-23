@@ -499,7 +499,7 @@ export default function LandingPage() {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const q = (e.currentTarget.elements.namedItem("q") as HTMLInputElement).value;
-                  window.location.href = `/explore?q=${encodeURIComponent(q)}`;
+                  window.location.href = `/discover?q=${encodeURIComponent(q)}`;
                 }}
                 className="flex items-center gap-2 bg-white/95 backdrop-blur rounded-full px-5 py-2 shadow-xl"
               >
