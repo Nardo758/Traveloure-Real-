@@ -485,5 +485,13 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
       );
       res.json({ ok: true });
     });
+
+    app.delete("/api/dev/reset-provider-response", async (req, res) => {
+      const SERVICE_ID = "24717f66-4741-400e-9f58-97224f8a2856";
+      await db.execute(
+        sql`UPDATE service_reviews SET response_text = NULL, response_at = NULL WHERE service_id = ${SERVICE_ID}`
+      );
+      res.json({ ok: true });
+    });
   }
 }
