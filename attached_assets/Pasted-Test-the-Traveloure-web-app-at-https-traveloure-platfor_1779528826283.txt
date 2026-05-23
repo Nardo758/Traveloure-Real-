@@ -1,0 +1,41 @@
+Test the Traveloure web app at https://traveloure-platform.replit.app
+
+Run these 5 final UI quality tests:
+
+TEST 1 (UI-06): Logo Click Goes Home
+- From any page (try from an expert profile and from bookings)
+- Click the Traveloure logo in the top-left header
+- Expected: Takes you back to the homepage every time
+- Report: PASS or FAIL + did it work from every page?
+
+TEST 2 (UI-07): Page Load Speed
+- Press Ctrl+Shift+R (hard reload) on the homepage
+- Open DevTools (F12) → Network tab → look at the bottom for total load time
+- Also check: are there any red failed network requests?
+- Expected: Page fully loads in under 3 seconds, no failed requests
+- Report: PASS or FAIL + exact load time shown + any failed requests listed
+
+TEST 3 (UI-08): Images Load Correctly
+- Visit these pages and look for broken image icons (a torn image placeholder):
+  1. Homepage hero section
+  2. Expert listing page
+  3. Any expert profile
+  4. Any activity/booking detail page
+- Expected: All images load correctly, no broken placeholders
+- Report: PASS or FAIL + list any pages where images are broken
+
+TEST 4 (UI-09): Console Errors Check
+- Open DevTools (F12) → Console tab
+- Navigate through ALL major pages: Home, Experts, Bookings, Profile, Itinerary
+- Look for RED error messages only (ignore yellow warnings — those are known Replit dev environment warnings)
+- Expected: No red JavaScript errors or failed API calls
+- Report: PASS or FAIL + list any RED errors found and which page they appear on
+
+TEST 5 (UI-10): Global Search Functionality
+- Find the search bar (usually in the navbar or homepage hero)
+- Search 1: Type "Paris" — expected: destinations or itineraries related to Paris appear
+- Search 2: Type an expert name you saw earlier — expected: that expert appears in results
+- Search 3: Type "zzznoresults" — expected: "No results found" message, NOT a blank screen or error
+- Report: PASS or FAIL for each search + describe what results appeared
+
+Give detailed results for all 5 tests. This completes the full 68-test QA suite for Traveloure.
