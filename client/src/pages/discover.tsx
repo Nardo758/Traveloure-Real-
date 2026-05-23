@@ -792,6 +792,10 @@ export default function DiscoverPage() {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
       setPage(0);
+      // Auto-switch to services tab when user types — services is the only tab that uses the search query
+      if (searchQuery.trim().length > 0) {
+        setActiveTab("services");
+      }
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -1614,15 +1618,30 @@ export default function DiscoverPage() {
                         )}
                       </>
                     ) : (
-                      <div className="text-center py-16">
+                      <div className="text-center py-16" data-testid="no-results-empty-state">
                         <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">No services found</h3>
-                        <p className="text-muted-foreground mb-4">
-                          Try adjusting your search or filters
+                        <h3 className="text-lg font-semibold mb-2">
+                          {debouncedQuery
+                            ? <>No results for <span className="text-primary">&ldquo;{debouncedQuery}&rdquo;</span></>
+                            : "No services found"}
+                        </h3>
+                        <p className="text-muted-foreground mb-6">
+                          {debouncedQuery
+                            ? "We couldn't find any services matching that search. Try a different keyword, destination, or browse all services."
+                            : "Try adjusting your search or filters"}
                         </p>
-                        <Button variant="outline" onClick={clearFilters}>
-                          Clear Filters
-                        </Button>
+                        <div className="flex flex-wrap justify-center gap-3">
+                          <Button variant="outline" onClick={clearFilters} data-testid="button-clear-search">
+                            Clear Search
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            onClick={() => { setActiveTab("travelpulse"); }}
+                            data-testid="button-browse-destinations"
+                          >
+                            Browse Destinations
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </main>
