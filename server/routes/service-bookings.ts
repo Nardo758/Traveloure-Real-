@@ -262,7 +262,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         storage.getReviewsByBookingId(booking.id),
         storage.getProviderServiceById(booking.serviceId),
       ]);
-      return { ...booking, hasReview: reviews.length > 0, serviceName: service?.serviceName ?? null };
+      const firstReview = reviews[0] ?? null;
+      return {
+        ...booking,
+        hasReview: reviews.length > 0,
+        serviceName: service?.serviceName ?? null,
+        existingReview: firstReview
+          ? { id: firstReview.id, rating: firstReview.rating, reviewText: firstReview.reviewText ?? null }
+          : null,
+      };
     }));
     
     res.json(enrichedBookings);
