@@ -268,7 +268,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         hasReview: reviews.length > 0,
         serviceName: service?.serviceName ?? null,
         existingReview: firstReview
-          ? { id: firstReview.id, rating: firstReview.rating, reviewText: firstReview.reviewText ?? null }
+          ? {
+              id: firstReview.id,
+              rating: firstReview.rating,
+              reviewText: firstReview.reviewText ?? null,
+              responseText: firstReview.responseText ?? null,
+            }
           : null,
       };
     }));
