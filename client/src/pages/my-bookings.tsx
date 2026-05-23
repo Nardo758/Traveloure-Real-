@@ -31,6 +31,7 @@ import {
   XCircle,
   Loader2,
   Package,
+  Pencil,
   Star,
   Ticket,
   Trash2,
@@ -63,6 +64,7 @@ interface Booking {
   createdAt: string;
   hasReview?: boolean;
   serviceName?: string | null;
+  existingReview?: { id: string; rating: number; reviewText: string | null } | null;
 }
 
 interface ActivityBooking {
@@ -424,10 +426,11 @@ function BookingCard({
                 <StatusIcon className="w-3 h-3 mr-1" />
                 {status.label}
               </Badge>
-              {booking.hasReview && (
-                <Badge variant="outline" data-testid={`badge-reviewed-${booking.id}`}>
-                  <Star className="w-3 h-3 mr-1 fill-current" />
-                  Reviewed
+              {booking.hasReview && booking.existingReview && (
+                <Badge variant="outline" className="gap-1" data-testid={`badge-reviewed-${booking.id}`}>
+                  {[1,2,3,4,5].map(s => (
+                    <Star key={s} className={`w-3 h-3 ${s <= booking.existingReview!.rating ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30"}`} />
+                  ))}
                 </Badge>
               )}
               <span className="text-sm text-muted-foreground">
@@ -458,10 +461,22 @@ function BookingCard({
                   variant="default"
                   size="sm"
                   onClick={() => onReview(booking)}
+                  className="bg-[#FF385C] hover:bg-[#e0314f] text-white"
                   data-testid={`button-review-${booking.id}`}
                 >
                   <Star className="w-4 h-4 mr-1" />
                   Review
+                </Button>
+              )}
+              {booking.hasReview && booking.existingReview && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onReview(booking)}
+                  data-testid={`button-edit-review-${booking.id}`}
+                >
+                  <Pencil className="w-4 h-4 mr-1" />
+                  Edit Review
                 </Button>
               )}
               {booking.tripId && (
@@ -542,23 +557,30 @@ function ReviewDialog({
   booking: Booking | null;
 }) {
   const { toast } = useToast();
+  const isEditing = !!(booking?.hasReview && booking?.existingReview);
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [hoveredRating, setHoveredRating] = useState(0);
   const [submitted, setSubmitted] = useState(false);
 
-  // Reset state when a different booking is opened
+  // Reset / pre-populate state when a different booking is opened
   const bookingId = booking?.id;
   const [lastBookingId, setLastBookingId] = useState<string | undefined>();
   if (bookingId !== lastBookingId) {
     setLastBookingId(bookingId);
-    setRating(0);
-    setReviewText("");
+    setRating(booking?.existingReview?.rating ?? 0);
+    setReviewText(booking?.existingReview?.reviewText ?? "");
     setSubmitted(false);
   }
 
   const mutation = useMutation({
     mutationFn: async (data: { rating: number; reviewText: string }) => {
+      if (isEditing && booking?.existingReview?.id) {
+        return apiRequest("PATCH", `/api/services/${booking.serviceId}/reviews/${booking.existingReview.id}`, {
+          rating: data.rating,
+          reviewText: data.reviewText,
+        });
+      }
       return apiRequest("POST", `/api/services/${booking?.serviceId}/reviews`, {
         bookingId: booking?.id,
         rating: data.rating,
@@ -570,7 +592,11 @@ function ReviewDialog({
       setSubmitted(true);
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to submit review. Please try again.", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: isEditing ? "Failed to update review. Please try again." : "Failed to submit review. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -606,10 +632,12 @@ function ReviewDialog({
             </div>
             <div>
               <h3 className="text-lg font-semibold" data-testid="text-review-success-heading">
-                Review submitted!
+                {isEditing ? "Review updated!" : "Review submitted!"}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Thank you for sharing your experience. Your feedback helps other travelers.
+                {isEditing
+                  ? "Your review has been updated."
+                  : "Thank you for sharing your experience. Your feedback helps other travelers."}
               </p>
             </div>
             {rating > 0 && (
@@ -628,12 +656,16 @@ function ReviewDialog({
           <>
             <DialogHeader>
               <DialogTitle data-testid="text-review-dialog-title">
-                {booking?.serviceName ? `Review: ${booking.serviceName}` : "Leave a Review"}
+                {isEditing
+                  ? (booking?.serviceName ? `Edit Review: ${booking.serviceName}` : "Edit Your Review")
+                  : (booking?.serviceName ? `Review: ${booking.serviceName}` : "Leave a Review")}
               </DialogTitle>
               <DialogDescription>
-                {booking?.serviceName
-                  ? "Your honest review helps other travelers and rewards great providers."
-                  : "Share your experience with this service"}
+                {isEditing
+                  ? "Update your star rating or review text below."
+                  : booking?.serviceName
+                    ? "Your honest review helps other travelers and rewards great providers."
+                    : "Share your experience with this service"}
               </DialogDescription>
             </DialogHeader>
 
@@ -717,10 +749,10 @@ function ReviewDialog({
                 {mutation.isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Submitting…
+                    {isEditing ? "Updating…" : "Submitting…"}
                   </>
                 ) : (
-                  "Submit Review"
+                  isEditing ? "Update Review" : "Submit Review"
                 )}
               </Button>
             </DialogFooter>
