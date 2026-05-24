@@ -365,12 +365,16 @@ function ServiceCard({
   onAddToCart,
   isAddingToCart,
   isAdded,
+  isWishlisted,
+  onToggleWishlist,
 }: { 
   service: Service; 
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
+  isWishlisted?: boolean;
+  onToggleWishlist?: (serviceId: string) => void;
 }) {
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
@@ -464,6 +468,18 @@ function ServiceCard({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             
+            {/* Wishlist Heart - Top Right (before heat score) */}
+            {onToggleWishlist && (
+              <button
+                className="absolute top-3 right-16 w-9 h-9 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center z-10 hover:scale-110 transition-transform"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleWishlist(service.id); }}
+                data-testid={`button-wishlist-${service.id}`}
+                aria-label={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
+              >
+                <Heart className={`w-4 h-4 transition-colors ${isWishlisted ? "fill-rose-500 text-rose-500" : "text-gray-400 hover:text-rose-400"}`} />
+              </button>
+            )}
+
             {/* Heat Score Badge - Top Right */}
             <div 
               className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
@@ -853,6 +869,41 @@ export default function DiscoverPage() {
     queryKey: ["/api/cart"],
     enabled: !!user,
   });
+
+  const { data: wishlistIds = [] } = useQuery<string[]>({
+    queryKey: ["/api/wishlist/ids"],
+    enabled: !!user,
+  });
+
+  const wishlistMutation = useMutation({
+    mutationFn: async ({ serviceId, wishlisted }: { serviceId: string; wishlisted: boolean }) => {
+      if (wishlisted) {
+        return apiRequest("DELETE", `/api/wishlist/${serviceId}`);
+      } else {
+        return apiRequest("POST", `/api/wishlist/${serviceId}`);
+      }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist/ids"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist"] });
+      toast({
+        title: variables.wishlisted ? "Removed from wishlist" : "Saved to wishlist",
+        description: variables.wishlisted ? "Service removed from your saved list" : "Service saved to your wishlist",
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update wishlist", variant: "destructive" });
+    },
+  });
+
+  const handleToggleWishlist = (serviceId: string) => {
+    if (!user) {
+      toast({ title: "Sign in required", description: "Please sign in to save services to your wishlist", variant: "destructive" });
+      return;
+    }
+    const wishlisted = wishlistIds.includes(serviceId);
+    wishlistMutation.mutate({ serviceId, wishlisted });
+  };
 
   // Expert Templates Query
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
@@ -1592,6 +1643,8 @@ export default function DiscoverPage() {
                               onAddToCart={handleAddToCart}
                               isAddingToCart={addingToCartId === service.id}
                               isAdded={addedServices.has(service.id)}
+                              isWishlisted={wishlistIds.includes(service.id)}
+                              onToggleWishlist={handleToggleWishlist}
                             />
                           ))}
                         </div>

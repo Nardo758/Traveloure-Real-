@@ -146,6 +146,7 @@ import {
 import SharedTripPage from "@/pages/shared-trip";
 import LoginPage from "@/pages/login";
 import ForgotPasswordPage from "@/pages/forgot-password";
+import WishlistPage from "@/pages/wishlist";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
@@ -303,6 +304,9 @@ function Router() {
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
+      </Route>
+      <Route path="/wishlist">
+        {() => <ProtectedRoute component={WishlistPage} />}
       </Route>
       <Route path="/contracts/:id">
         {() => <ProtectedRoute component={ContractViewPage} />}

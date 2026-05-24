@@ -86,6 +86,8 @@ import {
   type ActivityComment, type InsertActivityComment,
   instagramCityCache,
   type InstagramCityCache,
+  wishlists,
+  type Wishlist,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -214,6 +216,12 @@ export interface IStorage {
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
   hideServiceReview(id: string, reason: string, adminId: string): Promise<ServiceReview | undefined>;
   unhideServiceReview(id: string): Promise<ServiceReview | undefined>;
+
+  // Wishlist
+  getWishlist(userId: string): Promise<any[]>;
+  addToWishlist(userId: string, serviceId: string): Promise<any>;
+  removeFromWishlist(userId: string, serviceId: string): Promise<void>;
+  getWishlistServiceIds(userId: string): Promise<string[]>;
 
   // Unified Discovery
   unifiedSearch(filters: {
@@ -3462,6 +3470,55 @@ export class DatabaseStorage implements IStorage {
       .where(eq(instagramCityCache.cityKey, cityKey))
       .limit(1);
     return rows[0]?.volume ?? 0;
+  }
+
+  // ── Wishlist ────────────────────────────────────────────────────────────
+  async getWishlist(userId: string): Promise<any[]> {
+    const rows = await db
+      .select({
+        id: wishlists.id,
+        userId: wishlists.userId,
+        serviceId: wishlists.serviceId,
+        createdAt: wishlists.createdAt,
+        serviceName: providerServices.serviceName,
+        shortDescription: providerServices.shortDescription,
+        price: providerServices.price,
+        location: providerServices.location,
+        averageRating: providerServices.averageRating,
+        reviewCount: providerServices.reviewCount,
+        categoryId: providerServices.categoryId,
+        deliveryMethod: providerServices.deliveryMethod,
+      })
+      .from(wishlists)
+      .leftJoin(providerServices, eq(wishlists.serviceId, providerServices.id))
+      .where(eq(wishlists.userId, userId))
+      .orderBy(desc(wishlists.createdAt));
+    return rows;
+  }
+
+  async addToWishlist(userId: string, serviceId: string): Promise<Wishlist> {
+    const existing = await db
+      .select()
+      .from(wishlists)
+      .where(and(eq(wishlists.userId, userId), eq(wishlists.serviceId, serviceId)))
+      .limit(1);
+    if (existing.length > 0) return existing[0];
+    const [row] = await db.insert(wishlists).values({ userId, serviceId }).returning();
+    return row;
+  }
+
+  async removeFromWishlist(userId: string, serviceId: string): Promise<void> {
+    await db
+      .delete(wishlists)
+      .where(and(eq(wishlists.userId, userId), eq(wishlists.serviceId, serviceId)));
+  }
+
+  async getWishlistServiceIds(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ serviceId: wishlists.serviceId })
+      .from(wishlists)
+      .where(eq(wishlists.userId, userId));
+    return rows.map((r) => r.serviceId);
   }
 }
 
