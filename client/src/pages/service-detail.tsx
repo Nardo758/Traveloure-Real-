@@ -33,7 +33,8 @@ import {
   ShieldCheck,
   Reply,
   TrendingUp,
-  Layers
+  Layers,
+  Heart,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -207,6 +208,33 @@ export default function ServiceDetailPage() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to add to cart", variant: "destructive" });
+    },
+  });
+
+  const { data: wishlistIds = [] } = useQuery<string[]>({
+    queryKey: ["/api/wishlist/ids"],
+    enabled: !!user,
+  });
+  const isWishlisted = id ? wishlistIds.includes(id) : false;
+
+  const toggleWishlistMutation = useMutation({
+    mutationFn: async () => {
+      if (isWishlisted) {
+        return apiRequest("DELETE", `/api/wishlist/${id}`);
+      } else {
+        return apiRequest("POST", `/api/wishlist/${id}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist/ids"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wishlist"] });
+      toast({
+        title: isWishlisted ? "Removed from wishlist" : "Saved to wishlist",
+        description: isWishlisted ? "Service removed from your saved list" : "Service saved to your wishlist",
+      });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update wishlist", variant: "destructive" });
     },
   });
 
@@ -641,6 +669,17 @@ export default function ServiceDetailPage() {
                         Add to Cart
                       </>
                     )}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className={`w-full ${isWishlisted ? "border-rose-400 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20" : ""}`}
+                    onClick={() => toggleWishlistMutation.mutate()}
+                    disabled={toggleWishlistMutation.isPending || !user}
+                    data-testid="button-wishlist"
+                  >
+                    <Heart className={`w-4 h-4 mr-2 ${isWishlisted ? "fill-rose-500 text-rose-500" : ""}`} />
+                    {isWishlisted ? "Saved to Wishlist" : "Save to Wishlist"}
                   </Button>
                   
                   <Button 
