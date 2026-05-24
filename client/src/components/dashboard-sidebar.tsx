@@ -28,6 +28,7 @@ import {
   Package,
   Sparkles,
   Star,
+  Heart,
 } from "lucide-react";
 
 const menuGroups = [
@@ -46,6 +47,7 @@ const menuGroups = [
       { title: "Discover", href: "/discover", icon: Users },
       { title: "Experts", href: "/experts", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
+      { title: "Wishlist", href: "/wishlist", icon: Heart },
       { title: "Cart", href: "/cart", icon: ShoppingCart },
     ],
   },

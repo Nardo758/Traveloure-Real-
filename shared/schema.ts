@@ -5201,3 +5201,14 @@ export const insertActivityBookingSchema = createInsertSchema(activityBookings).
   createdAt: true,
 });
 export type InsertActivityBooking = z.infer<typeof insertActivityBookingSchema>;
+
+// ── Wishlists ──────────────────────────────────────────────────────────────
+export const wishlists = pgTable("wishlists", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: text("user_id").notNull(),
+  serviceId: uuid("service_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const insertWishlistSchema = createInsertSchema(wishlists).omit({ id: true, createdAt: true });
+export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
+export type Wishlist = typeof wishlists.$inferSelect;

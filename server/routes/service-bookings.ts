@@ -565,4 +565,49 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.status(500).json({ message: "Failed to book slot" });
     }
   });
+
+  // ── Wishlist endpoints ────────────────────────────────────────────────────
+  app.get("/api/wishlist", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const items = await storage.getWishlist(userId);
+      res.json(items);
+    } catch (error) {
+      console.error("Error fetching wishlist:", error);
+      res.status(500).json({ message: "Failed to fetch wishlist" });
+    }
+  });
+
+  app.get("/api/wishlist/ids", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const ids = await storage.getWishlistServiceIds(userId);
+      res.json(ids);
+    } catch (error) {
+      console.error("Error fetching wishlist ids:", error);
+      res.status(500).json({ message: "Failed to fetch wishlist ids" });
+    }
+  });
+
+  app.post("/api/wishlist/:serviceId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const item = await storage.addToWishlist(userId, req.params.serviceId);
+      res.json(item);
+    } catch (error) {
+      console.error("Error adding to wishlist:", error);
+      res.status(500).json({ message: "Failed to add to wishlist" });
+    }
+  });
+
+  app.delete("/api/wishlist/:serviceId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      await storage.removeFromWishlist(userId, req.params.serviceId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing from wishlist:", error);
+      res.status(500).json({ message: "Failed to remove from wishlist" });
+    }
+  });
 }
