@@ -67,8 +67,8 @@ const delegateTaskSchema = z.object({
 
 export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
-    const userRole = (req.user as any).claims.role || 'expert';
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userRole = (req.user as any).claims?.role || 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
@@ -90,7 +90,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -151,7 +151,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
   });
 
   app.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const services = await storage.getProviderServicesByStatus(userId);
     const bookings = await storage.getServiceBookings({ providerId: userId });
     
@@ -179,7 +179,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -309,7 +309,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const status = req.query.status as string | undefined;
       
       const tasks = await db.select()
@@ -335,7 +335,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { taskType, taskDescription, clientName, context } = parsed.data;
 
       // Create task in pending status
@@ -422,7 +422,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { taskId } = req.params;
       const { editedContent } = req.body;
 
@@ -454,7 +454,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { taskId } = req.params;
 
       const [task] = await db.select()
@@ -483,7 +483,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { taskId } = req.params;
 
       const [task] = await db.select()
@@ -559,7 +559,7 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
 
   app.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

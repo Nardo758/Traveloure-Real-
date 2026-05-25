@@ -243,7 +243,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/my-reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const reviews = await storage.getReviewsByTravelerId(userId);
       res.json(reviews);
     } catch (error: any) {
@@ -252,7 +252,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ travelerId: userId, status });
     
@@ -283,7 +283,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/service-bookings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
@@ -304,7 +304,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.get("/api/bookings/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
@@ -319,8 +319,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userRole = (req.user as any).claims?.role || 'user';
     const booking = await storage.getServiceBooking(req.params.id);
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
@@ -349,8 +349,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   });
 
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userRole = (req.user as any).claims?.role || 'user';
     const { clientId } = req.params;
     
     // Check if requester has a legitimate relationship with this client
@@ -406,7 +406,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const input = insertServiceBookingSchema.parse(req.body);
       
       // Verify service exists and is active
@@ -436,7 +436,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -557,6 +557,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
 
   app.post("/api/vendor-availability/:id/book", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const slot = await storage.bookSlot(req.params.id);
       if (!slot) return res.status(404).json({ message: "Slot not found" });
       res.json(slot);

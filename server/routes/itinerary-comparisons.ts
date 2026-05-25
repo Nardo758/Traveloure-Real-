@@ -21,7 +21,7 @@ const router = Router();
 
 router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
 
     const [comparison] = await db
@@ -119,7 +119,7 @@ router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
 router.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
 
     const allComps = await db
       .select({
@@ -177,7 +177,7 @@ router.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
 
 router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const comparisons = await db
       .select()
       .from(itineraryComparisons)
@@ -193,7 +193,7 @@ router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
 
 router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const result = await getComparisonWithVariants(req.params.id);
 
     if (!result) {
@@ -213,7 +213,7 @@ router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) =
 
 router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const comparisonId = req.params.id;
     const { baselineItems: inlineBaselineItems } = req.body;
 
@@ -320,7 +320,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
 
 router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { variantId } = req.body;
 
     const comparison = await db.query.itineraryComparisons.findFirst({
@@ -350,7 +350,7 @@ router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req
 
 router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const comparisonId = req.params.id;
 
     const comparison = await db.query.itineraryComparisons.findFirst({

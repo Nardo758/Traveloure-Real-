@@ -85,7 +85,7 @@ const CREDIT_PACKAGES = [
 
 export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/user-experiences", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const experiences = await storage.getUserExperiences(userId);
     res.json(experiences);
   });
@@ -101,7 +101,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const experience = await storage.createUserExperience({ ...req.body, userId });
       res.status(201).json(experience);
     } catch (err) {
@@ -110,7 +110,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -120,7 +120,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -130,7 +130,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -153,13 +153,13 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.get("/api/wallet", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const wallet = await storage.getOrCreateWallet(userId);
     res.json(wallet);
   });
 
   app.get("/api/credits/balance", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const wallet = await storage.getOrCreateWallet(userId);
     const balance = wallet.credits ?? 0;
     const total = Math.max(balance, 250);
@@ -167,7 +167,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const wallet = await storage.getWallet(userId);
     if (!wallet) {
       return res.json([]);
@@ -178,7 +178,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -196,7 +196,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { packageId } = req.body;
 
       const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
@@ -254,7 +254,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.get("/api/notifications", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const unreadOnly = req.query.unread === "true";
     const notifications = await storage.getNotifications(userId, unreadOnly);
 
@@ -275,13 +275,13 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const count = await storage.getUnreadCount(userId);
     res.json({ count });
   });
 
   app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const notification = await storage.markAsRead(req.params.id);
     if (notification && notification.userId !== userId) {
       return res.status(403).json({ message: "Not your notification" });
@@ -290,7 +290,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     await storage.markAllAsRead(userId);
     res.json({ success: true });
   });
@@ -442,7 +442,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
   // /api/chats — used by useChats hook and shared/routes.ts contract
   app.get("/api/chats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const chats = await db
         .select()
         .from(userAndExpertChats)
@@ -462,7 +462,7 @@ export function registerUserFeatureRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/chats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const parsed = insertUserAndExpertChatSchema.safeParse({ ...req.body, senderId: userId });
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.errors });

@@ -752,7 +752,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) => {
     try {
-      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!admin || admin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -786,7 +786,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.patch("/api/admin/users/:id/role", isAuthenticated, async (req, res) => {
     try {
-      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const admin = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!admin || admin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }

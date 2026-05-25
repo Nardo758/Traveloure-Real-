@@ -79,7 +79,7 @@ const contactSchema = z.object({
 export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const states = await storage.getCoordinationStates(userId);
       res.json(states);
     } catch (error) {
@@ -92,7 +92,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       res.json(state);
     } catch (error) {
@@ -103,7 +103,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/coordination-states/active/:experienceType", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const state = await storage.getActiveCoordinationState(userId, req.params.experienceType);
       res.json(state || null);
     } catch (error) {
@@ -114,7 +114,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const coordInput = z.object({
         experienceType: z.string().min(1).max(100),
         title: z.string().min(1).max(255).optional(),
@@ -141,7 +141,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
       }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const updated = await storage.updateCoordinationState(req.params.id, coordUpdateInput);
       res.json(updated);
@@ -158,7 +158,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const { status, ...historyEntry } = req.body;
       const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry);
@@ -173,7 +173,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       await storage.deleteCoordinationState(req.params.id);
       res.json({ message: "Coordination state deleted" });
@@ -187,7 +187,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
     try {
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const bookings = await storage.getCoordinationBookings(req.params.coordinationId);
       res.json(bookings);
@@ -212,7 +212,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
       }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const booking = await storage.createCoordinationBooking({ 
         ...bookingInput, 
@@ -238,7 +238,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
         scheduledDate: z.string().optional(),
         notes: z.string().max(1000).optional(),
       }).parse(req.body);
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -256,7 +256,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/coordination-bookings/:id/confirm", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -272,7 +272,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.delete("/api/coordination-bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -287,7 +287,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -304,7 +304,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -362,7 +362,7 @@ export function registerCoordinationRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/coordination/booking-request", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const requestInput = z.object({
         providerId: z.string().min(1),
         tripId: z.string().min(1),

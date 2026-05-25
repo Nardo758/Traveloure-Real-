@@ -138,7 +138,7 @@ export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/service-categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -160,7 +160,7 @@ export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -278,7 +278,7 @@ export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: stri
 
   app.post("/api/faqs", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -295,7 +295,7 @@ export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: stri
 
   app.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -314,7 +314,7 @@ export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: stri
   });
 
   app.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -338,7 +338,7 @@ export function registerContentTypeRoutes(app: Express, resolveSlug: (slug: stri
 
   app.get("/api/my-purchased-templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
       
       // Get full template data for each purchase

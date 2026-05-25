@@ -75,7 +75,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
       }
       
       const { tripId, notes } = validation.data;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       // Check if this is a real trip vs demo/mock trip
       const trip = await storage.getTrip(tripId);
@@ -100,14 +100,14 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
   });
 
   app.get("/api/expert-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const form = await storage.getLocalExpertForm(userId);
     res.json(form || null);
   });
 
   app.post("/api/expert-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
@@ -128,7 +128,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -256,51 +256,51 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
   });
 
   app.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const services = await storage.getExpertSelectedServices(userId);
     res.json(services);
   });
 
   app.post("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { serviceOfferingId, customPrice } = req.body;
     const service = await storage.addExpertSelectedService(userId, serviceOfferingId, customPrice);
     res.json(service);
   });
 
   app.delete("/api/expert/selected-services/:serviceOfferingId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     await storage.removeExpertSelectedService(userId, req.params.serviceOfferingId);
     res.json({ success: true });
   });
 
   app.get("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const specializations = await storage.getExpertSpecializations(userId);
     res.json(specializations);
   });
 
   app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { specialization } = req.body;
     const spec = await storage.addExpertSpecialization(userId, specialization);
     res.json(spec);
   });
 
   app.delete("/api/expert/specializations/:specialization", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     await storage.removeExpertSpecialization(userId, req.params.specialization);
     res.json({ success: true });
   });
 
   app.get("/api/expert/custom-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const services = await storage.getExpertCustomServices(userId);
     res.json(services);
   });
 
   app.get("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const service = await storage.getExpertCustomServiceById(req.params.id);
     if (!service) {
       return res.status(404).json({ message: "Custom service not found" });
@@ -313,7 +313,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/custom-services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
       
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -350,7 +350,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.patch("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -373,7 +373,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/custom-services/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -396,7 +396,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.delete("/api/expert/custom-services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const service = await storage.getExpertCustomServiceById(req.params.id);
       
       if (!service) {
@@ -450,7 +450,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const templates = await storage.getExpertTemplates({ expertId: userId });
       res.json(templates);
     } catch (err) {
@@ -461,7 +461,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const template = await storage.createExpertTemplate({
         ...req.body,
         expertId: userId,
@@ -475,7 +475,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -495,7 +495,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -515,7 +515,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -600,7 +600,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       // Get user's purchase of this template
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
@@ -627,7 +627,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const earnings = await storage.getExpertEarnings(userId);
       const summary = await storage.getExpertEarningsSummary(userId);
       res.json({ earnings, summary });
@@ -639,7 +639,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const sales = await storage.getTemplatePurchases({ expertId: userId });
       
       // Get template details for each sale
@@ -659,7 +659,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
     try {
-      const travelerId = (req.user as any).claims.sub;
+      const travelerId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { expertId } = req.params;
       
       // Validate request body
@@ -696,7 +696,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/tips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const result = await storage.getTipsForExpert(userId);
       res.json(result);
     } catch (err) {
@@ -707,7 +707,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/referrals", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const referrals = await storage.getExpertReferrals(userId);
       
       // Get the expert's referral code from their profile
@@ -730,7 +730,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/affiliate-earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const earnings = await storage.getAffiliateEarnings(userId);
       const summary = await storage.getAffiliateEarningsSummary(userId);
       res.json({ earnings, summary });
@@ -742,7 +742,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/revenue-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       // Get all earnings data
       const [
@@ -933,7 +933,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
   });
 
   app.get("/api/expert/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const status = req.query.status as string | undefined;
     const services = await storage.getProviderServicesByStatus(userId, status);
     res.json(services);
@@ -941,7 +941,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.patch("/api/expert/services/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -959,7 +959,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -973,7 +973,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const template = await storage.getServiceTemplate(req.params.templateId);
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
@@ -1004,7 +1004,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/reviews/:id/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const review = await storage.getServiceReview(req.params.id);
       if (!review || review.providerId !== userId) {
         return res.status(404).json({ message: "Review not found or not for your service" });
@@ -1022,7 +1022,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -1043,7 +1043,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       // Get expert's profile to find their markets/destinations
       const expertProfile = await storage.getLocalExpertForm(userId);
@@ -1163,7 +1163,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
