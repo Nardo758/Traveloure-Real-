@@ -1056,6 +1056,10 @@ Respond with this exact JSON structure:
       res.json({ url: link.url, accountId });
     } catch (error: any) {
       console.error('Stripe Connect onboard error:', error);
+      const isConnectNotEnabled = error.message?.includes('signed up for Connect') || error.code === 'account_invalid';
+      if (isConnectNotEnabled) {
+        return res.status(503).json({ message: "Stripe Connect is not yet enabled for this platform. Please contact support.", error: "stripe_connect_not_configured" });
+      }
       res.status(500).json({ message: "Failed to start Stripe onboarding", error: error.message });
     }
   });
