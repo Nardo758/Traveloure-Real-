@@ -60,7 +60,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.post("/api/cart/items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
@@ -123,7 +123,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       
       console.log("[Cart] Add to cart request:", { serviceId, customVenueId, experienceSlug: rawSlug });
@@ -202,7 +202,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.delete("/api/cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const experienceSlug = req.query.experience as string | undefined;
       await storage.clearCart(userId, experienceSlug);
       res.status(204).send();
@@ -213,7 +213,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { tripId, notes, activityBookingIds: stagedIds } = req.body;
       
       // Get platform cart items
@@ -359,7 +359,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.patch("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -376,7 +376,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/contracts/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -394,7 +394,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/contracts/:id/milestone", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -411,7 +411,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/contracts/:id/communication", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -428,7 +428,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.delete("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
