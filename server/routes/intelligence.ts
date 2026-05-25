@@ -128,7 +128,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/destination-calendar/my-events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const events = await storage.getContributorDestinationEvents(userId);
       res.json(events);
     } catch (err) {
@@ -139,7 +139,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/destination-calendar/events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const event = await storage.createDestinationEvent({
         ...req.body,
         contributorId: userId,
@@ -155,7 +155,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -178,7 +178,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/destination-calendar/events/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -201,7 +201,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.delete("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -224,7 +224,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get expert's profile to find their markets/destinations
@@ -256,7 +256,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/recommendations/provider", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get provider's service locations
@@ -359,7 +359,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
   app.post("/api/recommendations/:id/convert", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       // Validate request body
       const conversionSchema = z.object({
@@ -1204,7 +1204,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const preferences = await opportunityEngineService.getUserPreferences(userId);
       res.json(preferences || {});
     } catch (error) {
@@ -1214,7 +1214,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       const schema = z.object({
         spontaneityLevel: z.number().min(0).max(100).optional(),
@@ -1246,7 +1246,7 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const opportunityId = req.params.id;
       
       const result = await opportunityEngineService.bookOpportunity(userId, opportunityId);

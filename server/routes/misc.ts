@@ -264,7 +264,7 @@ export function registerMiscRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/chat/start", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { expertId, message, tripId } = req.body;
 
       if (!expertId) {
@@ -514,7 +514,7 @@ Respond with this exact JSON structure:
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
@@ -602,7 +602,7 @@ Respond with this exact JSON structure:
   app.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
     try {
       const { destination, startDate, endDate } = req.query;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       if (!destination || typeof destination !== "string") {
         return res.status(400).json({ message: "Destination is required" });
@@ -764,7 +764,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -781,7 +781,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -799,7 +799,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -817,7 +817,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -854,7 +854,7 @@ Respond with this exact JSON structure:
 
   app.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -871,7 +871,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -888,8 +888,8 @@ Respond with this exact JSON structure:
 
   app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
-      const userName = (req.user as any).claims.name || "User";
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userName = (req.user as any).claims?.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -908,7 +908,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -936,8 +936,8 @@ Respond with this exact JSON structure:
 
   app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
-      const userName = (req.user as any).claims.name || "User";
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userName = (req.user as any).claims?.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -955,7 +955,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -972,7 +972,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -1015,7 +1015,7 @@ Respond with this exact JSON structure:
   app.get("/api/invoices/my", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const invoices = await storage.getInvoicesByCustomer(user.claims.sub);
+      const invoices = await storage.getInvoicesByCustomer(user.claims?.sub ?? user.id);
       res.json(invoices);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get invoices", error: error.message });
@@ -1562,8 +1562,8 @@ Respond with this exact JSON structure:
 
   // === Chats Routes ===
   app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userRole = (req.user as any).claims?.role || 'user';
     const chats = await storage.getChats(userId);
     storage.logAccess({
       actorId: userId,

@@ -301,7 +301,7 @@ router.post('/activity/check-availability', isAuthenticated, async (req, res) =>
  */
 router.post('/activity/checkout', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const {
       provider, productCode, productOptionCode, title, price,
       currency = 'USD', imageUrl, bookingUrl,
@@ -374,7 +374,7 @@ router.post('/activity/checkout', isAuthenticated, async (req, res) => {
  */
 router.post('/activity/viator-book', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { bookingId } = req.body;
 
     if (!bookingId) {
@@ -486,7 +486,7 @@ router.post('/activity/viator-book', isAuthenticated, async (req, res) => {
  */
 router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { externalItems } = req.body;
 
     if (!Array.isArray(externalItems) || externalItems.length === 0) {
@@ -566,7 +566,7 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
  */
 router.post('/activity/confirm', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { bookingId, paymentIntentId } = req.body;
 
     if (!bookingId || !paymentIntentId) {
@@ -670,7 +670,7 @@ router.post('/activity/confirm', isAuthenticated, async (req, res) => {
  */
 router.get('/my-activity-bookings', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const { db } = await import('../db');
     const { sql } = await import('drizzle-orm');
 

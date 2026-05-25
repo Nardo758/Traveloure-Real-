@@ -63,7 +63,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   registerAdminAnalyticsRoutes(app, resolveSlug);
 
   app.get("/api/admin/stats", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -117,7 +117,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -143,7 +143,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -165,7 +165,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -175,7 +175,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -196,7 +196,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/provider-applications", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -206,7 +206,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.patch("/api/admin/provider-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -226,7 +226,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/service-templates", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -243,7 +243,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -262,7 +262,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -271,7 +271,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/categories", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -288,7 +288,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -302,7 +302,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -319,7 +319,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -338,7 +338,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -348,7 +348,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -369,7 +369,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+      const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -388,7 +388,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -397,7 +397,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -437,7 +437,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/custom-services/pending", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -447,7 +447,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/custom-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -471,7 +471,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/custom-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -499,7 +499,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
   });
 
   app.get("/api/admin/destination-events/pending", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims?.sub ?? (req.user as any).id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -509,7 +509,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/destination-events/:id/approve", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -533,7 +533,7 @@ export function registerAdminRoutes(app: Express, resolveSlug: (slug: string) =>
 
   app.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any).claims.sub;
+      const adminId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await db.select().from(users).where(eq(users.id, adminId)).then(r => r[0]);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });

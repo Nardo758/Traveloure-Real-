@@ -98,7 +98,7 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
   });
 
   app.get("/api/cart", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
@@ -350,11 +350,17 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
   });
 
   app.get("/api/contracts/:id", isAuthenticated, async (req, res) => {
-    const contract = await storage.getContract(req.params.id);
-    if (!contract) {
-      return res.status(404).json({ message: "Contract not found" });
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const contract = await storage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ message: "Contract not found" });
+      if (contract.tripId && !await verifyTripOwnership(contract.tripId, userId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      res.json(contract);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch contract" });
     }
-    res.json(contract);
   });
 
   app.patch("/api/contracts/:id", isAuthenticated, async (req, res) => {

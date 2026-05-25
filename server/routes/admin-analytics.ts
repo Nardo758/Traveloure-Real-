@@ -802,7 +802,7 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const userId = user.claims.sub;
+      const userId = user.claims?.sub ?? user.id;
       const adminNotifications = await db.select().from(notifications)
         .where(eq(notifications.userId, userId))
         .orderBy(desc(notifications.createdAt))

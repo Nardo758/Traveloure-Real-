@@ -205,7 +205,7 @@ export function registerAiRoutes(app: Express, resolveSlug: (slug: string) => st
   app.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
     try {
       const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
 
       const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
       
@@ -500,7 +500,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   app.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { 
         destination, 
         dates, 
@@ -674,7 +674,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   app.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { 
         destination, 
         dates, 
@@ -762,7 +762,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   app.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       const itineraries = await db.select()
         .from(aiGeneratedItineraries)
@@ -779,7 +779,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
   app.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { id } = req.params;
       
       const [itinerary] = await db.select()
@@ -808,7 +808,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { travelerProfile, expertIds, limit } = parsed.data;
 
       // Get expert profiles from database
@@ -897,7 +897,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const result = await aiOrchestrator.generateContent(parsed.data, { userId });
       res.json(result);
     } catch (error: any) {
@@ -913,7 +913,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { destination, dates, topics } = parsed.data;
 
       // Check cache first
@@ -957,7 +957,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { tripId, ...itineraryRequest } = parsed.data;
 
       const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
@@ -997,7 +997,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { messages, systemContext, preferProvider } = parsed.data;
 
       const { response, provider } = await aiOrchestrator.chat(messages, {

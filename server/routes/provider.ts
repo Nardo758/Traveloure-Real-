@@ -59,14 +59,14 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export function registerProviderRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const form = await storage.getServiceProviderForm(userId);
     res.json(form || null);
   });
 
   app.post("/api/provider-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
@@ -87,7 +87,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.post("/api/provider-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -109,14 +109,14 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
   });
 
   app.get("/api/provider/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const services = await storage.getProviderServices(userId);
     res.json(services);
   });
 
   app.post("/api/provider/services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const input = insertProviderServiceSchema.parse(req.body);
       const service = await storage.createProviderService({ ...input, userId });
       res.status(201).json(service);
@@ -131,7 +131,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const services = await storage.getProviderServices(userId);
       const ownedService = services.find(s => s.id === req.params.id);
       if (!ownedService) {
@@ -151,7 +151,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
   });
 
   app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const services = await storage.getProviderServices(userId);
     const ownedService = services.find(s => s.id === req.params.id);
     if (!ownedService) {
@@ -162,8 +162,8 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
   });
 
   app.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any).claims.sub;
-    const userRole = (req.user as any).claims.role || 'provider';
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userRole = (req.user as any).claims?.role || 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
@@ -187,7 +187,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
@@ -206,7 +206,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       
@@ -264,7 +264,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const [schedule, blackoutDates] = await Promise.all([
         storage.getProviderAvailability(userId),
         storage.getProviderBlackoutDates(userId),
@@ -278,7 +278,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const availabilityInput = z.object({
         dayOfWeek: z.number().min(0).max(6),
         startTime: z.string().min(1),
@@ -310,7 +310,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const blackoutInput = z.object({
         startDate: z.string().min(1),
         endDate: z.string().min(1),
@@ -339,7 +339,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
@@ -350,7 +350,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const summary = await storage.getProviderEarningsSummary(userId);
       res.json(summary);
     } catch (error: any) {
@@ -361,7 +361,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
@@ -373,7 +373,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const payouts = await storage.getProviderPayouts(userId);
       res.json(payouts);
     } catch (error: any) {
@@ -384,7 +384,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.post("/api/provider/payouts/request", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const { amount, payoutMethod } = req.body;
       if (!amount || amount <= 0) {
         return res.status(400).json({ error: "Invalid payout amount" });
