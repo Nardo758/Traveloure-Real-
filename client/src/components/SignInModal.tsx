@@ -33,7 +33,7 @@ export function SignInModal({
   defaultMode = "signin",
   returnTo,
 }: SignInModalProps) {
-  const [mode, setMode] = useState<"signin" | "signup" | "reset">(defaultMode);
+  const [mode, setMode] = useState<"signin" | "signup">(defaultMode);
 
   const resolvedTitle = title ?? (mode === "signup" ? "Create your account" : "Sign in to continue");
   const resolvedDescription = description ?? (mode === "signup"
@@ -48,7 +48,6 @@ export function SignInModal({
     firstName: "",
     lastName: "",
   });
-  const [newPassword, setNewPassword] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -124,33 +123,6 @@ export function SignInModal({
     }
   };
 
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.email || !newPassword) return;
-    if (newPassword.length < 8) {
-      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: formData.email, newPassword }),
-      });
-      let data: any = {};
-      try { data = await response.json(); } catch { /* non-JSON body */ }
-      if (!response.ok) throw new Error(data.message || "Reset failed");
-      toast({ title: "Password Reset", description: data.message });
-      setNewPassword("");
-      setMode("signin");
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Something went wrong", variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleReplitSignIn = () => {
     const dest = returnTo || window.location.pathname + window.location.search;
     if (dest && dest !== "/dashboard") {
@@ -167,14 +139,14 @@ export function SignInModal({
             <LogIn className="h-6 w-6 text-primary" />
           </div>
           <DialogTitle className="text-xl" data-testid="text-sign-in-title">
-            {mode === "reset" ? "Reset your password" : resolvedTitle}
+            {resolvedTitle}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {mode === "reset" ? "Enter your email and a new password." : resolvedDescription}
+            {resolvedDescription}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={mode === "reset" ? handleResetPassword : handleSubmit} className="space-y-4 py-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-4">
           {mode === "signup" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -227,53 +199,23 @@ export function SignInModal({
             </div>
           </div>
 
-          {mode === "reset" ? (
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">New Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder="Min 8 characters"
-                  className="pl-9"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  data-testid="input-new-password"
-                />
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                id="password"
+                type="password"
+                placeholder={mode === "signup" ? "Min 8 characters" : "••••••••"}
+                className="pl-9"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+                minLength={mode === "signup" ? 8 : 1}
+                data-testid="input-password"
+              />
             </div>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder={mode === "signup" ? "Min 8 characters" : "••••••••"}
-                  className="pl-9"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                  minLength={mode === "signup" ? 8 : 1}
-                  data-testid="input-password"
-                />
-              </div>
-              {mode === "signin" && (
-                <button
-                  type="button"
-                  className="text-xs text-primary hover:underline"
-                  onClick={() => setMode("reset")}
-                  data-testid="link-forgot-password"
-                >
-                  Forgot password?
-                </button>
-              )}
-            </div>
-          )}
+          </div>
 
           {mode === "signup" && (
             <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
@@ -318,12 +260,12 @@ export function SignInModal({
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {mode === "reset" ? "Resetting..." : mode === "signin" ? "Signing in..." : "Creating account..."}
+                {mode === "signin" ? "Signing in..." : "Creating account..."}
               </>
             ) : (
               <>
                 <LogIn className="mr-2 h-4 w-4" />
-                {mode === "reset" ? "Reset Password" : mode === "signin" ? "Sign In" : "Create Account"}
+                {mode === "signin" ? "Sign In" : "Create Account"}
               </>
             )}
           </Button>
@@ -348,19 +290,7 @@ export function SignInModal({
           </Button>
 
           <p className="text-sm text-center text-muted-foreground">
-            {mode === "reset" ? (
-              <>
-                Remember your password?{" "}
-                <button
-                  type="button"
-                  className="text-primary hover:underline font-medium"
-                  onClick={() => setMode("signin")}
-                  data-testid="link-back-signin"
-                >
-                  Back to Sign In
-                </button>
-              </>
-            ) : mode === "signin" ? (
+            {mode === "signin" ? (
               <>
                 Don't have an account?{" "}
                 <button

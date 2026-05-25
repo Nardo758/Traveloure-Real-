@@ -147,7 +147,8 @@ export function setupFacebookAuth(app: Express) {
         "instagram_manage_insights",
         "business_management",
       ],
-    })(req, res, next);
+      state: true,
+    } as any)(req, res, next);
   });
 
   app.get("/api/auth/facebook/callback", (req, res, next) => {
@@ -155,7 +156,8 @@ export function setupFacebookAuth(app: Express) {
     passport.authenticate(`facebook:${req.hostname}`, {
       successRedirect: "/become-expert?influencer=true&auth=facebook",
       failureRedirect: "/become-expert?influencer=true&error=auth_failed",
-    })(req, res, next);
+      state: true,
+    } as any)(req, res, next);
   });
 
   app.get("/api/auth/instagram-data", (req, res) => {
