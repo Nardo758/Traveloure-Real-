@@ -108,10 +108,42 @@ export const generalRateLimiter = createRateLimiter({
   keyGenerator: (req) => `general:${req.ip || "unknown"}`,
 });
 
+function getAiKey(req: Request): string {
+  const user = (req as any).user;
+  const userId = user?.claims?.sub ?? user?.id;
+  if (userId) return `ai:user:${userId}`;
+  return `ai:ip:${req.ip || "unknown"}`;
+}
+
 export const aiRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 10,
-  keyGenerator: (req) => `ai:${req.ip || "unknown"}`,
+  maxRequests: 20,
+  keyGenerator: getAiKey,
+  handler: (req, res) => {
+    res.status(429).json({
+      error: "AI rate limit exceeded",
+      message: "You've made too many AI requests. Please wait a minute before trying again.",
+      retryAfter: 60,
+    });
+  },
+});
+
+export const aiHourlyRateLimiter = createRateLimiter({
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 200,
+  keyGenerator: (req) => {
+    const user = (req as any).user;
+    const userId = user?.claims?.sub ?? user?.id;
+    if (userId) return `ai:hourly:user:${userId}`;
+    return `ai:hourly:ip:${req.ip || "unknown"}`;
+  },
+  handler: (req, res) => {
+    res.status(429).json({
+      error: "AI hourly limit exceeded",
+      message: "You've reached your hourly AI request limit. Please try again in an hour.",
+      retryAfter: 3600,
+    });
+  },
 });
 
 export const searchRateLimiter = createRateLimiter({
