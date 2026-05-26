@@ -666,6 +666,15 @@ function Router() {
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
+      <Route path="/wallet">
+        <Redirect to="/credits" />
+      </Route>
+      <Route path="/expert/coordination">
+        <Redirect to="/expert/dashboard" />
+      </Route>
+      <Route path="/expert/calendar">
+        <Redirect to="/expert/dashboard" />
+      </Route>
       <Route path="/create-trip">
         <Redirect to="/experiences" />
       </Route>
