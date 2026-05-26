@@ -219,6 +219,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const { emails } = req.body;
       const participants = await coordinationService.bulkInvite(req.params.tripId, emails);
       res.status(201).json(participants);
@@ -378,6 +380,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const items = await itineraryIntelligenceService.getItems(req.params.tripId);
       res.json(items);
     } catch (error) {
@@ -387,6 +391,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const schedules = await itineraryIntelligenceService.getDaySchedules(req.params.tripId);
       res.json(schedules);
     } catch (error) {
@@ -396,6 +402,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const analysis = await itineraryIntelligenceService.analyzeItinerary(req.params.tripId);
       res.json(analysis);
     } catch (error) {
@@ -405,6 +413,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const destination = req.query.destination as string || "destination";
       const recommendations = await itineraryIntelligenceService.getAIRecommendations(req.params.tripId, destination);
       res.json(recommendations);
@@ -569,6 +579,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const contacts = await emergencyService.getContacts(req.params.tripId);
       res.json(contacts);
     } catch (error) {
@@ -578,6 +590,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const contacts = await emergencyService.getContactsByType(req.params.tripId);
       res.json(contacts);
     } catch (error) {
@@ -587,6 +601,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const contact = await emergencyService.createContact({
         ...req.body,
         tripId: req.params.tripId,
@@ -599,6 +615,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const { countryCode } = req.body;
       const result = await emergencyService.initializeTripEmergencyInfo(req.params.tripId, countryCode);
       res.status(201).json(result);
@@ -609,6 +627,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const alerts = await emergencyService.getActiveAlerts(req.params.tripId);
       res.json(alerts);
     } catch (error) {
@@ -618,6 +638,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const summary = await emergencyService.getAlertSummary(req.params.tripId);
       res.json(summary);
     } catch (error) {
@@ -627,6 +649,8 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const alert = await emergencyService.createAlert({
         ...req.body,
         tripId: req.params.tripId,
@@ -639,7 +663,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
