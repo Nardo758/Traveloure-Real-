@@ -4,6 +4,7 @@ export {
   createRateLimiter,
   generalRateLimiter,
   aiRateLimiter,
+  aiHourlyRateLimiter,
   searchRateLimiter,
   authRateLimiter,
   strictRateLimiter,

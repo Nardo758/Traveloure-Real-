@@ -21,6 +21,7 @@ import {
   notFoundHandler,
   generalRateLimiter,
   aiRateLimiter,
+  aiHourlyRateLimiter,
   searchRateLimiter,
   authRateLimiter,
 } from "./infrastructure";
@@ -67,6 +68,9 @@ app.use(metricsMiddleware() as RequestHandler);
 
 app.use("/api", generalRateLimiter as RequestHandler);
 app.use("/api/ai", aiRateLimiter as RequestHandler);
+app.use("/api/ai", aiHourlyRateLimiter as RequestHandler);
+app.use("/api/claude", aiRateLimiter as RequestHandler);
+app.use("/api/claude", aiHourlyRateLimiter as RequestHandler);
 app.use("/api/search", searchRateLimiter as RequestHandler);
 app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
