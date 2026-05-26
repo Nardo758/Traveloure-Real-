@@ -25,6 +25,7 @@ import {
   searchRateLimiter,
   authRateLimiter,
 } from "./infrastructure";
+import { aiUsageTracker } from "./infrastructure/ai-usage-tracker";
 
 const app = express();
 const httpServer = createServer(app);
@@ -71,6 +72,15 @@ app.use("/api/ai", aiRateLimiter as RequestHandler);
 app.use("/api/ai", aiHourlyRateLimiter as RequestHandler);
 app.use("/api/claude", aiRateLimiter as RequestHandler);
 app.use("/api/claude", aiHourlyRateLimiter as RequestHandler);
+
+app.use(["/api/ai", "/api/claude"], ((req: any, res: any, next: any) => {
+  const user = req.user as any;
+  const userId = user?.claims?.sub ?? user?.id;
+  if (userId) {
+    aiUsageTracker.track(userId, req.path, user?.claims?.email ?? user?.email);
+  }
+  next();
+}) as RequestHandler);
 app.use("/api/search", searchRateLimiter as RequestHandler);
 app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);

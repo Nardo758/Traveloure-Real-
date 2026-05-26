@@ -21,7 +21,8 @@ import {
   Cpu,
   MapPin,
   Banknote,
-  Server
+  Server,
+  Activity
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,6 +43,7 @@ const navItems = [
   { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
   { icon: MapPin, label: "Tourism", href: "/admin/tourism-analytics" },
   { icon: Cpu, label: "AI Costs", href: "/admin/ai-costs" },
+  { icon: Activity, label: "AI Usage", href: "/admin/ai-usage" },
   { icon: Database, label: "Data", href: "/admin/data" },
   { icon: Search, label: "Search", href: "/admin/search" },
   { icon: Bell, label: "Notifications", href: "/admin/notifications" },
