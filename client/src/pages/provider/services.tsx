@@ -1,9 +1,26 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Plus,
   Edit,
@@ -32,10 +49,33 @@ interface Service {
   featured?: boolean;
 }
 
-const categories = ["All", "Venue", "Catering", "Beverage", "Equipment", "Decoration"];
+const categories = ["All", "Venue", "Catering", "Beverage", "Equipment", "Decoration", "Transport", "Tour", "Other"];
+const serviceCategories = ["Venue", "Catering", "Beverage", "Equipment", "Decoration", "Transport", "Tour", "Other"];
+
+interface CreateServiceForm {
+  name: string;
+  category: string;
+  basePrice: string;
+  priceUnit: string;
+  description: string;
+  duration: string;
+  maxGuests: string;
+}
+
+const emptyForm: CreateServiceForm = {
+  name: "",
+  category: "Tour",
+  basePrice: "",
+  priceUnit: "per person",
+  description: "",
+  duration: "",
+  maxGuests: "",
+};
 
 export default function ProviderServices() {
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [form, setForm] = useState<CreateServiceForm>(emptyForm);
   const { toast } = useToast();
 
   const { data: services, isLoading } = useQuery<Service[]>({
@@ -70,6 +110,31 @@ export default function ProviderServices() {
     },
   });
 
+  const createMutation = useMutation({
+    mutationFn: async (data: CreateServiceForm) => {
+      const res = await apiRequest("POST", "/api/provider/services", {
+        name: data.name,
+        category: data.category,
+        basePrice: parseFloat(data.basePrice),
+        priceUnit: data.priceUnit,
+        description: data.description || undefined,
+        duration: data.duration || undefined,
+        maxGuests: data.maxGuests ? parseInt(data.maxGuests) : undefined,
+        active: true,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      toast({ title: "Service created", description: "Your new service is now live." });
+      setShowCreateDialog(false);
+      setForm(emptyForm);
+    },
+    onError: (error: Error) => {
+      toast({ variant: "destructive", title: "Failed to create service", description: error.message });
+    },
+  });
+
   const filteredServices = !services
     ? []
     : selectedCategory === "All"
@@ -78,10 +143,15 @@ export default function ProviderServices() {
 
   const activeCount = (services || []).filter(s => s.active).length;
 
+  const handleCreate = () => {
+    if (!form.name.trim()) { toast({ variant: "destructive", description: "Service name is required." }); return; }
+    if (!form.basePrice || isNaN(parseFloat(form.basePrice))) { toast({ variant: "destructive", description: "Enter a valid price." }); return; }
+    createMutation.mutate(form);
+  };
+
   return (
     <ProviderLayout title="Services">
       <div className="p-6 space-y-6">
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-900" data-testid="text-services-title">
@@ -93,12 +163,14 @@ export default function ProviderServices() {
               <p className="text-gray-600">{activeCount} of {services?.length || 0} services active</p>
             )}
           </div>
-          <Button data-testid="button-add-service">
+          <Button
+            data-testid="button-add-service"
+            onClick={() => setShowCreateDialog(true)}
+          >
             <Plus className="w-4 h-4 mr-2" /> Add New Service
           </Button>
         </div>
 
-        {/* Category Filter */}
         <div className="flex gap-2 flex-wrap">
           {categories.map((category) => (
             <Button
@@ -113,7 +185,6 @@ export default function ProviderServices() {
           ))}
         </div>
 
-        {/* Services Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {isLoading ? (
             <>
@@ -143,7 +214,6 @@ export default function ProviderServices() {
                       {service.description && (
                         <p className="text-sm text-gray-600 mt-1">{service.description}</p>
                       )}
-
                       <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
                         <span className="flex items-center gap-1 font-semibold text-green-600">
                           <DollarSign className="w-4 h-4" /> {service.basePrice} {service.priceUnit || ""}
@@ -165,7 +235,6 @@ export default function ProviderServices() {
                         )}
                       </div>
                     </div>
-
                     <div className="flex flex-col items-end gap-2">
                       <Switch
                         checked={service.active}
@@ -180,7 +249,6 @@ export default function ProviderServices() {
                       </span>
                     </div>
                   </div>
-
                   <div className="flex gap-2 mt-4 pt-4 border-t border-gray-100">
                     <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
                       <Edit className="w-4 h-4 mr-1" /> Edit
@@ -206,7 +274,11 @@ export default function ProviderServices() {
             <Card>
               <CardContent className="p-8 text-center">
                 <p className="text-gray-500">No services found in this category.</p>
-                <Button className="mt-4" data-testid="button-add-first-service">
+                <Button
+                  className="mt-4"
+                  data-testid="button-add-first-service"
+                  onClick={() => setShowCreateDialog(true)}
+                >
                   <Plus className="w-4 h-4 mr-2" /> Add Your First Service
                 </Button>
               </CardContent>
@@ -214,6 +286,112 @@ export default function ProviderServices() {
           )}
         </div>
       </div>
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-create-service">
+          <DialogHeader>
+            <DialogTitle>Add New Service</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="svc-name">Service Name *</Label>
+              <Input
+                id="svc-name"
+                placeholder="e.g. Airport Transfer Deluxe"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                data-testid="input-service-name"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="svc-category">Category *</Label>
+              <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v }))}>
+                <SelectTrigger id="svc-category" data-testid="select-service-category">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {serviceCategories.map(c => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="svc-price">Price *</Label>
+                <Input
+                  id="svc-price"
+                  type="number"
+                  placeholder="150"
+                  value={form.basePrice}
+                  onChange={e => setForm(f => ({ ...f, basePrice: e.target.value }))}
+                  data-testid="input-service-price"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="svc-unit">Price Unit</Label>
+                <Input
+                  id="svc-unit"
+                  placeholder="per person"
+                  value={form.priceUnit}
+                  onChange={e => setForm(f => ({ ...f, priceUnit: e.target.value }))}
+                  data-testid="input-service-price-unit"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="svc-duration">Duration</Label>
+                <Input
+                  id="svc-duration"
+                  placeholder="2 hours"
+                  value={form.duration}
+                  onChange={e => setForm(f => ({ ...f, duration: e.target.value }))}
+                  data-testid="input-service-duration"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="svc-guests">Max Guests</Label>
+                <Input
+                  id="svc-guests"
+                  type="number"
+                  placeholder="10"
+                  value={form.maxGuests}
+                  onChange={e => setForm(f => ({ ...f, maxGuests: e.target.value }))}
+                  data-testid="input-service-max-guests"
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="svc-desc">Description</Label>
+              <Textarea
+                id="svc-desc"
+                placeholder="Describe your service..."
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                data-testid="input-service-description"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setShowCreateDialog(false); setForm(emptyForm); }}
+              data-testid="button-cancel-service"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending}
+              data-testid="button-save-service"
+            >
+              {createMutation.isPending ? "Saving..." : "Create Service"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ProviderLayout>
   );
 }

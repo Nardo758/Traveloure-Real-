@@ -196,11 +196,13 @@ export default function Chat() {
     }
   };
 
-  const filteredExperts = allExperts.filter(expert => 
-    expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    expert.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    expert.specialties.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredExperts = allExperts.filter(expert => {
+    const q = searchQuery.toLowerCase();
+    const name = (expert.name || '').toLowerCase();
+    const location = (expert.location || '').toLowerCase();
+    const specialties: string[] = Array.isArray(expert.specialties) ? expert.specialties : [];
+    return name.includes(q) || location.includes(q) || specialties.some((s: string) => (s || '').toLowerCase().includes(q));
+  });
 
   if (isLoading) {
     return (
