@@ -132,7 +132,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -198,7 +198,7 @@ router.post('/saved-trips', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -285,7 +285,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
  */
 router.get('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -423,7 +423,7 @@ router.get('/shared-trips/:token', async (req, res) => {
  */
 router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -601,7 +601,7 @@ router.get('/trip-experts', async (req, res) => {
  */
 router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -668,7 +668,7 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  */
 router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -770,7 +770,7 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  */
 router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const result = await db.execute(sql`
@@ -814,7 +814,7 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
  */
 router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -875,7 +875,7 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
  */
 router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -918,7 +918,7 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
  */
 router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id, suggestionId } = req.params;
