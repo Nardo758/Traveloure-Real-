@@ -23,6 +23,7 @@ import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builde
 import { generateKml } from "../services/kml-generator";
 import { generateGpx } from "../services/gpx-generator";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "../infrastructure";
+import { aiUsageTracker } from "../infrastructure/ai-usage-tracker";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
   aiBlueprints, vendors, insertVendorSchema,
@@ -1459,6 +1460,19 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
     } catch (err) {
       console.error("Save settings error:", err);
       res.status(500).json({ message: "Failed to save settings" });
+    }
+  });
+
+  app.get("/api/admin/ai-usage", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const stats = aiUsageTracker.getStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get AI usage stats" });
     }
   });
 }

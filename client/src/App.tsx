@@ -79,6 +79,7 @@ import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
 import AdminAICosts from "@/pages/admin/ai-costs";
+import AdminAiUsage from "@/pages/admin/ai-usage";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
 import OptimizePage from "@/pages/optimize";
@@ -653,6 +654,9 @@ function Router() {
       </Route>
       <Route path="/admin/ai-costs">
         {() => <ProtectedRoute component={AdminAICosts} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/ai-usage">
+        {() => <ProtectedRoute component={AdminAiUsage} requiredRole="admin" />}
       </Route>
       <Route path="/admin/tourism-analytics">
         {() => <ProtectedRoute component={AdminTourismAnalytics} requiredRole="admin" />}
