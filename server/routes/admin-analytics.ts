@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
-import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc, gte } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
@@ -41,7 +41,7 @@ import {
   expertPayouts, providerPayouts, platformSettings,
   expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow,
   transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries,
-  accessAuditLogs, contentRegistry
+  accessAuditLogs, contentRegistry, aiUsageLogs
 } from "@shared/schema";
 import { 
   insertTripParticipantSchema, 
@@ -1473,6 +1473,54 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
       res.json(stats);
     } catch (error) {
       res.status(500).json({ message: "Failed to get AI usage stats" });
+    }
+  });
+
+  app.get("/api/admin/ai-usage/user/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const { userId } = req.params;
+      const days = Math.min(90, parseInt(req.query.days as string) || 30);
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+      const daily = await aiUsageService.getDailyPerUserUsage(userId, days);
+
+      const byOperation = await db
+        .select({
+          operation: aiUsageLogs.operation,
+          calls: sql<number>`count(*)::int`,
+          tokens: sql<number>`sum(${aiUsageLogs.totalTokens})::int`,
+          costCents: sql<number>`sum(${aiUsageLogs.estimatedCostCents})::int`,
+        })
+        .from(aiUsageLogs)
+        .where(and(eq(aiUsageLogs.userId, userId), gte(aiUsageLogs.createdAt, startDate)))
+        .groupBy(aiUsageLogs.operation)
+        .orderBy(sql`count(*) desc`)
+        .limit(10);
+
+      const byProvider = await db
+        .select({
+          provider: aiUsageLogs.provider,
+          calls: sql<number>`count(*)::int`,
+          tokens: sql<number>`sum(${aiUsageLogs.totalTokens})::int`,
+          costCents: sql<number>`sum(${aiUsageLogs.estimatedCostCents})::int`,
+        })
+        .from(aiUsageLogs)
+        .where(and(eq(aiUsageLogs.userId, userId), gte(aiUsageLogs.createdAt, startDate)))
+        .groupBy(aiUsageLogs.provider)
+        .orderBy(sql`count(*) desc`);
+
+      const totalCalls = daily.reduce((s, d) => s + d.calls, 0);
+      const totalTokens = daily.reduce((s, d) => s + d.tokens, 0);
+      const totalCostCents = daily.reduce((s, d) => s + d.costCents, 0);
+
+      res.json({ userId, days, daily, byOperation, byProvider, totalCalls, totalTokens, totalCostCents });
+    } catch (error) {
+      console.error("Failed to get per-user AI usage:", error);
+      res.status(500).json({ message: "Failed to get per-user AI usage" });
     }
   });
 
