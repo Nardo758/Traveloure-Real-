@@ -98,6 +98,38 @@ export function registerExpertBookingRoutes(app: Express, resolveSlug: (slug: st
       const { status, reason } = req.body;
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
 
+      // Send expert-acceptance email when booking is confirmed/accepted (non-blocking)
+      if ((status === 'confirmed' || status === 'accepted') && updated) {
+        (async () => {
+          try {
+            const { emailService } = await import('../services/email.service');
+            const [traveler, expert, service] = await Promise.all([
+              storage.getUser(updated.travelerId),
+              storage.getUser(userId),
+              storage.getProviderServiceById(updated.serviceId),
+            ]);
+            if (traveler?.email && expert && service) {
+              const guestName = [traveler.firstName, traveler.lastName].filter(Boolean).join(' ') || traveler.email.split('@')[0];
+              const expertName = [expert.firstName, expert.lastName].filter(Boolean).join(' ') || expert.email?.split('@')[0] || 'Your expert';
+              const ref = updated.trackingNumber || updated.id.slice(0, 8).toUpperCase();
+              const scheduledDate = (updated as any).bookingDetails?.scheduledDate ?? null;
+              const result = await emailService.sendExpertAcceptance({
+                to: traveler.email,
+                guestName,
+                expertName,
+                bookingId: updated.id,
+                confirmationCode: ref,
+                serviceName: service.serviceName,
+                scheduledDate,
+              });
+              console.log(`[ExpertAcceptance] Email sent to ${traveler.email} for booking ${updated.id}: ${result.message ?? result.provider}`);
+            }
+          } catch (acceptErr) {
+            console.error('[ExpertAcceptance] Failed to send email:', acceptErr);
+          }
+        })();
+      }
+
       // Record revenue when a service booking is marked completed (non-blocking)
       if (status === 'completed' && updated) {
         (async () => {

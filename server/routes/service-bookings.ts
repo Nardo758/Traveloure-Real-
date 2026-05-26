@@ -423,7 +423,37 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       
       // Increment service bookings count
       await storage.incrementServiceBookings(service.id, Number(service.price) || 0);
-      
+
+      // Send booking-created confirmation email (non-blocking)
+      (async () => {
+        try {
+          const { emailService } = await import('../services/email.service');
+          const [traveler, provider] = await Promise.all([
+            storage.getUser(userId),
+            storage.getUser(service.userId),
+          ]);
+          if (traveler?.email) {
+            const guestName = [traveler.firstName, traveler.lastName].filter(Boolean).join(' ') || traveler.email.split('@')[0];
+            const providerName = [provider?.firstName, provider?.lastName].filter(Boolean).join(' ') || provider?.email?.split('@')[0] || 'your provider';
+            const ref = (booking as any).trackingNumber || booking.id.slice(0, 8).toUpperCase();
+            const scheduledDate = (booking as any).bookingDetails?.scheduledDate ?? null;
+            await emailService.sendBookingCreated({
+              to: traveler.email,
+              guestName,
+              bookingId: booking.id,
+              confirmationCode: ref,
+              serviceName: service.serviceName,
+              providerName,
+              scheduledDate,
+              totalAmount: input.totalAmount ? Math.round(parseFloat(input.totalAmount as string) * 100) : null,
+            });
+            console.log(`[BookingCreated] Email sent to ${traveler.email} for booking ${booking.id}`);
+          }
+        } catch (e) {
+          console.error('[BookingCreated] Email failed:', e);
+        }
+      })();
+
       res.status(201).json(booking);
     } catch (err) {
       if (err instanceof z.ZodError) {

@@ -18,6 +18,28 @@
  *   await resend.emails.send({ from, to, subject, html });
  */
 
+export interface BookingCreatedPayload {
+  to: string;
+  guestName: string;
+  bookingId: string;
+  confirmationCode: string;
+  serviceName: string;
+  providerName: string;
+  scheduledDate?: string | null;
+  totalAmount?: number | null;
+  currency?: string;
+}
+
+export interface ExpertAcceptancePayload {
+  to: string;
+  guestName: string;
+  expertName: string;
+  bookingId: string;
+  confirmationCode: string;
+  serviceName: string;
+  scheduledDate?: string | null;
+}
+
 export interface ReviewReminderPayload {
   to: string;
   travelerName: string;
@@ -65,6 +87,24 @@ class EmailService {
   }
 
   /**
+   * Send a booking-created confirmation to the traveler right after they book.
+   */
+  async sendBookingCreated(payload: BookingCreatedPayload): Promise<EmailResult> {
+    const subject = `Booking Request Received — ${payload.serviceName} [${payload.confirmationCode}]`;
+    const html = this._buildBookingCreatedHtml(payload);
+    return this._send({ to: payload.to, subject, html });
+  }
+
+  /**
+   * Notify the traveler that their expert/provider has accepted their booking.
+   */
+  async sendExpertAcceptance(payload: ExpertAcceptancePayload): Promise<EmailResult> {
+    const subject = `Your booking is confirmed — ${payload.expertName} accepted your request`;
+    const html = this._buildExpertAcceptanceHtml(payload);
+    return this._send({ to: payload.to, subject, html });
+  }
+
+  /**
    * Send a review reminder email to a traveler after their booking completes.
    */
   async sendReviewReminder(payload: ReviewReminderPayload): Promise<EmailResult> {
@@ -95,6 +135,73 @@ class EmailService {
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
+
+  private _buildBookingCreatedHtml(p: BookingCreatedPayload): string {
+    const baseUrl = process.env.REPLIT_DOMAINS
+      ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+      : "https://traveloure.com";
+    const dateStr = p.scheduledDate
+      ? new Date(p.scheduledDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+      : "To be confirmed";
+    const amountStr = p.totalAmount != null
+      ? `${p.currency ?? "USD"} ${(p.totalAmount / 100).toFixed(2)}`
+      : "—";
+    return `
+<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#222">
+  <h2 style="color:#FF385C">Booking Request Received ✓</h2>
+  <p>Hi ${p.guestName},</p>
+  <p>We've received your booking request for <strong>${p.serviceName}</strong> with <strong>${p.providerName}</strong>. They'll confirm shortly.</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0">
+    <tr><td style="padding:8px 0;color:#666;width:40%">Service</td><td><strong>${p.serviceName}</strong></td></tr>
+    <tr><td style="padding:8px 0;color:#666">Reference</td><td><strong>${p.confirmationCode}</strong></td></tr>
+    <tr><td style="padding:8px 0;color:#666">Scheduled</td><td>${dateStr}</td></tr>
+    <tr><td style="padding:8px 0;color:#666">Total</td><td>${amountStr}</td></tr>
+  </table>
+  <p style="margin:24px 0">
+    <a href="${baseUrl}/bookings"
+       style="background:#FF385C;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block">
+      View Your Booking
+    </a>
+  </p>
+  <p style="color:#666;font-size:14px">You'll receive another email once ${p.providerName} confirms your request.</p>
+  <p style="color:#999;font-size:12px;margin-top:32px">— The Traveloure Team</p>
+</body>
+</html>`.trim();
+  }
+
+  private _buildExpertAcceptanceHtml(p: ExpertAcceptancePayload): string {
+    const baseUrl = process.env.REPLIT_DOMAINS
+      ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+      : "https://traveloure.com";
+    const dateStr = p.scheduledDate
+      ? new Date(p.scheduledDate).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+      : "As arranged";
+    return `
+<!DOCTYPE html>
+<html>
+<body style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#222">
+  <h2 style="color:#FF385C">You're All Set! 🎉</h2>
+  <p>Hi ${p.guestName},</p>
+  <p>Great news — <strong>${p.expertName}</strong> has accepted your booking for <strong>${p.serviceName}</strong>.</p>
+  <table style="width:100%;border-collapse:collapse;margin:16px 0">
+    <tr><td style="padding:8px 0;color:#666;width:40%">Expert</td><td><strong>${p.expertName}</strong></td></tr>
+    <tr><td style="padding:8px 0;color:#666">Service</td><td><strong>${p.serviceName}</strong></td></tr>
+    <tr><td style="padding:8px 0;color:#666">Reference</td><td><strong>${p.confirmationCode}</strong></td></tr>
+    <tr><td style="padding:8px 0;color:#666">Date</td><td>${dateStr}</td></tr>
+  </table>
+  <p style="margin:24px 0">
+    <a href="${baseUrl}/bookings"
+       style="background:#FF385C;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;display:inline-block">
+      View Booking Details
+    </a>
+  </p>
+  <p style="color:#666;font-size:14px">You can message ${p.expertName} directly from your bookings page if you have any questions before your experience.</p>
+  <p style="color:#999;font-size:12px;margin-top:32px">— The Traveloure Team</p>
+</body>
+</html>`.trim();
+  }
 
   private _buildReviewReminderHtml(p: ReviewReminderPayload): string {
     const baseUrl = process.env.REPLIT_DOMAINS
