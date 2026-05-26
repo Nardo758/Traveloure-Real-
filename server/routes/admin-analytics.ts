@@ -1475,4 +1475,26 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
       res.status(500).json({ message: "Failed to get AI usage stats" });
     }
   });
+
+  app.get("/api/admin/ai-usage/historical", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (user?.claims?.role !== "admin" && user?.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const days = Math.min(90, parseInt(req.query.days as string) || 30);
+      const [daily, topUsers, summary] = await Promise.all([
+        aiUsageService.getDailyUsage(days),
+        aiUsageService.getTopUsersByPeriod(days, 20),
+        aiUsageService.getSummary(
+          new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+          new Date()
+        ),
+      ]);
+      res.json({ daily, topUsers, summary, days });
+    } catch (error) {
+      console.error("Failed to get historical AI usage:", error);
+      res.status(500).json({ message: "Failed to get historical AI usage" });
+    }
+  });
 }
