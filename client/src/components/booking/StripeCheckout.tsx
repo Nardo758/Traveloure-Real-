@@ -3,18 +3,15 @@
  * Handles Stripe payment form and processing
  */
 
-import React, { useState, useEffect } from 'react';
-import { loadStripe, Stripe, StripeElements } from '@stripe/stripe-js';
+import React, { useState, useEffect, useRef } from 'react';
+import { loadStripe, Stripe } from '@stripe/stripe-js';
 import {
   PaymentElement,
   Elements,
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
-import { CreditCard, Lock, AlertCircle } from 'lucide-react';
-
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+import { Lock, AlertCircle } from 'lucide-react';
 
 interface CheckoutFormProps {
   clientSecret: string;
@@ -41,89 +38,53 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
     setIsProcessing(true);
     setErrorMessage('');
 
-    try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          return_url: `${window.location.origin}/booking/confirmation`,
-        },
-        redirect: 'if_required',
-      });
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+    });
 
-      if (error) {
-        setErrorMessage(error.message || 'Payment failed');
-        onError(error.message || 'Payment failed');
-      } else if (paymentIntent && paymentIntent.status === 'succeeded') {
-        // Payment successful
-        onSuccess(paymentIntent.id);
-      }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'An unexpected error occurred');
-      onError(err.message || 'An unexpected error occurred');
-    } finally {
+    if (error) {
+      setErrorMessage(error.message || 'Payment failed');
+      onError(error.message || 'Payment failed');
+      setIsProcessing(false);
+    } else if (paymentIntent?.status === 'succeeded') {
+      onSuccess(paymentIntent.id);
+    } else {
+      setErrorMessage('Payment could not be completed. Please try again.');
+      onError('Payment could not be completed');
       setIsProcessing(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Payment Element */}
-      <div className="border border-gray-200 rounded-lg p-4 bg-white min-h-[200px]">
-        <PaymentElement 
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+        <PaymentElement
           onReady={() => setIsReady(true)}
-          onLoadError={(error) => {
-            setErrorMessage(error.error.message || 'Failed to load payment form');
-          }}
+          options={{ layout: 'tabs' }}
         />
-        {!isReady && (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-            <span className="ml-2 text-gray-500">Loading payment form...</span>
-          </div>
-        )}
       </div>
 
-      {/* Error Message */}
       {errorMessage && (
-        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-red-800">{errorMessage}</p>
+        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
-      {/* Security Notice */}
-      <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
-        <Lock className="w-4 h-4" />
-        <span>Your payment information is secure and encrypted</span>
-      </div>
-
-      {/* Submit Button */}
       <button
         type="submit"
         disabled={!stripe || !isReady || isProcessing}
-        className={`
-          w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
-          ${!stripe || !isReady || isProcessing
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
-          }
-        `}
+        data-testid="button-pay-now"
+        className="w-full py-4 bg-purple-600 text-white font-semibold rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
       >
-        {isProcessing ? (
-          <>
-            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Processing...
-          </>
-        ) : (
-          <>
-            <CreditCard className="w-5 h-5" />
-            Pay ${(amount / 100).toFixed(2)}
-          </>
-        )}
+        <Lock className="w-4 h-4" />
+        {isProcessing ? 'Processing...' : `Pay $${(amount / 100).toFixed(2)}`}
       </button>
 
-      <p className="text-xs text-center text-gray-500">
-        By confirming your payment, you agree to our Terms of Service and Privacy Policy.
+      <p className="text-center text-xs text-gray-500 flex items-center justify-center gap-1">
+        <Lock className="w-3 h-3" />
+        Secured by Stripe
       </p>
     </form>
   );
@@ -141,6 +102,16 @@ interface StripeCheckoutProps {
   onCancel: () => void;
 }
 
+// Fetch the publishable key from the server (ensures it matches the secret key)
+async function getStripePublishableKey(): Promise<string> {
+  try {
+    const res = await fetch('/api/stripe/config');
+    const data = await res.json();
+    if (data.publishableKey) return data.publishableKey;
+  } catch {}
+  return import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+}
+
 export default function StripeCheckout({
   paymentIntent,
   bookingIds,
@@ -148,10 +119,18 @@ export default function StripeCheckout({
   onError,
   onCancel,
 }: StripeCheckoutProps) {
-  const [stripe, setStripe] = useState<Stripe | null>(null);
+  // Store a stable Stripe promise — only create once per key
+  const stripePromiseRef = useRef<ReturnType<typeof loadStripe> | null>(null);
+  const [stripeReady, setStripeReady] = useState(false);
+  const [keyError, setKeyError] = useState(false);
 
   useEffect(() => {
-    stripePromise.then(setStripe);
+    if (stripePromiseRef.current) { setStripeReady(true); return; }
+    getStripePublishableKey().then(key => {
+      if (!key) { setKeyError(true); return; }
+      stripePromiseRef.current = loadStripe(key);
+      setStripeReady(true);
+    });
   }, []);
 
   if (!paymentIntent?.clientSecret) {
@@ -162,12 +141,29 @@ export default function StripeCheckout({
     );
   }
 
+  if (keyError) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600">Payment system not configured. Please contact support.</p>
+      </div>
+    );
+  }
+
+  if (!stripeReady || !stripePromiseRef.current) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-3" />
+        <p className="text-gray-500 text-sm">Loading payment form...</p>
+      </div>
+    );
+  }
+
   const options = {
     clientSecret: paymentIntent.clientSecret,
     appearance: {
       theme: 'stripe' as const,
       variables: {
-        colorPrimary: '#9333ea', // purple-600
+        colorPrimary: '#9333ea',
         colorBackground: '#ffffff',
         colorText: '#1f2937',
         colorDanger: '#dc2626',
@@ -180,7 +176,6 @@ export default function StripeCheckout({
 
   return (
     <div className="max-w-md mx-auto">
-      {/* Header */}
       <div className="mb-6 text-center">
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Complete Your Booking</h2>
         <p className="text-gray-600">
@@ -190,22 +185,19 @@ export default function StripeCheckout({
         </p>
       </div>
 
-      {/* Stripe Elements */}
-      {stripe && (
-        <Elements stripe={stripe} options={options}>
-          <CheckoutForm
-            clientSecret={paymentIntent.clientSecret}
-            amount={paymentIntent.amount}
-            bookingIds={bookingIds}
-            onSuccess={onSuccess}
-            onError={onError}
-          />
-        </Elements>
-      )}
+      <Elements stripe={stripePromiseRef.current} options={options}>
+        <CheckoutForm
+          clientSecret={paymentIntent.clientSecret}
+          amount={paymentIntent.amount}
+          bookingIds={bookingIds}
+          onSuccess={onSuccess}
+          onError={onError}
+        />
+      </Elements>
 
-      {/* Cancel Button */}
       <button
         onClick={onCancel}
+        data-testid="button-cancel-payment"
         className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition font-medium"
       >
         Cancel

@@ -62,6 +62,7 @@ import ProviderProfile from "@/pages/provider/profile";
 import ProviderSettings from "@/pages/provider/settings";
 import ProviderResources from "@/pages/provider/resources";
 import ProviderReviews from "@/pages/provider/reviews";
+import ProviderAvailabilityManagement from "@/pages/provider/availability-management";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
 import AdminExperts from "@/pages/admin/experts";
@@ -305,6 +306,9 @@ function Router() {
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
+      </Route>
+      <Route path="/my-bookings">
+        {() => <Redirect to="/bookings" />}
       </Route>
       <Route path="/wishlist">
         {() => <ProtectedRoute component={WishlistPage} />}
@@ -592,6 +596,9 @@ function Router() {
       </Route>
       <Route path="/provider/resources">
         {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/availability">
+        {() => <ProtectedRoute component={ProviderAvailabilityManagement} requiredRole="provider" />}
       </Route>
 
       {/* Admin Dashboard Routes (use AdminLayout - no global Layout) */}

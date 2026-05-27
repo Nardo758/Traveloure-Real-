@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -14,7 +15,7 @@ import {
   Route, MessageSquare, Lightbulb, ChevronDown, ChevronUp,
   Check, X, Footprints, Car, TrainFront, Heart, TrendingDown,
   Navigation, ExternalLink, Ship, Bus, Train, CarTaxiFront,
-  KeyRound, Repeat,
+  KeyRound, Repeat, Copy,
 } from "lucide-react";
 import { differenceInDays, format } from "date-fns";
 import type {
@@ -196,18 +197,51 @@ function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, 
   const country = destinationParts.slice(1).join(",").trim() || "";
   const displayCost = totalCost || budget;
 
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [currentShareUrl, setCurrentShareUrl] = useState("");
+
   function handleShare() {
     const shareUrl = shareToken
       ? `${window.location.origin}/itinerary-view/${shareToken}`
       : `${window.location.origin}/itinerary/${trip.id}`;
+    setCurrentShareUrl(shareUrl);
+    setShowShareDialog(true);
     navigator.clipboard?.writeText(shareUrl).catch(() => {});
-    toast({ title: "Link copied!", description: "Share link copied to clipboard." });
     if (navigator.share) {
       navigator.share({ title: `${trip.title} - Traveloure`, url: shareUrl }).catch(() => {});
     }
   }
 
+  function copyShareUrl() {
+    navigator.clipboard?.writeText(currentShareUrl).catch(() => {});
+    toast({ title: "Link copied!", description: "Share link copied to clipboard." });
+  }
+
   return (
+    <>
+    <Dialog open={showShareDialog} onOpenChange={setShowShareDialog}>
+      <DialogContent data-testid={`dialog-share-${trip.id}`}>
+        <DialogHeader>
+          <DialogTitle>Share Itinerary</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">Anyone with this link can view the itinerary.</p>
+        <div className="flex items-center gap-2 bg-muted rounded-lg p-3">
+          <span className="flex-1 text-sm truncate" data-testid={`text-share-url-${trip.id}`}>{currentShareUrl}</span>
+          <button onClick={copyShareUrl} className="text-muted-foreground hover:text-foreground flex-shrink-0" data-testid={`button-copy-share-${trip.id}`}>
+            <Copy className="w-4 h-4" />
+          </button>
+        </div>
+        <a
+          href={currentShareUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 py-2.5 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+          data-testid={`link-open-share-${trip.id}`}
+        >
+          <ExternalLink className="w-4 h-4" /> Open Shared View
+        </a>
+      </DialogContent>
+    </Dialog>
     <div className={`relative h-52 overflow-hidden bg-gradient-to-br ${urgencyGradient}`}>
       <img
         src={photoUrl}
@@ -272,6 +306,7 @@ function HeroSection({ trip, traveloureScore, shareToken, totalCost, perPerson, 
         </div>
       </Link>
     </div>
+    </>
   );
 }
 

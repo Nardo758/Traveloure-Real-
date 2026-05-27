@@ -1,8 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, format } from "date-fns";
-import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
+import { Users, Share2, Download, MapPin, Calendar, Zap, Copy, ExternalLink, X } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
 import { getDestinationPhotoUrl, type PlanCardTrip } from "./plancard-types";
 
 interface HeroSectionProps {
@@ -51,15 +52,24 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
 
   const displayCost = totalCost || budget;
 
+  const [showSharePopup, setShowSharePopup] = useState(false);
+  const [currentShareUrl, setCurrentShareUrl] = useState("");
+
   function handleShare() {
     const shareUrl = shareToken
       ? `${window.location.origin}/itinerary-view/${shareToken}`
       : `${window.location.origin}/itinerary/${trip.id}`;
+    setCurrentShareUrl(shareUrl);
+    setShowSharePopup(true);
     navigator.clipboard?.writeText(shareUrl).catch(() => {});
-    toast({ title: "Link copied!", description: "Share link copied to clipboard." });
     if (navigator.share) {
       navigator.share({ title: `${trip.title} - Traveloure`, url: shareUrl }).catch(() => {});
     }
+  }
+
+  function copyShareUrl() {
+    navigator.clipboard?.writeText(currentShareUrl).catch(() => {});
+    toast({ title: "Link copied!", description: "Share link copied to clipboard." });
   }
 
   return (
@@ -108,6 +118,57 @@ export function HeroSection({ trip, traveloureScore, shareToken, totalCost, perP
           </button>
         </Link>
       </div>
+
+      {/* Share popup overlay */}
+      {showSharePopup && (
+        <div
+          className="absolute inset-0 bg-black/60 flex items-center justify-center z-10"
+          onClick={() => setShowSharePopup(false)}
+          data-testid={`overlay-share-${trip.id}`}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-5 mx-4 w-full max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`dialog-share-${trip.id}`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900 text-sm">Share Itinerary</h3>
+              <button
+                onClick={() => setShowSharePopup(false)}
+                className="text-gray-400 hover:text-gray-600"
+                data-testid={`button-close-share-${trip.id}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">Anyone with this link can view the itinerary</p>
+            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-2 mb-3">
+              <span
+                className="flex-1 text-xs text-gray-700 truncate"
+                data-testid={`text-share-url-${trip.id}`}
+              >
+                {currentShareUrl}
+              </span>
+              <button
+                onClick={copyShareUrl}
+                className="text-gray-500 hover:text-gray-800 flex-shrink-0"
+                data-testid={`button-copy-share-${trip.id}`}
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <a
+              href={currentShareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              data-testid={`link-open-share-${trip.id}`}
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Open Shared View
+            </a>
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-4 left-5 right-5">
         <h3 className="font-['DM_Serif_Display',serif] text-[22px] text-white leading-tight drop-shadow-sm" data-testid={`text-plan-title-${trip.id}`}>
