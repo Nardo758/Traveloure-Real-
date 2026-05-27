@@ -1307,9 +1307,17 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
       );
 
       const { grokDiscoveryService } = await import("../services/grok-discovery.service");
+      // Limit to 3 categories max per scan to keep response time reasonable
+      const allCategories = ["local_food_secrets", "hidden_viewpoints", "off_tourist_path", "seasonal_events", 
+        "cultural_experiences", "secret_beaches", "street_art", "local_markets", 
+        "sunset_spots", "historic_gems", "nature_escapes", "nightlife_secrets"] as const;
+      const selectedCategories = validCategories?.length > 0 
+        ? validCategories.slice(0, 3) 
+        : allCategories.slice(0, 3);
       const result = await grokDiscoveryService.discoverGemsForDestination(
         destination,
-        validCategories?.length > 0 ? validCategories : undefined
+        selectedCategories as any,
+        { maxGemsPerCategory: 2 }
       );
 
       res.json({
