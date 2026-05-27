@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { 
   aiDiscoveredGems, 
@@ -174,7 +175,6 @@ class GrokDiscoveryService {
     category: DiscoveryCategory,
     maxGems: number
   ): Promise<DiscoveryResult> {
-    const client = getGrokClient();
     const categoryDescription = CATEGORY_PROMPTS[category];
     const categoryLabel = CATEGORY_LABELS[category];
 
@@ -227,19 +227,42 @@ Return the following JSON structure:
 
 Focus on authenticity and specificity. Avoid generic tourist attractions.`;
 
-    const response = await client.chat.completions.create({
-      model: GROK_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.8,
-      max_tokens: 4000,
-    });
+    // Try Grok first, fall back to Claude if credits exhausted or unavailable
+    let content: string | null = null;
+    let sourceModel = "grok";
 
-    const content = response.choices[0]?.message?.content;
+    try {
+      const client = getGrokClient();
+      const response = await client.chat.completions.create({
+        model: GROK_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 4000,
+      });
+      content = response.choices[0]?.message?.content || null;
+    } catch (grokError: any) {
+      this.discoveryLogger.warn({ category, error: grokError.message }, "Grok unavailable, falling back to Claude");
+      sourceModel = "claude";
+    }
+
+    // Claude fallback
     if (!content) {
-      throw new Error("Empty response from Grok");
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const claudeResponse = await anthropic.messages.create({
+        model: "claude-opus-4-5",
+        max_tokens: 4000,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      });
+      const block = claudeResponse.content[0];
+      content = block.type === "text" ? block.text : null;
+    }
+
+    if (!content) {
+      throw new Error("Empty response from AI");
     }
 
     const cleanedContent = content
@@ -250,12 +273,14 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     try {
       const result = JSON.parse(cleanedContent) as DiscoveryResult;
       result.category = category;
+      // Patch sourceModel into each gem (stored later via saveGem)
+      (result as any)._sourceModel = sourceModel;
       return result;
     } catch (parseError) {
       this.discoveryLogger.error({ 
         category, 
         content: cleanedContent.substring(0, 500) 
-      }, "Failed to parse Grok response");
+      }, "Failed to parse AI discovery response");
       throw new Error(`Failed to parse discovery response: ${parseError}`);
     }
   }

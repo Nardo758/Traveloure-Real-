@@ -96,11 +96,12 @@ export default function HiddenGemsPage() {
     mutationFn: async (destination: string) => {
       return apiRequest("POST", "/api/discovery/scan", { destination });
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: any, destination: string) => {
       toast({
         title: "Discovery Complete",
         description: data.message || `Discovered ${data.totalGems} hidden gems!`,
       });
+      setSearchDestination(destination);
       queryClient.invalidateQueries({ 
         predicate: (query) => {
           const key = query.queryKey[0];

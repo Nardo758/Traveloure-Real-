@@ -3,7 +3,7 @@
  * Handles Stripe payment form and processing
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import {
   PaymentElement,
@@ -119,17 +119,13 @@ export default function StripeCheckout({
   onError,
   onCancel,
 }: StripeCheckoutProps) {
-  // Store a stable Stripe promise — only create once per key
-  const stripePromiseRef = useRef<ReturnType<typeof loadStripe> | null>(null);
-  const [stripeReady, setStripeReady] = useState(false);
+  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
   const [keyError, setKeyError] = useState(false);
 
   useEffect(() => {
-    if (stripePromiseRef.current) { setStripeReady(true); return; }
     getStripePublishableKey().then(key => {
       if (!key) { setKeyError(true); return; }
-      stripePromiseRef.current = loadStripe(key);
-      setStripeReady(true);
+      setStripePromise(loadStripe(key));
     });
   }, []);
 
@@ -149,7 +145,7 @@ export default function StripeCheckout({
     );
   }
 
-  if (!stripeReady || !stripePromiseRef.current) {
+  if (!stripePromise) {
     return (
       <div className="text-center py-8">
         <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto mb-3" />
@@ -185,7 +181,7 @@ export default function StripeCheckout({
         </p>
       </div>
 
-      <Elements stripe={stripePromiseRef.current} options={options}>
+      <Elements stripe={stripePromise} options={options}>
         <CheckoutForm
           clientSecret={paymentIntent.clientSecret}
           amount={paymentIntent.amount}

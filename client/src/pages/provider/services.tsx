@@ -113,14 +113,12 @@ export default function ProviderServices() {
   const createMutation = useMutation({
     mutationFn: async (data: CreateServiceForm) => {
       const res = await apiRequest("POST", "/api/provider/services", {
-        name: data.name,
-        category: data.category,
-        basePrice: parseFloat(data.basePrice),
-        priceUnit: data.priceUnit,
+        serviceName: data.name,
+        price: data.basePrice ? parseFloat(data.basePrice).toFixed(2) : undefined,
         description: data.description || undefined,
-        duration: data.duration || undefined,
-        maxGuests: data.maxGuests ? parseInt(data.maxGuests) : undefined,
-        active: true,
+        deliveryTimeframe: data.duration || undefined,
+        maxConcurrentBookings: data.maxGuests ? parseInt(data.maxGuests) : undefined,
+        status: "active",
       });
       return res.json();
     },
@@ -203,7 +201,7 @@ export default function ProviderServices() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-gray-900">{service.name}</h3>
+                        <h3 className="font-semibold text-gray-900">{service.serviceName || service.name}</h3>
                         {service.featured && (
                           <Badge className="bg-[#FF385C] text-white" data-testid={`badge-featured-${service.id}`}>
                             Featured
