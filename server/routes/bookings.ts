@@ -525,12 +525,13 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
       } else {
         // Fallback: client-supplied price with strict range validation
         const clientPrice = parseFloat(ext.price);
-        if (isNaN(clientPrice) || clientPrice <= 0) {
+        if (isNaN(clientPrice) || clientPrice < 0) {
           return res.status(400).json({ error: `Invalid price for item: ${ext.name}` });
         }
         if (clientPrice > 25000) {
           return res.status(400).json({ error: `Price exceeds maximum allowed for: ${ext.name}` });
         }
+        // Free activities ($0) are allowed — skip Stripe charge for them
         pricePerUnit = clientPrice;
       }
 

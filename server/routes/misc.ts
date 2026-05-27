@@ -1605,6 +1605,15 @@ Respond with this exact JSON structure:
     }
   });
 
+  // === Stripe Public Config ===
+  app.get("/api/stripe/config", (_req, res) => {
+    const publishableKey =
+      process.env.STRIPE_PUBLISHABLE_KEY ||
+      process.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+      "";
+    res.json({ publishableKey });
+  });
+
   // === Help Guide Trips ===
   app.get(api.helpGuideTrips.list.path, async (req, res) => {
     const trips = await storage.getHelpGuideTrips();
