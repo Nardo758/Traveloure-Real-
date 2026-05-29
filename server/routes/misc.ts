@@ -10,6 +10,7 @@ import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { claudeService } from "../services/claude.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
+import { getBaseUrl } from "../services/stripe.service";
 import { grokService } from "../services/grok.service";
 import { travelPulseService } from "../services/travelpulse.service";
 import { feverService } from "../services/fever.service";
@@ -1047,7 +1048,7 @@ Respond with this exact JSON structure:
         await storage.updateUserStripeAccount(userId, accountId, 'onboarding_incomplete');
       }
 
-      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      const baseUrl = getBaseUrl();
       const link = await stripeConnectService.createOnboardingLink(
         accountId,
         `${baseUrl}/stripe/connect/return`,
