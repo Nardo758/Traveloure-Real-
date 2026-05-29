@@ -66,6 +66,7 @@ VITE_TWELVEGO_AFFILIATE_ID = "13805109"
 ENVIRONMENT = "PROD"
 ADMIN_ALLOWED_IPS = "127.0.0.1"
 RATE_LIMIT_BYPASS_KEY = "traveloure-test-jngqrqm41penm5xcqd6gfr"
+STRIPE_SECRETE_KEY = "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"
 
 [postMerge]
 path = "scripts/post-merge.sh"
