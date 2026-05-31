@@ -179,6 +179,13 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
+      // Reject suspended accounts
+      if (user.suspended) {
+        return res.status(403).json({
+          message: "Your account has been suspended. Please contact support.",
+        });
+      }
+
       // Create session
       const sessionUser = {
         claims: {
@@ -211,50 +218,6 @@ export function setupEmailAuth(app: Express): void {
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Failed to log in" });
-    }
-  });
-
-  const resetPasswordSchema = z.object({
-    email: z.string().email("Invalid email address"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
-  });
-
-  app.post("/api/auth/reset-password", async (req, res) => {
-    try {
-      const validation = resetPasswordSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({
-          message: "Validation failed",
-          errors: validation.error.errors,
-        });
-      }
-
-      const { email, newPassword } = validation.data;
-
-      const user = await db
-        .select()
-        .from(users)
-        .where(eq(users.email, email.toLowerCase()))
-        .then((r) => r[0]);
-
-      if (!user) {
-        return res.status(200).json({
-          message: "If an account with that email exists, the password has been reset.",
-        });
-      }
-
-      const hashedPassword = await hashPassword(newPassword);
-      await db
-        .update(users)
-        .set({ password: hashedPassword, authProvider: user.authProvider || "email" })
-        .where(eq(users.id, user.id));
-
-      res.json({
-        message: "Password has been reset successfully. You can now sign in.",
-      });
-    } catch (error) {
-      console.error("Password reset error:", error);
-      res.status(500).json({ message: "Failed to reset password" });
     }
   });
 
