@@ -138,23 +138,45 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
+  if (now > user.expires_at) {
+    const refreshToken = user.refresh_token;
+    if (!refreshToken) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    try {
+      const config = await getOidcConfig();
+      const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+      updateUserSession(user, tokenResponse);
+    } catch (error) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
   }
 
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+  // Revalidate the user against the database on every request to enforce
+  // suspension and role changes without waiting for session expiry.
+  const userId = user.claims?.sub;
+  if (userId) {
+    try {
+      const dbUser = await authStorage.getUser(String(userId));
+      if (!dbUser || dbUser.suspended) {
+        req.logout(() => {
+          req.session?.destroy(() => {});
+        });
+        return res.status(403).json({ message: "Account suspended or not found." });
+      }
+      // Keep the role claim in sync with the database so stale elevated roles
+      // cannot persist after a demotion.
+      if (user.claims && dbUser.role) {
+        user.claims.role = dbUser.role;
+      }
+    } catch {
+      // If the DB check fails, fail closed.
+      return res.status(500).json({ message: "Could not verify account status." });
+    }
   }
 
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
-    return next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
+  return next();
 };
