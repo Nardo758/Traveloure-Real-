@@ -1,0 +1,39 @@
+~/workspace$ git push --force-with-lease origin claude/fix-admin-panel-TGqSq
+Enumerating objects: 1196, done.
+Counting objects: 100% (1196/1196), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (1063/1063), done.
+Writing objects: 100% (1071/1071), 3.47 MiB | 9.81 MiB/s, done.
+Total 1071 (delta 889), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (889/889), completed with 109 local objects.
+remote: error: GH013: Repository rule violations found for refs/heads/claude/fix-admin-panel-TGqSq.
+remote: 
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote: 
+remote:     - Push cannot contain secrets
+remote: 
+remote:     
+remote:      (?) Learn how to resolve a blocked push
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push
+remote:     
+remote:     
+remote:       —— Stripe API Key ————————————————————————————————————
+remote:        locations:
+remote:          - commit: f95bba62192138354aeaf8d0502283fb40a20760
+remote:            path: .replit:69
+remote:          - commit: 488af6bd8ae40ff748f660dbccc3ef2491ddbca0
+remote:            path: .replit:69
+remote:          - commit: 7114e5e4d95e28b29aaae3505732f68f4bcc3139
+remote:            path: .replit:69
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/Nardo758/Traveloure-Real-/security/secret-scanning/unblock-secret/3EV4QJMFfW7HMxiU1PMmEbPcol4
+remote:     
+remote: 
+remote: 
+To https://github.com/Nardo758/Traveloure-Real-.git
+ ! [remote rejected] claude/fix-admin-panel-TGqSq -> claude/fix-admin-panel-TGqSq (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/Nardo758/Traveloure-Real-.git'
+~/workspace$
