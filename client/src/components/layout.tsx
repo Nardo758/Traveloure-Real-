@@ -46,6 +46,7 @@ import {
   Umbrella
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DropdownMenu,
@@ -256,6 +257,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const { data: cartData } = useQuery<{ items: any[] }>({
+    queryKey: ["/api/cart"],
+    enabled: !!user,
+    refetchInterval: 30000,
+  });
+  const cartCount = cartData?.items?.length ?? 0;
+
   const isActive = (path: string) => location === path;
 
   return (
@@ -305,6 +313,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {user && (
                 <>
                   <NotificationBell />
+                  <Link href="/cart" data-testid="link-cart">
+                    <button
+                      className="relative p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      data-testid="button-cart"
+                      aria-label="Shopping cart"
+                    >
+                      <ShoppingCart className="h-5 w-5" />
+                      {cartCount > 0 && (
+                        <span
+                          className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white leading-none"
+                          data-testid="badge-cart-count"
+                        >
+                          {cartCount > 99 ? "99+" : cartCount}
+                        </span>
+                      )}
+                    </button>
+                  </Link>
                   <UserMenu />
                 </>
               )}
