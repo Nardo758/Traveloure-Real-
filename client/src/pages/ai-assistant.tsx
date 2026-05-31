@@ -19,8 +19,12 @@ import {
   Sparkles,
   Plane,
   MapPin,
-  Calendar
+  Calendar,
+  Pencil,
+  Check,
+  X
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Message {
@@ -44,8 +48,11 @@ export default function AIAssistant() {
   const [inputMessage, setInputMessage] = useState("");
   const [streamingMessage, setStreamingMessage] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const { data: conversations = [], isLoading: loadingConversations } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
@@ -78,6 +85,41 @@ export default function AIAssistant() {
       }
     },
   });
+
+  const renameConversation = useMutation({
+    mutationFn: async ({ id, title }: { id: number; title: string }) => {
+      const res = await apiRequest("PATCH", `/api/conversations/${id}`, { title });
+      return res.json() as Promise<Conversation>;
+    },
+    onMutate: ({ id, title }) => {
+      queryClient.setQueryData<Conversation[]>(["/api/conversations"], (old) =>
+        old ? old.map((c) => (c.id === id ? { ...c, title } : c)) : old
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
+    },
+  });
+
+  const startRename = (conv: Conversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(conv.id);
+    setRenameValue(conv.title);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  };
+
+  const commitRename = (id: number) => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== conversations.find((c) => c.id === id)?.title) {
+      renameConversation.mutate({ id, title: trimmed });
+    }
+    setRenamingId(null);
+  };
+
+  const cancelRename = () => setRenamingId(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -260,32 +302,85 @@ export default function AIAssistant() {
                       <div
                         key={conv.id}
                         className={cn(
-                          "p-3 rounded-lg cursor-pointer transition-all group flex items-center justify-between gap-2",
-                          selectedConversation === conv.id
-                            ? "bg-primary/10 border border-primary/20"
-                            : "hover:bg-muted"
+                          "p-3 rounded-lg transition-all group flex items-center justify-between gap-2",
+                          renamingId === conv.id
+                            ? "bg-muted"
+                            : selectedConversation === conv.id
+                            ? "bg-primary/10 border border-primary/20 cursor-pointer"
+                            : "hover:bg-muted cursor-pointer"
                         )}
-                        onClick={() => setSelectedConversation(conv.id)}
+                        onClick={() => renamingId !== conv.id && setSelectedConversation(conv.id)}
                         data-testid={`card-conversation-${conv.id}`}
                       >
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{conv.title}</p>
-                          <p className="text-xs text-gray-600 dark:text-gray-400">
-                            {new Date(conv.createdAt).toLocaleDateString()}
-                          </p>
+                          {renamingId === conv.id ? (
+                            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <Input
+                                ref={renameInputRef}
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") commitRename(conv.id);
+                                  if (e.key === "Escape") cancelRename();
+                                }}
+                                onBlur={() => commitRename(conv.id)}
+                                className="h-7 text-sm px-2 py-0"
+                                autoFocus
+                                data-testid={`input-rename-conversation-${conv.id}`}
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 flex-shrink-0 text-green-600 hover:text-green-700"
+                                onMouseDown={(e) => { e.preventDefault(); commitRename(conv.id); }}
+                                data-testid={`button-confirm-rename-${conv.id}`}
+                              >
+                                <Check className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 flex-shrink-0"
+                                onMouseDown={(e) => { e.preventDefault(); cancelRename(); }}
+                                data-testid={`button-cancel-rename-${conv.id}`}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <p className="text-sm font-medium truncate">{conv.title}</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">
+                                {new Date(conv.createdAt).toLocaleDateString()}
+                              </p>
+                            </>
+                          )}
                         </div>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteConversation.mutate(conv.id);
-                          }}
-                          data-testid={`button-delete-conversation-${conv.id}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                        {renamingId !== conv.id && (
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={(e) => startRename(conv, e)}
+                              data-testid={`button-rename-conversation-${conv.id}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteConversation.mutate(conv.id);
+                              }}
+                              data-testid={`button-delete-conversation-${conv.id}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
