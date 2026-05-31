@@ -93,8 +93,10 @@ const DEFAULT_SETTINGS: Record<string, string> = {
 export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -150,8 +152,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/analytics/overview", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -224,8 +228,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/analytics/by-country", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -299,8 +305,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/analytics/experts", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -375,8 +383,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/analytics/providers", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -463,8 +473,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const userId = rawUser?.claims?.sub ?? rawUser?.id;
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -562,14 +574,14 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
       // 6. Seasonality - Bookings by month (using trip start dates)
       const seasonality = await db.select({
-        month: sql<number>`EXTRACT(MONTH FROM start_date)::int`,
+        month: sql<number>`date_part('month', start_date)::int`,
         count: sql<number>`count(*)::int`,
         avgBudget: sql<number>`avg(COALESCE(budget::numeric, 0))::numeric`,
       })
       .from(trips)
       .where(isNotNull(trips.startDate))
-      .groupBy(sql`EXTRACT(MONTH FROM start_date)`)
-      .orderBy(sql`EXTRACT(MONTH FROM start_date)`);
+      .groupBy(sql`date_part('month', start_date)`)
+      .orderBy(sql`date_part('month', start_date)`);
 
       // 7. Event Types breakdown
       const eventTypes = await db.select({
@@ -591,7 +603,7 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
       .where(eq(serviceBookings.status, "completed"));
 
       const avgTripDuration = await db.select({
-        avgDays: sql<number>`avg(EXTRACT(DAY FROM (end_date - start_date)))::numeric`,
+        avgDays: sql<number>`avg(date_part('day', end_date::timestamp - start_date::timestamp))::numeric`,
       })
       .from(trips)
       .where(sql`start_date IS NOT NULL AND end_date IS NOT NULL`);
@@ -664,8 +676,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -718,8 +732,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/search", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -798,8 +814,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -831,8 +849,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/destination-demand", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -869,8 +889,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/provider-market", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -913,8 +935,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/geographic-insights", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -960,8 +984,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/conversion-funnel", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1005,8 +1031,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/activity-demand", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1098,8 +1126,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/activity-trends/:activityType", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1159,8 +1189,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/reports/destination-benchmark/:destination", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -1301,7 +1333,7 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
   app.get("/api/admin/activity/recent", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId = user?.claims?.sub;
+      const userId = user?.claims?.sub ?? user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const dbUser = await storage.getUser(userId);
       if (!dbUser || dbUser.role !== "admin") {
@@ -1339,7 +1371,7 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
   app.get("/api/admin/flagged-content", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId = user?.claims?.sub;
+      const userId = user?.claims?.sub ?? user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const dbUser = await storage.getUser(userId);
       if (!dbUser || dbUser.role !== "admin") {
@@ -1379,7 +1411,7 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
   app.get("/api/admin/settings", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId = user?.claims?.sub;
+      const userId = user?.claims?.sub ?? user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const dbUser = await storage.getUser(userId);
       if (!dbUser || dbUser.role !== "admin") {
@@ -1401,7 +1433,7 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
   app.patch("/api/admin/settings", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const userId = user?.claims?.sub;
+      const userId = user?.claims?.sub ?? user?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const dbUser = await storage.getUser(userId);
       if (!dbUser || dbUser.role !== "admin") {
@@ -1465,8 +1497,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/ai-usage", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin" && user?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
       const stats = aiUsageTracker.getStats();
@@ -1478,8 +1512,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/ai-usage/user/:userId", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin" && user?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
       const { userId } = req.params;
@@ -1526,8 +1562,10 @@ export function registerAdminAnalyticsRoutes(app: Express, resolveSlug: (slug: s
 
   app.get("/api/admin/ai-usage/historical", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin" && user?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
       const days = Math.min(90, parseInt(req.query.days as string) || 30);

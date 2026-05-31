@@ -28,7 +28,7 @@ const sendMessageSchema = z.object({
 
 router.get("/", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -93,7 +93,7 @@ router.get("/", isAuthenticated, async (req, res) => {
 
 router.get("/conversations", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
     const allMessages = await db
       .select()
@@ -155,7 +155,7 @@ router.get("/conversations", isAuthenticated, async (req, res) => {
 
 router.get("/conversation/:conversationId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { conversationId } = req.params;
     const { userId1, userId2 } = parseConversationId(conversationId);
 
@@ -193,7 +193,7 @@ router.get("/conversation/:conversationId", isAuthenticated, async (req, res) =>
 
 router.get("/unread/count", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const [result] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(userAndExpertChats)
@@ -206,7 +206,7 @@ router.get("/unread/count", isAuthenticated, async (req, res) => {
 
 router.get("/:id", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { id } = req.params;
     const [message] = await db
       .select()
@@ -233,7 +233,7 @@ router.get("/:id", isAuthenticated, async (req, res) => {
 
 router.post("/", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const validation = sendMessageSchema.safeParse(req.body);
     if (!validation.success) return res.status(400).json({ message: validation.error.errors[0]?.message });
     const { recipientId, conversationId, message, attachment } = validation.data;
@@ -268,7 +268,7 @@ router.post("/", isAuthenticated, async (req, res) => {
 
 router.patch("/:messageId/read", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { messageId } = req.params;
     const [message] = await db.select().from(userAndExpertChats).where(eq(userAndExpertChats.id, messageId));
     if (!message) return res.status(404).json({ message: "Message not found" });

@@ -1,0 +1,6 @@
+- [Email-password auth pattern](email-password-auth.md) — all routes must use `claims?.sub ?? id` fallback; role checks must use DB lookup, not `claims.role`.
+- [Admin role check pattern](admin-role-check.md) — admin routes must use `storage.getUser(adminId)` DB lookup, never `claims.role !== "admin"`.
+- [PostgreSQL date extraction](postgres-date-extract.md) — use `date_part('month', col)` not `EXTRACT(MONTH FROM col)` to avoid type errors.
+- [Provider role string](provider-role-string.md) — provider users have role `service_provider` in DB; all role checks must include both `provider` and `service_provider`.
+- [Expert content routes](expert-content-routes.md) — `/api/expert/content` and `/api/expert/assigned-trips` backed by `influencerCuratedContent` table and `trips.expert_id` column respectively.
+- [Content studio components](content-studio-components.md) — 4 missing components created at `client/src/components/content-studio/`: rich-text-editor, template-builder, media-gallery, publish-panel.
