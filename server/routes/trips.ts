@@ -682,7 +682,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -719,7 +719,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -738,7 +738,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -761,7 +761,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -813,7 +813,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/calculate-energy", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -876,7 +876,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/generate-presets", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -906,7 +906,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -926,7 +926,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -960,7 +960,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });

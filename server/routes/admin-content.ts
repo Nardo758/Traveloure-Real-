@@ -61,7 +61,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: string) => string = (s) => s): void {
   app.get("/api/admin/data/location-summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -134,7 +134,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -150,7 +150,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -175,7 +175,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -206,7 +206,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/admin/content/register", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -241,7 +241,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -257,7 +257,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -290,7 +290,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -306,7 +306,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -333,7 +333,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -371,7 +371,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -393,7 +393,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -420,7 +420,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -440,7 +440,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -457,7 +457,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -474,7 +474,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -509,7 +509,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -526,7 +526,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -545,7 +545,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -565,7 +565,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -582,7 +582,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -609,7 +609,7 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -692,8 +692,11 @@ export function registerAdminContentRoutes(app: Express, resolveSlug: (slug: str
 
   app.get("/api/admin/users", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      if (user?.claims?.role !== "admin") {
+      const rawUser = req.user as any;
+      const adminId = rawUser?.claims?.sub ?? rawUser?.id;
+      const dbAdmin = await storage.getUser(adminId);
+      if (!dbAdmin || dbAdmin.role !== "admin") {
+
         return res.status(403).json({ message: "Admin access required" });
       }
 

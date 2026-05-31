@@ -64,7 +64,8 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
   if (!req.isAuthenticated()) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const user = await db.select().from(users).where(eq(users.id, (req as any).user?.claims?.sub)).then(r => r[0]);
+  const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+  const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }

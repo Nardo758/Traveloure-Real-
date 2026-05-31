@@ -36,7 +36,7 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
 router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
     const trip = await storage.getTrip(tripId);
     if (!trip) {
@@ -255,7 +255,7 @@ router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, 
     if (!tripId) {
       return res.status(400).json({ error: "tripId query parameter required" });
     }
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const trip = await storage.getTrip(tripId as string);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -270,7 +270,7 @@ router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, 
 router.post("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
   try {
     const { activityId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userName = (req.user as any)?.claims?.name || "User";
     const { tripId, text, role } = req.body;
 
@@ -308,7 +308,7 @@ router.post("/api/activities/:activityId/comments", isAuthenticated, async (req,
 
 router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const comment = await storage.getActivityComment(req.params.id);
     if (!comment) {
       return res.status(404).json({ error: "Comment not found" });
@@ -328,7 +328,7 @@ router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -344,7 +344,7 @@ router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const userName = (req.user as any)?.claims?.name || "User";
 
     const trip = await storage.getTrip(tripId);
@@ -379,7 +379,7 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 
 router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });

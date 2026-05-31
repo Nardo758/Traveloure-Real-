@@ -81,7 +81,7 @@ const contactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   email: z.string().email("Invalid email"),
   phone: z.string().optional(),
-  subject: z.string().min(1, "Subject is required").max(200),
+  subject: z.string().max(200).optional(),
   message: z.string().min(10, "Message must be at least 10 characters").max(2000),
   preferredContactMethod: z.enum(["email", "phone"]).optional(),
 });
@@ -230,6 +230,20 @@ export function registerMiscRoutes(app: Express, resolveSlug: (slug: string) => 
 
   app.get("/api/status", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  app.post("/api/newsletter/subscribe", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "Valid email address is required" });
+      }
+      console.log(`Newsletter subscription: ${email} at ${new Date().toISOString()}`);
+      res.json({ success: true, message: "Successfully subscribed to newsletter" });
+    } catch (err) {
+      console.error("Newsletter subscribe error:", err);
+      res.status(500).json({ message: "Failed to subscribe" });
+    }
   });
 
   app.post("/api/contact", async (req, res) => {
@@ -1000,7 +1014,7 @@ Respond with this exact JSON structure:
 
       const flag = await storage.createContentFlag({
         trackingNumber,
-        reporterId: user?.claims?.sub,
+        reporterId: user?.claims?.sub ?? user?.id,
         flagType,
         severity: severity || 'medium',
         description,
@@ -1025,7 +1039,7 @@ Respond with this exact JSON structure:
 
   app.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
@@ -1067,7 +1081,7 @@ Respond with this exact JSON structure:
 
   app.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const account = await storage.getUserStripeAccount(userId);
@@ -1095,7 +1109,7 @@ Respond with this exact JSON structure:
 
   app.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const account = await storage.getUserStripeAccount(userId);
@@ -1122,7 +1136,7 @@ Respond with this exact JSON structure:
 
   app.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
@@ -1136,7 +1150,7 @@ Respond with this exact JSON structure:
 
   app.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });

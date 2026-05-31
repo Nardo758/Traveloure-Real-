@@ -1648,9 +1648,17 @@ export function registerIntelligenceRoutes(app: Express, resolveSlug: (slug: str
         }
       }
 
+      // Deduplicate by id (guard against DB duplicate rows)
+      const seen = new Set<string>();
+      const deduped = results.filter((r) => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
+
       // Sort all results by price ascending
-      results.sort((a, b) => a.price - b.price);
-      const deals = results.slice(0, limit);
+      deduped.sort((a, b) => a.price - b.price);
+      const deals = deduped.slice(0, limit);
       res.json({ deals, total: deals.length });
     } catch (error: any) {
       console.error("Deals API error:", error);

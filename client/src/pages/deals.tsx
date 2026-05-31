@@ -213,6 +213,25 @@ function DealCard({ deal, idx }: { deal: Deal; idx: number }) {
 export default function DealsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterStatus, setNewsletterStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+
+  async function handleSubscribe() {
+    if (!newsletterEmail || !/\S+@\S+\.\S+/.test(newsletterEmail)) return;
+    setNewsletterStatus("loading");
+    try {
+      const res = await fetch("/api/newsletter/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newsletterEmail }),
+      });
+      if (!res.ok) throw new Error();
+      setNewsletterStatus("success");
+      setNewsletterEmail("");
+    } catch {
+      setNewsletterStatus("error");
+    }
+  }
 
   const { data, isLoading, isError } = useQuery<DealsResponse>({
     queryKey: ["/api/deals", activeCategory],
@@ -348,7 +367,10 @@ export default function DealsPage() {
           {/* Deals grid */}
           {!isLoading && !isError && filteredDeals.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredDeals.map((deal, idx) => (
+              {(!searchQuery && featuredDeals.length > 0
+                ? filteredDeals.slice(featuredDeals.length)
+                : filteredDeals
+              ).map((deal, idx) => (
                 <DealCard key={deal.id} deal={deal} idx={idx} />
               ))}
             </div>
@@ -382,19 +404,36 @@ export default function DealsPage() {
           <p className="text-[#6B7280] mb-6">
             Subscribe to get exclusive deals and flash sales delivered to your inbox
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
-            <Input
-              placeholder="Enter your email"
-              className="h-12 border-[#E5E7EB]"
-              data-testid="input-newsletter"
-            />
-            <Button
-              className="h-12 px-8 bg-[#FF385C] hover:bg-[#E23350] text-white"
-              data-testid="button-subscribe"
-            >
-              Subscribe
-            </Button>
-          </div>
+          {newsletterStatus === "success" ? (
+            <p className="text-green-600 font-medium py-4">
+              ✓ You're subscribed! We'll send the best deals your way.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+                <Input
+                  placeholder="Enter your email"
+                  type="email"
+                  value={newsletterEmail}
+                  onChange={(e) => setNewsletterEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSubscribe()}
+                  className="h-12 border-[#E5E7EB]"
+                  data-testid="input-newsletter"
+                />
+                <Button
+                  onClick={handleSubscribe}
+                  disabled={newsletterStatus === "loading" || !newsletterEmail}
+                  className="h-12 px-8 bg-[#FF385C] hover:bg-[#E23350] text-white"
+                  data-testid="button-subscribe"
+                >
+                  {newsletterStatus === "loading" ? "Subscribing..." : "Subscribe"}
+                </Button>
+              </div>
+              {newsletterStatus === "error" && (
+                <p className="text-red-500 text-sm mt-2">Something went wrong. Please try again.</p>
+              )}
+            </>
+          )}
         </div>
       </section>
     </div>

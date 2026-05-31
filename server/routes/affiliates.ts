@@ -160,7 +160,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Log to destination search patterns for trend analysis
       await storage.createDestinationSearchPattern({
@@ -197,7 +197,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Track as AI interaction for analytics
       await db.insert(aiInteractions).values({
@@ -244,7 +244,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Track booking event
       console.log("[Analytics] Booking event tracked:", {
@@ -467,7 +467,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await db.insert(searchAnalytics).values({
         sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
@@ -495,7 +495,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/pageview", async (req, res) => {
     try {
       const { pageViewAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await db.insert(pageViewAnalytics).values({
         sessionId: req.body.sessionId,
@@ -519,7 +519,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/funnel", async (req, res) => {
     try {
       const { bookingFunnelAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await db.insert(bookingFunnelAnalytics).values({
         sessionId: req.body.sessionId,
@@ -543,7 +543,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/activity", async (req, res) => {
     try {
       const { activityBookingAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await db.insert(activityBookingAnalytics).values({
         sessionId: req.body.sessionId,
@@ -576,7 +576,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/trip-enhanced", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await db.insert(tripAnalyticsEnhanced).values({
         tripId: req.body.tripId,
@@ -618,7 +618,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/destination-search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
       
       // Track this search
@@ -657,7 +657,7 @@ export function registerAffiliateRoutes(app: Express, resolveSlug: (slug: string
   app.post("/api/track/accommodation-preference", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       if (userId && req.body.tripId) {
         await db.update(tripAnalyticsEnhanced)

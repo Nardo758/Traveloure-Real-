@@ -116,7 +116,7 @@ export function registerServiceBookingRoutes(app: Express, resolveSlug: (slug: s
 
     // Track search pattern for trend analytics (non-blocking)
     if (filters.query || filters.location) {
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       storage.createDestinationSearchPattern({
         destination: filters.location || filters.query || "unknown",
         city: filters.location || undefined,

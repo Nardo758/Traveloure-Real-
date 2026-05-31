@@ -410,7 +410,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/pending-reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       const isProvider = user.role === "provider" || user.role === "service_provider" || user.role === "admin";
@@ -446,7 +446,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.post("/api/provider/bookings/:bookingId/send-review-reminder", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       const isProviderRole = user.role === "provider" || user.role === "service_provider" || user.role === "admin";
@@ -484,7 +484,7 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       const canAccessReviews = user.role === "provider" || user.role === "service_provider" || user.role === "admin";
@@ -504,10 +504,10 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const requests = await storage.getBookingRequests(userId);
@@ -519,10 +519,10 @@ export function registerProviderRoutes(app: Express, resolveSlug: (slug: string)
 
   app.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const responseInput = z.object({

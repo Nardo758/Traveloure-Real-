@@ -40,7 +40,7 @@ import {
   expertPayouts, providerPayouts, platformSettings,
   expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow,
   transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries,
-  accessAuditLogs, contentRegistry
+  accessAuditLogs, contentRegistry, influencerCuratedContent
 } from "@shared/schema";
 import { 
   insertTripParticipantSchema, 
@@ -1175,7 +1175,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -1223,7 +1223,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/find-providers", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -1277,7 +1277,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -1294,7 +1294,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -1326,7 +1326,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -1354,7 +1354,7 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
 
   app.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (!["expert", "local_expert"].includes(user.role) && user.role !== "admin")) {
@@ -1505,6 +1505,146 @@ export function registerExpertRoutes(app: Express, resolveSlug: (slug: string) =
     } catch (err: any) {
       console.error("Expert review submit error:", err);
       res.status(500).json({ error: "Failed to submit expert edits" });
+    }
+  });
+
+  // === Expert Content Routes ===
+  app.get("/api/expert/content", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const items = await db
+        .select()
+        .from(influencerCuratedContent)
+        .where(eq(influencerCuratedContent.influencerId, userId))
+        .orderBy(desc(influencerCuratedContent.publishedAt));
+      res.json(items.map(i => ({
+        id: i.id,
+        contentType: i.contentType,
+        title: i.title,
+        slug: i.title?.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || i.id,
+        description: i.description,
+        content: "",
+        coverImage: i.imageUrl,
+        destination: Array.isArray(i.destinations) ? (i.destinations as string[]).join(", ") : "",
+        category: i.category,
+        tags: Array.isArray(i.tags) ? i.tags : [],
+        status: i.isActive ? "published" : "draft",
+        visibility: "free",
+        price: "",
+        platforms: [],
+      })));
+    } catch (err) {
+      console.error("Expert content list error:", err);
+      res.status(500).json({ message: "Failed to fetch content" });
+    }
+  });
+
+  app.get("/api/expert/content/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const [item] = await db
+        .select()
+        .from(influencerCuratedContent)
+        .where(and(eq(influencerCuratedContent.id, req.params.id), eq(influencerCuratedContent.influencerId, userId)));
+      if (!item) return res.status(404).json({ message: "Content not found" });
+      res.json({
+        id: item.id,
+        contentType: item.contentType,
+        title: item.title,
+        slug: item.title?.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || item.id,
+        description: item.description,
+        content: "",
+        coverImage: item.imageUrl,
+        destination: Array.isArray(item.destinations) ? (item.destinations as string[]).join(", ") : "",
+        category: item.category,
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        status: item.isActive ? "published" : "draft",
+        visibility: "free",
+        price: "",
+        platforms: [],
+      });
+    } catch (err) {
+      console.error("Expert content get error:", err);
+      res.status(500).json({ message: "Failed to fetch content" });
+    }
+  });
+
+  app.post("/api/expert/content", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const { title, contentType, description, coverImage, destination, category, tags, status } = req.body;
+      if (!title?.trim()) return res.status(400).json({ message: "Title is required" });
+      const [item] = await db.insert(influencerCuratedContent).values({
+        influencerId: userId,
+        title: title.trim(),
+        contentType: contentType || "guide",
+        description: description || null,
+        imageUrl: coverImage || null,
+        category: category || null,
+        destinations: destination ? [destination] : [],
+        tags: Array.isArray(tags) ? tags : [],
+        isActive: status === "published",
+        publishedAt: status === "published" ? new Date() : null,
+      }).returning();
+      res.status(201).json({ id: item.id, title: item.title, contentType: item.contentType, status: item.isActive ? "published" : "draft" });
+    } catch (err) {
+      console.error("Expert content create error:", err);
+      res.status(500).json({ message: "Failed to create content" });
+    }
+  });
+
+  app.patch("/api/expert/content/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const [existing] = await db.select().from(influencerCuratedContent).where(and(eq(influencerCuratedContent.id, req.params.id), eq(influencerCuratedContent.influencerId, userId)));
+      if (!existing) return res.status(404).json({ message: "Content not found" });
+      const { title, contentType, description, coverImage, destination, category, tags, status } = req.body;
+      const [updated] = await db.update(influencerCuratedContent).set({
+        title: title || existing.title,
+        contentType: contentType || existing.contentType,
+        description: description ?? existing.description,
+        imageUrl: coverImage ?? existing.imageUrl,
+        category: category ?? existing.category,
+        destinations: destination ? [destination] : existing.destinations,
+        tags: Array.isArray(tags) ? tags : existing.tags,
+        isActive: status === "published",
+        publishedAt: status === "published" ? (existing.publishedAt || new Date()) : null,
+      }).where(eq(influencerCuratedContent.id, req.params.id)).returning();
+      res.json({ id: updated.id, title: updated.title, status: updated.isActive ? "published" : "draft" });
+    } catch (err) {
+      console.error("Expert content update error:", err);
+      res.status(500).json({ message: "Failed to update content" });
+    }
+  });
+
+  // === Expert Assigned Trips ===
+  app.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const assignedTrips = await db
+        .select({
+          trip_id: trips.id,
+          trip_title: trips.title,
+          destination: trips.destination,
+          startDate: trips.startDate,
+          endDate: trips.endDate,
+          status: trips.status,
+        })
+        .from(trips)
+        .where(eq(trips.expertId, userId))
+        .orderBy(desc(trips.createdAt))
+        .limit(50);
+      res.json(assignedTrips.map(t => ({
+        trip_id: t.trip_id,
+        trip_title: t.trip_title || t.destination || "Untitled Trip",
+        destination: t.destination || "",
+        startDate: t.startDate,
+        endDate: t.endDate,
+        status: (t.status === "confirmed" ? "accepted" : "pending") as "pending" | "accepted",
+      })));
+    } catch (err) {
+      console.error("Expert assigned trips error:", err);
+      res.status(500).json({ message: "Failed to fetch assigned trips" });
     }
   });
 
