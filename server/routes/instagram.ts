@@ -2,15 +2,42 @@ import { Router, Request, Response } from "express";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { getBaseUrl } from "../utils/base-url";
 
 const router = Router();
+
+function getUserId(req: Request): string | undefined {
+  const user = req.user as any;
+  return user?.claims?.sub ?? user?.id;
+}
+
+function requireAuth(req: Request, res: Response): boolean {
+  if (!req.isAuthenticated()) {
+    res.status(401).json({ message: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
 
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const GRAPH_API_VERSION = "v21.0";
 
-router.get("/callback", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/connect", (req: Request, res: Response) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  if (!META_APP_ID) {
+    return res.redirect("/expert/content-studio?error=missing_meta_config");
+  }
+  const redirectUri = encodeURIComponent(`${getBaseUrl()}/api/instagram/callback`);
+  const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
+  const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${META_APP_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+  res.redirect(authUrl);
+});
+
+router.get("/callback", async (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
   try {
     const { code, error, error_description } = req.query;
 
@@ -28,7 +55,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
       return res.redirect("/expert/content-studio?error=missing_config");
     }
 
-    const redirectUri = `${req.protocol}://${req.get("host")}/api/instagram/callback`;
+    const redirectUri = `${getBaseUrl()}/api/instagram/callback`;
 
     const tokenResponse = await fetch(
       `https://api.instagram.com/oauth/access_token`,
@@ -69,7 +96,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
       longLivedToken = longLivedData.access_token;
     }
 
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req);
     if (userId) {
       await db
         .update(users)
@@ -87,9 +114,10 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
   }
 });
 
-router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/status", async (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req);
     if (!userId) {
       return res.json({ connected: false });
     }
@@ -106,9 +134,10 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/publish", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/publish", async (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -206,9 +235,10 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
   }
 });
 
-router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/publish-carousel", async (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -308,9 +338,10 @@ router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Resp
   }
 });
 
-router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/publishing-limit", async (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -343,9 +374,10 @@ router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Respo
   }
 });
 
-router.post("/disconnect", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/disconnect", async (req: Request, res: Response) => {
+  if (!requireAuth(req, res)) return;
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req);
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }

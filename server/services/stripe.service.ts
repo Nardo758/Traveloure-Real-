@@ -21,16 +21,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
-export function getBaseUrl(): string {
-  const replitDomains = process.env.REPLIT_DOMAINS;
-  if (replitDomains) {
-    return `https://${replitDomains.split(",")[0].trim()}`;
-  }
-  if (process.env.CLIENT_URL) {
-    return process.env.CLIENT_URL;
-  }
-  return "http://localhost:5173";
-}
+export { getBaseUrl } from "../utils/base-url";
 
 export interface BookingCheckoutSession {
   sessionId: string;
