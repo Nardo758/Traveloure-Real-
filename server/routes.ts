@@ -11971,10 +11971,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const schedule = await storage.getProviderAvailability(userId);
@@ -11987,10 +11987,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const scheduleInput = z.object({
@@ -12014,10 +12014,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       await storage.deleteProviderAvailability(req.params.id);
@@ -12029,10 +12029,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const blackoutInput = z.object({
@@ -12055,10 +12055,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       await storage.deleteProviderBlackoutDate(req.params.id);
@@ -12072,10 +12072,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const requests = await storage.getBookingRequests(userId);
@@ -12113,10 +12113,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "admin")) {
+      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const responseInput = z.object({
