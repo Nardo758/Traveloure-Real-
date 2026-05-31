@@ -1,11 +1,12 @@
 import { db } from "../db";
 import { 
   tripParticipants, 
+  trips,
   type TripParticipant, 
   type InsertTripParticipant 
 } from "@shared/schema";
 import { eq, and, count, sql } from "drizzle-orm";
-import { createChildLogger, databaseQueryDuration } from "../infrastructure";
+import { createChildLogger, databaseQueryDuration, ForbiddenError } from "../infrastructure";
 
 export interface ParticipantStats {
   total: number;
@@ -33,7 +34,13 @@ export interface DietaryRequirements {
 const logger = createChildLogger("coordination-service");
 
 export class CoordinationService {
-  async getParticipants(tripId: string): Promise<TripParticipant[]> {
+  private async assertTripOwnership(tripId: string, userId: string): Promise<void> {
+    const [trip] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, tripId));
+    if (!trip || trip.userId !== userId) throw new ForbiddenError("Access denied to this trip");
+  }
+
+  async getParticipants(tripId: string, userId?: string): Promise<TripParticipant[]> {
+    if (userId) await this.assertTripOwnership(tripId, userId);
     const start = Date.now();
     const result = await db.select().from(tripParticipants).where(eq(tripParticipants.tripId, tripId));
     databaseQueryDuration.labels("select", "trip_participants").observe((Date.now() - start) / 1000);
@@ -180,7 +187,8 @@ export class CoordinationService {
     };
   }
 
-  async bulkInvite(tripId: string, emails: string[]): Promise<TripParticipant[]> {
+  async bulkInvite(tripId: string, emails: string[], userId?: string): Promise<TripParticipant[]> {
+    if (userId) await this.assertTripOwnership(tripId, userId);
     const results: TripParticipant[] = [];
     
     for (const email of emails) {

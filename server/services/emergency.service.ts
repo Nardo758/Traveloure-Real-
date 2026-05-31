@@ -2,13 +2,14 @@ import { db } from "../db";
 import { 
   tripEmergencyContacts, 
   tripAlerts,
+  trips,
   type TripEmergencyContact, 
   type InsertTripEmergencyContact,
   type TripAlert,
   type InsertTripAlert
 } from "@shared/schema";
 import { eq, and, desc, gte } from "drizzle-orm";
-import { createChildLogger, databaseQueryDuration } from "../infrastructure";
+import { createChildLogger, databaseQueryDuration, ForbiddenError } from "../infrastructure";
 
 export interface EmergencyContactsByType {
   local_expert: TripEmergencyContact[];
@@ -57,7 +58,13 @@ const EMERGENCY_NUMBERS: Record<string, { police: string; ambulance: string; fir
 const logger = createChildLogger("emergency-service");
 
 export class EmergencyService {
-  async getContacts(tripId: string): Promise<TripEmergencyContact[]> {
+  private async assertTripOwnership(tripId: string, userId: string): Promise<void> {
+    const [trip] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, tripId));
+    if (!trip || trip.userId !== userId) throw new ForbiddenError("Access denied to this trip");
+  }
+
+  async getContacts(tripId: string, userId?: string): Promise<TripEmergencyContact[]> {
+    if (userId) await this.assertTripOwnership(tripId, userId);
     const start = Date.now();
     const result = await db.select().from(tripEmergencyContacts)
       .where(eq(tripEmergencyContacts.tripId, tripId))
@@ -71,7 +78,8 @@ export class EmergencyService {
     return results[0];
   }
 
-  async createContact(data: InsertTripEmergencyContact): Promise<TripEmergencyContact> {
+  async createContact(data: InsertTripEmergencyContact, userId?: string): Promise<TripEmergencyContact> {
+    if (userId) await this.assertTripOwnership(data.tripId, userId);
     const results = await db.insert(tripEmergencyContacts).values(data).returning();
     return results[0];
   }
@@ -120,8 +128,8 @@ export class EmergencyService {
       .orderBy(desc(tripAlerts.createdAt));
   }
 
-  async getActiveAlerts(tripId: string): Promise<TripAlert[]> {
-    const now = new Date();
+  async getActiveAlerts(tripId: string, userId?: string): Promise<TripAlert[]> {
+    if (userId) await this.assertTripOwnership(tripId, userId);
     return db.select().from(tripAlerts)
       .where(and(
         eq(tripAlerts.tripId, tripId),
@@ -135,7 +143,8 @@ export class EmergencyService {
     return results[0];
   }
 
-  async createAlert(data: InsertTripAlert): Promise<TripAlert> {
+  async createAlert(data: InsertTripAlert, userId?: string): Promise<TripAlert> {
+    if (userId) await this.assertTripOwnership(data.tripId, userId);
     const results = await db.insert(tripAlerts).values(data).returning();
     return results[0];
   }
