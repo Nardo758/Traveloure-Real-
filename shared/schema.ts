@@ -288,7 +288,7 @@ export const expertTypeEnum = ["travel_expert", "local_expert", "event_planner",
 
 export const localExpertForms = pgTable("local_expert_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   // Expert Type (travel_expert, local_expert, event_planner, executive_assistant)
   expertType: varchar("expert_type", { length: 30 }).default("travel_expert"),
   // Basic Info
@@ -366,7 +366,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
 
 export const serviceProviderForms = pgTable("service_provider_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
   businessName: text("business_name").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
