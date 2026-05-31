@@ -253,7 +253,7 @@ export function ServiceBrowser({
       if (!res.ok) throw new Error("Failed to fetch");
       return res.json();
     },
-    enabled: !categorySlug || !!lockedCategoryId,
+    enabled: true,
   });
 
   const getCategoryById = (id: string) => categories?.find((c) => c.id === id);
