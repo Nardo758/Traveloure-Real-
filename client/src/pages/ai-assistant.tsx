@@ -97,6 +97,11 @@ export default function AIAssistant() {
         inputMessage.slice(0, 50) + (inputMessage.length > 50 ? "..." : "")
       );
       conversationId = newConversation.id;
+      // Seed the cache so the optimistic update below always has an entry to attach to
+      queryClient.setQueryData<Conversation>(
+        ["/api/conversations", conversationId],
+        { ...newConversation, messages: [] }
+      );
     }
 
     const userMessage = inputMessage;
@@ -107,11 +112,11 @@ export default function AIAssistant() {
     queryClient.setQueryData<Conversation>(
       ["/api/conversations", conversationId],
       (old) => {
-        if (!old) return old;
+        const base = old ?? { id: conversationId!, title: "", createdAt: new Date().toISOString(), messages: [] };
         return {
-          ...old,
+          ...base,
           messages: [
-            ...(old.messages || []),
+            ...(base.messages || []),
             {
               id: Date.now(),
               conversationId,
