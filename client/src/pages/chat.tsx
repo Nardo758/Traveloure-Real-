@@ -111,6 +111,16 @@ export default function Chat() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Clear realtime messages when switching experts to avoid bleed
+  const prevExpertRef = useRef<string | null>(null);
+  useEffect(() => {
+    const expertKey = selectedExpert ? String(selectedExpert.id) : null;
+    if (expertKey !== prevExpertRef.current) {
+      prevExpertRef.current = expertKey;
+      setRealtimeMessages([]);
+    }
+  }, [selectedExpert]);
+
   const handleNewMessage = useCallback((msg: any) => {
     if (msg.type === "chat") {
       setRealtimeMessages(prev => [...prev, {
@@ -160,21 +170,36 @@ export default function Chat() {
     const currentMessage = message;
     const recipientId = String(selectedExpert.id);
     
-    // For demo experts (numeric IDs), use HTTP fallback which doesn't enforce FK
-    // WebSocket real-time only works with actual platform users
     if (isConnected && recipientId.length > 10) {
-      // Real user ID (UUID format), try WebSocket
+      // Real UUID expert — use WebSocket for live delivery
       const success = wsSendMessage(recipientId, currentMessage);
       if (success) {
         setMessage("");
+        // Optimistically add the sent message so it appears immediately
+        // (the server echo will also arrive and trigger a refetch)
+        setRealtimeMessages(prev => [...prev, {
+          id: crypto.randomUUID(),
+          senderId: user?.id ?? "",
+          recipientId,
+          content: currentMessage,
+          timestamp: new Date().toISOString(),
+        }]);
       }
     } else {
-      // Demo mode or WebSocket failed - use HTTP mutation
+      // Demo expert or WebSocket not yet connected — use HTTP mutation
       sendMessageMutation.mutate(
-        { message: currentMessage, senderId: user?.id },
+        { message: currentMessage, receiverId: recipientId.length > 10 ? recipientId : undefined },
         { 
-          onSuccess: () => {
+          onSuccess: (saved) => {
             setMessage("");
+            // Add to realtime messages so it shows immediately even for demo experts
+            setRealtimeMessages(prev => [...prev, {
+              id: saved.id,
+              senderId: user?.id ?? "",
+              recipientId,
+              content: currentMessage,
+              timestamp: saved.createdAt ? new Date(saved.createdAt).toISOString() : new Date().toISOString(),
+            }]);
             refetch();
           },
           onError: () => {
@@ -346,51 +371,80 @@ export default function Chat() {
                     <Button variant="outline" size="sm" data-testid="button-view-profile">View Profile</Button>
                   </div>
 
-                  {/* Messages */}
-                  <ScrollArea className="flex-1 p-4">
-                    {chats && chats.length > 0 ? (
-                      <div className="space-y-4">
-                        {chats.map((chat) => (
-                          <div
-                            key={chat.id}
-                            className={`flex ${chat.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div className="flex items-end gap-2 max-w-[70%]">
-                              {chat.senderId !== user?.id && (
-                                <Avatar className="w-8 h-8">
-                                  <AvatarImage src={selectedExpert.avatar} />
-                                  <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
-                                </Avatar>
-                              )}
+                  {/* Messages — merge DB history + realtime WebSocket messages */}
+                  {(() => {
+                    const expertId = String(selectedExpert.id);
+                    // Filter DB chats to only those in this conversation
+                    const dbChats = (chats ?? []).filter(c =>
+                      (c.senderId === user?.id && (c.receiverId === expertId || !c.receiverId)) ||
+                      c.senderId === expertId
+                    );
+                    // Deduplicate: exclude realtime entries already persisted in DB
+                    const dbIds = new Set(dbChats.map(c => c.id));
+                    const onlyRealtime = realtimeMessages.filter(m => !dbIds.has(m.id));
+                    // Merge and sort chronologically
+                    const allMessages = [
+                      ...dbChats.map(c => ({
+                        id: c.id,
+                        senderId: c.senderId ?? "",
+                        content: c.message ?? "",
+                        timestamp: c.createdAt ? new Date(c.createdAt).toISOString() : "",
+                      })),
+                      ...onlyRealtime.map(m => ({
+                        id: m.id,
+                        senderId: m.senderId,
+                        content: m.content,
+                        timestamp: m.timestamp,
+                      })),
+                    ].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+                    return (
+                      <ScrollArea className="flex-1 p-4">
+                        {allMessages.length > 0 ? (
+                          <div className="space-y-4">
+                            {allMessages.map((msg) => (
                               <div
-                                className={`
-                                  rounded-2xl p-4 shadow-sm
-                                  ${chat.senderId === user?.id 
-                                    ? 'bg-primary text-white rounded-br-none' 
-                                    : 'bg-muted text-foreground rounded-bl-none'}
-                                `}
+                                key={msg.id}
+                                className={`flex ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
                               >
-                                <p>{chat.message}</p>
-                                <div className={`text-xs mt-2 ${chat.senderId === user?.id ? 'text-white/70' : 'text-muted-foreground'}`}>
-                                  {chat.createdAt && format(new Date(chat.createdAt), "h:mm a")}
+                                <div className="flex items-end gap-2 max-w-[70%]">
+                                  {msg.senderId !== user?.id && (
+                                    <Avatar className="w-8 h-8">
+                                      <AvatarImage src={selectedExpert.avatar} />
+                                      <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
+                                    </Avatar>
+                                  )}
+                                  <div
+                                    className={`rounded-2xl p-4 shadow-sm ${
+                                      msg.senderId === user?.id
+                                        ? 'bg-primary text-white rounded-br-none'
+                                        : 'bg-muted text-foreground rounded-bl-none'
+                                    }`}
+                                  >
+                                    <p>{msg.content}</p>
+                                    <div className={`text-xs mt-2 ${msg.senderId === user?.id ? 'text-white/70' : 'text-muted-foreground'}`}>
+                                      {msg.timestamp && format(new Date(msg.timestamp), "h:mm a")}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            ))}
+                            <div ref={messagesEndRef} />
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                          <MessageSquare className="w-8 h-8 text-primary" />
-                        </div>
-                        <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Start a conversation</h3>
-                        <p className="text-muted-foreground text-sm max-w-xs">
-                          Say hello to {selectedExpert.name} and get personalized travel advice!
-                        </p>
-                      </div>
-                    )}
-                  </ScrollArea>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-center py-12">
+                            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                              <MessageSquare className="w-8 h-8 text-primary" />
+                            </div>
+                            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Start a conversation</h3>
+                            <p className="text-muted-foreground text-sm max-w-xs">
+                              Say hello to {selectedExpert.name} and get personalized travel advice!
+                            </p>
+                          </div>
+                        )}
+                      </ScrollArea>
+                    );
+                  })()}
 
                   {/* Input */}
                   <div className="p-4 border-t border-border">
