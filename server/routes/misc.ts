@@ -10,7 +10,7 @@ import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { claudeService } from "../services/claude.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
-import { getBaseUrl } from "../services/stripe.service";
+import { getBaseUrl } from "../utils/base-url";
 import { grokService } from "../services/grok.service";
 import { travelPulseService } from "../services/travelpulse.service";
 import { feverService } from "../services/fever.service";
