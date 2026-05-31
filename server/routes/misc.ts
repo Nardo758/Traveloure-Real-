@@ -1302,7 +1302,7 @@ Respond with this exact JSON structure:
             if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
               return res.status(410).json({ error: "Share link has expired" });
             }
-            if (shared.permissions !== "suggest") {
+            if (shared.permissions !== "edit") {
               return res.status(403).json({ error: "This share link does not allow modifications" });
             }
           } else {
@@ -1519,6 +1519,7 @@ Respond with this exact JSON structure:
         .where(eq(sharedItineraries.shareToken, token));
 
       if (!shared) return next(); // Let SPA handle 404
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) return next(); // Expired — let SPA handle
 
       const [variant] = await db
         .select()

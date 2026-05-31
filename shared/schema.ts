@@ -4985,6 +4985,7 @@ export const expertRequests = pgTable("expert_requests", {
   destinationCity: text("destination_city"),
   requestType: text("request_type"),
   expertFee: decimal("expert_fee"),
+  paymentIntentId: text("payment_intent_id"),
   status: text("status").default("pending"),
   assignedExpertId: text("assigned_expert_id"),
   queuePosition: integer("queue_position"),

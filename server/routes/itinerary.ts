@@ -258,7 +258,7 @@ export function registerItineraryShareRoutes(app: Express, resolveSlug: (slug: s
           .where(eq(itineraryComparisons.id, variant.comparisonId));
 
         const isOwner = userId && comparison?.userId === userId;
-        const canEdit = isOwner || shared.permissions === "suggest" || shared.permissions === "edit";
+        const canEdit = isOwner || shared.permissions === "edit";
         if (!canEdit) return res.status(403).json({ error: "Not authorized to update this itinerary" });
       }
 
@@ -296,6 +296,9 @@ export function registerItineraryShareRoutes(app: Express, resolveSlug: (slug: s
         .where(eq(sharedItineraries.shareToken, token));
 
       if (!shared) return res.status(404).json({ error: "Not found" });
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This share link has expired" });
+      }
 
       const [variant] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, shared.variantId));
       const [comparison] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
@@ -368,6 +371,9 @@ export function registerItineraryShareRoutes(app: Express, resolveSlug: (slug: s
         .where(eq(sharedItineraries.shareToken, token));
 
       if (!shared) return res.status(404).json({ error: "Not found" });
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This share link has expired" });
+      }
 
       const [variant] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, shared.variantId));
       const [comparison] = await db.select().from(itineraryComparisons).where(eq(itineraryComparisons.id, variant.comparisonId));
@@ -436,11 +442,14 @@ export function registerItineraryShareRoutes(app: Express, resolveSlug: (slug: s
       const { platform = "google", currentLat, currentLng } = req.query as Record<string, string>;
 
       const [shared] = await db
-        .select({ variantId: sharedItineraries.variantId })
+        .select({ variantId: sharedItineraries.variantId, expiresAt: sharedItineraries.expiresAt })
         .from(sharedItineraries)
         .where(eq(sharedItineraries.shareToken, token));
 
       if (!shared) return res.status(404).json({ error: "Not found" });
+      if (shared.expiresAt && new Date(shared.expiresAt) < new Date()) {
+        return res.status(410).json({ error: "This share link has expired" });
+      }
 
       const [leg] = await db
         .select()

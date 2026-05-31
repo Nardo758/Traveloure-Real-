@@ -436,20 +436,125 @@ class BookingService {
   }
 
   /**
-   * Confirm booking after successful payment
+   * Confirm booking after successful payment.
+   * Verifies the Stripe payment intent has succeeded and belongs to the requesting user,
+   * and that the booking is owned by that user, before marking it confirmed.
    */
-  async confirmBookingPayment(bookingId: string, paymentIntentId: string): Promise<boolean> {
+  async confirmBookingPayment(bookingId: string, paymentIntentId: string, userId: string): Promise<boolean> {
     try {
+      // 1. Verify booking ownership — prevents cross-account confirmation
+      const ownerRows = await db.execute(sql`
+        SELECT id FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1
+      `);
+      if (!ownerRows.rows || ownerRows.rows.length === 0) {
+        throw new Error('Booking not found or does not belong to this user');
+      }
+
+      // 2. Verify the Stripe payment intent actually succeeded
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      let intent;
+      try {
+        intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      } catch (stripeErr: any) {
+        throw new Error(`Could not verify payment: ${stripeErr.message}`);
+      }
+
+      if (intent.status !== 'succeeded') {
+        throw new Error(`Payment not completed. Stripe status: ${intent.status}`);
+      }
+
+      // 3. Verify the payment intent is tied to this user (metadata set at creation time)
+      if (intent.metadata?.userId && intent.metadata.userId !== userId) {
+        throw new Error('Payment intent does not belong to this user');
+      }
+
+      // 4. Mandatory PI-booking binding — the payment intent must be explicitly linked to
+      //    this booking ID. No amount-only fallback; a reused PI from another flow is rejected.
+      {
+        let bound = false;
+
+        // Primary: check Stripe metadata (set by createPaymentIntent)
+        if (intent.metadata?.bookingIds) {
+          const metaBookingIds = intent.metadata.bookingIds.split(',').map((s: string) => s.trim());
+          if (metaBookingIds.includes(bookingId)) {
+            bound = true;
+          }
+        }
+
+        // Secondary: check internal payment_intents table metadata (same source of truth)
+        if (!bound) {
+          const piDbRows = await db.execute(sql`
+            SELECT metadata FROM payment_intents
+            WHERE stripe_payment_intent_id = ${paymentIntentId}
+              AND user_id = ${userId}
+            LIMIT 1
+          `);
+          if (piDbRows.rows.length > 0) {
+            const metaStr = (piDbRows.rows[0] as any).metadata;
+            try {
+              const meta = typeof metaStr === 'string' ? JSON.parse(metaStr) : metaStr;
+              if (meta?.bookingIds) {
+                const dbBookingIds = String(meta.bookingIds).split(',').map((s: string) => s.trim());
+                if (dbBookingIds.includes(bookingId)) {
+                  bound = true;
+                }
+              }
+            } catch {
+              // JSON parse failure — treat as unbound
+            }
+          }
+        }
+
+        if (!bound) {
+          throw new Error('Payment intent is not linked to this booking. Payment confirmation rejected.');
+        }
+      }
+
+      // 5. Anti-replay: ensure *this specific booking* has not already been confirmed
+      //    (a single PI may legitimately cover multiple bookings, so we scope the check
+      //    to the booking row itself — not to all bookings sharing this PI)
+      const alreadyConfirmed = await db.execute(sql`
+        SELECT status FROM bookings
+        WHERE id = ${bookingId} AND status = 'confirmed'
+        LIMIT 1
+      `);
+      if (alreadyConfirmed.rows && alreadyConfirmed.rows.length > 0) {
+        throw new Error('This booking has already been confirmed');
+      }
+
+      // 6. Verify the PI amount covers the booking total (prevents partial-payment abuse)
+      const bookingAmountRows = await db.execute(sql`
+        SELECT total_amount FROM bookings WHERE id = ${bookingId} AND user_id = ${userId} LIMIT 1
+      `);
+      if (bookingAmountRows.rows.length > 0) {
+        const expectedTotal = parseFloat(String((bookingAmountRows.rows[0] as any).total_amount || 0));
+        if (expectedTotal > 0) {
+          const paidAmountUsd = intent.amount / 100;
+          // Allow 5% tolerance to absorb platform-fee rounding differences
+          if (paidAmountUsd < expectedTotal * 0.95) {
+            throw new Error(
+              `Payment amount ($${paidAmountUsd.toFixed(2)}) is less than booking total ($${expectedTotal.toFixed(2)})`
+            );
+          }
+        }
+      }
+
       const confirmationCode = this.generateConfirmationCode();
 
+      // Store stripe_payment_intent_id on the booking row for anti-replay and audit
       await db.execute(sql`
         UPDATE bookings SET
           status = 'confirmed',
           payment_status = 'succeeded',
           confirmed_at = NOW(),
           confirmation_code = ${confirmationCode},
-          deposit_paid = true
-        WHERE id = ${bookingId}
+          deposit_paid = true,
+          stripe_payment_intent_id = ${paymentIntentId}
+        WHERE id = ${bookingId} AND user_id = ${userId}
       `);
 
       // TODO: Update provider earnings

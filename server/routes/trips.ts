@@ -166,7 +166,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
-    const participants = await coordinationService.getParticipants(req.params.tripId);
+    const participants = await coordinationService.getParticipants(req.params.tripId, userId);
     res.json(participants);
   }));
 
@@ -222,7 +222,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
       const { emails } = req.body;
-      const participants = await coordinationService.bulkInvite(req.params.tripId, emails);
+      const participants = await coordinationService.bulkInvite(req.params.tripId, emails, userId);
       res.status(201).json(participants);
     } catch (error) {
       res.status(500).json({ message: "Failed to send invites" });
@@ -233,7 +233,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     try {
       const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
-      const contracts = await vendorManagementService.getContracts(req.params.tripId);
+      const contracts = await vendorManagementService.getContracts(req.params.tripId, userId);
       res.json(contracts);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch contracts" });
@@ -281,7 +281,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       const contract = await vendorManagementService.createContract({
         ...req.body,
         tripId: req.params.tripId,
-      });
+      }, userId);
       res.status(201).json(contract);
     } catch (error) {
       res.status(500).json({ message: "Failed to create contract" });
@@ -292,7 +292,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     try {
       const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
-      const transactions = await budgetService.getTransactions(req.params.tripId);
+      const transactions = await budgetService.getTransactions(req.params.tripId, userId);
       res.json(transactions);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch transactions" });
@@ -340,7 +340,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       const transaction = await budgetService.createTransaction({
         ...req.body,
         tripId: req.params.tripId,
-      });
+      }, userId);
       res.status(201).json(transaction);
     } catch (error) {
       res.status(500).json({ message: "Failed to create transaction" });
@@ -382,7 +382,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     try {
       const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
-      const items = await itineraryIntelligenceService.getItems(req.params.tripId);
+      const items = await itineraryIntelligenceService.getItems(req.params.tripId, userId);
       res.json(items);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch itinerary items" });
@@ -431,7 +431,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       const item = await itineraryIntelligenceService.createItem({
         ...req.body,
         tripId: req.params.tripId,
-      });
+      }, userId);
       logItineraryChange(req.params.tripId, userName, `Added "${item.title}"`, "add", "owner", item.id);
       res.status(201).json(item);
     } catch (error) {
@@ -468,7 +468,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
   app.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       const [trip] = await db
         .select()
@@ -581,7 +581,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     try {
       const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
-      const contacts = await emergencyService.getContacts(req.params.tripId);
+      const contacts = await emergencyService.getContacts(req.params.tripId, userId);
       res.json(contacts);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch emergency contacts" });
@@ -606,7 +606,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       const contact = await emergencyService.createContact({
         ...req.body,
         tripId: req.params.tripId,
-      });
+      }, userId);
       res.status(201).json(contact);
     } catch (error) {
       res.status(500).json({ message: "Failed to create emergency contact" });
@@ -629,7 +629,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     try {
       const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!await verifyTripOwnership(req.params.tripId, userId)) return res.status(403).json({ message: "Access denied" });
-      const alerts = await emergencyService.getActiveAlerts(req.params.tripId);
+      const alerts = await emergencyService.getActiveAlerts(req.params.tripId, userId);
       res.json(alerts);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch alerts" });
@@ -654,7 +654,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
       const alert = await emergencyService.createAlert({
         ...req.body,
         tripId: req.params.tripId,
-      });
+      }, userId);
       res.status(201).json(alert);
     } catch (error) {
       res.status(500).json({ message: "Failed to create alert" });
@@ -1105,7 +1105,7 @@ export function registerTripRoutes(app: Express, resolveSlug: (slug: string) => 
     }
   });
 
-  app.patch("/api/trips/:tripId/transport-mode", async (req, res) => {
+  app.patch("/api/trips/:tripId/transport-mode", isAuthenticated, async (req, res) => {
     const VALID_TIMING = ["in_advance", "real_time"];
     const VALID_SOURCE = ["traveloure", "external"];
     try {
