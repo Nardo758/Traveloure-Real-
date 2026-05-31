@@ -46,13 +46,23 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
  */
 router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    if (!userId) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
     const { bookingId, paymentIntentId } = req.body;
 
     if (!bookingId || !paymentIntentId) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const success = await bookingService.confirmBookingPayment(bookingId, paymentIntentId);
+    let success: boolean;
+    try {
+      success = await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
+    } catch (verifyErr: any) {
+      return res.status(402).json({ success: false, error: verifyErr.message });
+    }
 
     if (success) {
       res.json({
@@ -308,18 +318,53 @@ router.post('/activity/checkout', isAuthenticated, async (req, res) => {
       travelDate, travelerCount = 1,
     } = req.body;
 
-    if (!provider || !title || !price) {
-      return res.status(400).json({ error: 'provider, title, and price are required' });
-    }
-
-    const amount = parseFloat(price);
-    if (isNaN(amount) || amount <= 0) {
-      return res.status(400).json({ error: 'Invalid price' });
+    if (!provider || !title) {
+      return res.status(400).json({ error: 'provider and title are required' });
     }
 
     // Create Stripe Payment Intent
     const { db } = await import('../db');
     const { sql } = await import('drizzle-orm');
+
+    // Resolve authoritative price from server-side activity_cache first.
+    // Client-supplied price is only used as a last resort for uncached items,
+    // with strict range validation, to prevent underpayment attacks.
+    let amount: number | null = null;
+    if (productCode) {
+      const cacheRows = await db.execute(sql`
+        SELECT price FROM activity_cache
+        WHERE product_code = ${productCode}
+        LIMIT 1
+      `);
+      if (cacheRows.rows.length > 0 && (cacheRows.rows[0] as any).price != null) {
+        amount = parseFloat((cacheRows.rows[0] as any).price);
+      }
+    }
+
+    if (amount === null) {
+      // For known external-supplier providers (Viator, Amadeus, Fever) the catalog price
+      // MUST come from the server-side cache — we cannot trust client-supplied prices
+      // for real supplier bookings where the platform bears the cost.
+      const externalSupplierProviders = ['viator', 'amadeus', 'fever'];
+      if (externalSupplierProviders.includes((provider as string).toLowerCase())) {
+        return res.status(422).json({
+          error: `No authoritative price found for this ${provider} activity. Please search for the activity again to refresh pricing.`,
+        });
+      }
+
+      // For other/affiliate providers without a supplier cost, validate and use client price
+      if (!price) {
+        return res.status(400).json({ error: 'price is required for uncached activities' });
+      }
+      const clientAmount = parseFloat(price);
+      if (isNaN(clientAmount) || clientAmount <= 0) {
+        return res.status(400).json({ error: 'Invalid price' });
+      }
+      if (clientAmount > 25000) {
+        return res.status(400).json({ error: 'Price exceeds maximum allowed' });
+      }
+      amount = clientAmount;
+    }
 
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
       apiVersion: '2024-12-18.acacia' as any,
@@ -519,11 +564,20 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
       }
 
       // Use server-side price if available; otherwise validate and use client price
+      const provider = (ext.provider || ext.type || 'external').toLowerCase();
       let pricePerUnit: number;
       if (authorizedPricePerUnit !== null && authorizedPricePerUnit > 0) {
         pricePerUnit = authorizedPricePerUnit;
       } else {
-        // Fallback: client-supplied price with strict range validation
+        // For known external-supplier providers the platform must not accept client-controlled prices
+        const externalSupplierProviders = ['viator', 'amadeus', 'fever'];
+        if (externalSupplierProviders.includes(provider)) {
+          return res.status(422).json({
+            error: `No authoritative price found for ${provider} item: ${ext.name}. Please search for the activity again to refresh pricing.`,
+          });
+        }
+
+        // Fallback: client-supplied price with strict range validation (non-supplier providers only)
         const clientPrice = parseFloat(ext.price);
         if (isNaN(clientPrice) || clientPrice < 0) {
           return res.status(400).json({ error: `Invalid price for item: ${ext.name}` });
@@ -536,7 +590,6 @@ router.post('/activity/stage-cart', isAuthenticated, async (req, res) => {
       }
 
       const priceAmount = pricePerUnit * clientQuantity;
-      const provider = (ext.provider || ext.type || 'external').toLowerCase();
       const bookingId = crypto.randomUUID();
 
       await db.execute(sql`
@@ -614,7 +667,7 @@ router.post('/activity/confirm', isAuthenticated, async (req, res) => {
 
     // Verify the booking belongs to this user and is linked to this payment intent
     const bookingRows = await db.execute(sql`
-      SELECT id, status FROM activity_bookings
+      SELECT id, status, price_amount, price_currency FROM activity_bookings
       WHERE id = ${bookingId}
         AND user_id = ${userId}
         AND stripe_payment_intent_id = ${paymentIntentId}
@@ -623,6 +676,32 @@ router.post('/activity/confirm', isAuthenticated, async (req, res) => {
 
     if (bookingRows.rows.length === 0) {
       return res.status(404).json({ error: 'Booking not found or payment intent mismatch' });
+    }
+
+    // Verify collected amount matches the server-stored booking price (prevents underpayment)
+    // Retrieve PI amount directly from Stripe for a definitive check
+    {
+      const Stripe2 = (await import('stripe')).default;
+      const stripe2 = new Stripe2(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+      try {
+        const confirmedIntent = await stripe2.paymentIntents.retrieve(paymentIntentId);
+        const paidAmountUsd = confirmedIntent.amount / 100;
+        const booking = bookingRows.rows[0] as any;
+        const expectedAmount = parseFloat(booking.price_amount || '0');
+        // Allow 5% rounding tolerance; but reject if significantly underpaid
+        if (expectedAmount > 0 && paidAmountUsd < expectedAmount * 0.95) {
+          return res.status(402).json({
+            error: `Payment amount ($${paidAmountUsd.toFixed(2)}) does not cover booking price ($${expectedAmount.toFixed(2)})`,
+          });
+        }
+      } catch (amountCheckErr: any) {
+        // If we already verified PI succeeded above (piStatus check), skip this check rather than blocking
+        if (!['stripe', 'stripeInvalidRequestError'].includes((amountCheckErr as any).type)) {
+          console.warn('[ActivityConfirm] Amount reconciliation check failed (non-fatal):', amountCheckErr.message);
+        }
+      }
     }
 
     await db.execute(sql`

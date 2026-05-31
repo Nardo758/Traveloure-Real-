@@ -228,17 +228,61 @@ export function registerCartRoutes(app: Express, resolveSlug: (slug: string) => 
 
       const { sql: sqlTag } = await import("drizzle-orm");
 
-      // Fetch staged activity bookings from DB — use server-stored prices, not client prices
+      // Fetch staged activity bookings from DB — use server-stored prices, not client prices.
+      // For known external-supplier providers (viator, amadeus, fever), re-validate that the
+      // stored price is still authoritative (from activity_cache) before charging.
+      const EXTERNAL_SUPPLIER_PROVIDERS = ['viator', 'amadeus', 'fever'];
       let externalSubtotal = 0;
       const validStagedIds: string[] = [];
       if (stagedActivityIds.length > 0) {
         for (const id of stagedActivityIds) {
           const rows = await db.execute(sqlTag`
-            SELECT id, price_amount FROM activity_bookings
+            SELECT id, price_amount, provider, product_code, traveler_count FROM activity_bookings
             WHERE id = ${id} AND user_id = ${userId} AND status = 'staged'
           `);
           if (rows.rows.length > 0) {
-            externalSubtotal += parseFloat((rows.rows[0] as any).price_amount);
+            const row = rows.rows[0] as any;
+            const stagedTotal = parseFloat(row.price_amount);
+            const rowProvider = (row.provider || '').toLowerCase();
+            // quantity is stored as traveler_count; fall back to 1 for non-Viator items
+            const qty = Math.max(1, parseInt(row.traveler_count || '1') || 1);
+
+            // For supplier providers: re-verify per-unit price against activity_cache.
+            // price_amount is a total (unit * qty); authorizedPrice from cache is per-unit.
+            if (EXTERNAL_SUPPLIER_PROVIDERS.includes(rowProvider) && row.product_code) {
+              const cacheRows = await db.execute(sqlTag`
+                SELECT price FROM activity_cache
+                WHERE product_code = ${row.product_code}
+                LIMIT 1
+              `);
+              if (cacheRows.rows.length > 0 && (cacheRows.rows[0] as any).price != null) {
+                const authorizedUnitPrice = parseFloat((cacheRows.rows[0] as any).price);
+                const authorizedTotal = authorizedUnitPrice * qty;
+                // Reject if staged total is materially below the authoritative total
+                if (authorizedTotal > 0 && stagedTotal < authorizedTotal * 0.95) {
+                  return res.status(422).json({
+                    message: `Staged price for activity is outdated. Please remove and re-add the item to refresh pricing.`,
+                  });
+                }
+                // Correct stale total (e.g. price changed since staging) — always use authoritative total
+                if (Math.abs(authorizedTotal - stagedTotal) > 0.01) {
+                  await db.execute(sqlTag`
+                    UPDATE activity_bookings SET price_amount = ${authorizedTotal}
+                    WHERE id = ${id} AND user_id = ${userId}
+                  `);
+                  externalSubtotal += authorizedTotal;
+                  validStagedIds.push(id);
+                  continue;
+                }
+              } else {
+                // No cached price available for a supplier product — reject checkout
+                return res.status(422).json({
+                  message: `Cannot verify price for ${rowProvider} activity. Please remove and re-add the item.`,
+                });
+              }
+            }
+
+            externalSubtotal += stagedTotal;
             validStagedIds.push(id);
           }
         }
