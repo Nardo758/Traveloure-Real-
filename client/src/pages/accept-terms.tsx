@@ -7,7 +7,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { FileText, Shield, Loader2 } from "lucide-react";
-import { RETURN_TO_KEY } from "@/components/SignInModal";
 
 export default function AcceptTermsPage() {
   const { toast } = useToast();
@@ -34,13 +33,7 @@ export default function AcceptTermsPage() {
         title: "Welcome to Traveloure!",
         description: "Thank you for accepting our terms. You now have full access to the platform.",
       });
-      const returnTo = sessionStorage.getItem(RETURN_TO_KEY);
-      if (returnTo) {
-        sessionStorage.removeItem(RETURN_TO_KEY);
-        setLocation(returnTo);
-      } else {
-        setLocation("/dashboard");
-      }
+      setLocation("/dashboard");
     },
     onError: (error: any) => {
       toast({
@@ -59,13 +52,7 @@ export default function AcceptTermsPage() {
 
   useEffect(() => {
     if (user?.termsAcceptedAt && user?.privacyAcceptedAt) {
-      const returnTo = sessionStorage.getItem(RETURN_TO_KEY);
-      if (returnTo) {
-        sessionStorage.removeItem(RETURN_TO_KEY);
-        setLocation(returnTo);
-      } else {
-        setLocation("/dashboard");
-      }
+      setLocation("/dashboard");
     }
   }, [user, setLocation]);
 

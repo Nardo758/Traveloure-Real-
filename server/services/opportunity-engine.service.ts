@@ -4,38 +4,15 @@ import {
   realtimeSignals,
   userSpontaneityPreferences,
   activityCache, 
-  hotelCache,
-  hotelOfferCache,
+  hotelCache, 
   feverEventCache,
   type SpontaneousOpportunity,
   type InsertSpontaneousOpportunity,
   type UserSpontaneityPreferences,
   type InsertUserSpontaneityPreferences
 } from "@shared/schema";
-import { eq, and, gte, lte, desc, sql, or, ilike, isNotNull, asc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, or, ilike } from "drizzle-orm";
 import { logger } from "../infrastructure";
-
-// City name → IATA city code lookup for hotel city matching
-const CITY_TO_IATA: Record<string, string> = {
-  "new york":     "NYC",
-  "london":       "LON",
-  "paris":        "PAR",
-  "los angeles":  "LAX",
-  "barcelona":    "BCN",
-  "madrid":       "MAD",
-  "tokyo":        "TYO",
-  "sydney":       "SYD",
-  "dubai":        "DXB",
-  "singapore":    "SIN",
-  "amsterdam":    "AMS",
-  "rome":         "ROM",
-  "milan":        "MIL",
-  "bangkok":      "BKK",
-  "lisbon":       "LIS",
-  "prague":       "PRG",
-  "vienna":       "VIE",
-  "cape town":    "CPT",
-};
 
 export interface OpportunitySearchParams {
   lat?: number;
@@ -46,7 +23,6 @@ export interface OpportunitySearchParams {
   types?: string[]; // last_minute, trending, local_event, flash_deal
   categories?: string[];
   maxPrice?: number;
-  minPrice?: number; // For luxury/premium vibe filtering (show high-end experiences only)
   timeWindow?: "tonight" | "tomorrow" | "weekend" | "week" | "surprise_me";
 }
 
@@ -88,19 +64,7 @@ class OpportunityEngineService {
     // Sort by urgency score (higher = more urgent)
     opportunities.sort((a, b) => (b.urgencyScore || 0) - (a.urgencyScore || 0));
 
-    // Ensure diversity: if Amadeus activities exist, guarantee up to 5 slots for them
-    const amadeusActivities = opportunities.filter(o => o.source === 'amadeus');
-    const nonAmadeus = opportunities.filter(o => o.source !== 'amadeus');
-    const amadeusSlots = Math.min(amadeusActivities.length, 5);
-    const nonAmadeusSlots = limit - amadeusSlots;
-    const mixed = [
-      ...nonAmadeus.slice(0, nonAmadeusSlots),
-      ...amadeusActivities.slice(0, amadeusSlots),
-    ];
-    // Re-sort the final mixed list
-    mixed.sort((a, b) => (b.urgencyScore || 0) - (a.urgencyScore || 0));
-
-    return mixed.slice(0, limit);
+    return opportunities.slice(0, limit);
   }
 
   private async generateOpportunitiesFromCache(
@@ -202,10 +166,6 @@ class OpportunityEngineService {
       if (params.maxPrice) {
         conditions.push(lte(activityCache.price, params.maxPrice.toString()));
       }
-
-      if (params.minPrice) {
-        conditions.push(gte(activityCache.price, params.minPrice.toString()));
-      }
       
       if (params.categories && params.categories.length > 0) {
         conditions.push(
@@ -231,21 +191,18 @@ class OpportunityEngineService {
         // Determine opportunity type
         const type = this.determineActivityType(activity, urgencyScore);
 
-        const provider = activity.provider === 'amadeus' ? 'amadeus' : 'viator';
-        const rawData = activity.rawData as Record<string, unknown> | null;
-        const bookingUrl = (rawData?.bookingLink as string | undefined) ?? null;
         return {
-          id: `${provider}-${activity.productCode}`,
-          city: activity.destination || activity.city || params.city || "Unknown",
+          id: `viator-${activity.productCode}`,
+          city: activity.destination || params.city || "Unknown",
           latitude: activity.latitude ? parseFloat(activity.latitude) : null,
           longitude: activity.longitude ? parseFloat(activity.longitude) : null,
           type,
-          source: provider as "amadeus" | "viator",
+          source: "viator" as const,
           externalId: activity.productCode,
           title: activity.title || "Untitled Activity",
           description: activity.description,
           imageUrl: activity.imageUrl,
-          affiliateUrl: bookingUrl,
+          affiliateUrl: null, // Viator activities don't store direct booking URLs in cache
           originalPrice: price,
           currentPrice: price,
           currency: activity.currency || "USD",
@@ -297,8 +254,8 @@ class OpportunityEngineService {
       }
 
       const events = conditions.length > 0
-        ? await query.where(and(...conditions)).limit(20)
-        : await query.orderBy(sql`RANDOM()`).limit(20);
+        ? await query.where(and(...conditions)).limit(50)
+        : await query.orderBy(sql`RANDOM()`).limit(50);
 
       return events.map(event => {
         const price = parseFloat(event.minPrice || "0");
@@ -356,82 +313,46 @@ class OpportunityEngineService {
     params: OpportunitySearchParams
   ): Promise<ScoredOpportunity[]> {
     try {
-      const now = new Date();
-      // Build city code condition from city name
-      const iataCode = params.city ? CITY_TO_IATA[params.city.toLowerCase()] : undefined;
-
-      // Join hotel_offer_cache for real pricing; filter for fresh offers
-      const conditions: any[] = [gte(hotelOfferCache.expiresAt, now)];
-
+      let query = db.select().from(hotelCache);
+      
+      const conditions: any[] = [];
+      
       if (params.city) {
-        const cityConditions: any[] = [ilike(hotelCache.city, `%${params.city}%`)];
-        if (iataCode) {
-          cityConditions.push(eq(hotelCache.cityCode, iataCode));
-        }
-        conditions.push(or(...cityConditions));
+        conditions.push(ilike(hotelCache.city, `%${params.city}%`));
       }
 
-      const rows = await db
-        .select({
-          hotelId: hotelCache.hotelId,
-          cityCode: hotelCache.cityCode,
-          name: hotelCache.name,
-          city: hotelCache.city,
-          latitude: hotelCache.latitude,
-          longitude: hotelCache.longitude,
-          rating: hotelCache.rating,
-          starRating: hotelCache.starRating,
-          preferenceTags: hotelCache.preferenceTags,
-          amenities: hotelCache.amenities,
-          price: hotelOfferCache.price,
-          currency: hotelOfferCache.currency,
-          checkIn: hotelOfferCache.checkInDate,
-          checkOut: hotelOfferCache.checkOutDate,
-          offerId: hotelOfferCache.offerId,
-        })
-        .from(hotelOfferCache)
-        .innerJoin(hotelCache, eq(hotelOfferCache.hotelCacheId, hotelCache.id))
-        .where(and(...conditions))
-        .orderBy(asc(hotelOfferCache.price))
-        .limit(30);
+      const hotels = conditions.length > 0
+        ? await query.where(and(...conditions)).limit(30)
+        : await query.orderBy(sql`RANDOM()`).limit(30);
 
-      return rows
-        .filter(row => {
-          if (!row.rating) return true;
-          const rating = parseFloat(row.rating);
+      return hotels
+        .filter(hotel => {
+          // Only include hotels with good deals (assumed from rating/price ratio)
+          const rating = parseInt(hotel.rating || "0");
           return rating >= 3;
         })
-        .map(row => {
-          const rating = parseFloat(row.rating || "0");
-          const currentPrice = row.price ? parseFloat(row.price) : null;
-          // Base urgency of 50 for hotels with real pricing; boost for rated hotels
-          const urgencyScore = currentPrice ? Math.max(50, Math.min(75, 50 + rating * 10)) : Math.min(40, rating * 15);
-
-          // Derive readable city name from IATA map if city column is null
-          const IATA_TO_CITY: Record<string, string> = {
-            NYC: "New York", LON: "London", PAR: "Paris", LAX: "Los Angeles",
-            BCN: "Barcelona", MAD: "Madrid", TYO: "Tokyo", SYD: "Sydney",
-            DXB: "Dubai", SIN: "Singapore", AMS: "Amsterdam", ROM: "Rome",
-            MIL: "Milan", BKK: "Bangkok", LIS: "Lisbon", PRG: "Prague",
-            VIE: "Vienna", CPT: "Cape Town",
-          };
-          const cityName = row.city || (row.cityCode ? IATA_TO_CITY[row.cityCode] : undefined) || params.city || "Unknown";
+        .map(hotel => {
+          const rating = parseInt(hotel.rating || "0");
+          
+          // Hotels are less urgent but can be last-minute deals
+          const urgencyScore = Math.min(70, rating * 15);
+          const actionabilityScore = 80; // Hotels are always bookable
 
           return {
-            id: `amadeus-${row.hotelId}`,
-            city: cityName,
-            latitude: row.latitude ? parseFloat(row.latitude as string) : null,
-            longitude: row.longitude ? parseFloat(row.longitude as string) : null,
+            id: `amadeus-${hotel.hotelId}`,
+            city: hotel.city || params.city || "Unknown",
+            latitude: hotel.latitude ? parseFloat(hotel.latitude) : null,
+            longitude: hotel.longitude ? parseFloat(hotel.longitude) : null,
             type: "last_minute" as const,
             source: "amadeus" as const,
-            externalId: row.hotelId || "",
-            title: row.name || "Untitled Hotel",
+            externalId: hotel.hotelId || "",
+            title: hotel.name || "Untitled Hotel",
             description: null,
             imageUrl: null,
             affiliateUrl: null,
-            originalPrice: currentPrice,
-            currentPrice,
-            currency: row.currency || "USD",
+            originalPrice: null,
+            currentPrice: null,
+            currency: "USD",
             discountPercent: null,
             startTime: null,
             endTime: null,
@@ -439,16 +360,19 @@ class OpportunityEngineService {
             capacity: null,
             remainingSpots: null,
             urgencyScore,
-            actionabilityScore: 80,
+            actionabilityScore,
             trendingScore: rating * 20,
             category: "Accommodation",
-            tags: (row.preferenceTags as string[]) || [],
-            metadata: { rating, amenities: row.amenities, checkIn: row.checkIn, checkOut: row.checkOut },
+            tags: hotel.preferenceTags || [],
+            metadata: {
+              rating,
+              amenities: hotel.amenities
+            },
             createdAt: new Date(),
             updatedAt: new Date(),
             distance: undefined,
             trendingOn: rating >= 4 ? ["Top Rated"] : undefined,
-            bookedRecently: undefined,
+            bookedRecently: undefined
           } as ScoredOpportunity;
         });
     } catch (error) {
@@ -462,8 +386,6 @@ class OpportunityEngineService {
     
     const reviewCount = activity.reviewCount || 0;
     const flags = activity.flags || [];
-    const price = parseFloat(activity.price || "0");
-    const rating = parseFloat(activity.rating || "0");
     
     // Popularity boosts urgency (FOMO effect)
     if (reviewCount > 100) score += 20;
@@ -474,11 +396,6 @@ class OpportunityEngineService {
     if (flags.includes("BESTSELLER") || flags.includes("bestseller")) score += 15;
     if (flags.includes("LIKELY_TO_SELL_OUT") || flags.includes("likely_to_sell_out")) score += 25;
     if (flags.includes("NEW") || flags.includes("new")) score += 10;
-    
-    // Amadeus activities: boost if they have real price + rating data
-    if (activity.provider === 'amadeus' && price > 0) score += 20;
-    if (rating >= 4.0) score += 10;
-    else if (rating >= 3.5) score += 5;
     
     return Math.min(100, score);
   }
@@ -652,8 +569,8 @@ class OpportunityEngineService {
       
       // Viator activities: construct booking URL or use cached rawData
       if (activity) {
-        const rawData = activity.rawData as Record<string, unknown> | null;
-        redirectUrl = (rawData?.productUrl as string | undefined) || `https://www.viator.com/tours/${externalId}`;
+        const rawData = activity.rawData as any;
+        redirectUrl = rawData?.productUrl || `https://www.viator.com/tours/${externalId}`;
       }
     } else if (provider === "fever") {
       const [event] = await db

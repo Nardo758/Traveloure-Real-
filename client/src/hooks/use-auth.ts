@@ -18,15 +18,7 @@ async function fetchUser(): Promise<User | null> {
 }
 
 async function logout(): Promise<void> {
-  try {
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch {
-    // best-effort; proceed to redirect regardless
-  }
-  window.location.href = "/";
+  window.location.href = "/api/logout";
 }
 
 export function useAuth() {
@@ -42,7 +34,6 @@ export function useAuth() {
     mutationFn: logout,
     onSuccess: () => {
       queryClient.setQueryData(["/api/auth/user"], null);
-      queryClient.clear();
     },
   });
 

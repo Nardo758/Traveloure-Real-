@@ -1,15 +1,18 @@
 import { useTrips } from "@/hooks/use-trips";
+import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
-import { Plus, Loader2, Bookmark } from "lucide-react";
+import { Plus, Loader2, Calendar } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { Card, CardContent } from "@/components/ui/card";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
-import { PlanCard } from "@/components/plancard/PlanCard";
-import type { PlanCardTrip } from "@/components/plancard/plancard-types";
+import { DashboardPlanCard } from "@/components/dashboard/DashboardPlanCard";
+import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
+import { CreditsPanel } from "@/components/dashboard/CreditsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
 
 interface Notification {
@@ -53,39 +56,6 @@ const CTA_CARDS = [
   },
 ];
 
-function SavedTripsLink() {
-  const { data: savedTrips } = useQuery<{ id: string }[]>({
-    queryKey: ["/api/saved-trips"],
-  });
-
-  const count = savedTrips?.length ?? 0;
-  if (count === 0) return null;
-
-  return (
-    <Link href="/my-trips">
-      <div
-        className="flex items-center gap-2.5 rounded-[10px] p-3 cursor-pointer hover:opacity-80 transition-opacity"
-        style={{ background: "#FFFFFF", border: "0.5px solid #E8E8E2" }}
-        data-testid="link-saved-trips"
-      >
-        <Bookmark className="w-4 h-4 flex-shrink-0" style={{ color: "#E85D55" }} />
-        <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-medium" style={{ color: "#1A1A18" }}>{count} saved for later</div>
-          <div className="text-[9px]" style={{ color: "#7A7A72" }}>
-            View in My Plans
-          </div>
-        </div>
-        <span
-          className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-          style={{ background: "rgba(232,93,85,0.1)", color: "#E85D55" }}
-        >
-          {count}
-        </span>
-      </div>
-    </Link>
-  );
-}
-
 export default function Dashboard() {
   const { data: trips, isLoading, isError } = useTrips();
   const { user } = useAuth();
@@ -98,10 +68,6 @@ export default function Dashboard() {
   const { data: creditsData } = useQuery<{ balance: number }>({
     queryKey: ["/api/credits/balance"],
     retry: false,
-  });
-  const { data: tripScores } = useQuery<Array<{ tripId: string; optimizationScore: number | null; shareToken: string | null }>>({
-    queryKey: ["/api/dashboard/trip-scores"],
-    staleTime: 60000,
   });
 
   if (isLoading) {
@@ -147,11 +113,10 @@ export default function Dashboard() {
 
   const destinations = activePlans.map(t => t.destination).filter(Boolean);
   const convList = conversations ?? [];
-  const scoreMap = new Map((tripScores ?? []).map(s => [s.tripId, s]));
 
   return (
     <DashboardLayout>
-      <div className="px-4 py-5 max-w-5xl mx-auto" data-testid="traveler-dashboard">
+      <div className="p-6" data-testid="dashboard-content">
         {/* Greeting — full width above panels */}
         <div className="pt-4 mb-4">
           <div
@@ -171,11 +136,11 @@ export default function Dashboard() {
         </div>
 
         {/* Two-panel layout */}
-        <div className="flex gap-4">
+        <div className="flex gap-5">
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
             {/* CTA Row */}
-            <div className="flex gap-2 mb-[16px]">
+            <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
                 const sub =
                   card.testId === "cta-credits"
@@ -211,6 +176,8 @@ export default function Dashboard() {
               })}
             </div>
 
+            <SavedTripsSection />
+
             {/* Active Plans */}
             <div
               className="text-sm font-medium mb-3 flex items-center justify-between"
@@ -230,79 +197,64 @@ export default function Dashboard() {
               )}
             </div>
 
-            <div
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6"
-              data-testid="active-plans-grid"
-            >
-              {activePlans.slice(0, 6).map((trip, i) => {
-                const tripScore = scoreMap.get(trip.id);
-                const resolvedShareToken = tripScore?.shareToken ?? (trip as any).shareToken ?? null;
-                const planCardTrip: PlanCardTrip = {
-                  id: trip.id,
-                  destination: trip.destination ?? "",
-                  title: trip.title ?? undefined,
-                  startDate: trip.startDate ?? undefined,
-                  endDate: trip.endDate ?? undefined,
-                  numberOfTravelers: trip.numberOfTravelers ?? 1,
-                  budget: trip.budget ?? undefined,
-                  eventType: trip.eventType ?? undefined,
-                  status: trip.status ?? undefined,
-                  shareToken: resolvedShareToken,
-                  trackingNumber: (trip as any).trackingNumber ?? null,
-                  expertNotes: trip.expertNotes ?? null,
-                };
-                const score = tripScore
-                  ? { tripId: trip.id, optimizationScore: tripScore.optimizationScore, shareToken: tripScore.shareToken }
-                  : undefined;
-                return (
-                  <PlanCard
+            {activePlans.length > 0 ? (
+              <div
+                className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-6"
+                data-testid="active-plans-grid"
+              >
+                {activePlans.slice(0, 6).map((trip, i) => (
+                  <DashboardPlanCard
                     key={trip.id}
-                    trip={planCardTrip}
-                    score={score}
+                    trip={trip}
                     index={i}
                     conversations={convList}
                     notifications={notifications}
                   />
-                );
-              })}
-              {activePlans.length < 2 && (
-                <Link href="/experiences">
+                ))}
+              </div>
+            ) : (
+              <Card
+                className="border-2 border-dashed mb-6"
+                style={{ borderColor: "#E8E8E2" }}
+              >
+                <CardContent className="p-8 text-center">
                   <div
-                    className="rounded-[14px] flex flex-col items-center justify-center cursor-pointer hover:bg-muted/30 transition-colors min-h-[220px]"
-                    style={{
-                      border: "2px dashed #E8E8E2",
-                      background: "transparent",
-                    }}
-                    data-testid="create-new-plan-card"
+                    className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"
+                    style={{ background: "#FFE3E8" }}
                   >
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center mb-3"
-                      style={{ background: "#FFE3E8" }}
-                    >
-                      <Plus className="w-6 h-6" style={{ color: "#E85D55" }} />
-                    </div>
-                    <div
-                      className="text-sm font-medium mb-1"
-                      style={{ color: "#1A1A18" }}
-                    >
-                      Create new plan
-                    </div>
-                    <div
-                      className="text-xs"
-                      style={{ color: "#7A7A72" }}
-                    >
-                      Start a new adventure
-                    </div>
+                    <Calendar
+                      className="w-8 h-8"
+                      style={{ color: "#E85D55" }}
+                    />
                   </div>
-                </Link>
-              )}
-            </div>
+                  <h3
+                    className="text-lg font-semibold mb-2"
+                    style={{ color: "#1A1A18" }}
+                  >
+                    No active plans
+                  </h3>
+                  <p className="mb-4" style={{ color: "#7A7A72" }}>
+                    Start planning your next adventure!
+                  </p>
+                  <Link href="/experiences">
+                    <Button
+                      className="text-white"
+                      style={{ background: "#E85D55" }}
+                      data-testid="button-first-plan"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Your First Plan
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
 
             <RecommendedServices destinations={destinations} />
           </div>
 
           {/* RIGHT: Intelligence panel */}
-          <div className="w-[210px] flex-shrink-0 hidden lg:block">
+          <div className="w-[260px] flex-shrink-0 hidden lg:block">
             <div className="sticky top-16 space-y-3">
               <TravelPulsePanel />
               <ActionItemsPanel notifications={notifications} />
@@ -311,7 +263,7 @@ export default function Dashboard() {
                 trips={activePlans}
               />
               <TopExpertsPanel destinations={destinations} />
-              <SavedTripsLink />
+              <CreditsPanel />
             </div>
           </div>
         </div>

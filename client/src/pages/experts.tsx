@@ -40,7 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { ExpertCard } from "@/components/expert-card-v2";
+import { ExpertCard } from "@/components/expert-card";
 import { ExpertMatchCard } from "@/components/expert-match-card";
 import { format } from "date-fns";
 
@@ -545,7 +545,6 @@ export default function ExpertsPage() {
               {sortedExperts.map((expert: any, idx: number) => (
                 <motion.div
                   key={expert.id}
-                  className="h-full"
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: idx * 0.05 }}

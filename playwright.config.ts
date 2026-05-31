@@ -11,35 +11,26 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './playwright/tests',
-  /* Run tests sequentially to avoid session/resource interference on shared server */
-  fullyParallel: false,
+  /* Run tests in files in parallel */
+  fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Single worker to prevent parallel session conflicts */
-  workers: 1,
+  /* Opt out of parallel tests on CI. */
+  workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
-  timeout: 30000,
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
     baseURL: process.env.BASE_URL || 'http://localhost:5000',
-    actionTimeout: 30000,
-    navigationTimeout: 30000,
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
     /* Screenshot on failure */
     screenshot: 'only-on-failure',
     /* Video on failure */
     video: 'retain-on-failure',
-    /* Bypass rate limiting for automated tests */
-    extraHTTPHeaders: {
-      ...(process.env.RATE_LIMIT_BYPASS_KEY
-        ? { 'x-test-token': process.env.RATE_LIMIT_BYPASS_KEY }
-        : {}),
-    },
   },
 
   /* Configure projects for major browsers */

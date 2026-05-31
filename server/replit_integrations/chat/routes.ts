@@ -8,7 +8,7 @@ const anthropic = new Anthropic({
 });
 
 function getUserId(req: Request): string {
-  const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+  const userId = (req as any).user?.claims?.sub;
   if (!userId) throw new Error("User ID not found in session");
   return userId;
 }

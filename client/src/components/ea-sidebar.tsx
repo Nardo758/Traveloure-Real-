@@ -42,13 +42,8 @@ export function EASidebar() {
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    } catch {
-      // proceed regardless
-    }
-    window.location.href = "/";
+  const handleLogout = () => {
+    window.location.href = "/api/logout";
   };
 
   return (

@@ -687,6 +687,16 @@ export default function ItineraryViewPage() {
           </Card>
         )}
 
+        {!isExpertView && (
+          <div className="mt-8 pt-6 border-t text-center">
+            <p className="text-sm text-muted-foreground mb-3">
+              Plan your own trip with Traveloure
+            </p>
+            <Button onClick={() => window.location.href = "/"} data-testid="button-plan-trip">
+              Plan My Trip
+            </Button>
+          </div>
+        )}
       </div>
 
       <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>

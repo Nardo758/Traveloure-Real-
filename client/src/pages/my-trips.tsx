@@ -8,8 +8,6 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
-import { useQuery } from "@tanstack/react-query";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
 import {
@@ -48,10 +46,6 @@ const statusOptions = [
 
 export default function MyTrips() {
   const { data: trips, isLoading, isError } = useTrips();
-  const { data: savedTrips } = useQuery<{ id: string }[]>({
-    queryKey: ["/api/saved-trips"],
-  });
-  const hasSavedTrips = (savedTrips?.length ?? 0) > 0;
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -341,43 +335,31 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Saved for Later */}
-        <SavedTripsSection />
-
-        {/* Empty State — only show when no trips AND no active filters */}
-        {filteredTrips.length === 0 && (searchQuery || typeFilter !== "all" || statusFilter !== "all") && (
+        {/* Empty State */}
+        {filteredTrips.length === 0 && (
           <Card className="border-2 border-dashed border-[#E5E7EB]">
             <CardContent className="p-12 text-center">
               <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
                 <Plane className="w-8 h-8 text-[#FF385C]" />
               </div>
               <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-2">
-                No matching plans found
+                {searchQuery || typeFilter !== "all" || statusFilter !== "all" 
+                  ? "No matching plans found" 
+                  : "No plans yet"}
               </h3>
               <p className="text-[#6B7280] mb-4">
-                Try adjusting your filters
+                {searchQuery || typeFilter !== "all" || statusFilter !== "all"
+                  ? "Try adjusting your filters"
+                  : "Start planning your next adventure!"}
               </p>
-            </CardContent>
-          </Card>
-        )}
-        {filteredTrips.length === 0 && !searchQuery && typeFilter === "all" && statusFilter === "all" && !hasSavedTrips && (
-          <Card className="border-2 border-dashed border-[#E5E7EB]">
-            <CardContent className="p-12 text-center">
-              <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Plane className="w-8 h-8 text-[#FF385C]" />
-              </div>
-              <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-2">
-                No plans yet
-              </h3>
-              <p className="text-[#6B7280] mb-4">
-                Start planning your next adventure!
-              </p>
-              <Link href="/experiences">
-                <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-first">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Plan
-                </Button>
-              </Link>
+              {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
+                <Link href="/experiences">
+                  <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-first">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Plan
+                  </Button>
+                </Link>
+              )}
             </CardContent>
           </Card>
         )}

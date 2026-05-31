@@ -5,434 +5,233 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Mail, Save, Loader2, Trash2, Lock, Eye, EyeOff } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+
+import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
+import { useState, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 
 export default function Profile() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+  const [isLoading, setIsLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [form, setForm] = useState({ firstName: "", lastName: "", bio: "" });
-  const [pwForm, setPwForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-
-  useEffect(() => {
-    if (user) {
-      setForm({
-        firstName: user.firstName || "",
-        lastName: user.lastName || "",
-        bio: (user as any).bio || "",
-      });
-    }
-  }, [user]);
-
-  const displayedAvatar = previewImage ?? user?.profileImageUrl ?? undefined;
-
-  // ── Photo upload ─────────────────────────────────────────────────────────────
-  const photoMutation = useMutation({
-    mutationFn: (imageData: string) => apiRequest("POST", "/api/profile/photo", { imageData }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({ title: "Photo saved", description: "Your profile photo has been updated." });
-    },
-    onError: (err: any) => {
-      setPreviewImage(null);
-      toast({ title: "Upload failed", description: err?.message || "Could not save photo.", variant: "destructive" });
-    },
-  });
-
-  const removePhotoMutation = useMutation({
-    mutationFn: () => apiRequest("DELETE", "/api/profile/photo"),
-    onSuccess: () => {
-      setPreviewImage(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({ title: "Photo removed", description: "Your profile photo has been removed." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Remove failed", description: err?.message || "Could not remove photo.", variant: "destructive" });
-    },
-  });
-
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Please choose an image under 5 MB.", variant: "destructive" });
-      return;
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "File too large", description: "Please select an image under 5MB.", variant: "destructive" });
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileImage(reader.result as string);
+        toast({ title: "Photo updated", description: "Your profile photo has been updated." });
+      };
+      reader.readAsDataURL(file);
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      setPreviewImage(dataUrl);
-      photoMutation.mutate(dataUrl);
-    };
-    reader.readAsDataURL(file);
   };
 
-  // ── Profile fields save ───────────────────────────────────────────────────────
-  const saveMutation = useMutation({
-    mutationFn: () => apiRequest("PATCH", "/api/profile", form),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({ title: "Profile updated", description: "Your changes have been saved." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Save failed", description: err?.message || "Could not save profile.", variant: "destructive" });
-    },
-  });
-
-  // ── Change password ───────────────────────────────────────────────────────────
-  const changePasswordMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/profile/change-password", {
-        currentPassword: pwForm.currentPassword,
-        newPassword: pwForm.newPassword,
-      }),
-    onSuccess: () => {
-      setPwForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      toast({ title: "Password changed", description: "Your password has been updated successfully." });
-    },
-    onError: (err: any) => {
-      toast({ title: "Password change failed", description: err?.message || "Could not change password.", variant: "destructive" });
-    },
-  });
-
-  const handleChangePassword = () => {
-    if (pwForm.newPassword.length < 8) {
-      toast({ title: "Password too short", description: "New password must be at least 8 characters.", variant: "destructive" });
-      return;
-    }
-    if (pwForm.newPassword !== pwForm.confirmPassword) {
-      toast({ title: "Passwords don't match", description: "New password and confirmation must match.", variant: "destructive" });
-      return;
-    }
-    changePasswordMutation.mutate();
+  const handleRemovePhoto = () => {
+    setProfileImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    toast({ title: "Photo removed", description: "Your profile photo has been removed." });
   };
 
-  const isPhotoChanging = photoMutation.isPending || removePhotoMutation.isPending;
-  const isEmailAccount = (user as any)?.authProvider === "email" || (!(user as any)?.authProvider && !!(user as any)?.password);
+  const handleSave = async () => {
+    setIsLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setIsLoading(false);
+    toast({
+      title: "Profile updated",
+      description: "Your profile has been saved successfully.",
+    });
+  };
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
-        Profile Settings
-      </h1>
+        <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+          Profile Settings
+        </h1>
 
-      {/* Profile Photo */}
-      <Card className="border border-[#E5E7EB]">
-        <CardHeader>
-          <CardTitle className="text-lg text-[#111827] dark:text-white">Profile Photo</CardTitle>
-          <CardDescription className="text-[#6B7280]">
-            Uploaded photos are saved immediately and shown across the platform
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center gap-6">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handlePhotoSelect}
-            data-testid="input-photo-file"
-          />
-          <div className="relative">
-            <Avatar className="h-24 w-24 border-4 border-[#E5E7EB]">
-              {isPhotoChanging ? (
-                <div className="h-full w-full flex items-center justify-center bg-gray-100 rounded-full">
-                  <Loader2 className="w-6 h-6 animate-spin text-[#FF385C]" />
-                </div>
-              ) : (
-                <>
-                  <AvatarImage src={displayedAvatar} alt={user?.firstName || "User"} />
-                  <AvatarFallback className="bg-[#FFE3E8] text-[#FF385C] text-2xl font-bold">
-                    {user?.firstName?.[0] || "U"}
-                  </AvatarFallback>
-                </>
-              )}
-            </Avatar>
-            <Button
-              size="icon"
-              variant="outline"
-              className="absolute -bottom-2 -right-2 rounded-full bg-white border-[#E5E7EB]"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isPhotoChanging}
-              data-testid="button-change-photo"
-            >
-              <Camera className="w-4 h-4 text-[#6B7280]" />
-            </Button>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isPhotoChanging}
-              data-testid="button-upload-photo"
-            >
-              {photoMutation.isPending ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Uploading…</>
-              ) : (
-                <><Camera className="w-4 h-4 mr-2" />Upload Photo</>
-              )}
-            </Button>
-            {displayedAvatar && (
-              <Button
-                variant="ghost"
-                className="text-red-500 hover:text-red-600 hover:bg-red-50"
-                onClick={() => removePhotoMutation.mutate()}
-                disabled={isPhotoChanging}
-                data-testid="button-remove-photo"
-              >
-                {removePhotoMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Removing…</>
-                ) : (
-                  <><Trash2 className="w-4 h-4 mr-2" />Remove Photo</>
-                )}
-              </Button>
-            )}
-            <p className="text-xs text-[#6B7280]">JPG, PNG or GIF — max 5 MB</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Personal Information */}
-      <Card className="border border-[#E5E7EB]">
-        <CardHeader>
-          <CardTitle className="text-lg text-[#111827] dark:text-white">Personal Information</CardTitle>
-          <CardDescription className="text-[#6B7280]">Update your personal details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName" className="text-[#111827] dark:text-white">First Name</Label>
-              <Input
-                id="firstName"
-                value={form.firstName}
-                onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
-                className="border-[#E5E7EB]"
-                data-testid="input-first-name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName" className="text-[#111827] dark:text-white">Last Name</Label>
-              <Input
-                id="lastName"
-                value={form.lastName}
-                onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
-                className="border-[#E5E7EB]"
-                data-testid="input-last-name"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="email" className="text-[#111827] dark:text-white flex items-center gap-2">
-              <Mail className="w-4 h-4 text-[#6B7280]" />
-              Email Address
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              value={user?.email || ""}
-              readOnly
-              className="border-[#E5E7EB] bg-gray-50 cursor-not-allowed"
-              data-testid="input-email"
-            />
-            <p className="text-xs text-[#6B7280]">Email cannot be changed here. Contact support if needed.</p>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="bio" className="text-[#111827] dark:text-white">Bio</Label>
-            <Textarea
-              id="bio"
-              value={form.bio}
-              onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
-              placeholder="Tell us a bit about yourself and your travel preferences…"
-              className="border-[#E5E7EB] min-h-[100px]"
-              maxLength={500}
-              data-testid="input-bio"
-            />
-            <p className="text-xs text-[#6B7280] text-right">{form.bio.length}/500</p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Change Password — only for email/password accounts */}
-      {isEmailAccount && (
+        {/* Profile Photo */}
         <Card className="border border-[#E5E7EB]">
           <CardHeader>
-            <CardTitle className="text-lg text-[#111827] dark:text-white flex items-center gap-2">
-              <Lock className="w-5 h-5 text-[#6B7280]" />
-              Change Password
-            </CardTitle>
+            <CardTitle className="text-lg text-[#111827] dark:text-white">Profile Photo</CardTitle>
             <CardDescription className="text-[#6B7280]">
-              Update your password. You'll need your current password to confirm the change.
+              This will be displayed on your profile and in messages
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="currentPassword" className="text-[#111827] dark:text-white">
-                Current Password
-              </Label>
-              <div className="relative">
-                <Input
-                  id="currentPassword"
-                  type={showCurrent ? "text" : "password"}
-                  value={pwForm.currentPassword}
-                  onChange={e => setPwForm(f => ({ ...f, currentPassword: e.target.value }))}
-                  placeholder="Enter your current password"
-                  className="border-[#E5E7EB] pr-10"
-                  autoComplete="current-password"
-                  data-testid="input-current-password"
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-3 flex items-center text-[#6B7280] hover:text-[#111827]"
-                  onClick={() => setShowCurrent(v => !v)}
-                  tabIndex={-1}
-                  data-testid="button-toggle-current-password"
-                >
-                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="newPassword" className="text-[#111827] dark:text-white">
-                New Password
-              </Label>
-              <div className="relative">
-                <Input
-                  id="newPassword"
-                  type={showNew ? "text" : "password"}
-                  value={pwForm.newPassword}
-                  onChange={e => setPwForm(f => ({ ...f, newPassword: e.target.value }))}
-                  placeholder="At least 8 characters"
-                  className="border-[#E5E7EB] pr-10"
-                  autoComplete="new-password"
-                  data-testid="input-new-password"
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-3 flex items-center text-[#6B7280] hover:text-[#111827]"
-                  onClick={() => setShowNew(v => !v)}
-                  tabIndex={-1}
-                  data-testid="button-toggle-new-password"
-                >
-                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {pwForm.newPassword.length > 0 && pwForm.newPassword.length < 8 && (
-                <p className="text-xs text-red-500">Password must be at least 8 characters</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword" className="text-[#111827] dark:text-white">
-                Confirm New Password
-              </Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                value={pwForm.confirmPassword}
-                onChange={e => setPwForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                placeholder="Re-enter your new password"
-                className="border-[#E5E7EB]"
-                autoComplete="new-password"
-                data-testid="input-confirm-password"
-              />
-              {pwForm.confirmPassword.length > 0 && pwForm.newPassword !== pwForm.confirmPassword && (
-                <p className="text-xs text-red-500">Passwords don't match</p>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2">
+          <CardContent className="flex items-center gap-6">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoUpload}
+              data-testid="input-photo-file"
+            />
+            <div className="relative">
+              <Avatar className="h-24 w-24 border-4 border-[#E5E7EB]">
+                <AvatarImage src={profileImage || user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
+                <AvatarFallback className="bg-[#FFE3E8] text-[#FF385C] text-2xl font-bold">
+                  {user?.firstName?.[0] || "U"}
+                </AvatarFallback>
+              </Avatar>
               <Button
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-                onClick={handleChangePassword}
-                disabled={
-                  changePasswordMutation.isPending ||
-                  !pwForm.currentPassword ||
-                  !pwForm.newPassword ||
-                  !pwForm.confirmPassword
-                }
-                data-testid="button-change-password"
+                size="icon"
+                variant="outline"
+                className="absolute -bottom-2 -right-2 rounded-full bg-white border-[#E5E7EB]"
+                onClick={() => fileInputRef.current?.click()}
+                data-testid="button-change-photo"
               >
-                {changePasswordMutation.isPending ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Changing…</>
-                ) : (
-                  <><Lock className="w-4 h-4 mr-2" />Change Password</>
-                )}
+                <Camera className="w-4 h-4 text-[#6B7280]" />
+              </Button>
+            </div>
+            <div>
+              <Button variant="outline" className="mr-2" onClick={() => fileInputRef.current?.click()} data-testid="button-upload-photo">
+                Upload Photo
+              </Button>
+              <Button variant="ghost" className="text-[#6B7280]" onClick={handleRemovePhoto} data-testid="button-remove-photo">
+                Remove
               </Button>
             </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Travel Preferences */}
-      <Card className="border border-[#E5E7EB]">
-        <CardHeader>
-          <CardTitle className="text-lg text-[#111827] dark:text-white">Travel Preferences</CardTitle>
-          <CardDescription className="text-[#6B7280]">Help us personalise your experience</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-[#111827] dark:text-white">Preferred Travel Style</Label>
-            <div className="flex flex-wrap gap-2">
-              {["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"].map(style => (
-                <Button
-                  key={style}
-                  variant="outline"
-                  size="sm"
+        {/* Personal Information */}
+        <Card className="border border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-lg text-[#111827] dark:text-white">Personal Information</CardTitle>
+            <CardDescription className="text-[#6B7280]">
+              Update your personal details
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="firstName" className="text-[#111827] dark:text-white">First Name</Label>
+                <Input
+                  id="firstName"
+                  defaultValue={user?.firstName || ""}
                   className="border-[#E5E7EB]"
-                  data-testid={`button-style-${style.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-                >
-                  {style}
-                </Button>
-              ))}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label className="text-[#111827] dark:text-white">Budget Preference</Label>
-            <div className="flex flex-wrap gap-2">
-              {["Budget-Friendly", "Moderate", "Luxury"].map(budget => (
-                <Button
-                  key={budget}
-                  variant="outline"
-                  size="sm"
+                  data-testid="input-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName" className="text-[#111827] dark:text-white">Last Name</Label>
+                <Input
+                  id="lastName"
+                  defaultValue={user?.lastName || ""}
                   className="border-[#E5E7EB]"
-                  data-testid={`button-budget-${budget.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
-                >
-                  {budget}
-                </Button>
-              ))}
+                  data-testid="input-last-name"
+                />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Save Button */}
-      <div className="flex justify-end">
-        <Button
-          className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          data-testid="button-save-profile"
-        >
-          {saveMutation.isPending ? (
-            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Saving…</>
-          ) : (
-            <><Save className="w-4 h-4 mr-2" />Save Changes</>
-          )}
-        </Button>
-      </div>
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-[#111827] dark:text-white flex items-center gap-2">
+                <Mail className="w-4 h-4 text-[#6B7280]" />
+                Email Address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                defaultValue={user?.email || ""}
+                className="border-[#E5E7EB]"
+                data-testid="input-email"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="text-[#111827] dark:text-white flex items-center gap-2">
+                <Phone className="w-4 h-4 text-[#6B7280]" />
+                Phone Number
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1 (555) 123-4567"
+                className="border-[#E5E7EB]"
+                data-testid="input-phone"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="location" className="text-[#111827] dark:text-white flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-[#6B7280]" />
+                Location
+              </Label>
+              <Input
+                id="location"
+                placeholder="City, Country"
+                className="border-[#E5E7EB]"
+                data-testid="input-location"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bio" className="text-[#111827] dark:text-white">Bio</Label>
+              <Textarea
+                id="bio"
+                placeholder="Tell us a bit about yourself and your travel preferences..."
+                className="border-[#E5E7EB] min-h-[100px]"
+                data-testid="input-bio"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Travel Preferences */}
+        <Card className="border border-[#E5E7EB]">
+          <CardHeader>
+            <CardTitle className="text-lg text-[#111827] dark:text-white">Travel Preferences</CardTitle>
+            <CardDescription className="text-[#6B7280]">
+              Help us personalize your experience
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-[#111827] dark:text-white">Preferred Travel Style</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"].map(style => (
+                  <Button key={style} variant="outline" size="sm" className="border-[#E5E7EB]" data-testid={`button-style-${style.toLowerCase()}`}>
+                    {style}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-[#111827] dark:text-white">Budget Preference</Label>
+              <div className="flex flex-wrap gap-2">
+                {["Budget-Friendly", "Moderate", "Luxury"].map(budget => (
+                  <Button key={budget} variant="outline" size="sm" className="border-[#E5E7EB]" data-testid={`button-budget-${budget.toLowerCase()}`}>
+                    {budget}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Save Button */}
+        <div className="flex justify-end">
+          <Button
+            className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+            onClick={handleSave}
+            disabled={isLoading}
+            data-testid="button-save-profile"
+          >
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Save Changes
+          </Button>
+        </div>
     </div>
   );
 }

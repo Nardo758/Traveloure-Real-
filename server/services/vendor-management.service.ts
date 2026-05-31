@@ -1,12 +1,11 @@
 import { db } from "../db";
 import { 
-  vendorContracts,
-  trips,
+  vendorContracts, 
   type VendorContract, 
   type InsertVendorContract 
 } from "@shared/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
-import { createChildLogger, databaseQueryDuration, ForbiddenError } from "../infrastructure";
+import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface PaymentMilestone {
   name: string;
@@ -38,13 +37,7 @@ export interface CommunicationEntry {
 const logger = createChildLogger("vendor-management-service");
 
 export class VendorManagementService {
-  private async assertTripOwnership(tripId: string, userId: string): Promise<void> {
-    const [trip] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, tripId));
-    if (!trip || trip.userId !== userId) throw new ForbiddenError("Access denied to this trip");
-  }
-
-  async getContracts(tripId: string, userId?: string): Promise<VendorContract[]> {
-    if (userId) await this.assertTripOwnership(tripId, userId);
+  async getContracts(tripId: string): Promise<VendorContract[]> {
     const start = Date.now();
     const result = await db.select().from(vendorContracts)
       .where(eq(vendorContracts.tripId, tripId))
@@ -58,8 +51,7 @@ export class VendorManagementService {
     return results[0];
   }
 
-  async createContract(data: InsertVendorContract, userId?: string): Promise<VendorContract> {
-    if (userId) await this.assertTripOwnership(data.tripId, userId);
+  async createContract(data: InsertVendorContract): Promise<VendorContract> {
     const remainingBalance = parseFloat(String(data.totalAmount)) - parseFloat(String(data.paidAmount || 0));
     
     const results = await db.insert(vendorContracts).values({

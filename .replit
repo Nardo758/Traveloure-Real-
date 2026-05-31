@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
+modules = ["nodejs-20", "web", "postgresql-16"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
@@ -9,22 +9,6 @@ packages = ["unzip"]
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 23636
-externalPort = 3001
-
-[[ports]]
-localPort = 23637
-externalPort = 3000
-
-[[ports]]
-localPort = 23638
-externalPort = 3002
-
-[[ports]]
-localPort = 23639
-externalPort = 4200
 
 [env]
 PORT = "5000"
@@ -65,8 +49,3 @@ TWELVEGO_AFFILIATE_ID = "13805109"
 VITE_TWELVEGO_AFFILIATE_ID = "13805109"
 ENVIRONMENT = "PROD"
 ADMIN_ALLOWED_IPS = "127.0.0.1"
-RATE_LIMIT_BYPASS_KEY = "traveloure-test-jngqrqm41penm5xcqd6gfr"
-
-[postMerge]
-path = "scripts/post-merge.sh"
-timeoutMs = 20000

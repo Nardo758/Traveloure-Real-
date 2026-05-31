@@ -54,12 +54,6 @@ class InMemoryRateLimiter {
 
 const limiterStore = new InMemoryRateLimiter();
 
-function isBypassRequest(req: Request): boolean {
-  const bypassKey = process.env.RATE_LIMIT_BYPASS_KEY;
-  if (!bypassKey) return false;
-  return req.headers["x-test-token"] === bypassKey;
-}
-
 export function createRateLimiter(config: RateLimitConfig) {
   const {
     windowMs,
@@ -76,7 +70,7 @@ export function createRateLimiter(config: RateLimitConfig) {
   } = config;
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (isBypassRequest(req) || skip(req)) {
+    if (skip(req)) {
       next();
       return;
     }
@@ -108,42 +102,10 @@ export const generalRateLimiter = createRateLimiter({
   keyGenerator: (req) => `general:${req.ip || "unknown"}`,
 });
 
-function getAiKey(req: Request): string {
-  const user = (req as any).user;
-  const userId = user?.claims?.sub ?? user?.id;
-  if (userId) return `ai:user:${userId}`;
-  return `ai:ip:${req.ip || "unknown"}`;
-}
-
 export const aiRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
-  maxRequests: 20,
-  keyGenerator: getAiKey,
-  handler: (req, res) => {
-    res.status(429).json({
-      error: "AI rate limit exceeded",
-      message: "You've made too many AI requests. Please wait a minute before trying again.",
-      retryAfter: 60,
-    });
-  },
-});
-
-export const aiHourlyRateLimiter = createRateLimiter({
-  windowMs: 60 * 60 * 1000,
-  maxRequests: 200,
-  keyGenerator: (req) => {
-    const user = (req as any).user;
-    const userId = user?.claims?.sub ?? user?.id;
-    if (userId) return `ai:hourly:user:${userId}`;
-    return `ai:hourly:ip:${req.ip || "unknown"}`;
-  },
-  handler: (req, res) => {
-    res.status(429).json({
-      error: "AI hourly limit exceeded",
-      message: "You've reached your hourly AI request limit. Please try again in an hour.",
-      retryAfter: 3600,
-    });
-  },
+  maxRequests: 10,
+  keyGenerator: (req) => `ai:${req.ip || "unknown"}`,
 });
 
 export const searchRateLimiter = createRateLimiter({

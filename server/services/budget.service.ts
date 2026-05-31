@@ -2,13 +2,12 @@ import { db } from "../db";
 import { 
   tripTransactions, 
   tripParticipants,
-  trips,
   type TripTransaction, 
   type InsertTripTransaction,
   type TripParticipant 
 } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { createChildLogger, databaseQueryDuration, ForbiddenError } from "../infrastructure";
+import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface BudgetSummary {
   totalBudget: number;
@@ -74,13 +73,7 @@ const TIP_PERCENTAGES: Record<string, { restaurant: number; taxi: number; hotel:
 const logger = createChildLogger("budget-service");
 
 export class BudgetService {
-  private async assertTripOwnership(tripId: string, userId: string): Promise<void> {
-    const [trip] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, tripId));
-    if (!trip || trip.userId !== userId) throw new ForbiddenError("Access denied to this trip");
-  }
-
-  async getTransactions(tripId: string, userId?: string): Promise<TripTransaction[]> {
-    if (userId) await this.assertTripOwnership(tripId, userId);
+  async getTransactions(tripId: string): Promise<TripTransaction[]> {
     const start = Date.now();
     const result = await db.select().from(tripTransactions)
       .where(eq(tripTransactions.tripId, tripId))
@@ -94,8 +87,7 @@ export class BudgetService {
     return results[0];
   }
 
-  async createTransaction(data: InsertTripTransaction, userId?: string): Promise<TripTransaction> {
-    if (userId) await this.assertTripOwnership(data.tripId, userId);
+  async createTransaction(data: InsertTripTransaction): Promise<TripTransaction> {
     const results = await db.insert(tripTransactions).values({
       ...data,
       transactionDate: data.transactionDate || new Date(),

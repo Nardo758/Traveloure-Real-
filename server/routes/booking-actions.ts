@@ -18,58 +18,34 @@ function generateToken(): string {
 }
 
 /**
- * Server-side pricing table for expert service types.
- * Client-supplied amounts are never trusted; this is the source of truth.
- */
-const EXPERT_SERVICE_PRICES_USD: Record<string, number> = {
-  review: 49,
-  review_and_book: 99,
-  full_concierge: 199,
-};
-
-/**
  * POST /api/expert-requests/payment-intent
- * Create Stripe payment intent for expert review service (embedded checkout).
- * userId is derived from the authenticated session; amount is determined server-side
- * from the pricing table — neither is trusted from the client.
+ * Create Stripe payment intent for expert review service (embedded checkout)
  */
 router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
     const {
-      variantId,
-      comparisonId,
-      destination,
-      serviceType,
-      notes,
-    } = req.body;
-
-    if (!variantId || !comparisonId || !destination || !serviceType) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // Derive authoritative price from server-side table — reject unknown service types
-    const authorizedAmount = EXPERT_SERVICE_PRICES_USD[serviceType as string];
-    if (authorizedAmount === undefined) {
-      return res.status(400).json({ error: `Unknown serviceType: ${serviceType}` });
-    }
-
-    // Fetch user email from DB (never trust client-supplied email for billing)
-    const userRow = await db.execute(sql`SELECT email FROM users WHERE id = ${userId} LIMIT 1`);
-    const userEmail: string = (userRow.rows[0] as any)?.email || `user${userId}@traveloure.com`;
-
-    const paymentIntent = await stripePaymentService.createExpertServicePaymentIntent(
       userId,
       userEmail,
       variantId,
       comparisonId,
       destination,
       serviceType,
-      authorizedAmount,
+      amount,
+      notes,
+    } = req.body;
+
+    if (!userId || !variantId || !comparisonId || !destination || !serviceType || !amount) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const paymentIntent = await stripePaymentService.createExpertServicePaymentIntent(
+      userId,
+      userEmail || `user${userId}@traveloure.com`,
+      variantId,
+      comparisonId,
+      destination,
+      serviceType,
+      amount,
       notes || ''
     );
 
@@ -82,79 +58,22 @@ router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res)
 
 /**
  * POST /api/expert-requests
- * Create expert review request.
- * Requires a verified Stripe paymentIntentId — the payment must have succeeded and must
- * belong to the authenticated user before the request is queued.
- * userId is always taken from the session, not the request body.
+ * Create expert review request
  */
 router.post('/expert-requests', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
     const {
+      userId,
       variantId,
       comparisonId,
       destination,
       requestType,
-      paymentIntentId,
+      expertFee,
       notes,
     } = req.body;
 
-    if (!variantId || !comparisonId || !destination || !requestType || !paymentIntentId) {
-      return res.status(400).json({ error: 'Missing required fields (variantId, comparisonId, destination, requestType, paymentIntentId)' });
-    }
-
-    // Verify requestType is a known service tier and resolve the authoritative fee
-    const authorizedFee = EXPERT_SERVICE_PRICES_USD[requestType as string];
-    if (authorizedFee === undefined) {
-      return res.status(400).json({ error: `Unknown requestType: ${requestType}` });
-    }
-
-    // Verify the Stripe payment intent has succeeded and belongs to this user
-    const Stripe = (await import('stripe')).default;
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-      apiVersion: '2024-12-18.acacia' as any,
-    });
-
-    let intent;
-    try {
-      intent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    } catch (stripeErr: any) {
-      return res.status(400).json({ error: `Could not verify payment: ${stripeErr.message}` });
-    }
-
-    if (intent.status !== 'succeeded') {
-      return res.status(402).json({ error: `Payment not completed. Stripe status: ${intent.status}` });
-    }
-
-    // Require that the PI was explicitly created for an expert_service — prevents reuse of
-    // payment intents from activity bookings, cart checkouts, or other flows
-    if (intent.metadata?.type !== 'expert_service') {
-      return res.status(403).json({ error: 'Payment intent was not created for an expert service' });
-    }
-
-    // userId in PI metadata must be present and must match the session user
-    if (!intent.metadata?.userId || intent.metadata.userId !== userId) {
-      return res.status(403).json({ error: 'Payment intent does not belong to this user' });
-    }
-
-    // Ensure the payment amount matches the authorised fee (within a small rounding tolerance)
-    const paidAmountUsd = intent.amount / 100;
-    if (Math.abs(paidAmountUsd - authorizedFee) > 0.5) {
-      return res.status(402).json({
-        error: `Payment amount ($${paidAmountUsd}) does not match required fee ($${authorizedFee}) for ${requestType}`,
-      });
-    }
-
-    // Prevent replay: reject if this paymentIntentId has already been used
-    const existingRows = await db.execute(sql`
-      SELECT id FROM expert_requests WHERE payment_intent_id = ${paymentIntentId} LIMIT 1
-    `);
-    if (existingRows.rows && existingRows.rows.length > 0) {
-      return res.status(409).json({ error: 'This payment has already been used for a request' });
+    if (!userId || !variantId || !comparisonId || !destination || !requestType) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
     // Get current queue position for this city
@@ -167,11 +86,11 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const queuePosition = queueResult.rows?.[0]?.next_position || 1;
 
-    // Create expert request — userId from session, expertFee from server-side table
+    // Create expert request
     const result = await db.execute(sql`
       INSERT INTO expert_requests (
         id, user_id, variant_id, comparison_id, destination_city,
-        request_type, expert_fee, payment_intent_id, status, queue_position, notes,
+        request_type, expert_fee, status, queue_position, notes,
         created_at
       ) VALUES (
         ${crypto.randomUUID()},
@@ -180,8 +99,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
         ${comparisonId},
         ${destination.toLowerCase()},
         ${requestType},
-        ${authorizedFee},
-        ${paymentIntentId},
+        ${expertFee},
         'queued',
         ${queuePosition},
         ${notes || null},
@@ -214,7 +132,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -280,7 +198,7 @@ router.post('/saved-trips', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -322,7 +240,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
     // Atomically mark saved trip as converted — prevents duplicate conversions under concurrent requests
     const markResult = await db.execute(sql`
       UPDATE saved_trips
-      SET status = 'booked'
+      SET status = 'converted'
       WHERE id = ${id}
         AND user_id = ${userId}
         AND status = 'active'
@@ -330,7 +248,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
     `);
 
     if (!markResult.rows || markResult.rows.length === 0) {
-      return res.status(409).json({ error: 'Already booked or not eligible' });
+      return res.status(409).json({ error: 'Already converted or not eligible' });
     }
 
     // Create a Trip record in planning status
@@ -367,7 +285,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
  */
 router.get('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
@@ -505,7 +423,7 @@ router.get('/shared-trips/:token', async (req, res) => {
  */
 router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -683,7 +601,7 @@ router.get('/trip-experts', async (req, res) => {
  */
 router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -750,7 +668,7 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  */
 router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -852,7 +770,7 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  */
 router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const result = await db.execute(sql`
@@ -896,7 +814,7 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
  */
 router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -957,7 +875,7 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
  */
 router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -1000,7 +918,7 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
  */
 router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = (req as any).user?.claims?.sub;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id, suggestionId } = req.params;

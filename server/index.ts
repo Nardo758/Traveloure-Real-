@@ -21,11 +21,9 @@ import {
   notFoundHandler,
   generalRateLimiter,
   aiRateLimiter,
-  aiHourlyRateLimiter,
   searchRateLimiter,
   authRateLimiter,
 } from "./infrastructure";
-import { aiUsageTracker } from "./infrastructure/ai-usage-tracker";
 
 const app = express();
 const httpServer = createServer(app);
@@ -69,18 +67,6 @@ app.use(metricsMiddleware() as RequestHandler);
 
 app.use("/api", generalRateLimiter as RequestHandler);
 app.use("/api/ai", aiRateLimiter as RequestHandler);
-app.use("/api/ai", aiHourlyRateLimiter as RequestHandler);
-app.use("/api/claude", aiRateLimiter as RequestHandler);
-app.use("/api/claude", aiHourlyRateLimiter as RequestHandler);
-
-app.use(["/api/ai", "/api/claude"], ((req: any, res: any, next: any) => {
-  const user = req.user as any;
-  const userId = user?.claims?.sub ?? user?.id;
-  if (userId) {
-    aiUsageTracker.track(userId, req.path, user?.claims?.email ?? user?.email);
-  }
-  next();
-}) as RequestHandler);
 app.use("/api/search", searchRateLimiter as RequestHandler);
 app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
@@ -187,48 +173,6 @@ async function runDatabaseSeeding() {
   logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
 }
 
-async function killPortHolder(port: number): Promise<void> {
-  const fs = (await import("fs")).default;
-  const portHex = port.toString(16).toUpperCase().padStart(4, "0");
-
-  let targetInode: string | null = null;
-  for (const file of ["/proc/net/tcp6", "/proc/net/tcp"]) {
-    try {
-      const lines = fs.readFileSync(file, "utf8").split("\n").slice(1);
-      for (const line of lines) {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length < 10) continue;
-        const localAddr = parts[1];
-        if (localAddr && localAddr.toUpperCase().endsWith(":" + portHex)) {
-          targetInode = parts[9];
-          break;
-        }
-      }
-    } catch {}
-    if (targetInode) break;
-  }
-
-  if (!targetInode) return;
-
-  const pids = fs.readdirSync("/proc").filter((d: string) => /^\d+$/.test(d));
-  for (const pid of pids) {
-    if (pid === String(process.pid)) continue;
-    try {
-      const fds = fs.readdirSync(`/proc/${pid}/fd`);
-      for (const fd of fds) {
-        try {
-          const link = fs.readlinkSync(`/proc/${pid}/fd/${fd}`);
-          if (link === `socket:[${targetInode}]`) {
-            process.kill(parseInt(pid), "SIGKILL");
-            logger.info({ port, pid }, "Killed stale port holder");
-            return;
-          }
-        } catch {}
-      }
-    } catch {}
-  }
-}
-
 (async () => {
   await registerRoutes(httpServer, app);
 
@@ -245,68 +189,30 @@ async function killPortHolder(port: number): Promise<void> {
   app.use(globalErrorHandler);
 
   const port = parseInt(process.env.PORT || "5000", 10);
+  httpServer.listen(
+    {
+      port,
+      host: "0.0.0.0",
+      reusePort: true,
+    },
+    () => {
+      logger.info({ port }, "Server started");
+      
+      // Start cache scheduler
+      cacheSchedulerService.start();
+      logger.info("Cache scheduler started");
+      
+      // One-time admin promotion
+      import("./db").then(({ pool }) => {
+        pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
+          .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
+          .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
+      }).catch(() => {});
 
-  process.on("SIGTERM", () => {
-    httpServer.close(() => {
-      logger.info("Server closed on SIGTERM");
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(0), 5000);
-  });
-  process.on("SIGINT", () => {
-    httpServer.close(() => {
-      logger.info("Server closed on SIGINT");
-      process.exit(0);
-    });
-    setTimeout(() => process.exit(0), 5000);
-  });
-
-  async function tryListen(retriesLeft: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const onError = async (err: NodeJS.ErrnoException) => {
-        if (err.code === "EADDRINUSE" && retriesLeft > 0) {
-          logger.warn({ port }, `Port ${port} in use — killing stale listener and retrying`);
-          httpServer.removeListener("error", onError);
-          try {
-            await killPortHolder(port);
-          } catch (killErr) {
-            logger.warn({ port, err: killErr }, "Port cleanup failed — retrying without kill");
-          }
-          await new Promise(r => setTimeout(r, 800));
-          resolve(tryListen(retriesLeft - 1));
-        } else if (err.code === "EADDRINUSE") {
-          logger.error({ port }, `Port ${port} still in use after retry — giving up`);
-          process.exit(1);
-        } else {
-          reject(err);
-        }
-      };
-
-      httpServer.once("error", onError);
-      httpServer.listen({ port, host: "0.0.0.0" }, () => {
-        httpServer.removeListener("error", onError);
-        logger.info({ port }, "Server started");
-
-        // Start cache scheduler
-        cacheSchedulerService.start();
-        logger.info("Cache scheduler started");
-
-        // One-time admin promotion
-        import("./db").then(({ pool }) => {
-          pool.query("UPDATE users SET role = 'admin' WHERE email = 'm.dixon5030@gmail.com' AND role != 'admin'")
-            .then((res: any) => { if (res.rowCount > 0) logger.info("Promoted m.dixon5030@gmail.com to admin"); })
-            .catch((err: any) => logger.error({ err }, "Admin promotion query failed"));
-        }).catch(() => {});
-
-        // Run database seeding in background AFTER server is listening
-        runDatabaseSeeding().catch(err => {
-          logger.error({ err }, "Background seeding failed");
-        });
-
-        resolve();
+      // Run database seeding in background AFTER server is listening
+      runDatabaseSeeding().catch(err => {
+        logger.error({ err }, "Background seeding failed");
       });
-    });
-  }
-
-  await tryListen(3);
+    },
+  );
 })();

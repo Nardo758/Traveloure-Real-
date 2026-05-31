@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar, boolean } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, timestamp, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -53,10 +53,6 @@ export const users = pgTable("users", {
   instagramUserId: varchar("instagram_user_id"),
   instagramAccessToken: varchar("instagram_access_token", { length: 512 }),
   authProvider: varchar("auth_provider", { length: 20 }).default("email"), // email, replit, google, etc.
-  suspended: boolean("suspended").default(false),
-  stripeAccountId: varchar("stripe_account_id", { length: 255 }),
-  stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
-  canReceivePayments: boolean("can_receive_payments").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

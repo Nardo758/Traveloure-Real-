@@ -112,7 +112,7 @@ export function setupGuestInviteRoutes(app: Express) {
   app.post("/api/events/:experienceId/invites", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { experienceId } = req.params;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = (req.user as any)?.claims?.sub;
       
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -176,7 +176,7 @@ export function setupGuestInviteRoutes(app: Express) {
   app.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { experienceId } = req.params;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = (req.user as any)?.claims?.sub;
       
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -214,7 +214,7 @@ export function setupGuestInviteRoutes(app: Express) {
   app.get("/api/events/:experienceId/invites/stats", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { experienceId } = req.params;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = (req.user as any)?.claims?.sub;
       
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -257,7 +257,7 @@ export function setupGuestInviteRoutes(app: Express) {
   app.delete("/api/invites/:inviteId", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const { inviteId } = req.params;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = (req.user as any)?.claims?.sub;
       
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -607,7 +607,7 @@ export function setupGuestInviteRoutes(app: Express) {
    */
   app.post("/api/invite-templates", isAuthenticated, async (req: Request, res: Response) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = (req.user as any)?.claims?.sub;
       
       if (!userId) {
         return res.status(401).json({ error: "Unauthorized" });
@@ -649,7 +649,7 @@ export function setupGuestInviteRoutes(app: Express) {
   app.get("/api/invite-templates/user/:userId", isAuthenticated, async (req: Request, res: Response) => {
     try {
       const requestedUserId = req.params.userId;
-      const authenticatedUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const authenticatedUserId = (req.user as any)?.claims?.sub;
       
       if (!authenticatedUserId) {
         return res.status(401).json({ error: "Unauthorized" });

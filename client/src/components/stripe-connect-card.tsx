@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import {
   CreditCard,
   ExternalLink,
@@ -28,24 +27,13 @@ export function StripeConnectCard() {
     queryKey: ["/api/stripe/connect/status"],
   });
 
-  const { toast } = useToast();
-
   const onboardMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/stripe/connect/onboard");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to start onboarding");
-      return data;
+      return res.json();
     },
     onSuccess: (data: { url: string }) => {
       window.open(data.url, '_blank');
-    },
-    onError: (error: Error) => {
-      toast({
-        variant: "destructive",
-        title: "Stripe Connect unavailable",
-        description: error.message,
-      });
     },
   });
 

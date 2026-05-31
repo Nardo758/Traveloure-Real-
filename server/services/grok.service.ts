@@ -36,20 +36,6 @@ function getGrokClient(): OpenAI {
   return _grokClient;
 }
 
-export interface SocialFeedPost {
-  id: string;
-  source: 'twitter' | 'instagram';
-  authorName: string;
-  authorHandle?: string;
-  content: string;
-  imageUrl?: string;
-  likesCount: number;
-  repostsCount?: number;
-  postedAt: string;
-  postUrl: string;
-  sentiment?: 'positive' | 'neutral' | 'negative';
-}
-
 export interface GrokUsageStats {
   promptTokens: number;
   completionTokens: number;
@@ -854,91 +840,6 @@ Provide current, real-world data based on your knowledge. Include seasonal patte
       const errorUsage: GrokUsageStats = { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0 };
       this.logUsage('city_intelligence', errorUsage, { cityName, country }, false, error.message);
       throw new Error(`City intelligence generation failed: ${error.message}`);
-    }
-  }
-
-  async getSocialFeedForCity(city: string): Promise<SocialFeedPost[]> {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) return [];
-
-    const fromDate = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const toDate = new Date().toISOString().split('T')[0];
-
-    try {
-      // Use xAI Responses API with x_search tool for real-time X/Twitter data
-      // The old search_parameters on Chat Completions was deprecated Jan 12, 2026
-      const response = await fetch('https://api.x.ai/v1/responses', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'grok-4',
-          input: [{
-            role: 'user',
-            content: `Search X for recent posts from travelers visiting or discussing ${city} in the past 48 hours. Find 10-12 real posts about the travel experience — food, sights, vibes, tips, or reactions.
-
-Return ONLY a JSON object with no markdown, no explanation, exactly this format:
-{"posts": [{"id": "post_1", "authorName": "Real Display Name", "authorHandle": "@realhandle", "content": "Actual post text (max 280 chars)", "likesCount": 234, "repostsCount": 45, "postedAt": "2026-04-07T14:30:00Z", "postUrl": "https://x.com/handle/status/1234567890", "sentiment": "positive"}]}
-
-Sentiment values: "positive", "neutral", or "negative". Use actual data from X search results. If no URL is available, use https://x.com/search?q=${encodeURIComponent(city)}travel.`
-          }],
-          tools: [{ type: 'x_search', from_date: fromDate, to_date: toDate }],
-          include: ['no_inline_citations'],
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        console.error(`xAI Responses API error ${response.status}:`, errText.slice(0, 200));
-        throw new Error(`Responses API returned ${response.status}`);
-      }
-
-      interface XResponsesContent { type: string; text?: string }
-      interface XResponsesOutput { role: string; content: XResponsesContent[] }
-      interface XResponsesApiResponse { output?: XResponsesOutput[]; error?: { message: string } }
-
-      const data = await response.json() as XResponsesApiResponse;
-      const text: string = data?.output?.[0]?.content?.[0]?.text || '';
-      if (!text) throw new Error('Empty Responses API output');
-
-      // Extract JSON from the response text (model may or may not wrap in code block)
-      const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || text.match(/(\{[\s\S]*\})/);
-      const jsonStr = jsonMatch?.[1] || jsonMatch?.[0] || '';
-      if (!jsonStr) throw new Error('No JSON found in Responses API output');
-
-      interface XPostRaw {
-        id?: string;
-        authorName?: string;
-        authorHandle?: string;
-        content?: string;
-        likesCount?: number;
-        repostsCount?: number;
-        postedAt?: string;
-        postUrl?: string;
-        sentiment?: 'positive' | 'neutral' | 'negative';
-      }
-      interface XPostsParsed { posts?: XPostRaw[] }
-      const parsed = JSON.parse(jsonStr) as XPostsParsed;
-      const rawPosts = parsed.posts || [];
-
-      // Enforce cap, add source field
-      return rawPosts.slice(0, 20).map((p, i) => ({
-        id: p.id || `xpost_${i}`,
-        source: 'twitter' as const,
-        authorName: p.authorName || 'Traveler',
-        authorHandle: p.authorHandle,
-        content: p.content || '',
-        likesCount: p.likesCount || 0,
-        repostsCount: p.repostsCount,
-        postedAt: p.postedAt || new Date().toISOString(),
-        postUrl: p.postUrl || `https://x.com/search?q=${encodeURIComponent(city)}travel`,
-        sentiment: p.sentiment || 'positive',
-      }));
-    } catch (error: any) {
-      console.warn('xAI Responses API x_search failed, returning empty feed:', error.message);
-      return [];
     }
   }
 }

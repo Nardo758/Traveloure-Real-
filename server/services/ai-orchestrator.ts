@@ -1,26 +1,7 @@
 import { grokService, GrokUsageStats } from "./grok.service";
 import { claudeService } from "./claude.service";
-import {
-  claudeMatchExpert,
-  claudeGenerateContent,
-  claudeGetRealTimeIntelligence,
-  claudeGenerateAutonomousItinerary,
-} from "./claude-grok-fallback.service";
 import { db } from "../db";
 import { aiInteractions } from "../../shared/schema";
-
-function isGrokUnavailableError(err: any): boolean {
-  const msg: string = (err?.message || "").toLowerCase();
-  return (
-    msg.includes("credits") ||
-    msg.includes("spending limit") ||
-    msg.includes("quota") ||
-    msg.includes("permission") ||
-    msg.includes("billing") ||
-    msg.includes("xai_api_key") ||
-    msg.includes("unauthorized")
-  );
-}
 
 // AI Orchestrator Service
 // Routes requests to the appropriate AI provider based on task type
@@ -109,22 +90,14 @@ class AIOrchestrator {
     const provider = "grok";
     
     try {
-      let result: any, usage: any;
-      let actualProvider = provider;
-      try {
-        ({ result, usage } = await grokService.matchExpertToTraveler({ travelerProfile, expertProfile }));
-      } catch (grokErr: any) {
-        if (isGrokUnavailableError(grokErr)) {
-          actualProvider = "claude";
-          ({ result, usage } = await claudeMatchExpert({ travelerProfile, expertProfile }));
-        } else {
-          throw grokErr;
-        }
-      }
+      const { result, usage } = await grokService.matchExpertToTraveler({
+        travelerProfile,
+        expertProfile,
+      });
 
       await this.logInteraction({
         taskType: "expert_matching",
-        provider: actualProvider as any,
+        provider,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         totalTokens: usage.totalTokens,
@@ -185,22 +158,11 @@ class AIOrchestrator {
     const provider = "grok";
     
     try {
-      let result: any, usage: any;
-      let actualProvider = provider;
-      try {
-        ({ result, usage } = await grokService.generateContent(request));
-      } catch (grokErr: any) {
-        if (isGrokUnavailableError(grokErr)) {
-          actualProvider = "claude";
-          ({ result, usage } = await claudeGenerateContent(request));
-        } else {
-          throw grokErr;
-        }
-      }
+      const { result, usage } = await grokService.generateContent(request);
 
       await this.logInteraction({
         taskType: "content_generation",
-        provider: actualProvider as any,
+        provider,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         totalTokens: usage.totalTokens,
@@ -238,22 +200,11 @@ class AIOrchestrator {
     const provider = "grok";
     
     try {
-      let result: any, usage: any;
-      let actualProvider = provider;
-      try {
-        ({ result, usage } = await grokService.getRealTimeIntelligence(request));
-      } catch (grokErr: any) {
-        if (isGrokUnavailableError(grokErr)) {
-          actualProvider = "claude";
-          ({ result, usage } = await claudeGetRealTimeIntelligence(request));
-        } else {
-          throw grokErr;
-        }
-      }
+      const { result, usage } = await grokService.getRealTimeIntelligence(request);
 
       await this.logInteraction({
         taskType: "real_time_intelligence",
-        provider: actualProvider as any,
+        provider,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         totalTokens: usage.totalTokens,
@@ -293,22 +244,11 @@ class AIOrchestrator {
     const provider = "grok";
     
     try {
-      let result: any, usage: any;
-      let actualProvider = provider;
-      try {
-        ({ result, usage } = await grokService.generateAutonomousItinerary(request));
-      } catch (grokErr: any) {
-        if (isGrokUnavailableError(grokErr)) {
-          actualProvider = "claude";
-          ({ result, usage } = await claudeGenerateAutonomousItinerary(request));
-        } else {
-          throw grokErr;
-        }
-      }
+      const { result, usage } = await grokService.generateAutonomousItinerary(request);
 
       await this.logInteraction({
         taskType: "autonomous_itinerary",
-        provider: actualProvider as any,
+        provider,
         promptTokens: usage.promptTokens,
         completionTokens: usage.completionTokens,
         totalTokens: usage.totalTokens,
@@ -528,24 +468,11 @@ class AIOrchestrator {
     
     try {
       if (provider === "grok") {
-        let response: string;
-        let usage: any;
-        let actualProvider: "grok" | "claude" = "grok";
-        try {
-          ({ response, usage } = await grokService.chat(messages, options?.systemContext));
-        } catch (grokErr: any) {
-          if (isGrokUnavailableError(grokErr)) {
-            actualProvider = "claude";
-            response = await this._claudeChat(messages, options?.systemContext);
-            usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedCost: 0.002 };
-          } else {
-            throw grokErr;
-          }
-        }
-
+        const { response, usage } = await grokService.chat(messages, options?.systemContext);
+        
         await this.logInteraction({
           taskType: "chat",
-          provider: actualProvider,
+          provider: "grok",
           promptTokens: usage.promptTokens,
           completionTokens: usage.completionTokens,
           totalTokens: usage.totalTokens,
@@ -554,24 +481,26 @@ class AIOrchestrator {
           success: true,
           userId: options?.userId,
         });
-
-        return { response, provider: actualProvider };
+        
+        return { response, provider: "grok" as const };
       } else {
-        const response = await this._claudeChat(messages, options?.systemContext);
-
+        // For Claude chat, we would need to implement a chat method in ClaudeService
+        // For now, fall back to Grok for chat
+        const { response, usage } = await grokService.chat(messages, options?.systemContext);
+        
         await this.logInteraction({
           taskType: "chat",
-          provider: "claude",
-          promptTokens: 0,
-          completionTokens: 0,
-          totalTokens: 0,
-          estimatedCost: 0.002,
+          provider: "grok",
+          promptTokens: usage.promptTokens,
+          completionTokens: usage.completionTokens,
+          totalTokens: usage.totalTokens,
+          estimatedCost: usage.estimatedCost,
           durationMs: Date.now() - startTime,
           success: true,
           userId: options?.userId,
         });
-
-        return { response, provider: "claude" as const };
+        
+        return { response, provider: "grok" as const };
       }
     } catch (error: any) {
       await this.logInteraction({
@@ -588,27 +517,6 @@ class AIOrchestrator {
       });
       throw error;
     }
-  }
-
-  // Internal Claude chat helper
-  private async _claudeChat(
-    messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
-    systemContext?: string
-  ): Promise<string> {
-    const Anthropic = (await import("@anthropic-ai/sdk")).default;
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const systemMessages = messages.filter(m => m.role === "system").map(m => m.content);
-    const conversationMessages = messages.filter(m => m.role !== "system");
-    const system = [systemContext, ...systemMessages].filter(Boolean).join("\n\n") ||
-      "You are an expert travel advisor for Traveloure, a premium travel planning platform. Provide helpful, specific, and friendly travel advice.";
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2048,
-      system,
-      messages: conversationMessages.map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
-    });
-    const block = msg.content[0];
-    return block.type === "text" ? block.text : "";
   }
 
   // Image Analysis - Grok Vision

@@ -1,5 +1,4 @@
-import { Switch, Route, Redirect, useLocation } from "wouter";
-import { useEffect } from "react";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -9,10 +8,9 @@ import { DashboardLayout } from "@/components/dashboard-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
-import { ErrorBoundary, RouteErrorBoundary } from "@/components/error-boundary";
-import { RETURN_TO_KEY } from "@/components/SignInModal";
 
 import LandingPage from "@/pages/landing";
+import LandingMockups from "@/pages/landing-mockups";
 import Dashboard from "@/pages/dashboard";
 import CreateTrip from "@/pages/create-trip";
 import TripDetails from "@/pages/trip-details";
@@ -61,13 +59,10 @@ import ProviderCalendar from "@/pages/provider/calendar";
 import ProviderProfile from "@/pages/provider/profile";
 import ProviderSettings from "@/pages/provider/settings";
 import ProviderResources from "@/pages/provider/resources";
-import ProviderReviews from "@/pages/provider/reviews";
-import ProviderAvailabilityManagement from "@/pages/provider/availability-management";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminUsers from "@/pages/admin/users";
 import AdminExperts from "@/pages/admin/experts";
 import AdminProviders from "@/pages/admin/providers";
-import AdminBookings from "@/pages/admin/bookings";
 import AdminPlans from "@/pages/admin/plans";
 import AdminRevenue from "@/pages/admin/revenue";
 import AdminAnalytics from "@/pages/admin/analytics";
@@ -75,12 +70,10 @@ import AdminCategories from "@/pages/admin/categories";
 import AdminSearch from "@/pages/admin/search";
 import AdminNotifications from "@/pages/admin/notifications";
 import AdminSystem from "@/pages/admin/system";
-import AdminSettings from "@/pages/admin/settings";
 import AdminData from "@/pages/admin/data";
 import AdminAffiliatePartners from "@/pages/admin/affiliate-partners";
 import AdminContentTracking from "@/pages/admin/content-tracking";
 import AdminAICosts from "@/pages/admin/ai-costs";
-import AdminAiUsage from "@/pages/admin/ai-usage";
 import AdminTourismAnalytics from "@/pages/admin/tourism-analytics";
 import AdminPayouts from "@/pages/admin/payouts";
 import OptimizePage from "@/pages/optimize";
@@ -92,6 +85,7 @@ import ContactPage from "@/pages/contact";
 import FAQPage from "@/pages/faq";
 import FeaturesPage from "@/pages/features";
 import ExperienceTemplatePage from "@/pages/experience-template";
+import ArchitectureDiagram from "@/pages/architecture-diagram";
 import ExperiencesPage from "@/pages/experiences";
 import ExperienceDiscoveryPage from "@/pages/experience-discovery";
 import DealsPage from "@/pages/deals";
@@ -100,7 +94,6 @@ import TravelExpertsPage from "@/pages/travel-experts";
 import ServicesProviderPage from "@/pages/services-provider";
 import ItineraryPage from "@/pages/itinerary";
 import CreditsBillingPage from "@/pages/credits-billing";
-import MyReviews from "@/pages/my-reviews";
 import ExpertStatusPage from "@/pages/expert-status";
 import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
@@ -119,6 +112,7 @@ import CartPage from "@/pages/cart";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
+import LayoutMock from "@/pages/layout-mock";
 import ItineraryComparisonPage from "@/pages/itinerary-comparison";
 import GlobalCalendarPage from "@/pages/global-calendar";
 import SpontaneousPage from "@/pages/spontaneous";
@@ -133,22 +127,10 @@ import PressPage from "@/pages/press";
 import HelpPage from "@/pages/help";
 import ExpertDetailPage from "@/pages/expert-detail";
 import QuickStartItinerary from "@/pages/quick-start-itinerary";
+import BookingDemo from "@/pages/booking-demo";
 import MyItineraryPage from "@/pages/my-itinerary";
 import ItineraryViewPage from "@/pages/itinerary-view";
-import {
-  FullItineraryPage,
-  ActivityDetailPage,
-  TransportDetailPage,
-  MapFullPage,
-  TripStatsPage,
-  ServicesPage,
-  ExpertChatPage,
-  ReviewChangesPage,
-} from "@/pages/itinerary-sub-pages";
 import SharedTripPage from "@/pages/shared-trip";
-import LoginPage from "@/pages/login";
-import ForgotPasswordPage from "@/pages/forgot-password";
-import WishlistPage from "@/pages/wishlist";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
@@ -163,11 +145,6 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   if (!user) {
-    // Save the intended destination so ReturnToHandler can redirect after login
-    const intended = window.location.pathname + window.location.search;
-    if (intended && intended !== "/" && intended !== "/dashboard") {
-      sessionStorage.setItem(RETURN_TO_KEY, intended);
-    }
     window.location.href = "/";
     return null;
   }
@@ -179,17 +156,7 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   // Check role-based access
-  // Role families: local_expert counts as "expert", service_provider counts as "provider"
-  const ROLE_FAMILIES: Record<string, string[]> = {
-    expert: ["expert", "local_expert"],
-    provider: ["provider", "service_provider"],
-    ea: ["ea", "executive_assistant"],
-    executive_assistant: ["ea", "executive_assistant"],
-    admin: ["admin"],
-    user: ["user"],
-  };
-  const allowedRoles = requiredRole ? (ROLE_FAMILIES[requiredRole] ?? [requiredRole]) : null;
-  if (allowedRoles && !allowedRoles.includes(user.role) && user.role !== "admin") {
+  if (requiredRole && user.role !== requiredRole && user.role !== "admin") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
         <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
@@ -202,29 +169,15 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   return <Component {...rest} />;
 }
 
-/** After OAuth or email login, navigate to the stored returnTo URL if one was saved. */
-function ReturnToHandler() {
-  const { user, isLoading } = useAuth();
-  const [, navigate] = useLocation();
-
-  useEffect(() => {
-    if (isLoading || !user) return;
-    const dest = sessionStorage.getItem(RETURN_TO_KEY);
-    if (dest) {
-      sessionStorage.removeItem(RETURN_TO_KEY);
-      navigate(dest);
-    }
-  }, [user, isLoading, navigate]);
-
-  return null;
-}
-
 function Router() {
   return (
     <Switch>
       {/* Public Routes with Layout */}
       <Route path="/">
         <Layout><LandingPage /></Layout>
+      </Route>
+      <Route path="/landing-mockups">
+        <LandingMockups />
       </Route>
       <Route path="/how-it-works">
         <Layout><HowItWorks /></Layout>
@@ -235,14 +188,14 @@ function Router() {
       <Route path="/about">
         <Layout><About /></Layout>
       </Route>
+      <Route path="/architecture">
+        <ArchitectureDiagram />
+      </Route>
       <Route path="/optimize">
         <OptimizePage />
       </Route>
       <Route path="/experts">
         <Layout><ExpertsPage /></Layout>
-      </Route>
-      <Route path="/local-experts">
-        {() => <Redirect to="/experts" />}
       </Route>
       <Route path="/experts/:id">
         <ExpertDetailPage />
@@ -263,55 +216,14 @@ function Router() {
         <CartPage />
       </Route>
 
-      {/* Itinerary sub-pages (must be before /itinerary-view/:token catch-all) */}
-      <Route path="/itinerary-view/:token/expert-review">
-        <ItineraryViewPage />
-      </Route>
-      <Route path="/itinerary-view/:token/activity/:activityId">
-        <ActivityDetailPage />
-      </Route>
-      <Route path="/itinerary-view/:token/transport/:legId">
-        <TransportDetailPage />
-      </Route>
-      <Route path="/itinerary-view/:token/map">
-        <MapFullPage />
-      </Route>
-      <Route path="/itinerary-view/:token/stats">
-        <TripStatsPage />
-      </Route>
-      <Route path="/itinerary-view/:token/services">
-        <ServicesPage />
-      </Route>
-      <Route path="/itinerary-view/:token/chat">
-        <ExpertChatPage />
-      </Route>
-      <Route path="/itinerary-view/:token/changes">
-        <ReviewChangesPage />
-      </Route>
-
       <Route path="/itinerary-view/:token">
-        <FullItineraryPage />
+        <ItineraryViewPage />
       </Route>
       <Route path="/trips/shared/:token">
         <SharedTripPage />
       </Route>
-      <Route path="/login">
-        <LoginPage />
-      </Route>
-      <Route path="/auth/login">
-        <LoginPage />
-      </Route>
-      <Route path="/forgot-password">
-        <ForgotPasswordPage />
-      </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
-      </Route>
-      <Route path="/my-bookings">
-        {() => <Redirect to="/bookings" />}
-      </Route>
-      <Route path="/wishlist">
-        {() => <ProtectedRoute component={WishlistPage} />}
       </Route>
       <Route path="/contracts/:id">
         {() => <ProtectedRoute component={ContractViewPage} />}
@@ -385,6 +297,10 @@ function Router() {
       <Route path="/payment">
         <PaymentPage />
       </Route>
+      <Route path="/booking-demo">
+        <BookingDemo />
+      </Route>
+      
       {/* Application pages for becoming an expert or provider */}
       <Route path="/become-expert">
         <TravelExpertsPage />
@@ -393,6 +309,10 @@ function Router() {
         <ServicesProviderPage />
       </Route>
       
+      <Route path="/layout-mock">
+        <LayoutMock />
+      </Route>
+
       {/* Trip/Itinerary detail pages — must be BEFORE catch-all routes */}
       <Route path="/trip/:id">
         {() => <DashboardLayout><ProtectedRoute component={TripDetails} /></DashboardLayout>}
@@ -414,23 +334,13 @@ function Router() {
       <Route path="/my-trips">
         {() => <ProtectedRoute component={MyTrips} />}
       </Route>
-      <Route path="/trips">
-        {() => <Redirect to="/my-trips" />}
-      </Route>
       <Route path="/profile">
         {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
-      </Route>
-      <Route path="/settings">
-        {() => <Redirect to="/profile" />}
       </Route>
       
       {/* Consolidated Credits page */}
       <Route path="/credits">
         {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
-      </Route>
-
-      <Route path="/my-reviews">
-        {() => <DashboardLayout><ProtectedRoute component={MyReviews} /></DashboardLayout>}
       </Route>
       
       <Route path="/notifications">
@@ -591,14 +501,8 @@ function Router() {
       <Route path="/provider/settings">
         {() => <ProtectedRoute component={ProviderSettings} requiredRole="provider" />}
       </Route>
-      <Route path="/provider/reviews">
-        {() => <ProtectedRoute component={ProviderReviews} requiredRole="provider" />}
-      </Route>
       <Route path="/provider/resources">
         {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
-      </Route>
-      <Route path="/provider/availability">
-        {() => <ProtectedRoute component={ProviderAvailabilityManagement} requiredRole="provider" />}
       </Route>
 
       {/* Admin Dashboard Routes (use AdminLayout - no global Layout) */}
@@ -611,17 +515,8 @@ function Router() {
       <Route path="/admin/experts">
         {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
       </Route>
-      <Route path="/admin/experts/pending">
-        {() => <ProtectedRoute component={AdminExperts} requiredRole="admin" />}
-      </Route>
       <Route path="/admin/providers">
         {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
-      </Route>
-      <Route path="/admin/providers/pending">
-        {() => <ProtectedRoute component={AdminProviders} requiredRole="admin" />}
-      </Route>
-      <Route path="/admin/bookings">
-        {() => <ProtectedRoute component={AdminBookings} requiredRole="admin" />}
       </Route>
       <Route path="/admin/plans">
         {() => <ProtectedRoute component={AdminPlans} requiredRole="admin" />}
@@ -644,9 +539,6 @@ function Router() {
       <Route path="/admin/system">
         {() => <ProtectedRoute component={AdminSystem} requiredRole="admin" />}
       </Route>
-      <Route path="/admin/settings">
-        {() => <ProtectedRoute component={AdminSettings} requiredRole="admin" />}
-      </Route>
       <Route path="/admin/data">
         {() => <ProtectedRoute component={AdminData} requiredRole="admin" />}
       </Route>
@@ -656,14 +548,8 @@ function Router() {
       <Route path="/admin/content-tracking">
         {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
       </Route>
-      <Route path="/admin/content">
-        {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
-      </Route>
       <Route path="/admin/ai-costs">
         {() => <ProtectedRoute component={AdminAICosts} requiredRole="admin" />}
-      </Route>
-      <Route path="/admin/ai-usage">
-        {() => <ProtectedRoute component={AdminAiUsage} requiredRole="admin" />}
       </Route>
       <Route path="/admin/tourism-analytics">
         {() => <ProtectedRoute component={AdminTourismAnalytics} requiredRole="admin" />}
@@ -673,15 +559,6 @@ function Router() {
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
-      <Route path="/wallet">
-        <Redirect to="/credits" />
-      </Route>
-      <Route path="/expert/coordination">
-        <Redirect to="/expert/dashboard" />
-      </Route>
-      <Route path="/expert/calendar">
-        <Redirect to="/expert/dashboard" />
-      </Route>
       <Route path="/create-trip">
         <Redirect to="/experiences" />
       </Route>
@@ -714,7 +591,7 @@ function Router() {
         {() => <DashboardLayout><ProtectedRoute component={Chat} /></DashboardLayout>}
       </Route>
       <Route path="/ai-assistant">
-        {() => <Layout><ProtectedRoute component={AIAssistant} /></Layout>}
+        {() => <DashboardLayout><ProtectedRoute component={AIAssistant} /></DashboardLayout>}
       </Route>
       <Route path="/vendors">
         {() => <Layout><ProtectedRoute component={Vendors} /></Layout>}
@@ -733,21 +610,16 @@ function Router() {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <TripQueueProvider>
-          <SignInModalProvider>
-            <TooltipProvider>
-              <Toaster />
-              <RouteErrorBoundary>
-                <ReturnToHandler />
-                <Router />
-              </RouteErrorBoundary>
-            </TooltipProvider>
-          </SignInModalProvider>
-        </TripQueueProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <TripQueueProvider>
+        <SignInModalProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </SignInModalProvider>
+      </TripQueueProvider>
+    </QueryClientProvider>
   );
 }
 

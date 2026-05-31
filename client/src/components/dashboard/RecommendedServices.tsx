@@ -1,25 +1,26 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Loader2 } from "lucide-react";
 
 interface ProviderService {
   id: string;
-  userId: string;
+  providerId: string;
   categoryId: string;
-  serviceName: string;
+  name: string;
   description: string;
-  price: string | null;
-  priceType: string | null;
+  basePrice: string;
+  pricingType: string;
   location: string | null;
-  averageRating: string | null;
+  rating: string | null;
   reviewCount: number;
-  status: string;
-  category?: { name: string; slug: string } | null;
+  isActive: boolean;
+  category?: { name: string; slug: string };
   provider?: {
     businessName: string;
     firstName: string;
     lastName: string;
-  } | null;
+  };
 }
 
 interface RecommendedServicesProps {
@@ -47,19 +48,6 @@ function getCategoryColor(categoryName: string) {
   return CATEGORY_COLORS.default;
 }
 
-function deriveReason(category: string | undefined, location: string | null): string {
-  if (category && location) {
-    return `Matches your ${location} itinerary — ${category.toLowerCase()}`;
-  }
-  if (category) {
-    return `Trending ${category.toLowerCase()} service for your trip`;
-  }
-  if (location) {
-    return `Popular service in ${location}`;
-  }
-  return "Recommended for your travel plans";
-}
-
 export function RecommendedServices({
   destinations,
 }: RecommendedServicesProps) {
@@ -82,7 +70,7 @@ export function RecommendedServices({
     );
   }
 
-  const allServices = services ?? [];
+  const allServices = (services ?? []).filter((s) => s.isActive);
   const filterTabs = ["all", ...new Set(destinations.map((d) => d.toLowerCase()))];
 
   const filtered =
@@ -143,9 +131,8 @@ export function RecommendedServices({
             .join("")
             .toUpperCase()
             .slice(0, 2);
-          const price = parseFloat(svc.price || "0");
-          const rating = parseFloat(svc.averageRating || "0");
-          const reason = deriveReason(svc.category?.name, svc.location);
+          const price = parseFloat(svc.basePrice || "0");
+          const rating = parseFloat(svc.rating || "0");
 
           return (
             <div
@@ -174,7 +161,7 @@ export function RecommendedServices({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 mb-0.5">
                   <span className="text-[12px] font-medium text-foreground truncate">
-                    {svc.serviceName}
+                    {svc.name}
                   </span>
                   <span
                     className="text-[8px] px-1.5 py-0.5 rounded font-medium flex-shrink-0"
@@ -190,7 +177,7 @@ export function RecommendedServices({
                   <span className="font-medium text-foreground">
                     {provName}
                   </span>
-                  {svc.location && <span data-testid={`service-location-${svc.id}`}>📍 {svc.location}</span>}
+                  {svc.location && <span>📍 {svc.location}</span>}
                   {rating > 0 && (
                     <span style={{ color: "#E8B339" }}>
                       ★ {rating.toFixed(1)}
@@ -199,13 +186,6 @@ export function RecommendedServices({
                   {svc.reviewCount > 0 && (
                     <span>({svc.reviewCount})</span>
                   )}
-                </div>
-                <div
-                  className="text-[10px] italic mt-0.5"
-                  style={{ color: "#2E8B8B" }}
-                  data-testid={`service-reason-${svc.id}`}
-                >
-                  💡 {reason}
                 </div>
               </div>
               <div className="text-right flex-shrink-0">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,31 +14,20 @@ import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2, FileText } f
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 
-export const RETURN_TO_KEY = "signInReturnTo";
-
 interface SignInModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title?: string;
   description?: string;
-  defaultMode?: "signin" | "signup";
-  returnTo?: string;
 }
 
 export function SignInModal({
   open,
   onOpenChange,
-  title,
-  description,
-  defaultMode = "signin",
-  returnTo,
+  title = "Sign in to continue",
+  description = "Create an account or sign in to access this feature and personalize your travel experience.",
 }: SignInModalProps) {
-  const [mode, setMode] = useState<"signin" | "signup">(defaultMode);
-
-  const resolvedTitle = title ?? (mode === "signup" ? "Create your account" : "Sign in to continue");
-  const resolvedDescription = description ?? (mode === "signup"
-    ? "Join Traveloure and start planning unforgettable experiences."
-    : "Create an account or sign in to access this feature and personalize your travel experience.");
+  const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
@@ -48,18 +37,9 @@ export function SignInModal({
     firstName: "",
     lastName: "",
   });
+  const [newPassword, setNewPassword] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  // Reset mode to defaultMode every time the modal opens
-  useEffect(() => {
-    if (open) {
-      setMode(defaultMode);
-      setAcceptTerms(false);
-      setAcceptPrivacy(false);
-      setFormData({ email: "", password: "", firstName: "", lastName: "" });
-    }
-  }, [open, defaultMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,11 +68,10 @@ export function SignInModal({
         credentials: "include",
       });
 
-      let data: any = {};
-      try { data = await response.json(); } catch { /* non-JSON body (e.g. 502/rate-limit) */ }
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || (response.status === 429 ? "Too many attempts — please wait and try again" : "Authentication failed"));
+        throw new Error(data.message || "Authentication failed");
       }
 
       // Invalidate user query to refresh auth state
@@ -104,14 +83,9 @@ export function SignInModal({
       });
 
       onOpenChange(false);
-
-      // Save returnTo in sessionStorage so ReturnToHandler can recover it
-      // even if the user passes through /accept-terms before landing
-      const dest = returnTo || "/dashboard";
-      if (dest !== "/dashboard") {
-        sessionStorage.setItem(RETURN_TO_KEY, dest);
-      }
-      window.location.href = dest;
+      
+      // Redirect to dashboard
+      window.location.href = "/dashboard";
     } catch (error: any) {
       toast({
         title: "Error",
@@ -123,11 +97,33 @@ export function SignInModal({
     }
   };
 
-  const handleReplitSignIn = () => {
-    const dest = returnTo || window.location.pathname + window.location.search;
-    if (dest && dest !== "/dashboard") {
-      sessionStorage.setItem(RETURN_TO_KEY, dest);
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.email || !newPassword) return;
+    if (newPassword.length < 8) {
+      toast({ title: "Error", description: "Password must be at least 8 characters", variant: "destructive" });
+      return;
     }
+    setIsLoading(true);
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: formData.email, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Reset failed");
+      toast({ title: "Password Reset", description: data.message });
+      setNewPassword("");
+      setMode("signin");
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Something went wrong", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReplitSignIn = () => {
     window.location.href = "/api/login";
   };
 
@@ -139,14 +135,14 @@ export function SignInModal({
             <LogIn className="h-6 w-6 text-primary" />
           </div>
           <DialogTitle className="text-xl" data-testid="text-sign-in-title">
-            {resolvedTitle}
+            {mode === "reset" ? "Reset your password" : mode === "signin" ? title : "Create your account"}
           </DialogTitle>
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
-            {resolvedDescription}
+            {mode === "reset" ? "Enter your email and a new password." : mode === "signin" ? description : "Join Traveloure to start planning your perfect trip."}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+        <form onSubmit={mode === "reset" ? handleResetPassword : handleSubmit} className="space-y-4 py-4">
           {mode === "signup" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -199,23 +195,53 @@ export function SignInModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="password"
-                type="password"
-                placeholder={mode === "signup" ? "Min 8 characters" : "••••••••"}
-                className="pl-9"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                required
-                minLength={mode === "signup" ? 8 : 1}
-                data-testid="input-password"
-              />
+          {mode === "reset" ? (
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">New Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="newPassword"
+                  type="password"
+                  placeholder="Min 8 characters"
+                  className="pl-9"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={8}
+                  data-testid="input-new-password"
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder={mode === "signup" ? "Min 8 characters" : "••••••••"}
+                  className="pl-9"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  minLength={mode === "signup" ? 8 : 1}
+                  data-testid="input-password"
+                />
+              </div>
+              {mode === "signin" && (
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => setMode("reset")}
+                  data-testid="link-forgot-password"
+                >
+                  Forgot password?
+                </button>
+              )}
+            </div>
+          )}
 
           {mode === "signup" && (
             <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
@@ -260,12 +286,12 @@ export function SignInModal({
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {mode === "signin" ? "Signing in..." : "Creating account..."}
+                {mode === "reset" ? "Resetting..." : mode === "signin" ? "Signing in..." : "Creating account..."}
               </>
             ) : (
               <>
                 <LogIn className="mr-2 h-4 w-4" />
-                {mode === "signin" ? "Sign In" : "Create Account"}
+                {mode === "reset" ? "Reset Password" : mode === "signin" ? "Sign In" : "Create Account"}
               </>
             )}
           </Button>
@@ -290,7 +316,19 @@ export function SignInModal({
           </Button>
 
           <p className="text-sm text-center text-muted-foreground">
-            {mode === "signin" ? (
+            {mode === "reset" ? (
+              <>
+                Remember your password?{" "}
+                <button
+                  type="button"
+                  className="text-primary hover:underline font-medium"
+                  onClick={() => setMode("signin")}
+                  data-testid="link-back-signin"
+                >
+                  Back to Sign In
+                </button>
+              </>
+            ) : mode === "signin" ? (
               <>
                 Don't have an account?{" "}
                 <button

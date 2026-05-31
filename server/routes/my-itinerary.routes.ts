@@ -30,7 +30,6 @@ const router = Router();
 router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     
     // Get comparison data
     const comparison = await db.query.itineraryComparisons.findFirst({
@@ -39,10 +38,6 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
     
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
-    }
-
-    if (comparison.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
     }
     
     // Get the selected variant or the first one
@@ -226,7 +221,6 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
 router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
     
     // Get comparison data
     const comparison = await db.query.itineraryComparisons.findFirst({
@@ -235,10 +229,6 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
     
     if (!comparison) {
       return res.status(404).json({ error: "Itinerary not found" });
-    }
-
-    if (comparison.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
     }
     
     // Get the selected variant

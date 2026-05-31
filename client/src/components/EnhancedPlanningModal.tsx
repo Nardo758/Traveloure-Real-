@@ -230,7 +230,7 @@ export default function EnhancedPlanningModal({
       } else if (data.tripId) {
         // Fallback: if only tripId is returned, redirect to trip view
         onClose();
-        setLocation(`/trip/${data.tripId}`);
+        setLocation(`/trips/${data.tripId}`);
       } else {
         throw new Error('No comparison or trip ID returned from server');
       }

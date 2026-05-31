@@ -1,12 +1,10 @@
 import { db } from "../db";
 import { 
-  itineraryItems,
-  trips,
+  itineraryItems, 
   type ItineraryItem, 
   type InsertItineraryItem 
 } from "@shared/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
-import { ForbiddenError } from "../infrastructure";
 import OpenAI from "openai";
 import { 
   createCircuitBreaker, 
@@ -88,13 +86,7 @@ export class ItineraryIntelligenceService {
     }
   }
 
-  private async assertTripOwnership(tripId: string, userId: string): Promise<void> {
-    const [trip] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, tripId));
-    if (!trip || trip.userId !== userId) throw new ForbiddenError("Access denied to this trip");
-  }
-
-  async getItems(tripId: string, userId?: string): Promise<ItineraryItem[]> {
-    if (userId) await this.assertTripOwnership(tripId, userId);
+  async getItems(tripId: string): Promise<ItineraryItem[]> {
     return db.select().from(itineraryItems)
       .where(eq(itineraryItems.tripId, tripId))
       .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder));
@@ -105,8 +97,7 @@ export class ItineraryIntelligenceService {
     return results[0];
   }
 
-  async createItem(data: InsertItineraryItem, userId?: string): Promise<ItineraryItem> {
-    if (userId) await this.assertTripOwnership(data.tripId, userId);
+  async createItem(data: InsertItineraryItem): Promise<ItineraryItem> {
     const results = await db.insert(itineraryItems).values(data).returning();
     return results[0];
   }

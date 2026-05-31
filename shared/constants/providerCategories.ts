@@ -136,42 +136,6 @@ export const tabCategoryMapping: Record<string, CategoryMapping> = {
     keywords: ["show", "theater", "performance", "concert", "musical", "broadway", "ticket", "entertainment"],
     serpTypes: ["theater", "concert_hall", "performing_arts"],
   },
-
-  "party-services": {
-    primarySlugs: ["events-celebrations", "food-culinary", "photography-videography", "transportation-logistics", "tours-experiences"],
-    keywords: ["party", "dj", "entertainment", "catering", "nightlife", "activities", "photography", "decorator", "transportation", "rental"],
-    serpTypes: ["event_venue", "night_club", "bar", "caterer"],
-  },
-
-  "experiences": {
-    primarySlugs: ["tours-experiences", "health-wellness", "personal-assistance"],
-    keywords: ["experience", "tour", "activity", "adventure", "excursion", "guide", "local", "cultural"],
-    serpTypes: ["tourist_attraction", "amusement_park", "park", "recreation"],
-  },
-
-  "welcome": {
-    primarySlugs: ["food-culinary", "events-celebrations", "tours-experiences"],
-    keywords: ["welcome", "reception", "arrival", "dinner", "cocktail", "entertainment", "venue", "catering"],
-    serpTypes: ["restaurant", "event_venue", "bar"],
-  },
-
-  "rehearsal": {
-    primarySlugs: ["food-culinary", "events-celebrations", "specialty-services"],
-    keywords: ["rehearsal", "dinner", "venue", "catering", "planning", "coordinator", "event"],
-    serpTypes: ["restaurant", "event_venue", "private_dining"],
-  },
-
-  "vendors": {
-    primarySlugs: ["photography-videography", "food-culinary", "events-celebrations", "beauty-styling", "transportation-logistics"],
-    keywords: ["vendor", "photographer", "caterer", "florist", "entertainment", "decorator", "planner", "coordinator", "baker"],
-    serpTypes: ["photographer", "caterer", "florist", "event_planner"],
-  },
-
-  "planning": {
-    primarySlugs: ["personal-assistance", "specialty-services", "events-celebrations"],
-    keywords: ["planning", "planner", "coordinator", "concierge", "organizer", "management", "logistics"],
-    serpTypes: ["event_planner", "travel_agency", "personal_assistant"],
-  },
 };
 
 export const servicesCategoryMapping: Record<string, CategoryMapping> = {
@@ -214,10 +178,6 @@ export const servicesCategoryMapping: Record<string, CategoryMapping> = {
   "services-party": {
     primarySlugs: ["photography-videography", "events-celebrations", "food-culinary"],
     keywords: ["party", "dj", "performer", "entertainment", "catering", "decorator", "rental", "photographer"],
-  },
-  "services-guest": {
-    primarySlugs: ["transportation-logistics", "tours-experiences", "food-culinary", "personal-assistance"],
-    keywords: ["guest", "transportation", "shuttle", "activities", "tour", "dining", "accommodation", "concierge"],
   },
 };
 
@@ -318,41 +278,6 @@ const exclusiveTypeToTab: Record<string, string[]> = {
   "jewelry": ["jewelry", "shopping"],
 };
 
-// Maps short serviceType values to canonical category slugs used in primarySlugs.
-// Needed because DB serviceType is "photography" but canonical slug is "photography-videography".
-const typeToCanonicalSlug: Record<string, string[]> = {
-  "photography": ["photography-videography"],
-  "videography": ["photography-videography"],
-  "transportation": ["transportation-logistics"],
-  "transport": ["transportation-logistics"],
-  "flights": ["transportation-logistics"],
-  "catering": ["food-culinary", "events-celebrations"],
-  "dining": ["food-culinary"],
-  "activities": ["tours-experiences"],
-  "adventures": ["tours-experiences", "health-wellness"],
-  "tour": ["tours-experiences"],
-  "experience": ["tours-experiences"],
-  "planning": ["personal-assistance", "specialty-services"],
-  "concierge": ["personal-assistance"],
-  "wellness": ["health-wellness"],
-  "spa": ["health-wellness"],
-  "beauty": ["beauty-styling"],
-  "entertainment": ["events-celebrations", "tours-experiences"],
-  "venue": ["events-celebrations", "specialty-services"],
-  "florist": ["events-celebrations"],
-  "decorations": ["events-celebrations"],
-  "nightlife": ["events-celebrations", "tours-experiences"],
-  "shows": ["events-celebrations", "tours-experiences"],
-  "rentals": ["events-celebrations"],
-  "team-building": ["tours-experiences", "events-celebrations"],
-  "jewelry": ["personal-assistance"],
-  "shopping": ["personal-assistance", "tours-experiences"],
-  "sports": ["tours-experiences", "health-wellness"],
-  "hotels": ["tours-experiences"],
-  "accommodations": ["tours-experiences"],
-  "av-equipment": ["technology-connectivity", "events-celebrations"],
-};
-
 export function matchesCategory(
   serviceType: string,
   serviceName: string,
@@ -364,32 +289,10 @@ export function matchesCategory(
   const lowerTab = tabCategory.toLowerCase();
   
   // PRIORITY 1: If serviceType is an exclusive type, use strict matching only
-  // This prevents "Food Walking Tour" (type=activities) from leaking into dining tab.
-  // EXCEPTION A: services-* aggregate tabs always bypass exclusivity.
-  // EXCEPTION B: Any tab whose mapping explicitly includes this type's canonical slug
-  //              also bypasses exclusivity (e.g. photography on party-services, vendors).
+  // This prevents "Food Walking Tour" (type=activities) from showing in dining tab
   if (exclusiveServiceTypes.includes(lowerType)) {
     const allowedTabs = exclusiveTypeToTab[lowerType] || [lowerType];
-    if (allowedTabs.includes(lowerTab)) return true;
-    // Exception A — services-* aggregate tabs
-    if (lowerTab.startsWith("services-")) {
-      // fall through to canonical slug/keyword checks below
-    } else {
-      // Exception B — check if this tab's mapping explicitly covers the type's canonical slugs.
-      // Only applies to compound/aggregate tabs (not to simple exclusive-type tabs like nightlife,
-      // dining, photography, etc. — those only show their own type).
-      if (exclusiveServiceTypes.includes(lowerTab)) return false;
-      const tabMapping = getCategoryMapping(tabCategory);
-      if (!tabMapping) return false;
-      const typeCanonicalSlugs = typeToCanonicalSlug[lowerType] || [];
-      const coveredByMapping = tabMapping.primarySlugs.some(slug =>
-        typeCanonicalSlugs.includes(slug) ||
-        slug.includes(lowerType) ||
-        lowerType.includes(slug)
-      );
-      if (!coveredByMapping) return false;
-      // covered — fall through to keyword/slug checks
-    }
+    return allowedTabs.includes(lowerTab);
   }
   
   // PRIORITY 2: Check for literal tab category match in type or name
@@ -405,14 +308,8 @@ export function matchesCategory(
   }
   
   // PRIORITY 3: Check primary slugs (canonical category slugs)
-  // Also check reverse (slug contains type) and via typeToCanonicalSlug lookup,
-  // because DB stores "photography" but primarySlugs use "photography-videography"
-  const typeCanonicalSlugs = typeToCanonicalSlug[lowerType] || [];
   const matchesPrimarySlug = mapping.primarySlugs.some(slug => 
-    lowerType.includes(slug) ||
-    lowerType === slug ||
-    slug.includes(lowerType) ||
-    typeCanonicalSlugs.includes(slug)
+    lowerType.includes(slug) || lowerType === slug
   );
   
   if (matchesPrimarySlug) return true;

@@ -1,4 +1,4 @@
-import { AdminLayout } from "@/components/admin/admin-layout";
+import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,11 +13,9 @@ import {
   Users,
   Building2,
   Loader2,
-  FileText,
-  Radio,
-  Zap,
+  FileText
 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   Table,
   TableBody,
@@ -26,8 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useToast } from "@/hooks/use-toast";
 
 interface RevenueDashboard {
   platform: {
@@ -63,17 +59,6 @@ interface RevenueDashboard {
   }>;
 }
 
-interface LiveTransaction {
-  id: string;
-  sourceType: string;
-  sourceId: string;
-  grossAmount: number;
-  platformFee: number;
-  description?: string;
-  timestamp: string;
-  isLive: true;
-}
-
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -87,14 +72,6 @@ function formatDate(dateStr: string): string {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  });
-}
-
-function formatTime(dateStr: string): string {
-  return new Date(dateStr).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
   });
 }
 
@@ -122,79 +99,11 @@ function getSourceColor(sourceType: string): string {
   return colors[sourceType] || 'bg-gray-500';
 }
 
-function useLiveRevenue() {
-  const [isConnected, setIsConnected] = useState(false);
-  const [liveTransactions, setLiveTransactions] = useState<LiveTransaction[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-    wsRef.current = ws;
-
-    ws.onopen = () => setIsConnected(true);
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        if (msg.type !== "revenue_event") return;
-
-        const live: LiveTransaction = {
-          id: `live-${msg.sourceId}-${Date.now()}`,
-          sourceType: msg.sourceType,
-          sourceId: msg.sourceId,
-          grossAmount: msg.grossAmount,
-          platformFee: msg.platformFee,
-          description: msg.description,
-          timestamp: msg.timestamp,
-          isLive: true,
-        };
-
-        setLiveTransactions((prev) => [live, ...prev].slice(0, 50));
-
-        // Refresh the full dashboard stats in the background
-        queryClient.invalidateQueries({ queryKey: ["/api/admin/revenue/dashboard"] });
-
-        toast({
-          title: "New revenue event",
-          description: `${getSourceLabel(msg.sourceType)} — ${formatCurrency(msg.grossAmount)} gross`,
-        });
-      } catch {
-        // ignore malformed messages
-      }
-    };
-
-    ws.onclose = () => {
-      setIsConnected(false);
-      reconnectTimeout.current = setTimeout(connect, 4000);
-    };
-
-    ws.onerror = () => ws.close();
-  }, [queryClient, toast]);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      reconnectTimeout.current && clearTimeout(reconnectTimeout.current);
-      wsRef.current?.close();
-    };
-  }, [connect]);
-
-  return { isConnected, liveTransactions };
-}
-
 export default function AdminRevenue() {
   const { data: dashboard, isLoading } = useQuery<RevenueDashboard>({
     queryKey: ["/api/admin/revenue/dashboard"],
     refetchInterval: 60000,
   });
-
-  const { isConnected, liveTransactions } = useLiveRevenue();
 
   if (isLoading) {
     return (
@@ -208,39 +117,9 @@ export default function AdminRevenue() {
 
   const totalSourceRevenue = Object.values(dashboard?.platform.bySource || {}).reduce((a, b) => a + b, 0);
 
-  // Merge live transactions on top of the fetched ones (deduplicate by sourceId)
-  const fetchedTxns = dashboard?.recentTransactions || [];
-  const fetchedIds = new Set(fetchedTxns.map((t) => t.id));
-  const dedupedLive = liveTransactions.filter((lt) => !fetchedIds.has(lt.sourceId));
-
   return (
     <AdminLayout title="Revenue">
       <div className="p-6 space-y-6">
-
-        {/* Header with live indicator */}
-        <div className="flex items-center justify-between">
-          <div />
-          <div
-            className="flex items-center gap-2 text-sm font-medium"
-            data-testid="indicator-live-status"
-          >
-            {isConnected ? (
-              <>
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
-                </span>
-                <span className="text-green-600 dark:text-green-400">Live</span>
-              </>
-            ) : (
-              <>
-                <Radio className="w-3.5 h-3.5 text-muted-foreground animate-pulse" />
-                <span className="text-muted-foreground">Connecting…</span>
-              </>
-            )}
-          </div>
-        </div>
-
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card data-testid="card-stat-total-revenue">
             <CardContent className="p-4">
@@ -322,14 +201,7 @@ export default function AdminRevenue() {
         <Tabs defaultValue="breakdown" className="space-y-4">
           <TabsList>
             <TabsTrigger value="breakdown" data-testid="tab-breakdown">Revenue Breakdown</TabsTrigger>
-            <TabsTrigger value="transactions" data-testid="tab-transactions">
-              Recent Transactions
-              {dedupedLive.length > 0 && (
-                <Badge className="ml-2 h-5 px-1.5 text-xs bg-green-500 hover:bg-green-500">
-                  {dedupedLive.length} new
-                </Badge>
-              )}
-            </TabsTrigger>
+            <TabsTrigger value="transactions" data-testid="tab-transactions">Recent Transactions</TabsTrigger>
             <TabsTrigger value="trends" data-testid="tab-trends">Daily Trends</TabsTrigger>
           </TabsList>
 
@@ -392,49 +264,15 @@ export default function AdminRevenue() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date / Time</TableHead>
+                      <TableHead>Date</TableHead>
                       <TableHead>Source</TableHead>
-                      <TableHead>Description</TableHead>
+                      <TableHead>Tracking #</TableHead>
                       <TableHead className="text-right">Gross</TableHead>
                       <TableHead className="text-right">Platform Fee</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {/* Live rows at the top */}
-                    {dedupedLive.map((lt) => (
-                      <TableRow
-                        key={lt.id}
-                        className="bg-green-50 dark:bg-green-950/30 animate-in fade-in slide-in-from-top-2 duration-500"
-                        data-testid={`row-live-transaction-${lt.id}`}
-                      >
-                        <TableCell className="text-sm">
-                          <div className="flex items-center gap-1.5">
-                            <Zap className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                            <div>
-                              <div className="font-medium text-green-700 dark:text-green-400 text-xs">Live</div>
-                              <div className="text-muted-foreground">{formatTime(lt.timestamp)}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs border-green-300 text-green-700 dark:text-green-400">
-                            {getSourceLabel(lt.sourceType)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
-                          {lt.description || '-'}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(lt.grossAmount)}
-                        </TableCell>
-                        <TableCell className="text-right text-green-600 font-medium">
-                          +{formatCurrency(lt.platformFee)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-
-                    {/* Regular fetched rows */}
-                    {fetchedTxns.map((txn) => (
+                    {(dashboard?.recentTransactions || []).map((txn) => (
                       <TableRow key={txn.id} data-testid={`row-transaction-${txn.id}`}>
                         <TableCell className="text-sm">
                           {formatDate(txn.date)}
@@ -460,8 +298,7 @@ export default function AdminRevenue() {
                         </TableCell>
                       </TableRow>
                     ))}
-
-                    {fetchedTxns.length === 0 && dedupedLive.length === 0 && (
+                    {(dashboard?.recentTransactions || []).length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                           No transactions recorded yet. Transactions will appear here as revenue is generated.

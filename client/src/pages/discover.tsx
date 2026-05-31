@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Layout } from "@/components/layout";
+import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -365,16 +365,12 @@ function ServiceCard({
   onAddToCart,
   isAddingToCart,
   isAdded,
-  isWishlisted,
-  onToggleWishlist,
 }: { 
   service: Service; 
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
-  isWishlisted?: boolean;
-  onToggleWishlist?: (serviceId: string) => void;
 }) {
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
@@ -468,18 +464,6 @@ function ServiceCard({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             
-            {/* Wishlist Heart - Top Right (before heat score) */}
-            {onToggleWishlist && (
-              <button
-                className="absolute top-3 right-16 w-9 h-9 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center z-10 hover:scale-110 transition-transform"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleWishlist(service.id); }}
-                data-testid={`button-wishlist-${service.id}`}
-                aria-label={isWishlisted ? "Remove from wishlist" : "Save to wishlist"}
-              >
-                <Heart className={`w-4 h-4 transition-colors ${isWishlisted ? "fill-rose-500 text-rose-500" : "text-gray-400 hover:text-rose-400"}`} />
-              </button>
-            )}
-
             {/* Heat Score Badge - Top Right */}
             <div 
               className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
@@ -773,12 +757,9 @@ export default function DiscoverPage() {
   // Ref for experts section to scroll to
   const expertsSectionRef = useRef<HTMLDivElement>(null);
 
-  // Seed search from URL ?q= param (e.g. from homepage hero search)
-  const urlQ = urlParams.get("q") || "";
-
   // Search and filter state
-  const [searchQuery, setSearchQuery] = useState(urlQ);
-  const [debouncedQuery, setDebouncedQuery] = useState(urlQ);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [locationFilter, setLocationFilter] = useState(expertHandoffDestination);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
@@ -801,8 +782,8 @@ export default function DiscoverPage() {
   // Expert handoff state
   const [showExpertHandoffBanner, setShowExpertHandoffBanner] = useState(isFromQuickStart && showExperts);
   
-  // Tab navigation state (read from URL — if ?q= present, default to services tab)
-  const urlTab = urlParams.get("tab") || (urlQ ? "services" : "travelpulse");
+  // Tab navigation state (read from URL)
+  const urlTab = urlParams.get("tab") || "travelpulse";
   const urlCity = urlParams.get("city") || "";
   const [activeTab, setActiveTab] = useState(urlTab);
 
@@ -811,10 +792,6 @@ export default function DiscoverPage() {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
       setPage(0);
-      // Auto-switch to services tab when user types — services is the only tab that uses the search query
-      if (searchQuery.trim().length > 0) {
-        setActiveTab("services");
-      }
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -869,41 +846,6 @@ export default function DiscoverPage() {
     queryKey: ["/api/cart"],
     enabled: !!user,
   });
-
-  const { data: wishlistIds = [] } = useQuery<string[]>({
-    queryKey: ["/api/wishlist/ids"],
-    enabled: !!user,
-  });
-
-  const wishlistMutation = useMutation({
-    mutationFn: async ({ serviceId, wishlisted }: { serviceId: string; wishlisted: boolean }) => {
-      if (wishlisted) {
-        return apiRequest("DELETE", `/api/wishlist/${serviceId}`);
-      } else {
-        return apiRequest("POST", `/api/wishlist/${serviceId}`);
-      }
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/wishlist/ids"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/wishlist"] });
-      toast({
-        title: variables.wishlisted ? "Removed from wishlist" : "Saved to wishlist",
-        description: variables.wishlisted ? "Service removed from your saved list" : "Service saved to your wishlist",
-      });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update wishlist", variant: "destructive" });
-    },
-  });
-
-  const handleToggleWishlist = (serviceId: string) => {
-    if (!user) {
-      toast({ title: "Sign in required", description: "Please sign in to save services to your wishlist", variant: "destructive" });
-      return;
-    }
-    const wishlisted = wishlistIds.includes(serviceId);
-    wishlistMutation.mutate({ serviceId, wishlisted });
-  };
 
   // Expert Templates Query
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
@@ -1093,7 +1035,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <Layout>
+    <DashboardLayout>
       <SEOHead 
         title="Discover Services & Experiences"
         description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
@@ -1347,9 +1289,6 @@ export default function DiscoverPage() {
             </div>
           </section>
         )}
-
-        {/* Recently Viewed */}
-        <RecentlyViewedRow />
 
         {/* Main Content */}
         <section className="py-12">
@@ -1643,8 +1582,6 @@ export default function DiscoverPage() {
                               onAddToCart={handleAddToCart}
                               isAddingToCart={addingToCartId === service.id}
                               isAdded={addedServices.has(service.id)}
-                              isWishlisted={wishlistIds.includes(service.id)}
-                              onToggleWishlist={handleToggleWishlist}
                             />
                           ))}
                         </div>
@@ -1677,30 +1614,15 @@ export default function DiscoverPage() {
                         )}
                       </>
                     ) : (
-                      <div className="text-center py-16" data-testid="no-results-empty-state">
+                      <div className="text-center py-16">
                         <Building2 className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-lg font-semibold mb-2">
-                          {debouncedQuery
-                            ? <>No results for <span className="text-primary">&ldquo;{debouncedQuery}&rdquo;</span></>
-                            : "No services found"}
-                        </h3>
-                        <p className="text-muted-foreground mb-6">
-                          {debouncedQuery
-                            ? "We couldn't find any services matching that search. Try a different keyword, destination, or browse all services."
-                            : "Try adjusting your search or filters"}
+                        <h3 className="text-lg font-semibold mb-2">No services found</h3>
+                        <p className="text-muted-foreground mb-4">
+                          Try adjusting your search or filters
                         </p>
-                        <div className="flex flex-wrap justify-center gap-3">
-                          <Button variant="outline" onClick={clearFilters} data-testid="button-clear-search">
-                            Clear Search
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={() => { setActiveTab("travelpulse"); }}
-                            data-testid="button-browse-destinations"
-                          >
-                            Browse Destinations
-                          </Button>
-                        </div>
+                        <Button variant="outline" onClick={clearFilters}>
+                          Clear Filters
+                        </Button>
                       </div>
                     )}
                   </main>
@@ -2181,89 +2103,6 @@ export default function DiscoverPage() {
         </section>
       </div>
       <TripQueueIndicator />
-    </Layout>
-  );
-}
-
-interface RecentEntry {
-  id: string;
-  serviceName: string;
-  location: string;
-  averageRating: string;
-  reviewCount: number;
-  price: string;
-}
-
-function RecentlyViewedRow() {
-  const [items, setItems] = useState<RecentEntry[]>([]);
-
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(sessionStorage.getItem("traveloure_recently_viewed") || "[]");
-      setItems(stored);
-    } catch {}
-  }, []);
-
-  if (items.length === 0) return null;
-
-  return (
-    <section className="py-6 border-b bg-muted/20" data-testid="recently-viewed-section">
-      <div className="container mx-auto px-4 max-w-6xl">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-              Recently Viewed
-            </h2>
-          </div>
-          <button
-            type="button"
-            className="text-xs text-muted-foreground hover:text-foreground underline"
-            onClick={() => {
-              sessionStorage.removeItem("traveloure_recently_viewed");
-              setItems([]);
-            }}
-            data-testid="button-clear-recently-viewed"
-          >
-            Clear
-          </button>
-        </div>
-
-        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
-          {items.map((item) => {
-            const rating = parseFloat(item.averageRating || "0") || 0;
-            const price  = parseFloat(item.price || "0") || 0;
-            return (
-              <Link key={item.id} href={`/services/${item.id}`}>
-                <div
-                  className="shrink-0 w-52 rounded-xl border bg-card p-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer"
-                  data-testid={`card-recently-viewed-${item.id}`}
-                >
-                  <p className="text-sm font-medium line-clamp-2 leading-snug mb-1" data-testid={`text-recent-name-${item.id}`}>
-                    {item.serviceName}
-                  </p>
-                  {item.location && (
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
-                      <MapPin className="w-3 h-3 shrink-0" />
-                      <span className="truncate">{item.location}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between mt-auto">
-                    <div className="flex items-center gap-1">
-                      <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                      <span className="text-xs font-medium">{rating.toFixed(1)}</span>
-                      {item.reviewCount > 0 && (
-                        <span className="text-xs text-muted-foreground">({item.reviewCount})</span>
-                      )}
-                    </div>
-                    <span className="text-xs font-bold">${price.toFixed(0)}</span>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-    </section>
+    </DashboardLayout>
   );
 }

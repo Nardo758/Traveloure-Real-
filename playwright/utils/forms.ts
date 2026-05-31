@@ -12,18 +12,11 @@ export async function fillExpertProfile(
     languages: string[];
   }
 ) {
-  // Wait for async profile data to load (Skeleton disappears, textarea appears)
-  await page.waitForSelector('[data-testid="profile-bio"]', { state: 'visible', timeout: 20000 });
-
   // Fill bio
   await page.fill('[data-testid="profile-bio"]', data.bio);
 
-  // Fill hourly rate (also async-loaded, wait for it)
-  const hourlyRateField = page.locator('[data-testid="hourly-rate"]');
-  await hourlyRateField.waitFor({ state: 'visible', timeout: 10000 }).catch(() => null);
-  if (await hourlyRateField.isVisible().catch(() => false)) {
-    await hourlyRateField.fill(data.hourlyRate.toString());
-  }
+  // Fill hourly rate
+  await page.fill('[data-testid="hourly-rate"]', data.hourlyRate.toString());
 
   // Select specialties (checkboxes or multiselect)
   for (const specialty of data.specialties) {
@@ -42,11 +35,8 @@ export async function fillExpertProfile(
   }
 
   // Save profile
-  const saveButton = page.locator('[data-testid="button-save-profile"], button:has-text("Save")').first();
-  if (await saveButton.isVisible().catch(() => false)) {
-    await saveButton.click();
-    await page.waitForLoadState('load').catch(() => null);
-  }
+  await page.click('button:has-text("Save")');
+  await page.waitForNavigation().catch(() => null);
 }
 
 /**
@@ -63,54 +53,27 @@ export async function createService(
   }
 ) {
   // Navigate to create service page if not already there
-  const createButton = page.locator('[data-testid="button-add-service"], [data-testid="button-create-first-service"], button:has-text("Create Service")').first();
+  const createButton = page.locator('button:has-text("Create Service")').first();
   if (await createButton.isVisible().catch(() => false)) {
     await createButton.click();
-    await page.waitForLoadState('load').catch(() => null);
+    await page.waitForNavigation();
   }
-
-  // Wait for form to appear
-  await page.waitForSelector('[data-testid="service-name"]', { state: 'visible', timeout: 10000 }).catch(() => null);
 
   // Fill service form
-  const nameField = page.locator('[data-testid="service-name"]');
-  if (await nameField.isVisible().catch(() => false)) {
-    await nameField.fill(data.name);
-  }
-
-  const descField = page.locator('[data-testid="service-description"]');
-  if (await descField.isVisible().catch(() => false)) {
-    await descField.fill(data.description);
-  }
-
-  const priceField = page.locator('[data-testid="service-price"]');
-  if (await priceField.isVisible().catch(() => false)) {
-    await priceField.fill(data.price.toString());
-  }
-
-  const durationField = page.locator('[data-testid="service-duration"]');
-  if (await durationField.isVisible().catch(() => false)) {
-    await durationField.fill(data.duration.toString());
-  }
+  await page.fill('[data-testid="service-name"]', data.name);
+  await page.fill('[data-testid="service-description"]', data.description);
+  await page.fill('[data-testid="service-price"]', data.price.toString());
+  await page.fill('[data-testid="service-duration"]', data.duration.toString());
 
   // Select currency if provided
   if (data.currency) {
     const currencySelect = page.locator('[data-testid="service-currency"]');
-    if (await currencySelect.isVisible().catch(() => false)) {
-      await currencySelect.selectOption(data.currency);
-    }
+    await currencySelect.selectOption(data.currency);
   }
 
-  // Save service — button says "Publish" on the service form
-  const saveButton = page.locator('[data-testid="button-submit-service"], button:has-text("Publish"), button:has-text("Save Service")').first();
-  if (await saveButton.isVisible().catch(() => false)) {
-    await saveButton.click();
-    // After Publish, the form redirects to /expert/services or /provider/services
-    await page.waitForURL((url) =>
-      url.toString().includes('/services') && !url.toString().includes('/new') && !url.toString().includes('/edit'),
-      { timeout: 15000 }
-    ).catch(() => page.waitForLoadState('load').catch(() => null));
-  }
+  // Save service
+  await page.click('button:has-text("Save Service")');
+  await page.waitForNavigation().catch(() => null);
 }
 
 /**
@@ -125,16 +88,10 @@ export async function fillProviderProfile(
   }
 ) {
   // Fill business name
-  const businessNameField = page.locator('[data-testid="business-name"]');
-  if (await businessNameField.isVisible().catch(() => false)) {
-    await businessNameField.fill(data.businessName);
-  }
+  await page.fill('[data-testid="business-name"]', data.businessName);
 
   // Fill description
-  const descField = page.locator('[data-testid="business-description"]');
-  if (await descField.isVisible().catch(() => false)) {
-    await descField.fill(data.description);
-  }
+  await page.fill('[data-testid="business-description"]', data.description);
 
   // Select service types
   for (const serviceType of data.serviceTypes) {
@@ -145,11 +102,8 @@ export async function fillProviderProfile(
   }
 
   // Save profile
-  const saveButton = page.locator('button:has-text("Save")').first();
-  if (await saveButton.isVisible().catch(() => false)) {
-    await saveButton.click();
-    await page.waitForLoadState('load').catch(() => null);
-  }
+  await page.click('button:has-text("Save")');
+  await page.waitForNavigation().catch(() => null);
 }
 
 /**
@@ -170,52 +124,31 @@ export async function createTrip(
   const createButton = page.locator('button:has-text("Create Trip")').first();
   if (await createButton.isVisible().catch(() => false)) {
     await createButton.click();
-    await page.waitForLoadState('load').catch(() => null);
+    await page.waitForNavigation();
   }
 
   // Fill destination
-  const destField = page.locator('[data-testid="trip-destination"]');
-  if (await destField.isVisible().catch(() => false)) {
-    await destField.fill(data.destination);
-  }
+  await page.fill('[data-testid="trip-destination"]', data.destination);
 
   // Fill dates
-  const startDateField = page.locator('[data-testid="trip-start-date"]');
-  if (await startDateField.isVisible().catch(() => false)) {
-    await startDateField.fill(data.startDate);
-  }
-
-  const endDateField = page.locator('[data-testid="trip-end-date"]');
-  if (await endDateField.isVisible().catch(() => false)) {
-    await endDateField.fill(data.endDate);
-  }
+  await page.fill('[data-testid="trip-start-date"]', data.startDate);
+  await page.fill('[data-testid="trip-end-date"]', data.endDate);
 
   // Fill guests
-  const guestsField = page.locator('[data-testid="trip-guests"]');
-  if (await guestsField.isVisible().catch(() => false)) {
-    await guestsField.fill(data.guests.toString());
-  }
+  await page.fill('[data-testid="trip-guests"]', data.guests.toString());
 
   // Fill budget
-  const budgetField = page.locator('[data-testid="trip-budget"]');
-  if (await budgetField.isVisible().catch(() => false)) {
-    await budgetField.fill(data.budget.toString());
-  }
+  await page.fill('[data-testid="trip-budget"]', data.budget.toString());
 
   // Select experience type if provided
   if (data.experienceType) {
     const typeSelect = page.locator('[data-testid="trip-type"]');
-    if (await typeSelect.isVisible().catch(() => false)) {
-      await typeSelect.selectOption(data.experienceType);
-    }
+    await typeSelect.selectOption(data.experienceType);
   }
 
   // Save trip
-  const saveButton = page.locator('button:has-text("Create Trip")').first();
-  if (await saveButton.isVisible().catch(() => false)) {
-    await saveButton.click();
-    await page.waitForLoadState('load').catch(() => null);
-  }
+  await page.click('button:has-text("Create Trip")');
+  await page.waitForNavigation().catch(() => null);
 }
 
 /**
@@ -234,31 +167,19 @@ export async function addActivityToTrip(
     await addButton.click();
   }
 
-  const nameField = page.locator('[data-testid="activity-name"]');
-  if (await nameField.isVisible().catch(() => false)) {
-    await nameField.fill(activity.name);
-  }
+  await page.fill('[data-testid="activity-name"]', activity.name);
 
   if (activity.description) {
-    const descField = page.locator('[data-testid="activity-description"]');
-    if (await descField.isVisible().catch(() => false)) {
-      await descField.fill(activity.description);
-    }
+    await page.fill('[data-testid="activity-description"]', activity.description);
   }
 
   if (activity.date) {
-    const dateField = page.locator('[data-testid="activity-date"]');
-    if (await dateField.isVisible().catch(() => false)) {
-      await dateField.fill(activity.date);
-    }
+    await page.fill('[data-testid="activity-date"]', activity.date);
   }
 
   // Save activity
-  const saveButton = page.locator('button:has-text("Save Activity")').first();
-  if (await saveButton.isVisible().catch(() => false)) {
-    await saveButton.click();
-    await page.waitForLoadState('load').catch(() => null);
-  }
+  await page.click('button:has-text("Save Activity")');
+  await page.waitForNavigation().catch(() => null);
 }
 
 /**
@@ -268,7 +189,7 @@ export async function addToCart(page: Page, serviceId?: string) {
   const addButton = page.locator('button:has-text("Add to Cart")').first();
   if (await addButton.isVisible().catch(() => false)) {
     await addButton.click();
-    await page.waitForLoadState('load').catch(() => null);
+    await page.waitForNavigation().catch(() => null);
   }
 }
 
@@ -308,7 +229,7 @@ export async function submitPayment(
   const payButton = page.locator('button:has-text("Pay")').first();
   if (await payButton.isVisible().catch(() => false)) {
     await payButton.click();
-    await page.waitForLoadState('load').catch(() => null);
+    await page.waitForNavigation().catch(() => null);
   }
 }
 
@@ -316,17 +237,14 @@ export async function submitPayment(
  * Send message to expert
  */
 export async function sendMessage(page: Page, message: string) {
-  // Support textarea (chat page) and input (other pages)
-  const messageInput = page.locator(
-    '[data-testid="input-message"], textarea[placeholder*="message"], textarea[placeholder*="Message"], input[placeholder*="message"]'
-  ).first();
+  const messageInput = page.locator('input[placeholder*="message"]').first();
   if (await messageInput.isVisible().catch(() => false)) {
     await messageInput.fill(message);
 
-    const sendButton = page.locator('[data-testid="button-send"], [data-testid="button-send-message"], button:has-text("Send")').first();
+    const sendButton = page.locator('button:has-text("Send")').first();
     if (await sendButton.isVisible().catch(() => false)) {
       await sendButton.click();
-      await page.waitForLoadState('load').catch(() => null);
+      await page.waitForNavigation().catch(() => null);
     }
   }
 }
@@ -356,6 +274,6 @@ export async function setAvailability(
   const saveButton = page.locator('button:has-text("Save Availability")').first();
   if (await saveButton.isVisible().catch(() => false)) {
     await saveButton.click();
-    await page.waitForLoadState('load').catch(() => null);
+    await page.waitForNavigation().catch(() => null);
   }
 }

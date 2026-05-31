@@ -84,21 +84,6 @@ class RevenueTrackingService {
       transactionDate: new Date(),
     });
 
-    // Push a live update to all connected admin dashboards (non-blocking)
-    try {
-      const { broadcastRevenueEvent } = await import('../websocket');
-      broadcastRevenueEvent({
-        sourceType: event.sourceType,
-        sourceId: event.sourceId,
-        grossAmount: event.grossAmount,
-        platformFee,
-        description: event.description,
-        timestamp: new Date().toISOString(),
-      });
-    } catch {
-      // WebSocket may not be ready during server startup — safe to ignore
-    }
-
     if (event.expertId && event.expertShare) {
       await storage.createExpertEarning({
         expertId: event.expertId,

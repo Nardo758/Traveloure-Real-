@@ -354,7 +354,7 @@ export default function ExpertServices() {
                   </Button>
                 </Link>
               </CardHeader>
-              <CardContent className="space-y-4" data-testid="services-list">
+              <CardContent className="space-y-4">
                 {servicesLoading ? (
                   [...Array(3)].map((_, i) => (
                     <div key={i} className="p-4 rounded-lg border border-gray-200">

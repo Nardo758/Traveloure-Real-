@@ -13,11 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
-import { useParams, useLocation } from "wouter";
+import { useParams, useRoute } from "wouter";
 import { Plus, Trash2 } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 
 interface ServiceFormData {
   name: string;
@@ -48,8 +45,6 @@ const MOCK_SERVICE: ServiceFormData = {
 export default function ExpertServiceForm() {
   const params = useParams<{ id: string }>();
   const isEditMode = !!params?.id;
-  const [, setLocation] = useLocation();
-  const { toast } = useToast();
   const [formData, setFormData] = useState<ServiceFormData>(
     isEditMode ? MOCK_SERVICE : {
       name: "",
@@ -65,25 +60,6 @@ export default function ExpertServiceForm() {
     }
   );
   const [newIncluded, setNewIncluded] = useState("");
-
-  const createMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/provider/services", {
-      serviceName: formData.name,
-      description: formData.description,
-      price: formData.basePrice.toString(),
-      priceType: formData.priceType.toLowerCase(),
-      deliveryTimeframe: formData.duration,
-      status: formData.active ? "active" : "draft",
-      whatIncluded: formData.whatIncluded,
-    }),
-    onSuccess: () => {
-      toast({ title: "Service created", description: "Your service has been published." });
-      setLocation("/expert/services");
-    },
-    onError: (err: any) => {
-      toast({ title: "Failed to create service", description: err?.message || "Please try again.", variant: "destructive" });
-    },
-  });
 
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
@@ -119,7 +95,6 @@ export default function ExpertServiceForm() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Full Expert Service"
                 className="mt-2"
-                data-testid="service-name"
               />
             </div>
 
@@ -149,7 +124,6 @@ export default function ExpertServiceForm() {
                 placeholder="Describe what your service includes..."
                 rows={4}
                 className="mt-2"
-                data-testid="service-description"
               />
             </div>
 
@@ -163,7 +137,6 @@ export default function ExpertServiceForm() {
                   value={formData.basePrice}
                   onChange={(e) => setFormData({ ...formData, basePrice: parseInt(e.target.value) || 0 })}
                   className="mt-2"
-                  data-testid="service-price"
                 />
               </div>
               <div>
@@ -190,7 +163,6 @@ export default function ExpertServiceForm() {
                 onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                 placeholder="e.g., 7 days, 2 hours"
                 className="mt-2"
-                data-testid="service-duration"
               />
             </div>
 
@@ -259,24 +231,9 @@ export default function ExpertServiceForm() {
               <Button variant="outline" onClick={() => window.history.back()}>
                 Cancel
               </Button>
-              <Button
-                variant="outline"
-                data-testid="button-save-draft"
-                onClick={() => {
-                  setFormData({ ...formData, active: false });
-                  createMutation.mutate();
-                }}
-                disabled={createMutation.isPending}
-              >
-                Save Draft
-              </Button>
-              <Button
-                className="bg-[#FF385C] hover:bg-[#FF385C]/90"
-                data-testid="button-submit-service"
-                onClick={() => createMutation.mutate()}
-                disabled={createMutation.isPending || !formData.name.trim()}
-              >
-                {createMutation.isPending ? "Saving..." : "Publish"}
+              <Button variant="outline">Save Draft</Button>
+              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90">
+                Publish
               </Button>
             </div>
           </CardContent>

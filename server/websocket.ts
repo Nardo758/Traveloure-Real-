@@ -20,22 +20,8 @@ interface ConnectedClient {
 
 const clients = new Map<string, ConnectedClient>();
 
-// Module-level reference so broadcastRevenueEvent can reach all open sockets
-let _wss: WebSocketServer | null = null;
-
 export function setupWebSocket(server: Server) {
-  const wss = new WebSocketServer({ noServer: true });
-  _wss = wss;
-
-  server.on("upgrade", (req, socket, head) => {
-    if (req.url === "/ws") {
-      wss.handleUpgrade(req, socket, head, (ws) => {
-        wss.emit("connection", ws, req);
-      });
-    } else {
-      socket.destroy();
-    }
-  });
+  const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", (ws, req) => {
     let userId: string | null = null;
@@ -155,26 +141,4 @@ export function broadcastToUser(userId: string, message: object) {
 
 export function getConnectedUsers(): string[] {
   return Array.from(clients.keys());
-}
-
-/**
- * Broadcast a revenue event to every connected WebSocket client.
- * The admin revenue dashboard listens for `revenue_event` messages and
- * updates in real time; all other clients silently ignore the message type.
- */
-export function broadcastRevenueEvent(payload: {
-  sourceType: string;
-  sourceId: string;
-  grossAmount: number;
-  platformFee: number;
-  description?: string;
-  timestamp: string;
-}) {
-  if (!_wss) return;
-  const message = JSON.stringify({ type: "revenue_event", ...payload });
-  _wss.clients.forEach((ws) => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(message);
-    }
-  });
 }

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useRoute, Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -26,13 +25,10 @@ import {
   Globe,
   Briefcase
 } from "lucide-react";
-import { format } from "date-fns";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useToast } from "@/hooks/use-toast";
-import { ExpertAvailabilityPicker } from "@/components/expert/ExpertAvailabilityPicker";
-import { SiInstagram, SiLinkedin, SiFacebook, SiTiktok, SiYoutube } from "react-icons/si";
 
 export default function ExpertDetailPage() {
   const [, params] = useRoute("/experts/:id");
@@ -41,13 +37,6 @@ export default function ExpertDetailPage() {
   const { isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
-
-  const handleSlotSelect = (date: Date, slot: string) => {
-    setSelectedDate(date);
-    setSelectedSlot(slot);
-  };
 
   // Fetch expert details
   const { data: expert, isLoading } = useQuery<any>({
@@ -73,7 +62,7 @@ export default function ExpertDetailPage() {
 
   const handleContactExpert = () => {
     if (!isAuthenticated) {
-      openSignInModal({ returnTo: window.location.pathname + window.location.search });
+      openSignInModal();
       return;
     }
     navigate(`/chat?expertId=${expertId}`);
@@ -81,19 +70,11 @@ export default function ExpertDetailPage() {
 
   const handleScheduleConsultation = () => {
     if (!isAuthenticated) {
-      openSignInModal({ returnTo: window.location.pathname + window.location.search });
+      openSignInModal();
       return;
     }
     if (services.length > 0) {
-      const params = new URLSearchParams({
-        expertId: expertId!,
-        serviceId: services[0]?.id || "",
-      });
-      if (selectedDate && selectedSlot) {
-        params.set("date", format(selectedDate, "yyyy-MM-dd"));
-        params.set("time", selectedSlot);
-      }
-      navigate(`/cart?${params.toString()}`);
+      navigate(`/cart?expertId=${expertId}&serviceId=${services[0]?.id || ""}`);
     } else {
       toast({
         title: "No services available",
@@ -154,11 +135,8 @@ export default function ExpertDetailPage() {
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim();
   const initials = `${expert.firstName?.[0] || ""}${expert.lastName?.[0] || ""}`.toUpperCase();
-  const liveAvgRating = reviews.length > 0
-    ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
-    : 0;
-  const averageRating = liveAvgRating || (expert.averageRating ? parseFloat(expert.averageRating) : 0);
-  const totalReviews = reviews.length || expert.reviewCount || 0;
+  const averageRating = expert.averageRating ? parseFloat(expert.averageRating) : 0;
+  const totalReviews = expert.reviewCount || reviews.length || 0;
   const responseTime = expert.expertForm?.responseTime || "< 24 hours";
   const languages = expert.expertForm?.languages || ["English"];
   const specializations = expert.expertForm?.specializations || [];
@@ -166,29 +144,6 @@ export default function ExpertDetailPage() {
   const bio = expert.expertForm?.bio || "Experienced local expert ready to help plan your perfect trip.";
   const superExpert = expert.superExpert || false;
   const verified = expert.verified || true;
-
-  const socialLinks = [
-    expert.expertForm?.instagramLink && {
-      platform: "Instagram", href: expert.expertForm.instagramLink,
-      Icon: SiInstagram, color: "text-pink-500 hover:text-pink-600",
-    },
-    expert.expertForm?.linkedinLink && {
-      platform: "LinkedIn", href: expert.expertForm.linkedinLink,
-      Icon: SiLinkedin, color: "text-blue-600 hover:text-blue-700",
-    },
-    expert.expertForm?.facebookLink && {
-      platform: "Facebook", href: expert.expertForm.facebookLink,
-      Icon: SiFacebook, color: "text-blue-500 hover:text-blue-600",
-    },
-    expert.expertForm?.tiktokLink && {
-      platform: "TikTok", href: expert.expertForm.tiktokLink,
-      Icon: SiTiktok, color: "text-foreground hover:text-foreground/80",
-    },
-    expert.expertForm?.youtubeLink && {
-      platform: "YouTube", href: expert.expertForm.youtubeLink,
-      Icon: SiYoutube, color: "text-red-600 hover:text-red-700",
-    },
-  ].filter(Boolean) as { platform: string; href: string; Icon: React.ComponentType<{ className?: string }>; color: string }[];
 
   return (
     <Layout>
@@ -286,26 +241,6 @@ export default function ExpertDetailPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Social Links Row — shown in hero when expert has social profiles */}
-                {socialLinks.length > 0 && (
-                  <div className="flex items-center gap-3 mt-4" data-testid="social-links-hero">
-                    <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Follow</span>
-                    {socialLinks.map(({ platform, href, Icon, color }) => (
-                      <a
-                        key={platform}
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={platform}
-                        data-testid={`social-link-${platform.toLowerCase()}`}
-                        className={`transition-colors ${color}`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </a>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -367,27 +302,6 @@ export default function ExpertDetailPage() {
                             <p className="text-muted-foreground">{expert.expertForm.certifications}</p>
                           </div>
                         )}
-
-                        {socialLinks.length > 0 && (
-                          <div data-testid="social-links-about">
-                            <h3 className="font-semibold mb-3">Connect with {expert.firstName}</h3>
-                            <div className="flex flex-wrap gap-3">
-                              {socialLinks.map(({ platform, href, Icon, color }) => (
-                                <a
-                                  key={platform}
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  data-testid={`social-about-${platform.toLowerCase()}`}
-                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border bg-muted/40 hover:bg-muted transition-colors text-sm font-medium ${color}`}
-                                >
-                                  <Icon className="w-4 h-4" />
-                                  {platform}
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -444,78 +358,41 @@ export default function ExpertDetailPage() {
                   {/* Reviews Tab */}
                   <TabsContent value="reviews">
                     {reviews.length > 0 ? (
-                      <div className="space-y-4" data-testid="expert-reviews-list">
-                        {/* Average summary bar */}
-                        <div className="flex items-center gap-3 p-4 bg-muted/30 rounded-lg mb-2">
-                          <div className="flex items-center gap-1">
-                            {[...Array(5)].map((_, i) => (
-                              <Star
-                                key={i}
-                                className={`w-5 h-5 ${
-                                  i < Math.round(averageRating)
-                                    ? "text-amber-500 fill-amber-500"
-                                    : "text-gray-300"
-                                }`}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-lg font-semibold" data-testid="text-expert-avg-rating">
-                            {averageRating.toFixed(1)}
-                          </span>
-                          <span className="text-sm text-muted-foreground">
-                            ({totalReviews} {totalReviews === 1 ? "review" : "reviews"})
-                          </span>
-                        </div>
-
-                        {reviews.map((review: any) => {
-                          const reviewerName = review.reviewerFirstName
-                            ? `${review.reviewerFirstName} ${review.reviewerLastName || ""}`.trim()
-                            : review.userName || "Anonymous";
-                          const initial = reviewerName[0]?.toUpperCase() || "U";
-                          const reviewText = review.review || review.comment || "";
-                          return (
-                            <Card key={review.id} data-testid={`card-expert-review-${review.id}`}>
-                              <CardContent className="p-6">
-                                <div className="flex items-start gap-4">
-                                  <Avatar>
-                                    {review.reviewerAvatar ? (
-                                      <img src={review.reviewerAvatar} alt={reviewerName} className="w-full h-full object-cover rounded-full" />
-                                    ) : (
-                                      <AvatarFallback>{initial}</AvatarFallback>
-                                    )}
-                                  </Avatar>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                      <span className="font-semibold text-sm" data-testid={`text-reviewer-name-${review.id}`}>
-                                        {reviewerName}
-                                      </span>
-                                      <div className="flex items-center gap-0.5">
-                                        {[...Array(5)].map((_, i) => (
-                                          <Star
-                                            key={i}
-                                            className={`w-4 h-4 ${
-                                              i < review.rating
-                                                ? "text-amber-500 fill-amber-500"
-                                                : "text-gray-300"
-                                            }`}
-                                          />
-                                        ))}
-                                      </div>
+                      <div className="space-y-4">
+                        {reviews.map((review: any) => (
+                          <Card key={review.id}>
+                            <CardContent className="p-6">
+                              <div className="flex items-start gap-4">
+                                <Avatar>
+                                  <AvatarFallback>
+                                    {review.userName?.[0]?.toUpperCase() || "U"}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="font-semibold">{review.userName || "Anonymous"}</span>
+                                    <div className="flex items-center gap-1">
+                                      {[...Array(5)].map((_, i) => (
+                                        <Star
+                                          key={i}
+                                          className={`w-4 h-4 ${
+                                            i < review.rating
+                                              ? "text-amber-500 fill-amber-500"
+                                              : "text-gray-300"
+                                          }`}
+                                        />
+                                      ))}
                                     </div>
-                                    {reviewText && (
-                                      <p className="text-muted-foreground text-sm mb-2" data-testid={`text-expert-review-${review.id}`}>
-                                        {reviewText}
-                                      </p>
-                                    )}
-                                    <span className="text-xs text-muted-foreground">
-                                      {new Date(review.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                    </span>
                                   </div>
+                                  <p className="text-muted-foreground text-sm mb-2">{review.comment}</p>
+                                  <span className="text-xs text-muted-foreground">
+                                    {new Date(review.createdAt).toLocaleDateString()}
+                                  </span>
                                 </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
                       </div>
                     ) : (
                       <Card>
@@ -531,13 +408,12 @@ export default function ExpertDetailPage() {
 
               {/* Right Column - Booking Card */}
               <div>
-                <Card className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+                <Card className="sticky top-4">
                   <CardHeader>
                     <CardTitle>Book with {expert.firstName}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Price */}
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Starting from</span>
                         <span className="text-2xl font-bold">
@@ -551,38 +427,17 @@ export default function ExpertDetailPage() {
                       )}
                     </div>
 
-                    {/* Availability slot picker */}
-                    {expertId && (
-                      <div className="border-t pt-4">
-                        <ExpertAvailabilityPicker
-                          expertId={expertId}
-                          onSlotSelect={handleSlotSelect}
-                        />
-                      </div>
-                    )}
+                    <Button className="w-full" size="lg" onClick={handleContactExpert} data-testid="button-contact-expert">
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Contact Expert
+                    </Button>
 
-                    {/* Action Buttons */}
-                    <div className="space-y-2 pt-1">
-                      <Button className="w-full" size="lg" onClick={handleContactExpert} data-testid="button-contact-expert">
-                        <MessageCircle className="w-4 h-4 mr-2" />
-                        Contact Expert
-                      </Button>
+                    <Button variant="outline" className="w-full" size="lg" onClick={handleScheduleConsultation} data-testid="button-schedule-consultation">
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Schedule Consultation
+                    </Button>
 
-                      <Button
-                        variant={selectedSlot ? "default" : "outline"}
-                        className={`w-full ${selectedSlot ? "bg-primary hover:bg-primary/90" : ""}`}
-                        size="lg"
-                        onClick={handleScheduleConsultation}
-                        data-testid="button-schedule-consultation"
-                      >
-                        <Calendar className="w-4 h-4 mr-2" />
-                        {selectedSlot
-                          ? `Book ${selectedDate ? format(selectedDate, "MMM d") : ""} at ${selectedSlot}`
-                          : "Schedule Consultation"}
-                      </Button>
-                    </div>
-
-                    <div className="pt-2 border-t space-y-2 text-sm">
+                    <div className="pt-4 border-t space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CheckCircle className="w-4 h-4 text-green-600" />
                         <span>Free cancellation up to 24h</span>

@@ -134,7 +134,7 @@ export default function PricingPage() {
     if (user) {
       setLocation("/credits");
     } else {
-      openSignInModal({ returnTo: "/credits" });
+      openSignInModal();
     }
   };
   

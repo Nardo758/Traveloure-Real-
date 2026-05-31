@@ -110,7 +110,7 @@ export default function ExpertDashboard() {
 
   return (
     <ExpertLayout>
-      <div className="p-6 space-y-6" data-testid="expert-dashboard">
+      <div className="p-6 space-y-6">
         {/* Welcome Section */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900" data-testid="text-expert-welcome">

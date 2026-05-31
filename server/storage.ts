@@ -1,4 +1,4 @@
-import { db, pool } from "./db";
+import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
@@ -84,10 +84,6 @@ import {
   itineraryChanges, activityComments,
   type ItineraryChange, type InsertItineraryChange,
   type ActivityComment, type InsertActivityComment,
-  instagramCityCache,
-  type InstagramCityCache,
-  wishlists,
-  type Wishlist,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -205,23 +201,10 @@ export interface IStorage {
 
   // Service Reviews
   getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
-  getAllServiceReviews(): Promise<ServiceReview[]>;
   getServiceReview(id: string): Promise<ServiceReview | undefined>;
   getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]>;
-  getReviewsByTravelerId(travelerId: string): Promise<(ServiceReview & { serviceName: string | null })[]>;
-  getReviewsByProviderId(providerId: string): Promise<(ServiceReview & { serviceName: string | null; travelerFirstName: string | null; travelerLastName: string | null })[]>;
   createServiceReview(review: InsertServiceReview): Promise<ServiceReview>;
-  updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined>;
-  deleteServiceReview(id: string): Promise<void>;
   addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined>;
-  hideServiceReview(id: string, reason: string, adminId: string): Promise<ServiceReview | undefined>;
-  unhideServiceReview(id: string): Promise<ServiceReview | undefined>;
-
-  // Wishlist
-  getWishlist(userId: string): Promise<any[]>;
-  addToWishlist(userId: string, serviceId: string): Promise<any>;
-  removeFromWishlist(userId: string, serviceId: string): Promise<void>;
-  getWishlistServiceIds(userId: string): Promise<string[]>;
 
   // Unified Discovery
   unifiedSearch(filters: {
@@ -504,11 +487,6 @@ export interface IStorage {
   getActivityCommentCounts(tripId: string): Promise<Record<string, number>>;
   createActivityComment(comment: InsertActivityComment): Promise<ActivityComment>;
   deleteActivityComment(id: string): Promise<void>;
-
-  // Instagram City Cache (Travel Pulse Live tab — 24h TTL, persisted for LiveScore enrichment)
-  getInstagramCache(cityKey: string): Promise<InstagramCityCache | undefined>;
-  setInstagramCache(cityKey: string, posts: unknown[], volume: number, expiresAt: Date): Promise<void>;
-  getInstagramVolume(cityKey: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -741,60 +719,8 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(providerServices).where(eq(providerServices.userId, userId));
   }
 
-  async getAllProviderServices(): Promise<(ProviderService & { category: { name: string; slug: string | null } | null; provider: { firstName: string; lastName: string; businessName: string } })[]> {
-    const rows = await db
-      .select({
-        id: providerServices.id,
-        userId: providerServices.userId,
-        trackingNumber: providerServices.trackingNumber,
-        serviceName: providerServices.serviceName,
-        shortDescription: providerServices.shortDescription,
-        description: providerServices.description,
-        serviceType: providerServices.serviceType,
-        categoryId: providerServices.categoryId,
-        price: providerServices.price,
-        priceType: providerServices.priceType,
-        priceBasedOn: providerServices.priceBasedOn,
-        deliveryMethod: providerServices.deliveryMethod,
-        deliveryTimeframe: providerServices.deliveryTimeframe,
-        revisionsIncluded: providerServices.revisionsIncluded,
-        maxConcurrentBookings: providerServices.maxConcurrentBookings,
-        leadTimeHours: providerServices.leadTimeHours,
-        location: providerServices.location,
-        availability: providerServices.availability,
-        whatIncluded: providerServices.whatIncluded,
-        requirements: providerServices.requirements,
-        faqs: providerServices.faqs,
-        serviceImage: providerServices.serviceImage,
-        serviceFile: providerServices.serviceFile,
-        status: providerServices.status,
-        formStatus: providerServices.formStatus,
-        isFeatured: providerServices.isFeatured,
-        bookingsCount: providerServices.bookingsCount,
-        totalRevenue: providerServices.totalRevenue,
-        averageRating: providerServices.averageRating,
-        reviewCount: providerServices.reviewCount,
-        createdAt: providerServices.createdAt,
-        updatedAt: providerServices.updatedAt,
-        categoryName: serviceCategories.name,
-        categorySlug: serviceCategories.slug,
-        providerFirstName: users.firstName,
-        providerLastName: users.lastName,
-      })
-      .from(providerServices)
-      .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
-      .leftJoin(users, eq(providerServices.userId, users.id))
-      .where(eq(providerServices.status, 'active'));
-
-    return rows.map(({ categoryName, categorySlug, providerFirstName, providerLastName, ...rest }) => ({
-      ...rest,
-      category: categoryName ? { name: categoryName, slug: categorySlug } : null,
-      provider: {
-        firstName: providerFirstName || '',
-        lastName: providerLastName || '',
-        businessName: '',
-      },
-    }));
+  async getAllProviderServices(): Promise<ProviderService[]> {
+    return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
@@ -1168,12 +1094,7 @@ export class DatabaseStorage implements IStorage {
   // Service Reviews
   async getServiceReviews(serviceId: string): Promise<ServiceReview[]> {
     return await db.select().from(serviceReviews)
-      .where(and(eq(serviceReviews.serviceId, serviceId), eq(serviceReviews.isHidden, false)))
-      .orderBy(desc(serviceReviews.createdAt));
-  }
-
-  async getAllServiceReviews(): Promise<ServiceReview[]> {
-    return await db.select().from(serviceReviews)
+      .where(eq(serviceReviews.serviceId, serviceId))
       .orderBy(desc(serviceReviews.createdAt));
   }
 
@@ -1185,37 +1106,6 @@ export class DatabaseStorage implements IStorage {
   async getReviewsByBookingId(bookingId: string): Promise<ServiceReview[]> {
     return await db.select().from(serviceReviews)
       .where(eq(serviceReviews.bookingId, bookingId));
-  }
-
-  async getReviewsByTravelerId(travelerId: string): Promise<(ServiceReview & { serviceName: string | null })[]> {
-    const results = await db
-      .select({ review: serviceReviews, serviceName: providerServices.serviceName })
-      .from(serviceReviews)
-      .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
-      .where(eq(serviceReviews.travelerId, travelerId))
-      .orderBy(desc(serviceReviews.createdAt));
-    return results.map(r => ({ ...r.review, serviceName: r.serviceName ?? null }));
-  }
-
-  async getReviewsByProviderId(providerId: string): Promise<(ServiceReview & { serviceName: string | null; travelerFirstName: string | null; travelerLastName: string | null })[]> {
-    const results = await db
-      .select({
-        review: serviceReviews,
-        serviceName: providerServices.serviceName,
-        travelerFirstName: users.firstName,
-        travelerLastName: users.lastName,
-      })
-      .from(serviceReviews)
-      .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
-      .leftJoin(users, eq(serviceReviews.travelerId, users.id))
-      .where(eq(serviceReviews.providerId, providerId))
-      .orderBy(desc(serviceReviews.createdAt));
-    return results.map(r => ({
-      ...r.review,
-      serviceName: r.serviceName ?? null,
-      travelerFirstName: r.travelerFirstName ?? null,
-      travelerLastName: r.travelerLastName ?? null,
-    }));
   }
 
   async createServiceReview(review: InsertServiceReview): Promise<ServiceReview> {
@@ -1241,72 +1131,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(providerServices.id, review.serviceId));
     
     return newReview;
-  }
-
-  async updateServiceReview(id: string, data: { rating: number; reviewText?: string | null }): Promise<ServiceReview | undefined> {
-    const [updated] = await db.update(serviceReviews)
-      .set({ rating: data.rating, reviewText: data.reviewText ?? null })
-      .where(eq(serviceReviews.id, id))
-      .returning();
-    if (updated) {
-      // Recalculate service average rating
-      const allReviews = await this.getServiceReviews(updated.serviceId);
-      const avgRating = allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length;
-      await db.update(providerServices)
-        .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: allReviews.length, updatedAt: new Date() })
-        .where(eq(providerServices.id, updated.serviceId));
-    }
-    return updated;
-  }
-
-  async deleteServiceReview(id: string): Promise<void> {
-    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
-    if (!review) return;
-    await db.delete(serviceReviews).where(eq(serviceReviews.id, id));
-    // Recalculate service average rating + count
-    const remaining = await this.getServiceReviews(review.serviceId);
-    const avgRating = remaining.length > 0
-      ? remaining.reduce((sum, r) => sum + r.rating, 0) / remaining.length
-      : 0;
-    await db.update(providerServices)
-      .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: remaining.length, updatedAt: new Date() })
-      .where(eq(providerServices.id, review.serviceId));
-  }
-
-  async hideServiceReview(id: string, reason: string, adminId: string): Promise<ServiceReview | undefined> {
-    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
-    if (!review) return undefined;
-    const [updated] = await db.update(serviceReviews)
-      .set({ isHidden: true, hiddenReason: reason, hiddenBy: adminId, hiddenAt: new Date() })
-      .where(eq(serviceReviews.id, id))
-      .returning();
-    // Recalculate aggregate excluding this review
-    const visible = await this.getServiceReviews(review.serviceId);
-    const avgRating = visible.length > 0
-      ? visible.reduce((sum, r) => sum + r.rating, 0) / visible.length
-      : 0;
-    await db.update(providerServices)
-      .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: visible.length, updatedAt: new Date() })
-      .where(eq(providerServices.id, review.serviceId));
-    return updated;
-  }
-
-  async unhideServiceReview(id: string): Promise<ServiceReview | undefined> {
-    const [review] = await db.select().from(serviceReviews).where(eq(serviceReviews.id, id));
-    if (!review) return undefined;
-    const [updated] = await db.update(serviceReviews)
-      .set({ isHidden: false, hiddenReason: null, hiddenBy: null, hiddenAt: null })
-      .where(eq(serviceReviews.id, id))
-      .returning();
-    // Recalculate aggregate including this review again
-    const visible = await this.getServiceReviews(review.serviceId);
-    const avgRating = visible.length > 0
-      ? visible.reduce((sum, r) => sum + r.rating, 0) / visible.length
-      : 0;
-    await db.update(providerServices)
-      .set({ averageRating: String(avgRating.toFixed(2)), reviewCount: visible.length, updatedAt: new Date() })
-      .where(eq(providerServices.id, review.serviceId));
-    return updated;
   }
 
   async addReviewResponse(id: string, responseText: string): Promise<ServiceReview | undefined> {
@@ -2719,19 +2543,49 @@ export class DatabaseStorage implements IStorage {
 
   // Admin Payouts
   async getAllExpertPayouts(status?: string): Promise<(ExpertPayout & { requesterName?: string; requesterEmail?: string })[]> {
-    const query = status
-      ? `SELECT ep.id, ep.expert_id as "expertId", ep.amount, ep.currency, ep.payout_method as "payoutMethod", ep.status, ep.processed_at as "processedAt", ep.failure_reason as "failureReason", ep.transaction_id as "transactionId", ep.requested_at as "requestedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM expert_payouts ep LEFT JOIN users u ON ep.expert_id = u.id WHERE ep.status = $1 ORDER BY ep.requested_at DESC`
-      : `SELECT ep.id, ep.expert_id as "expertId", ep.amount, ep.currency, ep.payout_method as "payoutMethod", ep.status, ep.processed_at as "processedAt", ep.failure_reason as "failureReason", ep.transaction_id as "transactionId", ep.requested_at as "requestedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM expert_payouts ep LEFT JOIN users u ON ep.expert_id = u.id ORDER BY ep.requested_at DESC`;
-    const result = status ? await pool.query(query, [status]) : await pool.query(query);
-    return result.rows;
+    const conditions = status ? [eq(expertPayouts.status, status)] : [];
+    const payouts = await db.select({
+      id: expertPayouts.id,
+      expertId: expertPayouts.expertId,
+      amount: expertPayouts.amount,
+      currency: expertPayouts.currency,
+      payoutMethod: expertPayouts.payoutMethod,
+      status: expertPayouts.status,
+      processedAt: expertPayouts.processedAt,
+      failureReason: expertPayouts.failureReason,
+      transactionId: expertPayouts.transactionId,
+      metadata: expertPayouts.metadata,
+      requestedAt: expertPayouts.requestedAt,
+      requesterName: users.name,
+      requesterEmail: users.email,
+    }).from(expertPayouts)
+      .leftJoin(users, eq(expertPayouts.expertId, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(expertPayouts.requestedAt));
+    return payouts;
   }
 
   async getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]> {
-    const query = status
-      ? `SELECT pp.id, pp.provider_id as "providerId", pp.amount, pp.currency, pp.payout_method as "payoutMethod", pp.status, pp.payout_reference as "payoutReference", pp.notes, pp.requested_at as "requestedAt", pp.processed_at as "processedAt", pp.completed_at as "completedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM provider_payouts pp LEFT JOIN users u ON pp.provider_id = u.id WHERE pp.status = $1 ORDER BY pp.requested_at DESC`
-      : `SELECT pp.id, pp.provider_id as "providerId", pp.amount, pp.currency, pp.payout_method as "payoutMethod", pp.status, pp.payout_reference as "payoutReference", pp.notes, pp.requested_at as "requestedAt", pp.processed_at as "processedAt", pp.completed_at as "completedAt", u.first_name as "requesterName", u.email as "requesterEmail" FROM provider_payouts pp LEFT JOIN users u ON pp.provider_id = u.id ORDER BY pp.requested_at DESC`;
-    const result = status ? await pool.query(query, [status]) : await pool.query(query);
-    return result.rows;
+    const conditions = status ? [eq(providerPayouts.status, status)] : [];
+    const payouts = await db.select({
+      id: providerPayouts.id,
+      providerId: providerPayouts.providerId,
+      amount: providerPayouts.amount,
+      currency: providerPayouts.currency,
+      payoutMethod: providerPayouts.payoutMethod,
+      status: providerPayouts.status,
+      payoutReference: providerPayouts.payoutReference,
+      notes: providerPayouts.notes,
+      requestedAt: providerPayouts.requestedAt,
+      processedAt: providerPayouts.processedAt,
+      completedAt: providerPayouts.completedAt,
+      requesterName: users.name,
+      requesterEmail: users.email,
+    }).from(providerPayouts)
+      .leftJoin(users, eq(providerPayouts.providerId, users.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(providerPayouts.requestedAt));
+    return payouts;
   }
 
   async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout> {
@@ -2766,13 +2620,9 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db.select({
       stripeAccountId: users.stripeAccountId,
       stripeAccountStatus: users.stripeAccountStatus,
+      canReceivePayments: users.canReceivePayments,
     }).from(users).where(eq(users.id, userId));
-    if (!user) return { stripeAccountId: null, stripeAccountStatus: null, canReceivePayments: null };
-    return {
-      stripeAccountId: user.stripeAccountId ?? null,
-      stripeAccountStatus: user.stripeAccountStatus ?? null,
-      canReceivePayments: user.stripeAccountStatus === 'active',
-    };
+    return user || { stripeAccountId: null, stripeAccountStatus: null, canReceivePayments: null };
   }
 
   // === Platform Revenue ===
@@ -3442,83 +3292,6 @@ export class DatabaseStorage implements IStorage {
 
   async deleteActivityComment(id: string): Promise<void> {
     await db.delete(activityComments).where(eq(activityComments.id, id));
-  }
-
-  async getInstagramCache(cityKey: string): Promise<InstagramCityCache | undefined> {
-    const rows = await db
-      .select()
-      .from(instagramCityCache)
-      .where(eq(instagramCityCache.cityKey, cityKey))
-      .limit(1);
-    return rows[0];
-  }
-
-  async setInstagramCache(cityKey: string, posts: unknown[], volume: number, expiresAt: Date): Promise<void> {
-    await db
-      .insert(instagramCityCache)
-      .values({ cityKey, posts, volume, expiresAt, fetchedAt: new Date() })
-      .onConflictDoUpdate({
-        target: instagramCityCache.cityKey,
-        set: { posts, volume, expiresAt, fetchedAt: new Date() },
-      });
-  }
-
-  async getInstagramVolume(cityKey: string): Promise<number> {
-    const rows = await db
-      .select({ volume: instagramCityCache.volume })
-      .from(instagramCityCache)
-      .where(eq(instagramCityCache.cityKey, cityKey))
-      .limit(1);
-    return rows[0]?.volume ?? 0;
-  }
-
-  // ── Wishlist ────────────────────────────────────────────────────────────
-  async getWishlist(userId: string): Promise<any[]> {
-    const rows = await db
-      .select({
-        id: wishlists.id,
-        userId: wishlists.userId,
-        serviceId: wishlists.serviceId,
-        createdAt: wishlists.createdAt,
-        serviceName: providerServices.serviceName,
-        shortDescription: providerServices.shortDescription,
-        price: providerServices.price,
-        location: providerServices.location,
-        averageRating: providerServices.averageRating,
-        reviewCount: providerServices.reviewCount,
-        categoryId: providerServices.categoryId,
-        deliveryMethod: providerServices.deliveryMethod,
-      })
-      .from(wishlists)
-      .leftJoin(providerServices, eq(wishlists.serviceId, providerServices.id))
-      .where(eq(wishlists.userId, userId))
-      .orderBy(desc(wishlists.createdAt));
-    return rows;
-  }
-
-  async addToWishlist(userId: string, serviceId: string): Promise<Wishlist> {
-    const existing = await db
-      .select()
-      .from(wishlists)
-      .where(and(eq(wishlists.userId, userId), eq(wishlists.serviceId, serviceId)))
-      .limit(1);
-    if (existing.length > 0) return existing[0];
-    const [row] = await db.insert(wishlists).values({ userId, serviceId }).returning();
-    return row;
-  }
-
-  async removeFromWishlist(userId: string, serviceId: string): Promise<void> {
-    await db
-      .delete(wishlists)
-      .where(and(eq(wishlists.userId, userId), eq(wishlists.serviceId, serviceId)));
-  }
-
-  async getWishlistServiceIds(userId: string): Promise<string[]> {
-    const rows = await db
-      .select({ serviceId: wishlists.serviceId })
-      .from(wishlists)
-      .where(eq(wishlists.userId, userId));
-    return rows.map((r) => r.serviceId);
   }
 }
 

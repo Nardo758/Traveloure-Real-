@@ -106,8 +106,6 @@ class StripePaymentService {
             await this.handleExpertServicePayment(session);
           } else if (session.metadata?.type === 'transport_booking') {
             await handleStripePaymentSuccess(session.id);
-          } else if (session.metadata?.type === 'credit_purchase') {
-            await this.handleCreditPurchase(session);
           }
           break;
 
@@ -133,40 +131,33 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update platform bookings
-    if (bookingIds) {
-      const bookingIdList = bookingIds.split(',').filter(id => id.trim());
-      for (const bookingId of bookingIdList) {
-        if (isDeposit === 'true') {
-          await db.execute(sql`
-            UPDATE bookings SET
-              status = 'confirmed',
-              payment_status = 'succeeded',
-              confirmed_at = NOW(),
-              deposit_paid = true
-            WHERE id = ${bookingId.trim()}
-          `);
-        } else {
-          await db.execute(sql`
-            UPDATE bookings SET
-              status = 'confirmed',
-              payment_status = 'succeeded',
-              confirmed_at = NOW(),
-              deposit_paid = true,
-              balance_paid = true
-            WHERE id = ${bookingId.trim()}
-          `);
-        }
+    // Update bookings
+    const bookingIdList = bookingIds.split(',');
+    for (const bookingId of bookingIdList) {
+      if (isDeposit === 'true') {
+        await db.execute(sql`
+          UPDATE bookings SET
+            status = 'confirmed',
+            payment_status = 'succeeded',
+            confirmed_at = NOW(),
+            deposit_paid = true
+          WHERE id = ${bookingId}
+        `);
+      } else {
+        await db.execute(sql`
+          UPDATE bookings SET
+            status = 'confirmed',
+            payment_status = 'succeeded',
+            confirmed_at = NOW(),
+            deposit_paid = true,
+            balance_paid = true
+          WHERE id = ${bookingId}
+        `);
       }
-    }
 
-    // Confirm any activity bookings linked to this payment intent
-    await db.execute(sql`
-      UPDATE activity_bookings
-      SET status = 'confirmed'
-      WHERE stripe_payment_intent_id = ${paymentIntent.id}
-        AND status IN ('pending', 'staged')
-    `);
+      // TODO: Notify user and provider
+      // TODO: Update provider earnings
+    }
   }
 
   /**
@@ -180,25 +171,18 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update platform bookings
-    if (bookingIds) {
-      const bookingIdList = bookingIds.split(',').filter(id => id.trim());
-      for (const bookingId of bookingIdList) {
-        await db.execute(sql`
-          UPDATE bookings SET
-            status = 'payment_failed',
-            payment_status = 'failed'
-          WHERE id = ${bookingId.trim()}
-        `);
-      }
+    // Update bookings
+    const bookingIdList = bookingIds.split(',');
+    for (const bookingId of bookingIdList) {
+      await db.execute(sql`
+        UPDATE bookings SET
+          status = 'payment_failed',
+          payment_status = 'failed'
+        WHERE id = ${bookingId}
+      `);
     }
 
-    // Mark any linked activity bookings as failed
-    await db.execute(sql`
-      UPDATE activity_bookings SET status = 'failed'
-      WHERE stripe_payment_intent_id = ${paymentIntent.id}
-        AND status IN ('pending', 'staged')
-    `);
+    // TODO: Notify user of payment failure
   }
 
   /**
@@ -212,25 +196,16 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
-    // Update platform bookings
-    if (bookingIds) {
-      const bookingIdList = bookingIds.split(',').filter(id => id.trim());
-      for (const bookingId of bookingIdList) {
-        await db.execute(sql`
-          UPDATE bookings SET
-            status = 'canceled',
-            payment_status = 'canceled'
-          WHERE id = ${bookingId.trim()}
-        `);
-      }
+    // Update bookings
+    const bookingIdList = bookingIds.split(',');
+    for (const bookingId of bookingIdList) {
+      await db.execute(sql`
+        UPDATE bookings SET
+          status = 'canceled',
+          payment_status = 'canceled'
+        WHERE id = ${bookingId}
+      `);
     }
-
-    // Mark any linked activity bookings as cancelled
-    await db.execute(sql`
-      UPDATE activity_bookings SET status = 'cancelled'
-      WHERE stripe_payment_intent_id = ${paymentIntent.id}
-        AND status IN ('pending', 'staged')
-    `);
   }
 
   /**
@@ -438,46 +413,6 @@ class StripePaymentService {
     } catch (error: any) {
       console.error('Stripe checkout session error:', error);
       throw new Error(`Checkout session creation failed: ${error.message}`);
-    }
-  }
-
-  /**
-   * Handle credit package purchase (called from webhook checkout.session.completed)
-   * Adds credits to user wallet and records platform revenue.
-   */
-  private async handleCreditPurchase(session: Stripe.Checkout.Session) {
-    try {
-      const { userId, credits, packageId } = session.metadata || {};
-      if (!userId || !credits) {
-        console.error('[Revenue] Credit purchase webhook missing userId/credits metadata');
-        return;
-      }
-
-      const creditAmount = parseInt(credits, 10);
-      if (isNaN(creditAmount) || creditAmount <= 0) return;
-
-      const gross = (session.amount_total || 0) / 100;
-
-      // Add credits to the user's wallet
-      const { storage } = await import('../storage');
-      await storage.addCredits(
-        userId,
-        creditAmount,
-        `Credit package purchase – ${creditAmount} credits (pkg ${packageId || '?'})`,
-      );
-
-      console.log(`[Credits] Added ${creditAmount} credits to user ${userId}`);
-
-      // Record platform revenue
-      const { revenueTrackingService } = await import('./revenue-tracking.service');
-      await revenueTrackingService.recordRevenueEvent({
-        sourceType: 'subscription',
-        sourceId: session.id,
-        grossAmount: gross,
-        description: `Credit package – ${creditAmount} credits purchased`,
-      });
-    } catch (error: any) {
-      console.error('[Revenue] Credit purchase webhook handling failed:', error);
     }
   }
 

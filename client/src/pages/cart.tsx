@@ -226,7 +226,6 @@ export default function CartPage() {
     amount: number;
   } | null>(null);
   const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
-  const [checkoutActivityBookingIds, setCheckoutActivityBookingIds] = useState<string[]>([]);
 
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart", experienceSlug],
@@ -239,7 +238,17 @@ export default function CartPage() {
     enabled: !!user,
   });
 
-  // No-op: external-only carts can now proceed to payment via Stripe
+  // Redirect payment step to cart if no platform items exist (external-only carts cannot checkout)
+  // But skip this check if we already have a payment intent (post-checkout state)
+  useEffect(() => {
+    if (flowStep === "payment" && !isLoading && (cart?.items?.length || 0) === 0 && !checkoutPaymentIntent) {
+      setFlowStep("cart");
+      toast({
+        title: "External bookings only",
+        description: "Complete external bookings on their provider websites. Platform checkout requires at least one platform service."
+      });
+    }
+  }, [flowStep, cart?.items?.length, isLoading, toast, checkoutPaymentIntent]);
 
   const updateItemMutation = useMutation({
     mutationFn: async ({ id, quantity }: { id: string; quantity: number }) => {
@@ -268,42 +277,18 @@ export default function CartPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      if ((cart?.items?.length || 0) === 0 && externalItems.length === 0) {
-        throw new Error("Cart is empty");
+      if ((cart?.items?.length || 0) === 0) {
+        throw new Error("No platform items to checkout");
       }
-
-      // Stage external items server-side to capture validated prices
-      let stagedActivityIds: string[] = [];
-      if (externalItems.length > 0) {
-        const stageRes = await fetch("/api/bookings/activity/stage-cart", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ externalItems }),
-        });
-        if (!stageRes.ok) {
-          const err = await stageRes.json().catch(() => ({}));
-          throw new Error(err.error || "Failed to prepare external items for checkout");
-        }
-        const stageData = await stageRes.json();
-        stagedActivityIds = stageData.activityBookingIds || [];
-      }
-
-      const res = await apiRequest("POST", "/api/checkout", {
-        activityBookingIds: stagedActivityIds.length > 0 ? stagedActivityIds : undefined,
-      });
+      const res = await apiRequest("POST", "/api/checkout", {});
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/my-activity-bookings"] });
       if (data.paymentIntent) {
         setCheckoutPaymentIntent(data.paymentIntent);
-        const platformIds = data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [];
-        const activityIds = data.activityBookingIds || [];
-        setCheckoutActivityBookingIds(activityIds);
-        setCheckoutBookingIds([...platformIds, ...activityIds]);
+        setCheckoutBookingIds(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []);
         setFlowStep("payment");
       } else {
         toast({ title: "Booking created!", description: "Your services have been booked." });
@@ -311,7 +296,11 @@ export default function CartPage() {
       }
     },
     onError: (error: any) => {
-      toast({ variant: "destructive", title: "Checkout failed", description: error?.message });
+      if (error?.message === "No platform items to checkout") {
+        toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
+      } else {
+        toast({ variant: "destructive", title: "Checkout failed" });
+      }
     },
   });
 
@@ -330,9 +319,8 @@ export default function CartPage() {
   const externalSubtotal = externalItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const platformSubtotal = parseFloat(cart?.subtotal || "0");
   const combinedSubtotal = platformSubtotal + externalSubtotal;
-  // Fee is computed on the combined subtotal (matching server-side /api/checkout logic)
-  const combinedFee = combinedSubtotal * 0.20;
-  const combinedTotal = combinedSubtotal + combinedFee;
+  const platformFee = parseFloat(cart?.platformFee || "0");
+  const combinedTotal = combinedSubtotal + platformFee;
   const totalItemCount = (cart?.itemCount || 0) + externalItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const [creatingComparison, setCreatingComparison] = useState(false);
@@ -575,7 +563,7 @@ export default function CartPage() {
           <ShoppingCart className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
           <h1 className="text-2xl font-bold mb-2">Your Cart</h1>
           <p className="text-muted-foreground mb-6">Please sign in to view your cart</p>
-          <Button onClick={() => openSignInModal({ returnTo: "/cart" })} data-testid="button-sign-in">Sign In</Button>
+          <Button onClick={() => openSignInModal()} data-testid="button-sign-in">Sign In</Button>
         </div>
       </DashboardLayout>
     );
@@ -838,7 +826,7 @@ export default function CartPage() {
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span data-testid="text-platform-fee">${combinedFee.toFixed(2)}</span>
+                        <span data-testid="text-platform-fee">${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
@@ -872,7 +860,7 @@ export default function CartPage() {
                           {creatingComparison ? "Creating..." : "Generate Itinerary"}
                         </Button>
                       </div>
-                      {((cart?.items?.length || 0) > 0 || externalItems.length > 0) && (
+                      {(cart?.items?.length || 0) > 0 && (
                         <>
                           <Separator />
                           <Button
@@ -1007,7 +995,7 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>${combinedFee.toFixed(2)}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
@@ -1026,7 +1014,7 @@ export default function CartPage() {
                           </div>
                         </div>
                       )}
-                      {((cart?.items?.length || 0) > 0 || externalItems.length > 0) && (
+                      {(cart?.items?.length || 0) > 0 ? (
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
@@ -1036,6 +1024,10 @@ export default function CartPage() {
                           <CreditCard className="w-4 h-4 mr-2" />
                           Proceed to Payment
                         </Button>
+                      ) : (
+                        <div className="w-full text-center text-muted-foreground text-sm">
+                          External bookings must be completed on provider websites
+                        </div>
                       )}
                       {optimizationResult?.warnings && optimizationResult.warnings.length > 0 && (
                         <div className="w-full p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -1066,26 +1058,8 @@ export default function CartPage() {
                         <StripeCheckout
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
-                          onSuccess={async (paymentIntentId) => {
-                            // Confirm activity bookings client-side (webhook also handles this)
-                            if (checkoutActivityBookingIds.length > 0) {
-                              await Promise.allSettled(
-                                checkoutActivityBookingIds.map(id =>
-                                  fetch("/api/bookings/activity/confirm", {
-                                    method: "POST",
-                                    credentials: "include",
-                                    headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ bookingId: id, paymentIntentId }),
-                                  })
-                                )
-                              );
-                            }
+                          onSuccess={(paymentIntentId) => {
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
-                            queryClient.invalidateQueries({ queryKey: ["/api/my-activity-bookings"] });
-                            // Clear external cart after payment
-                            if (experienceSlug) {
-                              sessionStorage.removeItem(`externalCart_${experienceSlug}`);
-                            }
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
                             setLocation("/bookings");
                           }}
@@ -1168,7 +1142,7 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform Fee (20%)</span>
-                        <span>${combinedFee.toFixed(2)}</span>
+                        <span>${platformFee.toFixed(2)}</span>
                       </div>
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
@@ -1187,7 +1161,7 @@ export default function CartPage() {
                           </div>
                         </div>
                       )}
-                      {!checkoutPaymentIntent && ((cart?.items?.length || 0) > 0 || externalItems.length > 0) && (
+                      {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
                         <Button
                           className="w-full bg-[#FF385C] hover:bg-[#E23350]"
                           size="lg"
@@ -1207,7 +1181,11 @@ export default function CartPage() {
                             </>
                           )}
                         </Button>
-                      )}
+                      ) : !checkoutPaymentIntent ? (
+                        <div className="w-full text-center text-muted-foreground text-sm">
+                          External bookings must be completed on provider websites
+                        </div>
+                      ) : null}
                     </CardFooter>
                   </Card>
                 </div>

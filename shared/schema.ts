@@ -288,7 +288,7 @@ export const expertTypeEnum = ["travel_expert", "local_expert", "event_planner",
 
 export const localExpertForms = pgTable("local_expert_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   // Expert Type (travel_expert, local_expert, event_planner, executive_assistant)
   expertType: varchar("expert_type", { length: 30 }).default("travel_expert"),
   // Basic Info
@@ -366,7 +366,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
 
 export const serviceProviderForms = pgTable("service_provider_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   businessName: text("business_name").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull(),
@@ -575,10 +575,6 @@ export const serviceReviews = pgTable("service_reviews", {
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
   isVerified: boolean("is_verified").default(false),
-  isHidden: boolean("is_hidden").default(false),
-  hiddenReason: text("hidden_reason"),
-  hiddenBy: varchar("hidden_by"),
-  hiddenAt: timestamp("hidden_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -4455,8 +4451,6 @@ export const transportLegs = pgTable("transport_legs", {
   linkedProductUrl: text("linked_product_url"),
   calculatedAt: timestamp("calculated_at").defaultNow(),
   destinationProfile: text("destination_profile"),
-  bookingTiming: text("booking_timing").$type<"in_advance" | "real_time">(),
-  providerSource: text("provider_source").$type<"traveloure" | "external">(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4985,7 +4979,6 @@ export const expertRequests = pgTable("expert_requests", {
   destinationCity: text("destination_city"),
   requestType: text("request_type"),
   expertFee: decimal("expert_fee"),
-  paymentIntentId: text("payment_intent_id"),
   status: text("status").default("pending"),
   assignedExpertId: text("assigned_expert_id"),
   queuePosition: integer("queue_position"),
@@ -5154,62 +5147,3 @@ export const reminderEmails = pgTable("reminder_emails", {
   reminderType: text("reminder_type").notNull(),
   status: text("status").notNull().default("sent"),
 });
-
-export const platformSettings = pgTable("platform_settings", {
-  key: varchar("key", { length: 100 }).primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export type PlatformSetting = typeof platformSettings.$inferSelect;
-export const insertPlatformSettingSchema = createInsertSchema(platformSettings);
-export type InsertPlatformSetting = z.infer<typeof insertPlatformSettingSchema>;
-
-export const instagramCityCache = pgTable("instagram_city_cache", {
-  cityKey: text("city_key").primaryKey(),
-  posts: jsonb("posts").notNull().default([]),
-  volume: integer("volume").notNull().default(0),
-  fetchedAt: timestamp("fetched_at").notNull().defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
-
-export type InstagramCityCache = typeof instagramCityCache.$inferSelect;
-
-// Activity bookings — captures on-platform Stripe payment for external activity providers
-// (Viator, Amadeus, Fever). Actual fulfillment uses bookingUrl as reference link.
-export const activityBookings = pgTable("activity_bookings", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  provider: varchar("provider", { length: 50 }).notNull(), // viator | amadeus | fever | external
-  productCode: varchar("product_code", { length: 255 }),
-  productOptionCode: varchar("product_option_code", { length: 100 }), // Viator option code
-  productTitle: text("product_title").notNull(),
-  imageUrl: text("image_url"),
-  priceAmount: decimal("price_amount", { precision: 10, scale: 2 }).notNull(),
-  priceCurrency: varchar("price_currency", { length: 10 }).notNull().default("USD"),
-  bookingUrl: text("booking_url"),
-  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  providerBookingRef: varchar("provider_booking_ref", { length: 100 }), // e.g. Viator BR-XXXXXXXXX
-  travelDate: varchar("travel_date", { length: 20 }), // ISO date YYYY-MM-DD
-  travelerCount: integer("traveler_count").default(1),
-  status: varchar("status", { length: 20 }).notNull().default("pending"), // staged | pending | confirmed | failed | cancelled
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export type ActivityBooking = typeof activityBookings.$inferSelect;
-export const insertActivityBookingSchema = createInsertSchema(activityBookings).omit({
-  id: true,
-  createdAt: true,
-});
-export type InsertActivityBooking = z.infer<typeof insertActivityBookingSchema>;
-
-// ── Wishlists ──────────────────────────────────────────────────────────────
-export const wishlists = pgTable("wishlists", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: text("user_id").notNull(),
-  serviceId: text("service_id").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-export const insertWishlistSchema = createInsertSchema(wishlists).omit({ id: true, createdAt: true });
-export type InsertWishlist = z.infer<typeof insertWishlistSchema>;
-export type Wishlist = typeof wishlists.$inferSelect;

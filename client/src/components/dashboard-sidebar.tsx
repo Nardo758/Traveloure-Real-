@@ -27,8 +27,6 @@ import {
   ShoppingCart,
   Package,
   Sparkles,
-  Star,
-  Heart,
 } from "lucide-react";
 
 const menuGroups = [
@@ -45,9 +43,8 @@ const menuGroups = [
     label: "Marketplace",
     items: [
       { title: "Discover", href: "/discover", icon: Users },
-      { title: "Experts", href: "/experts", icon: Compass },
+      { title: "Experts", href: "/chat", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
-      { title: "Wishlist", href: "/wishlist", icon: Heart },
       { title: "Cart", href: "/cart", icon: ShoppingCart },
     ],
   },
@@ -57,7 +54,6 @@ const menuGroups = [
       { title: "Messages", href: "/chat", icon: MessageSquare, badge: true },
       { title: "Notifications", href: "/notifications", icon: Bell, badge: true },
       { title: "Credits", href: "/credits", icon: CreditCard },
-      { title: "My Reviews", href: "/my-reviews", icon: Star },
       { title: "Profile", href: "/profile", icon: User },
     ],
   },

@@ -46,7 +46,6 @@ import {
   Umbrella
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   DropdownMenu,
@@ -131,7 +130,27 @@ const navItems = [
     ],
   },
   { name: "Discover", href: "/discover" },
-  { name: "Planning Tools", href: "/deals" },
+  {
+    name: "Planning Tools",
+    icon: ChevronDown,
+    sections: [
+      {
+        title: "AI & EXPERTS",
+        items: [
+          { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
+          { name: "Find Local Service Providers", href: "/vendors", icon: Users, description: "Connect with destination experts" },
+          { name: "Executive Assistant", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
+        ],
+      },
+      {
+        title: "EXPLORE",
+        items: [
+          { name: "Live Intel", href: "/spontaneous", icon: Sparkles, description: "Real-time local insights" },
+          { name: "Today's Deals", href: "/deals", icon: CreditCard, description: "Special offers & discounts" },
+        ],
+      },
+    ],
+  },
   { name: "Local Experts", href: "/experts" },
   { name: "Contact", href: "/contact" },
 ];
@@ -257,19 +276,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const { data: cartData } = useQuery<{ items: any[] }>({
-    queryKey: ["/api/cart"],
-    enabled: !!user,
-    refetchInterval: 30000,
-  });
-  const cartCount = cartData?.items?.length ?? 0;
-
   const isActive = (path: string) => location === path;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm">
+      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm overflow-x-clip">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16">
             <div className="flex items-center flex-1 min-w-0">
@@ -303,9 +315,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <Button 
                     size="sm" 
                     onClick={() => openSignInModal()}
-                    data-testid="button-login"
+                    data-testid="button-sign-in"
                   >
-                    Login
+                    Sign In
                   </Button>
                 </div>
               )}
@@ -313,23 +325,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {user && (
                 <>
                   <NotificationBell />
-                  <Link href="/cart" data-testid="link-cart">
-                    <button
-                      className="relative p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                      data-testid="button-cart"
-                      aria-label="Shopping cart"
-                    >
-                      <ShoppingCart className="h-5 w-5" />
-                      {cartCount > 0 && (
-                        <span
-                          className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white leading-none"
-                          data-testid="badge-cart-count"
-                        >
-                          {cartCount > 99 ? "99+" : cartCount}
-                        </span>
-                      )}
-                    </button>
-                  </Link>
                   <UserMenu />
                 </>
               )}
@@ -358,29 +353,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="lg:hidden border-t border-border bg-background overflow-y-auto max-h-[85vh]"
+              className="lg:hidden border-t border-border bg-background"
             >
-              {/* Sign In — shown at top for logged-out users */}
-              {!user && (
-                <div className="px-4 pt-4 pb-3 flex flex-col gap-2 border-b border-border">
-                  <Button
-                    className="w-full"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      openSignInModal();
-                    }}
-                    data-testid="button-mobile-sign-in-top"
-                  >
-                    Sign In
-                  </Button>
-                  <Link href="/become-expert" onClick={() => setIsMobileMenuOpen(false)}>
-                    <Button variant="outline" className="w-full" data-testid="button-mobile-become-expert-top">
-                      Become an Expert
-                    </Button>
-                  </Link>
-                </div>
-              )}
-
               {/* Mobile Nav - Same for all users */}
               <div className="pt-2 pb-3 space-y-1 px-4">
                 {navItems.map((item) => (
@@ -437,13 +411,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </div>
                     <Button 
                       variant="ghost"
-                      size="sm"
+                      size="icon"
                       onClick={() => logout()}
-                      className="text-destructive hover-elevate gap-1.5"
-                      data-testid="button-logout"
+                      className="text-destructive hover-elevate"
+                      data-testid="button-mobile-logout"
                     >
-                      <LogOut className="h-4 w-4" />
-                      Logout
+                      <LogOut className="h-5 w-5" />
                     </Button>
                   </div>
                 ) : (

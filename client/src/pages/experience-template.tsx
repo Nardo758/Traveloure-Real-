@@ -128,7 +128,6 @@ interface CartItem {
     meetingPointCoordinates?: { lat: number; lng: number };
     affiliateUrl?: string;
     rawData?: any;
-    pricePerPerson?: number;
   };
 }
 
@@ -848,24 +847,6 @@ export default function ExperienceTemplatePage() {
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
-
-  // Recalculate per-traveler activity prices whenever adult/kid count changes
-  useEffect(() => {
-    setLocalExternalCart(prev =>
-      prev.map(item => {
-        const ppp = item.metadata?.pricePerPerson;
-        if (item.id.startsWith("activity-") && typeof ppp === "number") {
-          return {
-            ...item,
-            price: ppp * (adults + kids),
-            metadata: { ...item.metadata, travelers: adults + kids },
-          };
-        }
-        return item;
-      })
-    );
-  }, [adults, kids]);
-
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
   
@@ -1333,7 +1314,7 @@ export default function ExperienceTemplatePage() {
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         toast({ title: "Cart updated", description: "Item quantity increased" });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update cart" });
@@ -1347,13 +1328,13 @@ export default function ExperienceTemplatePage() {
           payload.serviceId = item.id;
         }
         await apiRequest("POST", "/api/cart", payload);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to add to cart" });
       }
     }
-    // Store experience context for later use (e.g. when user navigates to cart)
+    // Store experience context and navigate to full cart page
     sessionStorage.setItem("experienceContext", JSON.stringify({
       title: `${experienceType?.name || slug} Experience`,
       experienceType: experienceType?.name || slug,
@@ -1363,6 +1344,7 @@ export default function ExperienceTemplatePage() {
       endDate: endDate?.toISOString().split('T')[0],
       travelers: adults + kids
     }));
+    setLocation("/cart");
   };
 
   const removeFromCart = async (id: string) => {
@@ -1376,7 +1358,7 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("DELETE", `/api/cart/${item.cartItemId}`);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to remove from cart" });
       }
@@ -1397,7 +1379,7 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${item.cartItemId}`, { quantity: clampedQty });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", { experience: slug }] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update quantity" });
       }
@@ -1466,25 +1448,27 @@ export default function ExperienceTemplatePage() {
   }, [services, searchQuery, priceRange, minRating, sortBy, currentTabCategory, selectedFilters]);
 
   const mapProviders = useMemo(() => {
-    // Only scatter service markers once we have a resolved destination center.
-    // Without it, markers would cluster at the hardcoded fallback (NYC), which
-    // is actively misleading when the user searches a different country/city.
-    const serviceMarkers = destination && destination.length >= 2 && destinationCenter
+    // Show service markers when destination is set
+    const serviceMarkers = destination && destination.length >= 2
       ? filteredServices.map((s, index) => {
+          const numericId = typeof s.id === 'number' ? s.id : parseInt(String(s.id), 10) || index;
           // Use golden angle distribution for spreading markers around destination
           const goldenAngle = 137.5 * (Math.PI / 180);
           const angle = index * goldenAngle;
           const radius = 0.01 + (index * 0.002); // Spread markers 1-3km from center
           const latOffset = Math.cos(angle) * radius;
           const lngOffset = Math.sin(angle) * radius;
+          // Use destination center when available, otherwise fall back to NYC
+          const baseLat = destinationCenter?.lat ?? 40.7128;
+          const baseLng = destinationCenter?.lng ?? -74.0060;
           return {
             id: s.id.toString(),
             name: s.serviceName,
             category: s.serviceType || currentTabCategory || "venue",
             price: Number(s.price) || 0,
             rating: Number(s.averageRating) || 4.5,
-            lat: destinationCenter.lat + latOffset,
-            lng: destinationCenter.lng + lngOffset,
+            lat: baseLat + latOffset,
+            lng: baseLng + lngOffset,
             description: s.shortDescription || s.description || undefined
           };
         })
@@ -1973,13 +1957,8 @@ export default function ExperienceTemplatePage() {
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                   <Label className="text-xs text-muted-foreground">Quantity: {item.quantity}</Label>
-                                  <span className="text-sm font-medium">${(item.price * item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                  <span className="text-sm font-medium">${item.price * item.quantity}</span>
                                 </div>
-                                {item.metadata?.pricePerPerson && (adults + kids) > 0 && (
-                                  <p className="text-xs text-muted-foreground" data-testid={`text-price-breakdown-${item.id}`}>
-                                    ${item.metadata.pricePerPerson.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} × {adults + kids} {adults + kids === 1 ? "guest" : "guests"} = ${(item.metadata.pricePerPerson * (adults + kids)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
-                                )}
                                 <Slider
                                   value={[item.quantity]}
                                   onValueChange={([val]) => updateCartQuantity(item.id, val)}
@@ -2520,12 +2499,11 @@ export default function ExperienceTemplatePage() {
                     }
                   }
                   
-                  const pricePerPerson = activity.pricing?.summary?.fromPrice || 0;
                   addToCart({
                     id: `activity-${activity.productCode}`,
                     type: "activities",
                     name: activity.title,
-                    price: pricePerPerson * (adults + kids),
+                    price: (activity.pricing?.summary?.fromPrice || 0) * (adults + kids),
                     quantity: 1,
                     provider: "Viator",
                     details: `${durationHours ? `${durationHours}h` : 'Duration varies'}${isRefundable ? ', Free cancellation' : ''}${meetingPoint ? ` | ${meetingPoint}` : ''}`,
@@ -2535,7 +2513,6 @@ export default function ExperienceTemplatePage() {
                       cancellationDeadline: fullRefund?.dayRangeMin ? `${fullRefund.dayRangeMin} days before` : undefined,
                       duration: durationHours ? `${durationHours} hours` : undefined,
                       travelers: adults + kids,
-                      pricePerPerson,
                       meetingPoint,
                       meetingPointCoordinates,
                       rawData: activity,

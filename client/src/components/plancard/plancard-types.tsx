@@ -1,20 +1,6 @@
 import {
   Calendar, Star, TrainFront, Clock, Footprints, Car, Bus, Ship, Bike,
-  CarTaxiFront, KeyRound, Train,
 } from "lucide-react";
-
-export type TransitMode = "walk" | "taxi" | "bus" | "ferry" | "car" | "train" | "subway" | "rideshare" | "private_car" | "rental_car";
-
-export interface TransitOption {
-  mode: TransitMode;
-  duration: number;
-  cost: number;
-  provider?: string;
-  source: "google" | "apple" | "waze" | "platform";
-  recommended?: boolean;
-  label?: string;
-  notes?: string;
-}
 
 export const TYPE_COLORS: Record<string, { bg: string; fg: string; dot: string }> = {
   dining:      { bg: "bg-amber-100 dark:bg-amber-900/30",  fg: "text-amber-800 dark:text-amber-300",  dot: "#f59e0b" },
@@ -33,19 +19,6 @@ export const STATUS_STYLES: Record<string, { bg: string; fg: string; label: stri
 export const MODE_COLORS: Record<string, string> = {
   walk: "#22c55e", train: "#3b82f6", taxi: "#f59e0b", car: "#f59e0b",
   bus: "#8b5cf6", shuttle: "#ec4899", ferry: "#06b6d4", bicycle: "#84cc16",
-  rideshare: "#f59e0b", private_car: "#0ea5e9", rental_car: "#14b8a6",
-  subway: "#a855f7",
-};
-
-export const MODE_LABELS: Record<string, string> = {
-  walk: "Walk", taxi: "Taxi", bus: "Bus", ferry: "Ferry", car: "Car",
-  train: "Train", subway: "Subway", rideshare: "Rideshare",
-  private_car: "Private Car", rental_car: "Rental Car",
-  shuttle: "Shuttle", bicycle: "Bicycle",
-};
-
-export const SOURCE_LABELS: Record<string, string> = {
-  google: "Google Maps", apple: "Apple Maps", waze: "Waze", platform: "Traveloure",
 };
 
 export const CHANGE_DOT_COLORS: Record<string, string> = {
@@ -63,13 +36,7 @@ export const STATS_ICONS = [Calendar, Star, TrainFront, Clock] as const;
 export const MODE_ICON_MAP: Record<string, typeof Footprints> = {
   walk: Footprints, train: TrainFront, taxi: Car, car: Car,
   bus: Bus, shuttle: Bus, ferry: Ship, bicycle: Bike,
-  rideshare: CarTaxiFront, private_car: Car, rental_car: KeyRound,
-  subway: Train,
 };
-
-export const DAY_COLORS = [
-  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316",
-];
 
 export interface TemplateConfig {
   activityLabel: string;
@@ -109,16 +76,6 @@ export function getDestinationPhotoUrl(destination: string): string {
   return `https://source.unsplash.com/800x400/?${encodeURIComponent(destination)},travel,landmark`;
 }
 
-export function getDestinationGradient(destination: string): string {
-  let hash = 0;
-  for (let i = 0; i < destination.length; i++) {
-    hash = (hash << 5) - hash + destination.charCodeAt(i);
-    hash |= 0;
-  }
-  const h = Math.abs(hash) % 360;
-  return `linear-gradient(135deg, hsl(${h}, 60%, 40%), hsl(${(h + 50) % 360}, 70%, 28%))`;
-}
-
 export function getEnergyProfile(day: PlanCardDay | undefined | null): string {
   if (day?.energyProfile) return day.energyProfile;
   const activities = day?.activities;
@@ -126,11 +83,6 @@ export function getEnergyProfile(day: PlanCardDay | undefined | null): string {
   if (activities.length >= 5) return "intense";
   if (activities.length >= 3) return "balanced";
   return "relaxed";
-}
-
-export function formatDuration(mins: number): string {
-  if (mins < 60) return `${mins}m`;
-  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
 export function ModeIcon({ mode, className }: { mode: string; className?: string }) {
@@ -165,8 +117,6 @@ export interface PlanCardTransport {
   status: string;
   line?: string;
   suggestedBy?: string;
-  selectedMode?: TransitMode;
-  transitOptions?: TransitOption[];
 }
 
 export interface PlanCardDay {
@@ -223,28 +173,12 @@ export interface PlanCardTrip {
   numberOfTravelers: number;
   budget?: string | number;
   eventType?: string;
-  status?: string;
-  shareToken?: string | null;
-  trackingNumber?: string | null;
-  expertNotes?: string | null;
-}
-
-export interface NotificationItem {
-  id: string | number;
-  title?: string;
-  message?: string;
-  type?: string;
-  createdAt?: string;
-  tripId?: string | null;
-  read?: boolean;
 }
 
 export interface PlanCardProps {
   trip: PlanCardTrip;
   score?: { tripId: string; optimizationScore: number | null; shareToken: string | null };
   index?: number;
-  conversations?: Array<{ id: number; title: string }>;
-  notifications?: NotificationItem[];
 }
 
 export interface PlanCardScore {

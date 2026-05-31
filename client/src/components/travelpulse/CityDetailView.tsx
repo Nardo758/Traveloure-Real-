@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import DOMPurify from "dompurify";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,15 +44,11 @@ import {
   Play,
   Image,
   ExternalLink,
-  Radio,
-  Ticket,
-  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { DestinationCalendar } from "./DestinationCalendar";
 import { AIRecommendationBadges, SeasonalInsightBanner } from "./AIRecommendationBadges";
-import BookActivityModal from "@/components/booking/BookActivityModal";
 
 interface TravelPulseCity {
   id: string;
@@ -150,37 +146,6 @@ interface CityIntelligence {
   alerts: CityAlert[];
   happeningNow: HappeningNow[];
   liveActivity: LiveActivity[];
-}
-
-interface SocialPost {
-  id: string;
-  source: 'twitter' | 'instagram';
-  authorName: string;
-  authorHandle?: string;
-  content: string;
-  imageUrl?: string;
-  likesCount: number;
-  repostsCount?: number;
-  postedAt: string;
-  postUrl: string;
-  sentiment?: 'positive' | 'neutral' | 'negative';
-}
-
-interface SpontaneousOpp {
-  id: string;
-  title: string;
-  type: string;
-  source: string;
-  description?: string | null;
-  imageUrl?: string | null;
-  affiliateUrl?: string | null;
-  currentPrice: number | null;
-  discountPercent?: number | null;
-  urgencyScore: number;
-  category?: string | null;
-  remainingSpots?: number | null;
-  startTime?: string | null;
-  endTime?: string | null;
 }
 
 interface CityMedia {
@@ -290,7 +255,6 @@ interface EnhancedItem {
   name?: string;
   title?: string;
   description?: string | null;
-  imageUrl?: string | null;
   price?: string | number | null;
   rating?: string | null;
   starRating?: number | null;
@@ -324,7 +288,7 @@ interface AIRecommendationsResponse {
   totalActivities: number;
 }
 
-function AIRecommendationsSection({ cityName, country, cachedActivities = [] }: { cityName: string; country: string; cachedActivities?: BookableActivity[] }) {
+function AIRecommendationsSection({ cityName, country }: { cityName: string; country: string }) {
   const currentMonth = new Date().getMonth() + 1;
   
   const { data, isLoading, error } = useQuery<AIRecommendationsResponse>({
@@ -409,26 +373,12 @@ function AIRecommendationsSection({ cityName, country, cachedActivities = [] }: 
                     bestTimeMatch={hotel.bestTimeMatch}
                     showScore={true}
                   />
-                  <div className="flex items-center justify-between mt-2">
-                    {hotel.price && (
-                      <p className="text-sm font-semibold">
-                        ${typeof hotel.price === 'string' ? hotel.price : hotel.price.toFixed(0)}
-                        <span className="text-xs text-muted-foreground font-normal">/night</span>
-                      </p>
-                    )}
-                    <a
-                      href={`https://www.booking.com/search.html?ss=${encodeURIComponent((hotel.name || '') + ' ' + cityName)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-auto"
-                      data-testid={`link-book-hotel-${hotel.id}`}
-                    >
-                      <Button size="sm" className="text-xs h-7">
-                        Book Hotel
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </a>
-                  </div>
+                  {hotel.price && (
+                    <p className="text-sm font-semibold mt-2">
+                      ${typeof hotel.price === 'string' ? hotel.price : hotel.price.toFixed(0)}
+                      <span className="text-xs text-muted-foreground font-normal">/night</span>
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -443,96 +393,43 @@ function AIRecommendationsSection({ cityName, country, cachedActivities = [] }: 
             Recommended Activities
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {activities.slice(0, 6).map((activity) => {
-              const matched = matchActivityToText(activity.title || activity.name || '', cachedActivities);
-              const imageUrl = activity.imageUrl || matched?.imageUrl || null;
-              const bookingHref = matched?.bookingUrl
-                ?? `https://www.viator.com/searchResults/all?text=${encodeURIComponent((activity.title || activity.name || '') + ' ' + cityName)}`;
-              return (
-                <Card key={activity.id} className="overflow-hidden flex flex-col" data-testid={`rec-activity-${activity.id}`}>
-                  {imageUrl ? (
-                    <div className="h-36 overflow-hidden flex-shrink-0">
-                      <img
-                        src={imageUrl}
-                        alt={activity.title || activity.name || 'Activity'}
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
+            {activities.slice(0, 6).map((activity) => (
+              <Card key={activity.id} className="overflow-hidden" data-testid={`rec-activity-${activity.id}`}>
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-sm line-clamp-2">{activity.title || activity.name}</h4>
+                      {activity.category && (
+                        <Badge variant="outline" className="text-xs mt-1 capitalize">
+                          {activity.category}
+                        </Badge>
+                      )}
                     </div>
-                  ) : (
-                    <div className="h-36 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center flex-shrink-0">
-                      <Compass className="h-10 w-10 text-primary/30" />
-                    </div>
-                  )}
-                  <CardContent className="p-4 flex flex-col flex-1">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm line-clamp-2">{activity.title || activity.name}</h4>
-                        {activity.category && (
-                          <Badge variant="outline" className="text-xs mt-1 capitalize">
-                            {activity.category}
-                          </Badge>
-                        )}
+                    {activity.rating && (
+                      <div className="flex items-center gap-1 ml-2">
+                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                        <span className="text-xs font-medium">{activity.rating}</span>
                       </div>
-                      {activity.rating && (
-                        <div className="flex items-center gap-1 ml-2">
-                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                          <span className="text-xs font-medium">{activity.rating}</span>
-                        </div>
-                      )}
-                    </div>
-                    <AIRecommendationBadges
-                      aiScore={activity.aiScore}
-                      aiReasons={activity.aiReasons}
-                      seasonalMatch={activity.seasonalMatch}
-                      eventRelated={activity.eventRelated}
-                      budgetMatch={activity.budgetMatch}
-                      bestTimeMatch={activity.bestTimeMatch}
-                      preferenceMatch={activity.preferenceMatch}
-                      showScore={true}
-                    />
-                    <div className="flex items-center justify-between mt-auto pt-2">
-                      {activity.price && (
-                        <p className="text-sm font-semibold">
-                          ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
-                        </p>
-                      )}
-                      {matched && matched.price != null && matched.price > 0 ? (
-                        <BookActivityModal
-                          activity={{
-                            provider: matched.provider,
-                            productCode: matched.productCode || null,
-                            title: matched.title,
-                            price: matched.price,
-                            currency: matched.currency || "USD",
-                            imageUrl: matched.imageUrl || null,
-                            bookingUrl: matched.bookingUrl || '',
-                          }}
-                          trigger={
-                            <Button size="sm" className="text-xs h-7 ml-auto" data-testid={`button-book-rec-activity-${activity.id}`}>
-                              Book Now
-                            </Button>
-                          }
-                        />
-                      ) : (
-                        <a
-                          href={bookingHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="ml-auto"
-                          data-testid={`link-book-activity-${activity.id}`}
-                        >
-                          <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
-                            {matched ? "Book Now" : "Find & Book"}
-                            <ExternalLink className="h-3 w-3 ml-1" />
-                          </Button>
-                        </a>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                    )}
+                  </div>
+                  <AIRecommendationBadges
+                    aiScore={activity.aiScore}
+                    aiReasons={activity.aiReasons}
+                    seasonalMatch={activity.seasonalMatch}
+                    eventRelated={activity.eventRelated}
+                    budgetMatch={activity.budgetMatch}
+                    bestTimeMatch={activity.bestTimeMatch}
+                    preferenceMatch={activity.preferenceMatch}
+                    showScore={true}
+                  />
+                  {activity.price && (
+                    <p className="text-sm font-semibold mt-2">
+                      ${typeof activity.price === 'string' ? activity.price : Number(activity.price).toFixed(0)}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       )}
@@ -679,11 +576,6 @@ function EnrichedRecommendationCard({ rec, idx }: { rec: EnrichedRecommendation;
 function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
   const { data, isLoading, error } = useQuery<CityEnrichedContent>({
     queryKey: ["/api/travelpulse/enriched", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/enriched/${encodeURIComponent(cityName)}`);
-      if (!res.ok) throw new Error("Failed to fetch enriched content");
-      return res.json();
-    },
     enabled: !!cityName,
     staleTime: 5 * 60 * 1000,
   });
@@ -701,16 +593,9 @@ function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
     );
   }
 
-  if (error) {
-    return (
-      <Card className="p-6 text-center mt-6">
-        <ExternalLink className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">Enriched content not available for {cityName} yet</p>
-      </Card>
-    );
+  if (error || !data) {
+    return null;
   }
-
-  if (!data) return null;
 
   const hasContent = 
     data.restaurants.length > 0 || 
@@ -720,13 +605,7 @@ function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
     data.trendingNow.length > 0;
 
   if (!hasContent) {
-    return (
-      <Card className="p-6 text-center mt-6">
-        <ExternalLink className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground">No enriched recommendations yet for {cityName}</p>
-        <p className="text-xs text-muted-foreground mt-1">Content is generated on next AI refresh</p>
-      </Card>
-    );
+    return null;
   }
 
   return (
@@ -810,206 +689,6 @@ function EnrichedRecommendationsSection({ cityName }: { cityName: string }) {
   );
 }
 
-interface BookableActivity {
-  id: string;
-  productCode: string;
-  title: string;
-  description?: string | null;
-  price: number | null;
-  currency: string;
-  rating: number | null;
-  reviewCount: number;
-  imageUrl?: string | null;
-  provider: string;
-  category?: string | null;
-  durationMinutes?: number | null;
-  bookingUrl: string | null;
-}
-
-const CATEGORY_FILTERS = ["All", "Activity", "Tour", "Experience"] as const;
-type CategoryFilter = typeof CATEGORY_FILTERS[number];
-
-const PROVIDER_COLORS: Record<string, string> = {
-  amadeus: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  viator: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-};
-
-function BookableActivitiesSection({ cityName }: { cityName: string }) {
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("All");
-
-  const { data, isLoading } = useQuery<{ activities: BookableActivity[]; total: number; city: string }>({
-    queryKey: ["/api/travelpulse/activities", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/activities/${encodeURIComponent(cityName)}`);
-      if (!res.ok) throw new Error("Failed to fetch bookable activities");
-      return res.json();
-    },
-    enabled: !!cityName,
-    staleTime: 10 * 60 * 1000,
-  });
-
-  const filtered = (data?.activities ?? []).filter((act) => {
-    if (categoryFilter === "All") return true;
-    const cat = (act.category ?? "").toLowerCase();
-    return cat.includes(categoryFilter.toLowerCase());
-  });
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4 mt-8">
-        <Skeleton className="h-8 w-56" />
-        <div className="flex gap-2">
-          {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-7 w-20 rounded-full" />)}
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-52 w-full rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (!data || data.activities.length === 0) {
-    return (
-      <Card className="p-8 text-center mt-8" data-testid="card-no-bookable-activities">
-        <ShoppingBag className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-        <p className="text-sm text-muted-foreground font-medium">No bookable experiences found for {cityName}</p>
-        <p className="text-xs text-muted-foreground mt-1">Activities are refreshed regularly</p>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-4 mt-8" data-testid="bookable-activities-section">
-      <div className="flex items-center gap-2">
-        <ShoppingBag className="h-5 w-5 text-primary" />
-        <h3 className="text-lg font-semibold">Book Experiences</h3>
-        <Badge variant="outline" className="text-xs">{data.total} available</Badge>
-      </div>
-
-      <div className="flex gap-2 flex-wrap" data-testid="category-filter-chips">
-        {CATEGORY_FILTERS.map((cat) => (
-          <Button
-            key={cat}
-            size="sm"
-            variant={categoryFilter === cat ? "default" : "outline"}
-            onClick={() => setCategoryFilter(cat)}
-            className="text-xs h-7 rounded-full"
-            data-testid={`filter-category-${cat.toLowerCase()}`}
-          >
-            {cat}
-          </Button>
-        ))}
-      </div>
-
-      {filtered.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">No {categoryFilter} experiences found</p>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {filtered.slice(0, 12).map((act) => (
-            <Card key={act.id} className="overflow-hidden flex flex-col" data-testid={`bookable-activity-${act.id}`}>
-              {act.imageUrl ? (
-                <div className="h-36 overflow-hidden flex-shrink-0">
-                  <img src={act.imageUrl} alt={act.title} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="h-36 bg-muted flex items-center justify-center flex-shrink-0">
-                  <ShoppingBag className="h-8 w-8 text-muted-foreground/40" />
-                </div>
-              )}
-              <CardContent className="p-3 flex flex-col flex-1">
-                <div className="flex gap-1 flex-wrap mb-1">
-                  <Badge
-                    className={cn("text-xs capitalize", PROVIDER_COLORS[act.provider] ?? "bg-gray-100 text-gray-700")}
-                    data-testid={`provider-badge-${act.id}`}
-                  >
-                    {act.provider}
-                  </Badge>
-                  {act.category && (
-                    <Badge variant="outline" className="text-xs capitalize">{act.category}</Badge>
-                  )}
-                </div>
-
-                <h4
-                  className="font-medium text-sm leading-tight line-clamp-2 mb-1 flex-1"
-                  data-testid={`activity-title-${act.id}`}
-                >
-                  {act.title}
-                </h4>
-
-                {act.rating != null && (
-                  <div className="flex items-center gap-1 mb-2">
-                    <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                    <span className="text-xs font-medium">{act.rating.toFixed(1)}</span>
-                    {act.reviewCount > 0 && (
-                      <span className="text-xs text-muted-foreground">({act.reviewCount.toLocaleString()})</span>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between mt-auto pt-2">
-                  <div>
-                    {act.price != null && act.price > 0 ? (
-                      <p className="text-sm font-bold" data-testid={`activity-price-${act.id}`}>
-                        From {act.currency === "USD" ? "$" : act.currency}{act.price.toFixed(0)}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">Price on request</p>
-                    )}
-                    {act.durationMinutes && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {act.durationMinutes >= 60
-                          ? `${Math.floor(act.durationMinutes / 60)}h${act.durationMinutes % 60 > 0 ? ` ${act.durationMinutes % 60}m` : ""}`
-                          : `${act.durationMinutes}m`}
-                      </p>
-                    )}
-                  </div>
-                  {act.bookingUrl && act.price != null && act.price > 0 ? (
-                    <BookActivityModal
-                      activity={{
-                        provider: act.provider,
-                        productCode: act.productCode || null,
-                        title: act.title,
-                        price: act.price,
-                        currency: act.currency || "USD",
-                        imageUrl: act.imageUrl || null,
-                        bookingUrl: act.bookingUrl,
-                      }}
-                      trigger={
-                        <Button size="sm" className="text-xs h-7" data-testid={`button-book-activity-${act.id}`}>
-                          Book
-                        </Button>
-                      }
-                    />
-                  ) : act.bookingUrl ? (
-                    <a
-                      href={act.bookingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      data-testid={`link-book-activity-${act.id}`}
-                    >
-                      <Button size="sm" variant="outline" className="text-xs h-7">
-                        View
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </a>
-                  ) : (
-                    <Button size="sm" variant="outline" className="text-xs h-7" disabled>
-                      View
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CityDetailSkeleton() {
   return (
     <div className="space-y-6">
@@ -1031,265 +710,7 @@ function CityDetailSkeleton() {
   );
 }
 
-// ── Fever Events ──────────────────────────────────────────────────────────────
-
-interface FeverEventItem {
-  id: string;
-  source: 'fever' | 'travelpulse';
-  title: string;
-  description?: string | null;
-  eventType: string;
-  specificDate?: string | null;
-  startTime?: string | null;
-  venueName?: string | null;
-  venueAddress?: string | null;
-  pricing?: {
-    currency: string;
-    minPrice?: number;
-    maxPrice?: number;
-    priceRange?: string;
-  } | null;
-  affiliateUrl?: string | null;
-  bookingUrl?: string | null;
-  imageUrl?: string | null;
-  rating?: number | null;
-  isFree?: boolean;
-  tags?: string[];
-}
-
-interface FeverEventsResponse {
-  city: string;
-  feverSupported: boolean;
-  feverCity: { code: string; name: string; country: string } | null;
-  events: FeverEventItem[];
-  count: number;
-  feverCount: number;
-  travelpulseCount: number;
-}
-
-function getFeverCategoryStyle(eventType: string): string {
-  switch (eventType) {
-    case 'concert': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
-    case 'exhibition': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
-    case 'theater': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400';
-    case 'festival': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400';
-    case 'sport': return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
-    case 'food-drink': return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
-    case 'nightlife': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400';
-    case 'wellness': return 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400';
-    default: return 'bg-muted text-muted-foreground';
-  }
-}
-
-function FeverEventsSection({ cityName }: { cityName: string }) {
-  const { data, isLoading, isError } = useQuery<FeverEventsResponse>({
-    queryKey: ["/api/travelpulse/fever-events", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/fever-events/${encodeURIComponent(cityName)}`);
-      if (!res.ok) throw new Error("Failed to fetch events");
-      return res.json();
-    },
-    enabled: !!cityName,
-    staleTime: 60 * 60 * 1000,
-  });
-
-  if (isLoading) {
-    return (
-      <div className="mt-6 space-y-3" data-testid="fever-events-loading">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="mt-6 text-sm text-muted-foreground flex items-center gap-2" data-testid="fever-events-error">
-        <Ticket className="h-4 w-4 flex-shrink-0" />
-        <span>Could not load events for this city. Try again later.</span>
-      </div>
-    );
-  }
-
-  if (!data?.feverSupported || !data.events || data.events.length === 0) return null;
-
-  const events = data.events.slice(0, 8);
-
-  return (
-    <div className="mt-6 space-y-4" data-testid="fever-events-section">
-      <div className="flex items-center gap-2">
-        <Ticket className="h-5 w-5 text-primary" />
-        <h3 className="text-lg font-semibold">Events & Experiences</h3>
-        <Badge variant="outline" className="text-xs">Fever</Badge>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {events.map((event) => {
-          const ticketUrl = event.affiliateUrl ?? event.bookingUrl ?? null;
-          const formattedDate = event.specificDate
-            ? new Date(event.specificDate + 'T00:00:00').toLocaleDateString('en-US', {
-                month: 'short', day: 'numeric', year: 'numeric',
-              })
-            : null;
-          const formattedDateTime = formattedDate && event.startTime
-            ? `${formattedDate} · ${event.startTime}`
-            : formattedDate;
-          const priceDisplay = event.isFree
-            ? 'Free'
-            : event.pricing?.priceRange
-              || (event.pricing?.minPrice != null
-                ? `from ${new Intl.NumberFormat('en-US', {
-                    style: 'currency',
-                    currency: event.pricing.currency || 'USD',
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  }).format(event.pricing.minPrice)}`
-                : null);
-
-          return (
-            <Card key={event.id} className="overflow-hidden flex flex-col hover-elevate" data-testid={`fever-event-${event.id}`}>
-              {event.imageUrl ? (
-                <div className="h-36 overflow-hidden flex-shrink-0">
-                  <img
-                    src={event.imageUrl}
-                    alt={event.title}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                </div>
-              ) : (
-                <div className="h-36 bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center flex-shrink-0">
-                  <Ticket className="h-10 w-10 text-primary/30" />
-                </div>
-              )}
-              <CardContent className="p-4 flex flex-col flex-1">
-                <div className="mb-2">
-                  <Badge className={cn("text-xs capitalize mb-1", getFeverCategoryStyle(event.eventType))}>
-                    {event.eventType.replace('-', ' ')}
-                  </Badge>
-                  <h4 className="font-medium text-sm line-clamp-2 leading-snug">{event.title}</h4>
-                </div>
-                <div className="space-y-1 text-xs text-muted-foreground flex-1">
-                  {formattedDateTime && (
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3 flex-shrink-0" />
-                      <span>{formattedDateTime}</span>
-                    </div>
-                  )}
-                  {event.venueName && (
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate">{event.venueName}</span>
-                    </div>
-                  )}
-                  {event.rating != null && (
-                    <div className="flex items-center gap-1">
-                      <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />
-                      <span>{event.rating.toFixed(1)}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between mt-auto pt-2 border-t border-border/50">
-                  {priceDisplay && (
-                    <span className="text-sm font-semibold">{priceDisplay}</span>
-                  )}
-                  {ticketUrl ? (
-                    <a
-                      href={ticketUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ml-auto"
-                      data-testid={`link-fever-tickets-${event.id}`}
-                    >
-                      <Button size="sm" className="text-xs h-7">
-                        Get Tickets
-                        <ExternalLink className="h-3 w-3 ml-1" />
-                      </Button>
-                    </a>
-                  ) : (
-                    <Button size="sm" variant="outline" className="text-xs h-7 ml-auto" disabled data-testid={`link-fever-tickets-${event.id}`}>
-                      Sold Out
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Activity Matching ─────────────────────────────────────────────────────────
-// Cross-reference free-text (social posts, gem names, AI recommendations)
-// against cached Viator/Amadeus activities. Returns the best match that also
-// has a real booking URL, or null if no confident match is found.
-const MATCH_STOPWORDS = new Set([
-  'this','that','with','from','have','been','will','your','they','their',
-  'more','just','like','what','when','then','than','into','over','some',
-  'only','also','very','come','here','time','even','most','such','both',
-  'each','after','well','great','there','about','which','those','these',
-  'really','amazing','awesome','loved','visit','going','doing',
-]);
-
-function matchActivityToText(text: string, activities: BookableActivity[]): BookableActivity | null {
-  if (!text || activities.length === 0) return null;
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 3 && !MATCH_STOPWORDS.has(w));
-  if (words.length === 0) return null;
-
-  let best: BookableActivity | null = null;
-  let bestScore = 0;
-
-  for (const act of activities) {
-    if (!act.bookingUrl) continue;
-    const titleWords = act.title
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 3 && !MATCH_STOPWORDS.has(w));
-    if (titleWords.length === 0) continue;
-
-    const matchCount = words.filter(w => titleWords.includes(w)).length;
-    if (matchCount === 0) continue;
-
-    const score = matchCount / Math.min(titleWords.length, Math.max(words.length, 1));
-    // Require at least 2 matched words OR a strong score on a short title
-    if ((matchCount >= 2 || score >= 0.5) && score > bestScore) {
-      bestScore = score;
-      best = act;
-    }
-  }
-  return best;
-}
-
-interface VibeFilter { categories: string[]; minPrice?: number }
-const VIBE_TO_FILTER: Record<string, VibeFilter> = {
-  foodie:     { categories: ["food", "dining", "restaurant", "culinary"] },
-  nightlife:  { categories: ["entertainment", "nightlife", "bars", "club"] },
-  cultural:   { categories: ["cultural", "museum", "art", "history", "heritage"] },
-  adventure:  { categories: ["outdoor", "adventure", "sports", "hiking", "extreme"] },
-  luxury:     { categories: ["luxury", "premium", "fine dining", "vip"], minPrice: 150 },
-  romantic:   { categories: ["experience", "romantic", "couples", "sunset"] },
-  nature:     { categories: ["outdoor", "nature", "parks", "scenic", "wildlife"] },
-  family:     { categories: ["family", "kids", "tours", "zoo"] },
-  budget:     { categories: ["budget", "free", "affordable", "walking tour"] },
-  relaxation: { categories: ["wellness", "spa", "relaxation", "yoga", "meditation"] },
-};
-
 export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
-  const [activeTab, setActiveTab] = useState("hidden-gems");
-  const [socialSource, setSocialSource] = useState<'all' | 'twitter' | 'instagram'>('all');
-  const [spontaneousWindow, setSpontaneousWindow] = useState<'tonight' | 'tomorrow' | 'weekend'>('tonight');
-  const [spontaneousVibe, setSpontaneousVibe] = useState<string | null>(null);
-
   const { data, isLoading, error } = useQuery<CityIntelligence>({
     queryKey: ["/api/travelpulse/cities", cityName],
   });
@@ -1298,94 +719,6 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
   const { data: mediaData } = useQuery<CityMediaResponse>({
     queryKey: ["/api/travelpulse/media", cityName, data?.city?.country],
     enabled: !!data?.city?.country,
-  });
-
-  // Shared bookable activities — fetched on mount; same query key as
-  // BookableActivitiesSection so TanStack Query deduplicates the network call.
-  const { data: activitiesData } = useQuery<{ activities: BookableActivity[]; total: number; city: string }>({
-    queryKey: ["/api/travelpulse/activities", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/activities/${encodeURIComponent(cityName)}`);
-      if (!res.ok) throw new Error("Failed to fetch activities");
-      return res.json();
-    },
-    enabled: !!cityName,
-    staleTime: 10 * 60 * 1000,
-  });
-  const cachedActivities = activitiesData?.activities ?? [];
-
-  // Social feed (X/Twitter via Grok) — pre-warmed on city card open so Grok
-  // fetch is already in flight when the user clicks the Live tab.
-  const { data: socialPosts, isLoading: xLoading } = useQuery<SocialPost[]>({
-    queryKey: ["/api/travelpulse/social-feed", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/social-feed/${encodeURIComponent(cityName)}`);
-      if (!res.ok) throw new Error("Failed to fetch social feed");
-      return res.json();
-    },
-    enabled: true,
-    staleTime: 28 * 60 * 1000,
-  });
-
-  // Instagram feed — pre-warmed on city card open; resolves instantly from 24h DB cache
-  const { data: instagramPosts, isLoading: igLoading } = useQuery<SocialPost[]>({
-    queryKey: ["/api/travelpulse/instagram-feed", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/instagram-feed/${encodeURIComponent(cityName)}`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: true,
-    staleTime: 24 * 60 * 60 * 1000,
-  });
-
-  // 45-second timeout fallback for the X section only
-  const [xTimedOut, setXTimedOut] = useState(false);
-  useEffect(() => {
-    if (!xLoading) {
-      setXTimedOut(false);
-      return;
-    }
-    const timer = setTimeout(() => setXTimedOut(true), 45_000);
-    return () => clearTimeout(timer);
-  }, [xLoading]);
-
-  // Spontaneous opportunities — loaded on demand when Spontaneous tab is active
-  const spontaneousFilter = spontaneousVibe ? VIBE_TO_FILTER[spontaneousVibe] : undefined;
-  const { data: spontaneousData, isLoading: spontaneousLoading } = useQuery<{ opportunities: SpontaneousOpp[]; total: number }>({
-    queryKey: ["/api/spontaneous/quick-search", spontaneousWindow, cityName, spontaneousVibe],
-    queryFn: async () => {
-      const params = new URLSearchParams({ city: cityName });
-      if (spontaneousFilter?.categories.length) params.set("categories", spontaneousFilter.categories.join(","));
-      if (spontaneousFilter?.minPrice) params.set("minPrice", String(spontaneousFilter.minPrice));
-      const res = await fetch(`/api/spontaneous/quick-search/${spontaneousWindow}?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to fetch opportunities");
-      return res.json();
-    },
-    enabled: activeTab === 'spontaneous',
-    staleTime: 2 * 60 * 1000,
-  });
-
-  // Safety scores — loaded on demand when AI Insights tab is active
-  const { data: safetyScores } = useQuery<{
-    city: string;
-    neighborhoodCount: number;
-    overall: number | null;
-    lgbtq: number | null;
-    medical: number | null;
-    physicalHarm: number | null;
-    politicalFreedom: number | null;
-    theft: number | null;
-    women: number | null;
-  } | null>({
-    queryKey: ["/api/travelpulse/safety", cityName],
-    queryFn: async () => {
-      const res = await fetch(`/api/travelpulse/safety/${encodeURIComponent(cityName)}`);
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: activeTab === 'ai-insights',
-    staleTime: 60 * 60 * 1000,
   });
 
   // Track Unsplash downloads for API compliance (when Unsplash media is displayed)
@@ -1429,7 +762,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
     );
   }
 
-  const { city, hiddenGems, alerts } = data;
+  const { city, hiddenGems, alerts, happeningNow, liveActivity } = data;
   const vibeTags = Array.isArray(city.vibeTags) ? city.vibeTags : [];
   const priceChange = parseFloat(city.priceChange || "0");
 
@@ -1583,7 +916,7 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
         ))}
       </div>
 
-      <Tabs defaultValue="hidden-gems" className="w-full" onValueChange={setActiveTab}>
+      <Tabs defaultValue="hidden-gems" className="w-full">
         <TabsList className="w-full grid grid-cols-6">
           <TabsTrigger value="hidden-gems" data-testid="tab-hidden-gems">
             <Gem className="h-4 w-4 mr-2" />
@@ -1593,13 +926,13 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
             <Sparkles className="h-4 w-4 mr-2" />
             For You
           </TabsTrigger>
-          <TabsTrigger value="spontaneous" data-testid="tab-spontaneous">
-            <Zap className="h-4 w-4 mr-2" />
-            Spontaneous
+          <TabsTrigger value="happening-now" data-testid="tab-happening-now">
+            <Calendar className="h-4 w-4 mr-2" />
+            Happening Now
           </TabsTrigger>
-          <TabsTrigger value="live" data-testid="tab-live">
-            <Radio className="h-4 w-4 mr-2" />
-            Live
+          <TabsTrigger value="activity" data-testid="tab-activity">
+            <Activity className="h-4 w-4 mr-2" />
+            Live Feed
           </TabsTrigger>
           <TabsTrigger value="media" data-testid="tab-media">
             <Image className="h-4 w-4 mr-2" />
@@ -1665,45 +998,6 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                           {gem.touristMentions} tourist mentions
                         </span>
                         {gem.priceRange && <span>{gem.priceRange}</span>}
-                        {(() => {
-                          const matched = matchActivityToText(gem.placeName + ' ' + (gem.placeType ?? '') + ' ' + (gem.description ?? ''), cachedActivities);
-                          if (matched && matched.price != null && matched.price > 0) {
-                            return (
-                              <BookActivityModal
-                                activity={{
-                                  provider: matched.provider,
-                                  productCode: matched.productCode || null,
-                                  title: matched.title,
-                                  price: matched.price,
-                                  currency: matched.currency || "USD",
-                                  imageUrl: matched.imageUrl || null,
-                                  bookingUrl: matched.bookingUrl || '',
-                                }}
-                                trigger={
-                                  <Button size="sm" className="text-xs h-7 ml-auto" data-testid={`button-book-gem-${gem.id}`}>
-                                    Book
-                                  </Button>
-                                }
-                              />
-                            );
-                          }
-                          const href = matched?.bookingUrl
-                            ?? `https://www.google.com/maps/search/${encodeURIComponent(gem.placeName + ' ' + city.cityName)}`;
-                          return (
-                            <a
-                              href={href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="ml-auto"
-                              data-testid={`link-explore-gem-${gem.id}`}
-                            >
-                              <Button size="sm" variant={matched ? "default" : "outline"} className="text-xs h-7">
-                                {matched ? "Book" : "Explore"}
-                                {matched ? <ExternalLink className="h-3 w-3 ml-1" /> : <MapPin className="h-3 w-3 ml-1" />}
-                              </Button>
-                            </a>
-                          );
-                        })()}
                       </div>
                     </CardContent>
                   </div>
@@ -1714,408 +1008,109 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
         </TabsContent>
 
         <TabsContent value="recommendations" className="mt-4">
-          <AIRecommendationsSection cityName={city.cityName} country={city.country} cachedActivities={cachedActivities} />
-          <BookableActivitiesSection cityName={city.cityName} />
-          <FeverEventsSection cityName={city.cityName} />
+          <AIRecommendationsSection cityName={city.cityName} country={city.country} />
           <EnrichedRecommendationsSection cityName={city.cityName} />
         </TabsContent>
 
-        <TabsContent value="spontaneous" className="mt-4">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 flex-wrap" data-testid="spontaneous-window-toggle">
-              {(["tonight", "tomorrow", "weekend"] as const).map((w) => (
-                <Button
-                  key={w}
-                  size="sm"
-                  variant={spontaneousWindow === w ? "default" : "outline"}
-                  onClick={() => setSpontaneousWindow(w)}
-                  data-testid={`button-window-${w}`}
-                  className="capitalize"
-                >
-                  {w === "tonight" ? "Tonight" : w === "tomorrow" ? "Tomorrow" : "This Weekend"}
-                </Button>
-              ))}
-            </div>
-
-            {city.vibeTags && city.vibeTags.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap" data-testid="spontaneous-vibe-filter">
-                <Button
-                  key="all"
-                  size="sm"
-                  variant={spontaneousVibe === null ? "secondary" : "ghost"}
-                  onClick={() => setSpontaneousVibe(null)}
-                  data-testid="button-vibe-all"
-                  className="text-xs h-7 capitalize"
-                >
-                  All Vibes
-                </Button>
-                {city.vibeTags.map((vibe) => (
-                  <Button
-                    key={vibe}
-                    size="sm"
-                    variant={spontaneousVibe === vibe ? "secondary" : "ghost"}
-                    onClick={() => setSpontaneousVibe(prev => prev === vibe ? null : vibe)}
-                    data-testid={`button-vibe-${vibe}`}
-                    className="text-xs h-7 capitalize"
-                  >
-                    {vibe}
-                  </Button>
-                ))}
-              </div>
-            )}
-
-            {spontaneousLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-32 w-full" />
-                ))}
-              </div>
-            ) : !spontaneousData || spontaneousData.opportunities.length === 0 ? (
-              <Card className="p-8 text-center" data-testid="card-no-opportunities">
-                <Ticket className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground font-medium">No upcoming activities found for {city.cityName}</p>
-                <p className="text-xs text-muted-foreground mt-1">Check back soon — new experiences are added daily</p>
-              </Card>
-            ) : (
-              <div className="space-y-3">
-                {spontaneousData.opportunities.map((opp) => {
-                  const urgencyHigh = opp.urgencyScore >= 80;
-                  const urgencyMed = opp.urgencyScore >= 60;
-                  return (
-                    <Card key={opp.id} className="overflow-hidden" data-testid={`opp-card-${opp.id}`}>
-                      <div className="flex">
-                        {opp.imageUrl && (
-                          <div className="w-28 h-28 flex-shrink-0">
-                            <img src={opp.imageUrl} alt={opp.title} className="w-full h-full object-cover" />
-                          </div>
-                        )}
-                        <CardContent className="flex-1 py-3 px-4">
-                          <div className="flex items-start justify-between gap-2 mb-1">
-                            <h3 className="font-semibold text-sm leading-tight">{opp.title}</h3>
-                            <div className="flex gap-1 flex-shrink-0">
-                              {opp.discountPercent && opp.discountPercent > 0 && (
-                                <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">
-                                  {opp.discountPercent}% OFF
-                                </Badge>
-                              )}
-                              {urgencyHigh && opp.remainingSpots && (
-                                <Badge variant="destructive" className="text-xs">
-                                  Only {opp.remainingSpots} left!
-                                </Badge>
-                              )}
-                              {urgencyMed && !urgencyHigh && (
-                                <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 text-xs">
-                                  Trending
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-
-                          {opp.category && (
-                            <Badge variant="outline" className="text-xs capitalize mb-2">
-                              {opp.category}
+        <TabsContent value="happening-now" className="mt-4">
+          {happeningNow.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No events happening right now in {city.cityName}</p>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {happeningNow.map((event) => (
+                <Card key={event.id}>
+                  <CardContent className="py-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          {event.isLive && (
+                            <Badge variant="destructive" className="text-xs animate-pulse">
+                              LIVE
                             </Badge>
                           )}
-
-                          {opp.description && (
-                            <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{opp.description}</p>
-                          )}
-
-                          <div className="flex items-center justify-between mt-2">
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              {opp.currentPrice !== null && opp.currentPrice > 0 && (
-                                <span className="flex items-center gap-1 font-medium text-foreground">
-                                  <DollarSign className="h-3 w-3" />
-                                  {Number(opp.currentPrice).toFixed(0)}
-                                </span>
-                              )}
-                              {opp.startTime && (
-                                <span className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {formatDistanceToNow(new Date(opp.startTime), { addSuffix: true })}
-                                </span>
-                              )}
-                              <span className="capitalize text-muted-foreground">{opp.source}</span>
-                            </div>
-                            {opp.affiliateUrl && (
-                              <a
-                                href={opp.affiliateUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                data-testid={`link-book-${opp.id}`}
-                              >
-                                <Button size="sm" className="text-xs h-7">
-                                  Book Now
-                                  <ExternalLink className="h-3 w-3 ml-1" />
-                                </Button>
-                              </a>
-                            )}
-                          </div>
-                        </CardContent>
+                          <h3 className="font-semibold">{event.title}</h3>
+                        </div>
+                        <Badge variant="outline" className="text-xs capitalize mt-1">
+                          {event.eventType}
+                        </Badge>
                       </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="live" className="mt-4">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2" data-testid="social-source-toggle">
-              {(["all", "twitter", "instagram"] as const).map((src) => (
-                <Button
-                  key={src}
-                  size="sm"
-                  variant={socialSource === src ? "default" : "outline"}
-                  onClick={() => setSocialSource(src)}
-                  data-testid={`button-source-${src}`}
-                >
-                  {src === "all" ? "All" : src === "twitter" ? "𝕏 Twitter" : "Instagram"}
-                </Button>
-              ))}
-            </div>
-
-            <ScrollArea className="h-[600px]">
-              <div className="space-y-6 pr-2">
-
-                {/* ── Instagram section ── */}
-                {(socialSource === 'all' || socialSource === 'instagram') && (
-                  <div className="space-y-3" data-testid="instagram-section">
-                    <div className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                        <Camera className="h-3 w-3 text-white" />
-                      </div>
-                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Instagram</h3>
+                      {event.crowdLevel && (
+                        <Badge variant="secondary" className="capitalize">
+                          {event.crowdLevel}
+                        </Badge>
+                      )}
                     </div>
-
-                    {igLoading ? (
-                      <div className="space-y-2" data-testid="ig-loading-skeleton">
-                        {Array.from({ length: 3 }).map((_, i) => (
-                          <Skeleton key={i} className="h-20 w-full" />
-                        ))}
-                      </div>
-                    ) : (instagramPosts || []).length === 0 ? (
-                      <Card className="p-4 text-center" data-testid="card-no-instagram">
-                        <p className="text-sm text-muted-foreground">No Instagram posts found for {city.cityName}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Instagram requires API setup to show posts.</p>
-                      </Card>
-                    ) : (
-                      <div className="space-y-2">
-                        {(instagramPosts || []).slice(0, 10).map((post) => {
-                          const igMatched = matchActivityToText(post.content, cachedActivities);
-                          return (
-                            <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
-                              <CardContent className="py-3 px-4">
-                                <div className="flex items-start gap-3">
-                                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                                    <Camera className="h-4 w-4 text-white" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-semibold text-sm">Instagram</span>
-                                      <span className="text-[10px] font-bold bg-gradient-to-r from-pink-500 to-purple-600 text-white px-1.5 py-0.5 rounded">IG</span>
-                                      <span className="text-xs text-muted-foreground ml-auto">
-                                        {formatDistanceToNow(new Date(post.postedAt), { addSuffix: true })}
-                                      </span>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground leading-snug line-clamp-3">{post.content}</p>
-                                    <a
-                                      href={post.postUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="mt-2 text-xs text-primary hover:underline flex items-center gap-1 w-fit"
-                                      data-testid={`link-view-ig-${post.id}`}
-                                    >
-                                      View on Instagram
-                                      <ExternalLink className="h-3 w-3" />
-                                    </a>
-                                    {igMatched && (
-                                      <div className="mt-2 pt-2 border-t border-border/50 flex items-center justify-between gap-2" data-testid={`ig-match-${post.id}`}>
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                          <Ticket className="h-3 w-3 text-primary flex-shrink-0" />
-                                          <span className="text-xs text-muted-foreground truncate">
-                                            Book: <span className="font-medium text-foreground">{igMatched.title}</span>
-                                            {igMatched.price != null && igMatched.price > 0 && ` · from ${igMatched.currency === 'USD' ? '$' : igMatched.currency}${igMatched.price.toFixed(0)}`}
-                                          </span>
-                                        </div>
-                                        {igMatched.price != null && igMatched.price > 0 ? (
-                                          <BookActivityModal
-                                            activity={{
-                                              provider: igMatched.provider,
-                                              productCode: igMatched.productCode || null,
-                                              title: igMatched.title,
-                                              price: igMatched.price,
-                                              currency: igMatched.currency || "USD",
-                                              imageUrl: igMatched.imageUrl || null,
-                                              bookingUrl: igMatched.bookingUrl || '',
-                                            }}
-                                            trigger={
-                                              <Button size="sm" className="text-xs h-6 flex-shrink-0" data-testid={`button-book-ig-${post.id}`}>Book</Button>
-                                            }
-                                          />
-                                        ) : (
-                                          <a href={igMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
-                                            <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
-                                          </a>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
+                    {event.description && (
+                      <p className="text-sm text-muted-foreground mb-2">{event.description}</p>
                     )}
-                  </div>
-                )}
-
-                {/* ── X / Twitter section ── */}
-                {(socialSource === 'all' || socialSource === 'twitter') && (
-                  <div className="space-y-3" data-testid="x-section">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold bg-black text-white dark:bg-white dark:text-black px-1.5 py-0.5 rounded">𝕏</span>
-                      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">X / Twitter</h3>
-                      {xLoading && !xTimedOut && (
-                        <span
-                          className="text-xs text-muted-foreground animate-pulse flex items-center gap-1"
-                          data-testid="x-scanning-indicator"
-                        >
-                          <Radio className="h-3 w-3" />
-                          Scanning X...
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      {event.venue && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {event.venue}
+                        </span>
+                      )}
+                      {event.entryFee && (
+                        <span className="flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          {event.entryFee}
                         </span>
                       )}
                     </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
 
-                    {xLoading && !xTimedOut ? (
-                      <div className="space-y-2" data-testid="x-loading-skeleton">
-                        {Array.from({ length: 3 }).map((_, i) => (
-                          <Skeleton key={i} className="h-28 w-full" />
-                        ))}
+        <TabsContent value="activity" className="mt-4">
+          {liveActivity.length === 0 ? (
+            <Card className="p-8 text-center">
+              <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">No recent activity in {city.cityName}</p>
+            </Card>
+          ) : (
+            <ScrollArea className="h-96">
+              <div className="space-y-3">
+                {liveActivity.map((activity) => (
+                  <Card key={activity.id} className="hover-elevate" data-testid={`activity-item-${activity.id}`}>
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-start gap-3">
+                        {getActivityIcon(activity.activityType)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium">{activity.userName || "Traveler"}</span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{activity.activityText}</p>
+                          {activity.placeName && (
+                            <p className="text-xs text-primary mt-1 flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {activity.placeName}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(activity.occurredAt), { addSuffix: true })}
+                          </p>
+                          {activity.likesCount > 0 && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                              <ThumbsUp className="h-3 w-3" />
+                              {activity.likesCount}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    ) : xTimedOut ? (
-                      <Card className="p-6 text-center" data-testid="card-x-timeout">
-                        <Radio className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                        <p className="text-sm font-medium text-muted-foreground">Live feed temporarily unavailable</p>
-                        <p className="text-xs text-muted-foreground mt-1">X/Twitter data is taking longer than expected. Check back shortly.</p>
-                      </Card>
-                    ) : (socialPosts || []).filter(p => p.source === 'twitter').length === 0 ? (
-                      <Card className="p-4 text-center" data-testid="card-no-x">
-                        <p className="text-sm text-muted-foreground">No X posts found for {city.cityName}</p>
-                      </Card>
-                    ) : (
-                      <div className="space-y-2">
-                        {(socialPosts || []).filter(p => p.source === 'twitter').slice(0, 10).map((post) => {
-                          const initials = post.authorName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-                          const xMatched = matchActivityToText(post.content, cachedActivities);
-                          return (
-                            <Card key={post.id} className="hover-elevate" data-testid={`social-post-${post.id}`}>
-                              <CardContent className="py-3 px-4">
-                                <div className="space-y-2">
-                                  <div className="flex items-start gap-3">
-                                    <div className="w-9 h-9 rounded-full bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center flex-shrink-0">
-                                      <span className="text-xs font-bold text-sky-700 dark:text-sky-400">{initials}</span>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 mb-0.5">
-                                        <span className="font-semibold text-sm">{post.authorName}</span>
-                                        {post.authorHandle && (
-                                          <span className="text-xs text-muted-foreground">{post.authorHandle}</span>
-                                        )}
-                                        <span className="text-[10px] font-bold ml-auto bg-black text-white dark:bg-white dark:text-black px-1.5 py-0.5 rounded">𝕏</span>
-                                      </div>
-                                      <p className="text-sm leading-snug">{post.content}</p>
-                                      {post.imageUrl && (
-                                        <img
-                                          src={post.imageUrl}
-                                          alt="Post media"
-                                          className="mt-2 rounded-lg max-h-48 w-full object-cover"
-                                          data-testid={`img-post-${post.id}`}
-                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                        />
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-4 pl-12 text-xs text-muted-foreground">
-                                    <span className="flex items-center gap-1">
-                                      <Heart className="h-3 w-3" />
-                                      {post.likesCount.toLocaleString()}
-                                    </span>
-                                    {post.repostsCount !== undefined && (
-                                      <span className="flex items-center gap-1">
-                                        <Activity className="h-3 w-3" />
-                                        {post.repostsCount.toLocaleString()}
-                                      </span>
-                                    )}
-                                    <span>{formatDistanceToNow(new Date(post.postedAt), { addSuffix: true })}</span>
-                                    {post.sentiment && (
-                                      <Badge className={cn(
-                                        "text-[10px] px-1.5 py-0",
-                                        post.sentiment === 'positive' ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                                        post.sentiment === 'negative' ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
-                                        "bg-muted text-muted-foreground"
-                                      )}>
-                                        {post.sentiment}
-                                      </Badge>
-                                    )}
-                                    <a
-                                      href={post.postUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="ml-auto text-primary hover:underline flex items-center gap-0.5"
-                                      data-testid={`link-view-post-${post.id}`}
-                                    >
-                                      View on 𝕏
-                                      <ExternalLink className="h-3 w-3" />
-                                    </a>
-                                  </div>
-                                  {xMatched && (
-                                    <div className="pl-12 pt-1 border-t border-border/50 flex items-center justify-between gap-2" data-testid={`x-match-${post.id}`}>
-                                      <div className="flex items-center gap-1.5 min-w-0">
-                                        <Ticket className="h-3 w-3 text-primary flex-shrink-0" />
-                                        <span className="text-xs text-muted-foreground truncate">
-                                          Book: <span className="font-medium text-foreground">{xMatched.title}</span>
-                                          {xMatched.price != null && xMatched.price > 0 && ` · from ${xMatched.currency === 'USD' ? '$' : xMatched.currency}${xMatched.price.toFixed(0)}`}
-                                        </span>
-                                      </div>
-                                      {xMatched.price != null && xMatched.price > 0 ? (
-                                        <BookActivityModal
-                                          activity={{
-                                            provider: xMatched.provider,
-                                            productCode: xMatched.productCode || null,
-                                            title: xMatched.title,
-                                            price: xMatched.price,
-                                            currency: xMatched.currency || "USD",
-                                            imageUrl: xMatched.imageUrl || null,
-                                            bookingUrl: xMatched.bookingUrl || '',
-                                          }}
-                                          trigger={
-                                            <Button size="sm" className="text-xs h-6 flex-shrink-0" data-testid={`button-book-x-${post.id}`}>Book</Button>
-                                          }
-                                        />
-                                      ) : (
-                                        <a href={xMatched.bookingUrl!} target="_blank" rel="noopener noreferrer">
-                                          <Button size="sm" className="text-xs h-6 flex-shrink-0">Book</Button>
-                                        </a>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </ScrollArea>
-          </div>
+          )}
         </TabsContent>
 
         <TabsContent value="media" className="mt-4">
@@ -2426,52 +1421,6 @@ export function CityDetailView({ cityName, onBack }: CityDetailViewProps) {
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground" data-testid="text-local-insights">{city.aiLocalInsights}</p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {safetyScores && safetyScores.overall != null && (
-                <Card data-testid="card-safety-scores">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-green-600" />
-                      Safety Scores
-                      <span className="ml-auto text-xs text-muted-foreground font-normal">
-                        Amadeus data · {safetyScores.neighborhoodCount} {safetyScores.neighborhoodCount === 1 ? "neighborhood" : "neighborhoods"}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs font-medium">
-                        <span>Overall Safety</span>
-                        <span data-testid="score-overall">{safetyScores.overall}/100</span>
-                      </div>
-                      <Progress value={safetyScores.overall} className="h-2" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                      {([
-                        { key: "theft", label: "Theft Risk", invert: true },
-                        { key: "physicalHarm", label: "Physical Safety", invert: true },
-                        { key: "medical", label: "Medical Access" },
-                        { key: "women", label: "Women's Safety" },
-                        { key: "lgbtq", label: "LGBTQ+ Safety" },
-                        { key: "politicalFreedom", label: "Political Freedom" },
-                      ] as { key: keyof typeof safetyScores; label: string; invert?: boolean }[]).map(({ key, label, invert }) => {
-                        const raw = safetyScores[key] as number | null;
-                        if (raw == null) return null;
-                        const displayScore = invert ? Math.max(0, 100 - raw) : raw;
-                        return (
-                          <div key={key} className="space-y-0.5">
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>{label}</span>
-                              <span data-testid={`score-${key}`}>{displayScore}</span>
-                            </div>
-                            <Progress value={displayScore} className="h-1.5" />
-                          </div>
-                        );
-                      })}
-                    </div>
                   </CardContent>
                 </Card>
               )}

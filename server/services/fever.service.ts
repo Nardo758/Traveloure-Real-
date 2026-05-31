@@ -257,27 +257,17 @@ class FeverService {
   }
 
   /**
-   * Build affiliate tracking URL for an event.
-   * item.Url from Fever is already a fever.pxf.io affiliate link with the real
-   * feverup.com URL in its `u=` query param. Wrapping that whole URL inside
-   * another Impact.com tracker creates double-encoding that breaks the redirect.
-   * Instead we extract the clean feverup.com destination and use that as the
-   * `u=` value for the Impact.com link.
+   * Build affiliate tracking URL for an event
    */
   public buildAffiliateUrl(eventUrl: string): string {
-    // eventUrl from Fever is a fever.pxf.io affiliate link containing the real
-    // feverup.com event URL in its `u=` query param. Extract that direct URL
-    // so users land on the correct event page without a broken redirect chain.
-    try {
-      const parsed = new URL(eventUrl);
-      const innerU = parsed.searchParams.get('u');
-      if (innerU && (innerU.includes('feverup.com') || innerU.includes('liveyourcity.com'))) {
-        return innerU;
-      }
-    } catch {
-      // fall through to return original
+    if (!this.config.accountSid) {
+      return eventUrl;
     }
-    return eventUrl;
+    
+    // Impact.com tracking URL format
+    const trackingUrl = new URL('https://feverup.sjv.io/c/' + this.config.accountSid);
+    trackingUrl.searchParams.set('u', eventUrl);
+    return trackingUrl.toString();
   }
 
   /**

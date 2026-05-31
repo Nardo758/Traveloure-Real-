@@ -262,8 +262,22 @@ export default function ContentStudio() {
     }
   };
 
-  const handleConnectInstagram = () => {
-    window.location.href = "/api/instagram/connect";
+  const handleConnectInstagram = async () => {
+    const clientId = import.meta.env.VITE_META_APP_ID;
+    if (!clientId) {
+      toast({ 
+        title: "Configuration Required", 
+        description: "Instagram integration requires Meta App setup.", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
+    const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
+    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+    
+    window.location.href = authUrl;
   };
 
   const filteredContent = mockContent.filter(item => {

@@ -27,18 +27,6 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
 
-  const onMessageRef = useRef(onMessage);
-  const onTypingRef = useRef(onTyping);
-  const onConnectedRef = useRef(onConnected);
-  const onErrorRef = useRef(onError);
-
-  useEffect(() => {
-    onMessageRef.current = onMessage;
-    onTypingRef.current = onTyping;
-    onConnectedRef.current = onConnected;
-    onErrorRef.current = onError;
-  });
-
   const connect = useCallback(() => {
     if (!userId) return;
 
@@ -66,19 +54,19 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
 
           switch (message.type) {
             case "connected":
-              onConnectedRef.current?.();
+              onConnected?.();
               break;
             case "chat":
-              onMessageRef.current?.(message);
+              onMessage?.(message);
               break;
             case "typing":
               if (message.senderId) {
-                onTypingRef.current?.(message.senderId);
+                onTyping?.(message.senderId);
               }
               break;
             case "error":
               if (message.error) {
-                onErrorRef.current?.(message.error);
+                onError?.(message.error);
               }
               break;
           }
@@ -107,7 +95,7 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
       console.error("Failed to create WebSocket:", err);
       setConnectionError("Failed to connect");
     }
-  }, [userId]);
+  }, [userId, onMessage, onTyping, onConnected]);
 
   useEffect(() => {
     connect();
