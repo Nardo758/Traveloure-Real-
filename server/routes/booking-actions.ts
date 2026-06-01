@@ -757,6 +757,27 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
       throw txErr;
     }
 
+    // Notify the assigned expert with a workspace deep-link in the data payload
+    try {
+      const tripMeta = await db.execute(sql`
+        SELECT title, destination FROM trips WHERE id = ${id} LIMIT 1
+      `);
+      const tripRow = (tripMeta.rows?.[0] as any) || {};
+      const tripLabel = tripRow.title || tripRow.destination || 'a new trip';
+      await db.execute(sql`
+        INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
+        VALUES (
+          ${crypto.randomUUID()}, ${expertUserId}, 'booking_request',
+          'New trip assignment',
+          ${`You've been assigned to ${tripLabel}. Open the workspace to start planning.`},
+          ${JSON.stringify({ tripId: id, workspacePath: `/expert/workspace/${id}` })}::jsonb,
+          false, NOW()
+        )
+      `);
+    } catch (notifErr) {
+      console.warn('Could not create expert assignment notification:', notifErr);
+    }
+
     res.json({ success: true, advisorId, expertRequestId, status: 'pending' });
   } catch (error: any) {
     console.error('Assign expert advisor error:', error);
@@ -782,6 +803,7 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
         t.end_date,
         tea.status,
         tea.assigned_at,
+        u.id as traveler_user_id,
         u.first_name as traveler_first_name,
         u.last_name as traveler_last_name,
         COALESCE(
@@ -807,6 +829,7 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 /**
  * GET /api/trips/:id/suggestions
