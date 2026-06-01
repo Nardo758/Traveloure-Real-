@@ -66,6 +66,27 @@ import {
     );
   }
 
+  function AddedRow({ name, bookingStatus, onBookNow }: any) {
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 7px",borderRadius:8,
+        background: bookingStatus==="confirmed" ? "#F0FDF4" : "#FFFBEB",
+        border: `1px solid ${bookingStatus==="confirmed" ? "#BBF7D0" : "#FEF08A"}`,
+        margin:"2px 0"}}>
+        <span style={{fontSize:11,color:G[400],minWidth:40,fontFamily:"monospace",flexShrink:0}}>19:30</span>
+        <div style={{width:7,height:7,borderRadius:"50%",background:"#EA580C",flexShrink:0}}/>
+        <span style={{fontSize:13,color:G[900],fontWeight:500,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+        {bookingStatus==="confirmed" ? (
+          <Bdg c="green"><CheckCircle style={{width:9,height:9}}/> Confirmed</Bdg>
+        ) : (
+          <>
+            <Bdg c="amber">Needs Booking</Bdg>
+            <button onClick={onBookNow} style={{fontSize:11,color:"#B45309",background:"#FEF3C7",border:"1.5px solid #FDE68A",borderRadius:6,padding:"2px 8px",cursor:"pointer",flexShrink:0,fontWeight:600,whiteSpace:"nowrap"}}>Book →</button>
+          </>
+        )}
+      </div>
+    );
+  }
+
   function DayCard({ day, date, loc, children }: any) {
     return (
       <div style={{background:"white",borderRadius:12,border:`1px solid ${G[200]}`,boxShadow:"0 1px 4px rgba(0,0,0,0.06)",marginBottom:12,overflow:"hidden"}}>
@@ -91,7 +112,7 @@ import {
     );
   }
 
-  function BookingBriefModal({ provider, onClose }: { provider: string; onClose: () => void }) {
+  function BookingBriefModal({ provider, onClose, onConfirm }: { provider: string; onClose: () => void; onConfirm?: () => void }) {
     return (
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
         <div style={{background:"white",borderRadius:16,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.25)",overflow:"hidden"}}>
@@ -149,7 +170,7 @@ import {
             <button onClick={onClose} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${G[200]}`,background:"white",fontSize:13,fontWeight:600,color:G[600],cursor:"pointer"}}>
               Cancel
             </button>
-            <button style={{flex:2,padding:"8px",borderRadius:8,border:"none",background:P,color:"white",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <button onClick={()=>{ onConfirm?.(); onClose(); }} style={{flex:2,padding:"8px",borderRadius:8,border:"none",background:P,color:"white",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
               <ExternalLink style={{width:13,height:13}}/> Continue to {provider}
             </button>
           </div>
@@ -158,9 +179,12 @@ import {
     );
   }
 
-  function PCard({ name, cat, rating, price, tag, commission, onBook }: any) {
+  function PCard({ name, cat, rating, price, tag, onAdd, bookingStatus, onBookNow, targetDay=3 }: any) {
     return (
-      <div style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:10,border:`1px solid ${G[100]}`,background:"white",marginBottom:7,boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:10,
+        border:`1px solid ${bookingStatus==="confirmed"?"#BBF7D0":bookingStatus==="needs-booking"?"#FDE68A":G[100]}`,
+        background:bookingStatus==="confirmed"?"#F0FDF4":bookingStatus==="needs-booking"?"#FFFBEB":"white",
+        marginBottom:7,boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
         <div style={{width:38,height:38,borderRadius:8,background:G[100],flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🍽</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13,fontWeight:600,color:G[900],overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</div>
@@ -173,15 +197,20 @@ import {
             {tag&&<Bdg c="rose">{tag}</Bdg>}
           </div>
         </div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-          <div style={{display:"flex",gap:4}}>
-            {onBook&&(
-              <button onClick={onBook} style={{flexShrink:0,padding:"4px 8px",borderRadius:7,fontSize:11,fontWeight:600,background:"white",color:P,border:`1.5px solid ${P}`,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-                <ExternalLink style={{width:10,height:10}}/> Book
-              </button>
-            )}
-            <button style={{flexShrink:0,padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:P,color:"white",border:"none",cursor:"pointer"}}>Add to Day 3</button>
-          </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+          {bookingStatus==="confirmed" ? (
+            <button disabled style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:700,background:"#DCFCE7",color:"#15803D",border:"1.5px solid #86EFAC",cursor:"default",display:"flex",alignItems:"center",gap:4}}>
+              <CheckCircle style={{width:11,height:11}}/> Confirmed
+            </button>
+          ) : bookingStatus==="needs-booking" ? (
+            <button onClick={onBookNow} style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:700,background:"#FEF3C7",color:"#B45309",border:"1.5px solid #FDE68A",cursor:"pointer",display:"flex",alignItems:"center",gap:4,animation:"pulse 1.5s infinite"}}>
+              <Clock style={{width:11,height:11}}/> Book Now →
+            </button>
+          ) : (
+            <button onClick={onAdd} style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:P,color:"white",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              <Plus style={{width:10,height:10}}/> Add to Day {targetDay}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -233,6 +262,23 @@ import {
     const [identityRevealed, setIdentityRevealed] = useState(false);
     const [noteText, setNoteText] = useState("Client is very budget-aware despite honeymoon setting. James mentioned surprise cherry blossom picnic as a priority. Avoid Shibuya Crossing — crowds anxiety noted in intake form.");
     const [bookingBriefProvider, setBookingBriefProvider] = useState<string|null>(null);
+    const [bookingConfirmItem, setBookingConfirmItem] = useState<string|null>(null);
+    const [addedItems, setAddedItems] = useState<Record<string,{status:"needs-booking"|"confirmed",provider:string,day:number}>>({});
+
+    function addToDay(name: string, provider: string, day: number) {
+      setAddedItems(prev => ({...prev, [name]: {status:"needs-booking", provider, day}}));
+    }
+    function openBooking(name: string, provider: string) {
+      setBookingConfirmItem(name);
+      setBookingBriefProvider(provider);
+    }
+    function confirmBooking() {
+      if (bookingConfirmItem) {
+        setAddedItems(prev => ({...prev, [bookingConfirmItem]: {...prev[bookingConfirmItem], status:"confirmed"}}));
+      }
+      setBookingConfirmItem(null);
+      setBookingBriefProvider(null);
+    }
 
     const clientCode = "TK-2847";
     const clientName = "Sarah & James C.";
@@ -240,7 +286,7 @@ import {
 
     return (
       <div style={{fontFamily:"'Inter',-apple-system,sans-serif",height:"100vh",display:"flex",flexDirection:"column",background:G[50],overflow:"hidden"}}>
-        {bookingBriefProvider && <BookingBriefModal provider={bookingBriefProvider} onClose={()=>setBookingBriefProvider(null)}/>}
+        {bookingBriefProvider && <BookingBriefModal provider={bookingBriefProvider} onClose={()=>{setBookingBriefProvider(null);setBookingConfirmItem(null);}} onConfirm={confirmBooking}/>}
 
         {/* ── Header ── */}
         <header style={{height:56,background:"white",borderBottom:`1px solid ${G[200]}`,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",flexShrink:0}}>
@@ -443,7 +489,16 @@ import {
                 <ARow time="09:00" cat="culture" name="Shinjuku Gyoen National Garden" price="¥500"/>
                 <TConn mode="walk" dur="18 min walk"/>
                 <ARow time="12:00" cat="food" name="Lunch at Tsukemen Gonokami" price="¥1,800"/>
-                <div style={{marginTop:5}}><ARow time="19:00" cat="food" name="" price="" gap/></div>
+                {Object.entries(addedItems).filter(([,v])=>v.day===3).length > 0 ? (
+                  Object.entries(addedItems).filter(([,v])=>v.day===3).map(([name,item])=>(
+                    <div key={name} style={{marginTop:5}}>
+                      <TConn mode="walk" dur="10 min walk"/>
+                      <AddedRow name={name} bookingStatus={item.status} onBookNow={()=>openBooking(name, item.provider)}/>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{marginTop:5}}><ARow time="19:00" cat="food" name="" price="" gap/></div>
+                )}
               </DayCard>
 
               {/* Budget summary footer */}
@@ -485,11 +540,26 @@ import {
                   <Sparkles style={{width:13,height:13,color:P,flexShrink:0}}/>
                   <span style={{fontSize:11,color:P}}>Filtered for <strong>Honeymoon</strong> · romantic dining · Day 3 gap</span>
                 </div>
-                <PCard name="Kozue Restaurant" cat="Fine Dining" rating="4.9" price="¥¥¥¥" tag="Romantic" commission="8% comm." onBook={()=>setBookingBriefProvider("Viator")}/>
-                <PCard name="Nakamura-ro Kaiseki" cat="Japanese" rating="4.7" price="¥¥¥" commission="6% comm." onBook={()=>setBookingBriefProvider("Viator")}/>
-                <PCard name="Nobu Tokyo" cat="Contemporary" rating="4.8" price="¥¥¥¥" commission="8% comm." onBook={()=>setBookingBriefProvider("Booking.com")}/>
-                <PCard name="New York Bar, Park Hyatt" cat="Cocktail Bar" rating="4.9" price="¥¥" tag="Views"/>
-                <PCard name="Tempura Tsunahachi" cat="Traditional" rating="4.6" price="¥¥" commission="5% comm." onBook={()=>setBookingBriefProvider("Viator")}/>
+                <PCard name="Kozue Restaurant" cat="Fine Dining" rating="4.9" price="¥¥¥¥" tag="Romantic"
+                  bookingStatus={addedItems["Kozue Restaurant"]?.status}
+                  onAdd={()=>addToDay("Kozue Restaurant","Viator",3)}
+                  onBookNow={()=>openBooking("Kozue Restaurant","Viator")}/>
+                <PCard name="Nakamura-ro Kaiseki" cat="Japanese" rating="4.7" price="¥¥¥"
+                  bookingStatus={addedItems["Nakamura-ro Kaiseki"]?.status}
+                  onAdd={()=>addToDay("Nakamura-ro Kaiseki","Viator",3)}
+                  onBookNow={()=>openBooking("Nakamura-ro Kaiseki","Viator")}/>
+                <PCard name="Nobu Tokyo" cat="Contemporary" rating="4.8" price="¥¥¥¥"
+                  bookingStatus={addedItems["Nobu Tokyo"]?.status}
+                  onAdd={()=>addToDay("Nobu Tokyo","Booking.com",3)}
+                  onBookNow={()=>openBooking("Nobu Tokyo","Booking.com")}/>
+                <PCard name="New York Bar, Park Hyatt" cat="Cocktail Bar" rating="4.9" price="¥¥" tag="Views"
+                  bookingStatus={addedItems["New York Bar, Park Hyatt"]?.status}
+                  onAdd={()=>addToDay("New York Bar, Park Hyatt","Viator",3)}
+                  onBookNow={()=>openBooking("New York Bar, Park Hyatt","Viator")}/>
+                <PCard name="Tempura Tsunahachi" cat="Traditional" rating="4.6" price="¥¥"
+                  bookingStatus={addedItems["Tempura Tsunahachi"]?.status}
+                  onAdd={()=>addToDay("Tempura Tsunahachi","Viator",3)}
+                  onBookNow={()=>openBooking("Tempura Tsunahachi","Viator")}/>
                 <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${G[100]}`,textAlign:"center"}}><span style={{fontSize:10,color:G[400]}}>Powered by Traveloure · Viator · Google Places</span></div>
               </div>
             )}
