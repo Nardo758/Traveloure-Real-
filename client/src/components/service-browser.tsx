@@ -65,6 +65,7 @@ type Service = {
   status: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
+  revisionsIncluded?: number;
   includesExpertNotes?: boolean;
 };
 
@@ -164,6 +165,15 @@ function ServiceCard({
               >
                 <StickyNote className="w-3 h-3 mr-1" />
                 Expert Notes
+              </Badge>
+            )}
+            {(service.revisionsIncluded ?? 0) > 0 && (
+              <Badge
+                className="text-xs bg-green-100 text-green-800 border-green-200 hover:bg-green-100"
+                variant="outline"
+                data-testid={`badge-revisions-${service.id}`}
+              >
+                {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"}
               </Badge>
             )}
           </div>

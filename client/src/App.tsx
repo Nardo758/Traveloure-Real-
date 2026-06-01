@@ -383,7 +383,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/new">
-        {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
+        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/:id/edit">
         {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
