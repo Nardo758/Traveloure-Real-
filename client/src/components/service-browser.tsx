@@ -39,6 +39,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingCart,
+  StickyNote,
 } from "lucide-react";
 
 type ServiceCategory = {
@@ -64,6 +65,7 @@ type Service = {
   status: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
+  includesExpertNotes?: boolean;
 };
 
 type DiscoverResult = {
@@ -148,10 +150,20 @@ function ServiceCard({
           </div>
         </Link>
         <div className="flex items-center justify-between mt-4 pt-3 border-t gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {category && (
               <Badge variant="secondary" className="text-xs" data-testid={`badge-category-${service.id}`}>
                 {category.name}
+              </Badge>
+            )}
+            {service.includesExpertNotes && (
+              <Badge
+                className="text-xs bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-100"
+                variant="outline"
+                data-testid={`badge-expert-notes-${service.id}`}
+              >
+                <StickyNote className="w-3 h-3 mr-1" />
+                Expert Notes
               </Badge>
             )}
           </div>

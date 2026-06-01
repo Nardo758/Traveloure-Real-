@@ -331,6 +331,9 @@ export default function ItineraryViewPage() {
       lng: a.lng ?? undefined,
       cost: a.cost || 0,
       comments: 0,
+      expertNote: ["review_sent", "notes_complete", "acknowledged"].includes(expertStatus || "")
+        ? reviewActivityDiffs[a.id]?.note || undefined
+        : undefined,
     })),
     transports: d.transportLegs.map((l, li) => {
       const tDiff = transportDiffs[l.id];
@@ -548,7 +551,7 @@ export default function ItineraryViewPage() {
           </div>
         )}
 
-        {isOwnerView && data.expertNotes && (expertStatus === "acknowledged" || expertStatus === "review_sent") && (
+        {isOwnerView && data.expertNotes && (expertStatus === "acknowledged" || expertStatus === "review_sent" || expertStatus === "notes_complete") && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="expert-notes-callout">
             <button
               className="w-full flex items-center gap-2 p-3 text-left"
