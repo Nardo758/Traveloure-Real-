@@ -941,6 +941,59 @@ class ExperienceCatalogService {
         };
       }
 
+      if (type === "transfer") {
+        const [transfer] = await db.select()
+          .from(transferCache)
+          .where(eq(transferCache.id, id))
+          .limit(1);
+
+        if (!transfer) return null;
+
+        return {
+          id: transfer.id,
+          type: "transfer",
+          provider: transfer.provider || "amadeus",
+          externalId: transfer.offerId,
+          title: transfer.vehicleDescription
+            ? `${transfer.vehicleDescription} — ${transfer.transferType}`
+            : `Transfer — ${transfer.transferType}`,
+          description: null,
+          imageUrl: null,
+          price: transfer.price ? parseFloat(transfer.price) : null,
+          currency: transfer.currency || "USD",
+          rating: null,
+          reviewCount: null,
+          destination: transfer.endCityName,
+          location: transfer.endLatitude && transfer.endLongitude
+            ? { lat: parseFloat(transfer.endLatitude), lng: parseFloat(transfer.endLongitude) }
+            : null,
+          duration: null,
+          categories: ["transfer"],
+          tags: [],
+          bookingUrl: null,
+          affiliateUrl: null,
+          lastUpdated: transfer.lastUpdated,
+          vehicle: transfer.vehicleCode
+            ? {
+                code: transfer.vehicleCode,
+                category: transfer.vehicleCategory || "",
+                description: transfer.vehicleDescription || "",
+                seats: transfer.maxSeats ?? undefined,
+              }
+            : null,
+          quotation: transfer.price
+            ? { amount: transfer.price, currencyCode: transfer.currency || "USD" }
+            : null,
+          transferType: transfer.transferType,
+        };
+      }
+
+      if (type === "safety") {
+        // Safety items are served live from Amadeus (not cached); not retrievable by UUID.
+        // Return null to surface a 404 — callers should use live safety search instead.
+        return null;
+      }
+
       return null;
     } finally {
       const duration = (Date.now() - startTime) / 1000;
