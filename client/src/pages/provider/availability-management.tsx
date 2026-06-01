@@ -54,14 +54,20 @@ export default function AvailabilityManagement() {
   });
 
   const saveRuleMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/provider/availability/rules", {
+    mutationFn: () => {
+      const existing = availabilityRules?.find((r) => r.dayOfWeek === selectedDay);
+      const payload = {
         dayOfWeek: selectedDay,
         startTime,
         endTime,
         maxBookingsPerDay: parseInt(maxBookings, 10),
         isActive: true,
-      }),
+      };
+      if (existing?.id) {
+        return apiRequest("PATCH", `/api/provider/availability/rules/${existing.id}`, payload);
+      }
+      return apiRequest("POST", "/api/provider/availability/rules", payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/availability/rules"] });
       toast({ title: "Schedule saved", description: `${selectedDay} schedule updated.` });
