@@ -570,24 +570,104 @@ import {
             {/* ── Partners Tab ── */}
             {rightTab==="partners" && (
               <div style={{flex:1,overflowY:"auto",padding:"14px 12px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}><Link2 style={{width:14,height:14,color:P}}/><span style={{fontSize:14,fontWeight:700,color:G[900]}}>Booking Partners</span></div>
-                <div style={{fontSize:12,color:G[500],marginBottom:12}}>Earn commission on each booking through Traveloure.</div>
-                {[
-                  {n:"Booking.com",c:"Hotels",comm:"4–8%",e:"🏨",active:true},
-                  {n:"Viator",c:"Activities",comm:"8%",e:"🎭",active:true},
-                  {n:"12Go Asia",c:"Transport",comm:"3–5%",e:"🚅",active:true},
-                  {n:"SafetyWing",c:"Insurance",comm:"10%",e:"🛡️",active:false},
-                  {n:"Airalo",c:"eSIM",comm:"5%",e:"📱",active:false},
-                ].map((p,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"9px 11px",border:`1px solid ${G[100]}`,borderRadius:9,marginBottom:7,background:"white"}}>
-                    <span style={{fontSize:20,flexShrink:0}}>{p.e}</span>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:13,fontWeight:600,color:G[900]}}>{p.n}</span>{p.active&&<Bdg c="green">Active</Bdg>}</div>
-                      <div style={{fontSize:11,color:G[400]}}>{p.c} · {p.comm} commission</div>
+
+                {/* ── Section 1: Platform Service Providers ── */}
+                <div style={{marginBottom:16}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:20,height:20,borderRadius:6,background:P,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <User style={{width:11,height:11,color:"white"}}/>
+                      </div>
+                      <span style={{fontSize:13,fontWeight:700,color:G[900]}}>Platform Service Providers</span>
                     </div>
-                    <button style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:p.active?"white":P,color:p.active?P:"white",border:`1.5px solid ${P}`,cursor:"pointer"}}>{p.active?"Manage":"Connect →"}</button>
+                    <Bdg c="primary">Tokyo · JP</Bdg>
                   </div>
-                ))}
+                  <p style={{fontSize:11,color:G[500],marginBottom:10}}>Traveloure-verified providers you can book directly for this client.</p>
+
+                  {[
+                    {name:"Haruki Mori",role:"Honeymoon Photographer",sub:"Cherry blossom & golden hour specialist",rating:"4.97",reviews:142,price:"¥48,000",unit:"half-day",avail:true,e:"📸",verified:true},
+                    {name:"Chef Aiko Suzuki",role:"Private Kaiseki Chef",sub:"In-room dining · Michelin-trained · 2 hrs",rating:"4.9",reviews:87,price:"¥32,000",unit:"per session",avail:true,e:"👩‍🍳",verified:true},
+                    {name:"Takeshi Yamamoto",role:"Private City Guide",sub:"Asakusa & hidden Shinjuku specialist",rating:"4.88",reviews:204,price:"¥22,000",unit:"full day",avail:false,e:"🗾",verified:true},
+                    {name:"Yuki Transport",role:"Luxury Transfer Driver",sub:"Airport · hotel · day trips · English-speaking",rating:"4.95",reviews:310,price:"¥15,000",unit:"per transfer",avail:true,e:"🚗",verified:false},
+                  ].map((sp,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"10px 11px",border:`1px solid ${G[100]}`,borderRadius:10,marginBottom:7,background:"white",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                      {/* Avatar circle */}
+                      <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${P}30,${P}60)`,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+                        {sp.e}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
+                          <span style={{fontSize:13,fontWeight:700,color:G[900]}}>{sp.name}</span>
+                          {sp.verified && (
+                            <div title="Traveloure Verified" style={{width:14,height:14,borderRadius:"50%",background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              <CheckCircle style={{width:9,height:9,color:"white"}}/>
+                            </div>
+                          )}
+                          {!sp.avail && <Bdg c="amber">Busy</Bdg>}
+                        </div>
+                        <div style={{fontSize:12,fontWeight:600,color:G[700],marginBottom:1}}>{sp.role}</div>
+                        <div style={{fontSize:11,color:G[400],marginBottom:4}}>{sp.sub}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,color:"#B45309",fontWeight:600}}>★ {sp.rating}</span>
+                          <span style={{fontSize:10,color:G[400]}}>({sp.reviews} reviews)</span>
+                          <span style={{fontSize:11,fontWeight:700,color:G[900]}}>{sp.price}</span>
+                          <span style={{fontSize:10,color:G[400]}}>/{sp.unit}</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={()=>setBookingBriefProvider(sp.name)}
+                        disabled={!sp.avail}
+                        style={{
+                          flexShrink:0,padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,
+                          background:sp.avail?P:"white",
+                          color:sp.avail?"white":G[300],
+                          border:sp.avail?`none`:`1.5px solid ${G[200]}`,
+                          cursor:sp.avail?"pointer":"default",
+                          whiteSpace:"nowrap"
+                        }}
+                      >
+                        {sp.avail?"Book for Client":"Unavailable"}
+                      </button>
+                    </div>
+                  ))}
+
+                  <button style={{width:"100%",padding:"6px",borderRadius:8,border:`1px dashed ${G[300]}`,background:"none",fontSize:11,color:G[500],cursor:"pointer",fontWeight:500}}>
+                    + Browse all Tokyo providers →
+                  </button>
+                </div>
+
+                {/* Divider */}
+                <div style={{display:"flex",alignItems:"center",gap:8,margin:"14px 0 12px"}}>
+                  <div style={{flex:1,height:1,background:G[200]}}/>
+                  <span style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>Affiliate Networks</span>
+                  <div style={{flex:1,height:1,background:G[200]}}/>
+                </div>
+
+                {/* ── Section 2: Affiliate Partners ── */}
+                <div>
+                  <p style={{fontSize:11,color:G[500],marginBottom:9}}>Earn commission on bookings made through these external partners.</p>
+                  {[
+                    {n:"Booking.com",c:"Hotels",comm:"4–8%",e:"🏨",active:true},
+                    {n:"Viator",c:"Activities",comm:"8%",e:"🎭",active:true},
+                    {n:"12Go Asia",c:"Transport",comm:"3–5%",e:"🚅",active:true},
+                    {n:"SafetyWing",c:"Insurance",comm:"10%",e:"🛡️",active:false},
+                    {n:"Airalo",c:"eSIM",comm:"5%",e:"📱",active:false},
+                  ].map((p,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",border:`1px solid ${G[100]}`,borderRadius:9,marginBottom:6,background:"white"}}>
+                      <span style={{fontSize:18,flexShrink:0}}>{p.e}</span>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:12,fontWeight:600,color:G[900]}}>{p.n}</span>
+                          {p.active&&<Bdg c="green">Active</Bdg>}
+                        </div>
+                        <div style={{fontSize:11,color:G[400]}}>{p.c} · {p.comm} commission</div>
+                      </div>
+                      <button style={{padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:p.active?"white":P,color:p.active?P:"white",border:`1.5px solid ${P}`,cursor:"pointer"}}>
+                        {p.active?"Manage":"Connect →"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </aside>
