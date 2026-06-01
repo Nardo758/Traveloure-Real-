@@ -22,6 +22,7 @@ import {
   MapPin,
   Banknote,
   Percent,
+  PlugZap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -42,6 +43,7 @@ const navItems = [
   { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
   { icon: MapPin, label: "Tourism", href: "/admin/tourism-analytics" },
   { icon: Cpu, label: "AI Costs", href: "/admin/ai-costs" },
+  { icon: PlugZap, label: "Platform APIs", href: "/admin/platform-providers" },
   { icon: Database, label: "Data", href: "/admin/data" },
   { icon: Search, label: "Search", href: "/admin/search" },
   { icon: Bell, label: "Notifications", href: "/admin/notifications" },
