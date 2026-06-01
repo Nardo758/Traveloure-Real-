@@ -3140,6 +3140,10 @@ const safeParseInt = (val: string | undefined): number | undefined => {
   return isNaN(parsed) ? undefined : parsed;
 };
 
+const catalogContentTypeEnum = z.enum([
+  "activity", "event", "hotel", "flight", "poi", "transfer", "safety"
+]);
+
 export const hybridCatalogSearchQuerySchema = z.object({
   destination: z.string().optional(),
   query: z.string().optional(),
@@ -3150,6 +3154,12 @@ export const hybridCatalogSearchQuerySchema = z.object({
   limit: z.string().optional().transform(safeParseInt),
   offset: z.string().optional().transform(safeParseInt),
   providers: z.string().optional().transform(val => val ? val.split(",") : undefined),
+  type: z.string().optional().transform(val =>
+    val ? val.split(",").flatMap(t => {
+      const parsed = catalogContentTypeEnum.safeParse(t.trim());
+      return parsed.success ? [parsed.data] : [];
+    }) : undefined
+  ),
   experienceTypeSlug: z.string().optional(),
   tabSlug: z.string().optional(),
   enableSerpFallback: z.string().optional().transform(val => val === "true"),

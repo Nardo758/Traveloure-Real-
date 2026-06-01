@@ -3,6 +3,7 @@ import {
   activityCache, 
   hotelCache, 
   feverEventCache,
+  poiCache,
   experienceTypes,
   experienceTemplateTabs,
   experienceTemplateFilters,
@@ -12,24 +13,14 @@ import {
 } from "@shared/schema";
 import { eq, and, or, ilike, gte, lte, asc, sql } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
+import { amadeusService } from "./amadeus.service";
 
-export interface CatalogSearchParams {
-  experienceTypeSlug?: string;
-  tabSlug?: string;
-  destination?: string;
-  query?: string;
-  priceMin?: number;
-  priceMax?: number;
-  rating?: number;
-  sortBy?: "popular" | "price_low" | "price_high" | "rating";
-  limit?: number;
-  offset?: number;
-  providers?: string[];
-}
+// ─────────────────────────────────────────────
+// Discriminated union content model
+// ─────────────────────────────────────────────
 
-export interface CatalogItem {
+export interface BaseItem {
   id: string;
-  type: "activity" | "hotel" | "event" | "flight" | "transfer" | "car_rental" | "esim" | "transport" | "poi";
   provider: string;
   externalId: string;
   title: string;
@@ -45,9 +36,119 @@ export interface CatalogItem {
   categories: string[];
   tags: string[];
   bookingUrl: string | null;
-  affiliateUrl?: string | null;
+  affiliateUrl: string | null;
   source?: string | null;
   lastUpdated: Date | null;
+}
+
+export interface ActivityItem extends BaseItem {
+  type: "activity";
+}
+
+export interface EventItem extends BaseItem {
+  type: "event";
+  dates: { start: Date | null; end: Date | null } | null;
+  isFree: boolean;
+  isSoldOut: boolean;
+  venueName: string | null;
+}
+
+export interface HotelItem extends BaseItem {
+  type: "hotel";
+  amenities: string[];
+}
+
+export interface FlightItem extends BaseItem {
+  type: "flight";
+  origin: string | null;
+  destination: string | null;
+  departureTime: string | null;
+  arrivalTime: string | null;
+  stops: number | null;
+  cabin: string | null;
+}
+
+export interface POIItem extends BaseItem {
+  type: "poi";
+  rank: number | null;
+  poiCategory: string | null;
+}
+
+export interface TransferItem extends BaseItem {
+  type: "transfer";
+  vehicle: {
+    code: string;
+    category: string;
+    description: string;
+    seats?: number;
+  } | null;
+  quotation: {
+    amount: string;
+    currencyCode: string;
+  } | null;
+  transferType: string | null;
+}
+
+export interface SafetyItem extends BaseItem {
+  type: "safety";
+  subType: string | null;
+  safetyScores: {
+    overall: number;
+    lgbtq: number;
+    medical: number;
+    physicalHarm: number;
+    politicalFreedom: number;
+    theft: number;
+    women: number;
+  } | null;
+}
+
+export interface CarRentalItem extends BaseItem {
+  type: "car_rental";
+}
+
+export interface EsimItem extends BaseItem {
+  type: "esim";
+  dataGB: number | null;
+  validityDays: number | null;
+  countries: string[];
+}
+
+export interface TransportItem extends BaseItem {
+  type: "transport";
+  transportMode: string | null;
+}
+
+export type CatalogItem =
+  | ActivityItem
+  | EventItem
+  | HotelItem
+  | FlightItem
+  | POIItem
+  | TransferItem
+  | SafetyItem
+  | CarRentalItem
+  | EsimItem
+  | TransportItem;
+
+// ─────────────────────────────────────────────
+// Search params / result shapes
+// ─────────────────────────────────────────────
+
+export interface CatalogSearchParams {
+  experienceTypeSlug?: string;
+  tabSlug?: string;
+  destination?: string;
+  query?: string;
+  priceMin?: number;
+  priceMax?: number;
+  rating?: number;
+  sortBy?: "popular" | "price_low" | "price_high" | "rating";
+  limit?: number;
+  offset?: number;
+  providers?: string[];
+  /** When provided, constrains which content types are queried */
+  type?: Array<"activity" | "event" | "hotel" | "flight" | "poi" | "transfer" | "safety">;
 }
 
 export interface CatalogSearchResult {
@@ -84,6 +185,10 @@ export interface TemplateWithFilters {
   }[];
 }
 
+// ─────────────────────────────────────────────
+// Service
+// ─────────────────────────────────────────────
+
 class ExperienceCatalogService {
   private catalogLogger = logger.child({ service: "experience-catalog" });
 
@@ -95,27 +200,62 @@ class ExperienceCatalogService {
     this.catalogLogger.debug({ params }, "Searching experience catalog");
 
     const items: CatalogItem[] = [];
-    const providers = params.providers || ["viator", "fever", "amadeus"];
-    
-    // Fetch larger batch from each provider to allow proper sorting across all providers
     const batchSize = 100;
 
-    if (providers.includes("viator")) {
-      const activities = await this.searchActivities(params, batchSize, 0);
-      items.push(...activities);
+    // Determine which content types to fetch
+    const requestedTypes = params.type;
+
+    const shouldFetch = (type: string): boolean => {
+      if (!requestedTypes || requestedTypes.length === 0) return false;
+      return requestedTypes.includes(type as any);
+    };
+
+    // When type[] is provided, use it to constrain fetching
+    // When type[] is absent, fall back to providers[] behaviour
+    if (requestedTypes && requestedTypes.length > 0) {
+      if (shouldFetch("activity")) {
+        const activities = await this.searchActivities(params, batchSize, 0);
+        items.push(...activities);
+      }
+      if (shouldFetch("event")) {
+        const events = await this.searchEvents(params, batchSize, 0);
+        items.push(...events);
+      }
+      if (shouldFetch("hotel")) {
+        const hotels = await this.searchHotels(params, batchSize, 0);
+        items.push(...hotels);
+      }
+      if (shouldFetch("poi")) {
+        const pois = await this.searchPOIs(params, batchSize, 0);
+        items.push(...pois);
+      }
+      if (shouldFetch("safety")) {
+        const safety = await this.searchSafety(params, batchSize, 0);
+        items.push(...safety);
+      }
+      if (shouldFetch("transfer")) {
+        const transfers = await this.searchTransfers(params, batchSize, 0);
+        items.push(...transfers);
+      }
+      // flight: date-specific, stays as direct Amadeus call — no-op in generic search
+    } else {
+      // Legacy providers[] behaviour
+      const providers = params.providers || ["viator", "fever", "amadeus"];
+
+      if (providers.includes("viator")) {
+        const activities = await this.searchActivities(params, batchSize, 0);
+        items.push(...activities);
+      }
+      if (providers.includes("fever")) {
+        const events = await this.searchEvents(params, batchSize, 0);
+        items.push(...events);
+      }
+      if (providers.includes("amadeus")) {
+        const hotels = await this.searchHotels(params, batchSize, 0);
+        items.push(...hotels);
+      }
     }
 
-    if (providers.includes("fever")) {
-      const events = await this.searchEvents(params, batchSize, 0);
-      items.push(...events);
-    }
-
-    if (providers.includes("amadeus")) {
-      const hotels = await this.searchHotels(params, batchSize, 0);
-      items.push(...hotels);
-    }
-
-    // Sort all combined items first, then paginate
     let sortedItems = [...items];
     if (params.sortBy === "price_low") {
       sortedItems.sort((a, b) => (a.price || 0) - (b.price || 0));
@@ -126,8 +266,6 @@ class ExperienceCatalogService {
     }
 
     const totalCount = sortedItems.length;
-    
-    // Apply pagination after sorting
     const paginatedItems = sortedItems.slice(offset, offset + limit);
 
     const destinationSet = new Set<string>();
@@ -146,7 +284,8 @@ class ExperienceCatalogService {
       resultCount: paginatedItems.length,
       totalCount,
       duration,
-      providers 
+      types: requestedTypes,
+      providers: params.providers 
     }, "Catalog search completed");
 
     return {
@@ -165,7 +304,9 @@ class ExperienceCatalogService {
     };
   }
 
-  private async searchActivities(params: CatalogSearchParams, limit: number, offset: number): Promise<CatalogItem[]> {
+  // ─── Private helpers ───────────────────────
+
+  private async searchActivities(params: CatalogSearchParams, limit: number, offset: number): Promise<ActivityItem[]> {
     const conditions = [];
     
     if (params.destination) {
@@ -217,11 +358,12 @@ class ExperienceCatalogService {
       categories: a.category ? [a.category] : [],
       tags: (a.tags as string[]) || [],
       bookingUrl: null,
+      affiliateUrl: null,
       lastUpdated: a.lastUpdated,
     }));
   }
 
-  private async searchEvents(params: CatalogSearchParams, limit: number, offset: number): Promise<CatalogItem[]> {
+  private async searchEvents(params: CatalogSearchParams, limit: number, offset: number): Promise<EventItem[]> {
     const conditions = [];
     
     if (params.destination) {
@@ -273,11 +415,18 @@ class ExperienceCatalogService {
       categories: e.category ? [e.category] : [],
       tags: (e.tags as string[]) || [],
       bookingUrl: e.bookingUrl,
+      affiliateUrl: e.affiliateUrl,
       lastUpdated: e.lastUpdated,
+      dates: e.startDate || e.endDate
+        ? { start: e.startDate, end: e.endDate }
+        : null,
+      isFree: e.isFree ?? false,
+      isSoldOut: e.isSoldOut ?? false,
+      venueName: e.venueName,
     }));
   }
 
-  private async searchHotels(params: CatalogSearchParams, limit: number, offset: number): Promise<CatalogItem[]> {
+  private async searchHotels(params: CatalogSearchParams, limit: number, offset: number): Promise<HotelItem[]> {
     const conditions = [];
     
     if (params.destination) {
@@ -327,10 +476,215 @@ class ExperienceCatalogService {
         categories: (h.amenities as string[]) || [],
         tags: [],
         bookingUrl: null,
+        affiliateUrl: null,
         lastUpdated: h.lastUpdated,
+        amenities: (h.amenities as string[]) || [],
       };
     });
   }
+
+  /** Search POIs: tries poi_cache first, falls back to live Amadeus if coords are available */
+  async searchPOIs(params: CatalogSearchParams, limit: number, offset: number): Promise<POIItem[]> {
+    const conditions = [];
+
+    if (params.destination) {
+      conditions.push(
+        or(
+          ilike(poiCache.city, `%${params.destination}%`),
+          ilike(poiCache.country, `%${params.destination}%`)
+        )
+      );
+    }
+    if (params.query) {
+      conditions.push(ilike(poiCache.name, `%${params.query}%`));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const cached = await db.select()
+      .from(poiCache)
+      .where(whereClause)
+      .limit(limit)
+      .offset(offset);
+
+    if (cached.length > 0) {
+      return cached.map(p => ({
+        id: p.id,
+        type: "poi" as const,
+        provider: "amadeus",
+        externalId: p.amadeusId,
+        title: p.name,
+        description: null,
+        imageUrl: null,
+        price: null,
+        currency: "USD",
+        rating: null,
+        reviewCount: null,
+        destination: p.city,
+        location: { lat: parseFloat(p.latitude), lng: parseFloat(p.longitude) },
+        duration: null,
+        categories: p.category ? [p.category] : [],
+        tags: (p.tags as string[]) || [],
+        bookingUrl: null,
+        affiliateUrl: null,
+        lastUpdated: p.lastUpdated,
+        rank: p.rank,
+        poiCategory: p.category,
+      }));
+    }
+
+    // Live Amadeus fallback: need coords
+    const coords = params.destination ? await this.getDestinationCoords(params.destination) : null;
+    if (!coords) return [];
+
+    try {
+      const pois = await amadeusService.searchPointsOfInterest({
+        latitude: coords.lat,
+        longitude: coords.lng,
+        radius: 20,
+      });
+
+      return pois.slice(offset, offset + limit).map(p => ({
+        id: `poi-${p.id}`,
+        type: "poi" as const,
+        provider: "amadeus",
+        externalId: p.id,
+        title: p.name,
+        description: null,
+        imageUrl: null,
+        price: null,
+        currency: "USD",
+        rating: null,
+        reviewCount: null,
+        destination: params.destination || null,
+        location: { lat: p.geoCode.latitude, lng: p.geoCode.longitude },
+        duration: null,
+        categories: p.category ? [p.category] : [],
+        tags: p.tags || [],
+        bookingUrl: null,
+        affiliateUrl: null,
+        lastUpdated: new Date(),
+        rank: p.rank,
+        poiCategory: p.category,
+      }));
+    } catch (err) {
+      this.catalogLogger.warn({ err }, "Live Amadeus POI search failed, returning empty");
+      return [];
+    }
+  }
+
+  /** Search safety ratings via live Amadeus (requires coords) */
+  async searchSafety(params: CatalogSearchParams, _limit: number, _offset: number): Promise<SafetyItem[]> {
+    const coords = params.destination ? await this.getDestinationCoords(params.destination) : null;
+    if (!coords) return [];
+
+    try {
+      const ratings = await amadeusService.getSafetyRatings({
+        latitude: coords.lat,
+        longitude: coords.lng,
+        radius: 5,
+      });
+
+      return ratings.map(r => ({
+        id: `safety-${r.id}`,
+        type: "safety" as const,
+        provider: "amadeus",
+        externalId: r.id,
+        title: r.name,
+        description: null,
+        imageUrl: null,
+        price: null,
+        currency: "USD",
+        rating: r.safetyScores?.overall ?? null,
+        reviewCount: null,
+        destination: params.destination || null,
+        location: { lat: r.geoCode.latitude, lng: r.geoCode.longitude },
+        duration: null,
+        categories: ["safety"],
+        tags: [],
+        bookingUrl: null,
+        affiliateUrl: null,
+        lastUpdated: new Date(),
+        subType: r.subType,
+        safetyScores: r.safetyScores ?? null,
+      }));
+    } catch (err) {
+      this.catalogLogger.warn({ err }, "Live Amadeus safety search failed, returning empty");
+      return [];
+    }
+  }
+
+  /**
+   * Search transfers via live Amadeus.
+   * In a generic catalog context (no specific start/end codes), returns empty.
+   * For direct use, call amadeusService.searchTransfers() with specific params.
+   */
+  async searchTransfers(_params: CatalogSearchParams, _limit: number, _offset: number): Promise<TransferItem[]> {
+    // Transfer search requires specific start/end location codes and a datetime —
+    // these cannot be derived from a generic destination string alone.
+    // Pages that need transfers should call amadeusService.searchTransfers() directly.
+    return [];
+  }
+
+  /** Convert a live Amadeus TransferOffer into a TransferItem */
+  transferOfferToItem(offer: import("./amadeus.service").TransferOffer, destination?: string): TransferItem {
+    return {
+      id: `transfer-${offer.id}`,
+      type: "transfer" as const,
+      provider: "amadeus",
+      externalId: offer.id,
+      title: `${offer.vehicle.description} — ${offer.transferType}`,
+      description: null,
+      imageUrl: null,
+      price: parseFloat(offer.quotation.monetaryAmount),
+      currency: offer.quotation.currencyCode,
+      rating: null,
+      reviewCount: null,
+      destination: destination || null,
+      location: null,
+      duration: null,
+      categories: ["transfer"],
+      tags: [],
+      bookingUrl: null,
+      affiliateUrl: null,
+      lastUpdated: new Date(),
+      vehicle: {
+        code: offer.vehicle.code,
+        category: offer.vehicle.category,
+        description: offer.vehicle.description,
+        seats: offer.vehicle.seats?.[0]?.count,
+      },
+      quotation: {
+        amount: offer.quotation.monetaryAmount,
+        currencyCode: offer.quotation.currencyCode,
+      },
+      transferType: offer.transferType,
+    };
+  }
+
+  /**
+   * Look up approximate center coordinates for a destination string
+   * by sampling from the activity cache.
+   */
+  private async getDestinationCoords(destination: string): Promise<{ lat: number; lng: number } | null> {
+    const [activity] = await db
+      .select({ lat: activityCache.latitude, lng: activityCache.longitude })
+      .from(activityCache)
+      .where(
+        and(
+          ilike(activityCache.destination, `%${destination}%`),
+          sql`${activityCache.latitude} IS NOT NULL AND ${activityCache.longitude} IS NOT NULL`
+        )
+      )
+      .limit(1);
+
+    if (activity?.lat && activity?.lng) {
+      return { lat: parseFloat(activity.lat), lng: parseFloat(activity.lng) };
+    }
+    return null;
+  }
+
+  // ─── Experience type / tab helpers ─────────
 
   async getExperienceTypeWithTabs(slug: string): Promise<{
     experienceType: typeof experienceTypes.$inferSelect | null;
@@ -473,6 +827,7 @@ class ExperienceCatalogService {
           categories: activity.category ? [activity.category] : [],
           tags: (activity.tags as string[]) || [],
           bookingUrl: null,
+          affiliateUrl: null,
           lastUpdated: activity.lastUpdated,
         };
       }
@@ -505,7 +860,14 @@ class ExperienceCatalogService {
           categories: event.category ? [event.category] : [],
           tags: (event.tags as string[]) || [],
           bookingUrl: event.bookingUrl,
+          affiliateUrl: event.affiliateUrl,
           lastUpdated: event.lastUpdated,
+          dates: event.startDate || event.endDate
+            ? { start: event.startDate, end: event.endDate }
+            : null,
+          isFree: event.isFree ?? false,
+          isSoldOut: event.isSoldOut ?? false,
+          venueName: event.venueName,
         };
       }
 
@@ -540,8 +902,96 @@ class ExperienceCatalogService {
           categories: (hotel.amenities as string[]) || [],
           tags: [],
           bookingUrl: null,
+          affiliateUrl: null,
           lastUpdated: hotel.lastUpdated,
+          amenities: (hotel.amenities as string[]) || [],
         };
+      }
+
+      if (type === "poi") {
+        const [poi] = await db.select()
+          .from(poiCache)
+          .where(eq(poiCache.id, id))
+          .limit(1);
+
+        if (!poi) return null;
+
+        return {
+          id: poi.id,
+          type: "poi",
+          provider: "amadeus",
+          externalId: poi.amadeusId,
+          title: poi.name,
+          description: null,
+          imageUrl: null,
+          price: null,
+          currency: "USD",
+          rating: null,
+          reviewCount: null,
+          destination: poi.city,
+          location: { lat: parseFloat(poi.latitude), lng: parseFloat(poi.longitude) },
+          duration: null,
+          categories: poi.category ? [poi.category] : [],
+          tags: (poi.tags as string[]) || [],
+          bookingUrl: null,
+          affiliateUrl: null,
+          lastUpdated: poi.lastUpdated,
+          rank: poi.rank,
+          poiCategory: poi.category,
+        };
+      }
+
+      if (type === "transfer") {
+        const [transfer] = await db.select()
+          .from(transferCache)
+          .where(eq(transferCache.id, id))
+          .limit(1);
+
+        if (!transfer) return null;
+
+        return {
+          id: transfer.id,
+          type: "transfer",
+          provider: transfer.provider || "amadeus",
+          externalId: transfer.offerId,
+          title: transfer.vehicleDescription
+            ? `${transfer.vehicleDescription} — ${transfer.transferType}`
+            : `Transfer — ${transfer.transferType}`,
+          description: null,
+          imageUrl: null,
+          price: transfer.price ? parseFloat(transfer.price) : null,
+          currency: transfer.currency || "USD",
+          rating: null,
+          reviewCount: null,
+          destination: transfer.endCityName,
+          location: transfer.endLatitude && transfer.endLongitude
+            ? { lat: parseFloat(transfer.endLatitude), lng: parseFloat(transfer.endLongitude) }
+            : null,
+          duration: null,
+          categories: ["transfer"],
+          tags: [],
+          bookingUrl: null,
+          affiliateUrl: null,
+          lastUpdated: transfer.lastUpdated,
+          vehicle: transfer.vehicleCode
+            ? {
+                code: transfer.vehicleCode,
+                category: transfer.vehicleCategory || "",
+                description: transfer.vehicleDescription || "",
+                seats: transfer.maxSeats ?? undefined,
+              }
+            : null,
+          quotation: transfer.price
+            ? { amount: transfer.price, currencyCode: transfer.currency || "USD" }
+            : null,
+          transferType: transfer.transferType,
+        };
+      }
+
+      if (type === "safety") {
+        // Safety items are served live from Amadeus (not cached); not retrievable by UUID.
+        // Return null to surface a 404 — callers should use live safety search instead.
+        return null;
       }
 
       return null;
