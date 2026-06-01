@@ -45,12 +45,12 @@ import {
     );
   }
 
-  function ARow({ time, cat, name, price, edited, alts, gap }: any) {
+  function ARow({ time, cat, name, price, edited, alts, gap, onAddOne }: any) {
     const dots: any = {food:"#EA580C",culture:"#2563EB",hotel:"#7C3AED",transport:"#16A34A",free:G[400]};
     if (gap) return (
       <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:8,border:`1.5px dashed ${P}50`,background:`${P}06`,margin:"3px 0"}}>
         <AlertTriangle style={{width:13,height:13,color:P,flexShrink:0}}/>
-        <span style={{fontSize:12,color:P,fontWeight:500}}>No dinner booked — <span style={{textDecoration:"underline",cursor:"pointer"}}>Add one?</span></span>
+        <span style={{fontSize:12,color:P,fontWeight:500}}>No dinner booked — <span onClick={onAddOne} style={{textDecoration:"underline",cursor:"pointer"}}>Add one?</span></span>
       </div>
     );
     return (
@@ -255,7 +255,7 @@ import {
   }
 
   export function Workspace() {
-    const [rightTab, setRightTab] = useState("browse");
+    const [rightTab, setRightTab] = useState("gaps");
     const [cat, setCat] = useState("dining");
     const [cTab, setCTab] = useState("itinerary");
     const [collapsed, setCollapsed] = useState(false);
@@ -497,7 +497,7 @@ import {
                     </div>
                   ))
                 ) : (
-                  <div style={{marginTop:5}}><ARow time="19:00" cat="food" name="" price="" gap/></div>
+                  <div style={{marginTop:5}}><ARow time="19:00" cat="food" name="" price="" gap onAddOne={()=>setRightTab("browse")}/></div>
                 )}
               </DayCard>
 
@@ -516,8 +516,8 @@ import {
           {/* ══ Zone 3: Right Panel ══ */}
           <aside style={{width:362,background:"white",borderLeft:`1px solid ${G[200]}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
             <div style={{borderBottom:`1px solid ${G[200]}`,padding:"0 10px",display:"flex",gap:0,flexShrink:0}}>
-              {[{k:"browse",l:"🔍 Browse"},{k:"commission",l:"💰 Commission"},{k:"gaps",l:"⚡ AI Gaps"},{k:"partners",l:"🔗 Partners"}].map(t=>(
-                <button key={t.k} onClick={()=>setRightTab(t.k)} style={{padding:"10px 8px",fontSize:12,fontWeight:600,cursor:"pointer",background:"none",border:"none",borderBottom:rightTab===t.k?`2px solid ${P}`:"2px solid transparent",color:rightTab===t.k?P:G[500],marginBottom:-1,whiteSpace:"nowrap"}}>{t.l}</button>
+              {[{k:"gaps",l:"⚡ AI Gaps"},{k:"browse",l:"🔍 Browse"},{k:"commission",l:"💰 Earnings"},{k:"providers",l:"👥 Providers"},{k:"affiliates",l:"🔗 Affiliates"}].map(t=>(
+                <button key={t.k} onClick={()=>setRightTab(t.k)} style={{padding:"10px 7px",fontSize:11,fontWeight:600,cursor:"pointer",background:"none",border:"none",borderBottom:rightTab===t.k?`2px solid ${P}`:"2px solid transparent",color:rightTab===t.k?P:G[500],marginBottom:-1,whiteSpace:"nowrap"}}>{t.l}</button>
               ))}
             </div>
 
@@ -629,25 +629,23 @@ import {
               <div style={{flex:1,overflowY:"auto",padding:"14px 12px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12}}><Zap style={{width:14,height:14,color:P}}/><span style={{fontSize:14,fontWeight:700,color:G[900]}}>AI Gap Analysis</span></div>
                 {[
-                  {day:"Day 3",title:"No dinner booked",sev:"high",fix:"Fill with romantic dining recommendation",comm:"est. ¥720 your share"},
-                  {day:"Day 5",title:"No transport Shinjuku→Hakone",sev:"high",fix:"Book 12Go Romancecar train",comm:"est. ¥540 your share"},
-                  {day:"Day 6",title:"Budget slack ¥32,000",sev:"low",fix:"Add optional activity or hotel upgrade",comm:"est. ¥960 your share"},
+                  {day:"Day 3",title:"No dinner booked",sev:"high",fix:"Fill with romantic dining recommendation",comm:"est. ¥720 your share",tab:"browse"},
+                  {day:"Day 5",title:"No transport Shinjuku→Hakone",sev:"high",fix:"Book 12Go Romancecar train",comm:"est. ¥540 your share",tab:"affiliates"},
+                  {day:"Day 6",title:"Budget slack ¥32,000",sev:"low",fix:"Add optional activity or hotel upgrade",comm:"est. ¥960 your share",tab:"browse"},
                 ].map((g,i)=>(
                   <div key={i} style={{border:`1px solid ${g.sev==="high"?P+"40":G[200]}`,borderRadius:10,padding:"10px 12px",marginBottom:9,background:g.sev==="high"?`${P}05`:"white"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Bdg c={g.sev==="high"?"primary":"gray"}>{g.day}</Bdg><span style={{fontSize:13,fontWeight:600,color:G[900]}}>{g.title}</span></div>
                     <p style={{fontSize:12,color:G[500],margin:"0 0 5px"}}>{g.fix}</p>
                     <div style={{fontSize:11,color:"#15803D",fontWeight:600,marginBottom:7}}>💰 {g.comm}</div>
-                    <button style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:P,color:"white",border:"none",cursor:"pointer"}}>Fill This Gap →</button>
+                    <button onClick={()=>setRightTab(g.tab)} style={{padding:"5px 12px",borderRadius:7,fontSize:12,fontWeight:600,background:P,color:"white",border:"none",cursor:"pointer"}}>Fill This Gap →</button>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* ── Partners Tab ── */}
-            {rightTab==="partners" && (
+            {/* ── Providers Tab ── */}
+            {rightTab==="providers" && (
               <div style={{flex:1,overflowY:"auto",padding:"14px 12px"}}>
-
-                {/* ── Section 1: Platform Service Providers ── */}
                 <div style={{marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -711,39 +709,43 @@ import {
                     + Browse all Tokyo providers →
                   </button>
                 </div>
+              </div>
+            )}
 
-                {/* Divider */}
-                <div style={{display:"flex",alignItems:"center",gap:8,margin:"14px 0 12px"}}>
-                  <div style={{flex:1,height:1,background:G[200]}}/>
-                  <span style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>Affiliate Networks</span>
-                  <div style={{flex:1,height:1,background:G[200]}}/>
+            {/* ── Affiliates Tab ── */}
+            {rightTab==="affiliates" && (
+              <div style={{flex:1,overflowY:"auto",padding:"14px 12px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                  <div style={{width:20,height:20,borderRadius:6,background:"#2563EB",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Link2 style={{width:11,height:11,color:"white"}}/>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:700,color:G[900]}}>Affiliate Networks</span>
                 </div>
-
-                {/* ── Section 2: Affiliate Partners ── */}
-                <div>
-                  <p style={{fontSize:11,color:G[500],marginBottom:9}}>External booking networks integrated by Traveloure.</p>
-                  {[
-                    {n:"Booking.com",c:"Hotels",e:"🏨",active:true},
-                    {n:"Viator",c:"Activities & Experiences",e:"🎭",active:true},
-                    {n:"12Go Asia",c:"Ground Transport",e:"🚅",active:true},
-                    {n:"SafetyWing",c:"Travel Insurance",e:"🛡️",active:false},
-                    {n:"Airalo",c:"eSIM Data",e:"📱",active:false},
-                  ].map((p,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",border:`1px solid ${G[100]}`,borderRadius:9,marginBottom:6,background:"white"}}>
-                      <span style={{fontSize:18,flexShrink:0}}>{p.e}</span>
+                <p style={{fontSize:11,color:G[500],marginBottom:12}}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client.</p>
+                {[
+                  {n:"Booking.com",c:"Hotels",e:"🏨",active:true,note:"Use for hotel reservations — enter client details from Booking Brief"},
+                  {n:"Viator",c:"Activities & Experiences",e:"🎭",active:true,note:"Best for tours, tickets & experiences — client name required at checkout"},
+                  {n:"12Go Asia",c:"Ground Transport",e:"🚅",active:true,note:"Trains, buses, ferries — book for Day 5 Shinjuku→Hakone gap"},
+                  {n:"SafetyWing",c:"Travel Insurance",e:"🛡️",active:false,note:"Connect to offer travel insurance add-ons"},
+                  {n:"Airalo",c:"eSIM Data",e:"📱",active:false,note:"Connect to offer Japan eSIM before departure"},
+                ].map((p,i)=>(
+                  <div key={i} style={{padding:"10px 11px",border:`1px solid ${p.active?G[200]:G[100]}`,borderRadius:10,marginBottom:8,background:"white"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:p.active?6:0}}>
+                      <span style={{fontSize:20,flexShrink:0}}>{p.e}</span>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <span style={{fontSize:12,fontWeight:600,color:G[900]}}>{p.n}</span>
+                          <span style={{fontSize:13,fontWeight:600,color:G[900]}}>{p.n}</span>
                           {p.active&&<Bdg c="green">Active</Bdg>}
                         </div>
                         <div style={{fontSize:11,color:G[400]}}>{p.c}</div>
                       </div>
-                      <button style={{padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:p.active?"white":P,color:p.active?P:"white",border:`1.5px solid ${P}`,cursor:"pointer"}}>
-                        {p.active?"Use":"Connect →"}
+                      <button style={{flexShrink:0,padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:p.active?"white":P,color:p.active?P:"white",border:`1.5px solid ${P}`,cursor:"pointer"}}>
+                        {p.active?"Open →":"Connect →"}
                       </button>
                     </div>
-                  ))}
-                </div>
+                    {p.active && <div style={{fontSize:11,color:G[500],background:G[50],borderRadius:6,padding:"5px 8px"}}>{p.note}</div>}
+                  </div>
+                ))}
               </div>
             )}
           </aside>
