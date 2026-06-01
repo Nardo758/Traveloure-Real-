@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { getRoleHomePath } from "@/App";
 
 interface SignInModalProps {
   open: boolean;
@@ -83,9 +84,10 @@ export function SignInModal({
       });
 
       onOpenChange(false);
-      
-      // Redirect to dashboard
-      window.location.href = "/dashboard";
+
+      // Redirect to the correct home for this role
+      const role = data.user?.role ?? "user";
+      window.location.href = getRoleHomePath(role);
     } catch (error: any) {
       toast({
         title: "Error",
