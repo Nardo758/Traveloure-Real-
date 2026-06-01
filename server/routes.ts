@@ -582,9 +582,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       
       res.status(201).json({ 
         success: true, 
-        message: "Expert booking request submitted successfully",
+        message: bookingId
+          ? "Booking request submitted successfully"
+          : "Inquiry submitted — no service selected so no booking record was created",
         tripId,
-        bookingId,
+        bookingId: bookingId || null,
+        bookingCreated: !!bookingId,
         requestedAt: new Date().toISOString()
       });
     } catch (err) {
@@ -3126,7 +3129,21 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         revenueShareRate: effectiveRate,
       };
 
-      res.json({ earnings, summary });
+      // Build transactions from service_bookings so both summary and transactions are
+      // derived from the same canonical source (not the expert_earnings ledger)
+      const bookingTransactions = [...bookings]
+        .sort((a, b) => new Date(b.createdAt as any || 0).getTime() - new Date(a.createdAt as any || 0).getTime())
+        .slice(0, 20)
+        .map(b => ({
+          id: b.id,
+          amount: b.providerEarnings || "0",
+          type: "service_booking",
+          status: b.status || "pending",
+          createdAt: b.createdAt || new Date().toISOString(),
+          description: `Booking #${b.trackingNumber || b.id.slice(0, 8)}`,
+        }));
+
+      res.json({ earnings: bookingTransactions, summary });
     } catch (err) {
       console.error("Error fetching earnings:", err);
       res.status(500).json({ message: "Failed to fetch earnings" });
