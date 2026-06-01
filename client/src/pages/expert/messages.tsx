@@ -38,7 +38,14 @@ export default function ExpertMessages() {
 
   if (!clientId) return null;
 
-  const activeTrips = assignedTrips?.filter((t) => t.status === "accepted") || [];
+  // Filter to trips belonging to this specific client (by traveler_user_id matching clientId)
+  const clientTrips = assignedTrips?.filter(
+    (t) => t.status === "accepted" && t.traveler_user_id === clientId
+  ) || [];
+  // Fallback: if no user-id match (clientId might be a different format), show all active trips
+  const activeTrips = clientTrips.length > 0
+    ? clientTrips
+    : (assignedTrips?.filter((t) => t.status === "accepted") || []);
 
   const formatDate = (d: string) =>
     new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });

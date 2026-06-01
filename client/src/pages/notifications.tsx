@@ -2,10 +2,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { Bell, MessageSquare, Calendar, CreditCard, Bot, Check, Trash2 } from "lucide-react";
+import { Bell, MessageSquare, Calendar, CreditCard, Bot, Check, Trash2, Briefcase } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 
 function getRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -26,20 +27,24 @@ function getRelativeTime(dateStr: string): string {
 
 function getNotificationIcon(type: string) {
   switch (type) {
-    case "message": return MessageSquare;
+    case "message":
+    case "new_chat": return MessageSquare;
     case "ai": return Bot;
     case "reminder": return Calendar;
     case "credits": return CreditCard;
+    case "booking_request": return Briefcase;
     default: return Bell;
   }
 }
 
 function getNotificationColor(type: string) {
   switch (type) {
-    case "message": return "bg-blue-100 text-blue-600";
+    case "message":
+    case "new_chat": return "bg-blue-100 text-blue-600";
     case "ai": return "bg-[#FFE3E8] text-[#FF385C]";
     case "reminder": return "bg-green-100 text-green-600";
     case "credits": return "bg-yellow-100 text-yellow-600";
+    case "booking_request": return "bg-purple-100 text-purple-600";
     default: return "bg-gray-100 text-gray-600";
   }
 }
@@ -47,6 +52,7 @@ function getNotificationColor(type: string) {
 export default function Notifications() {
   const { data: notificationsFromApi } = useQuery<Array<{
     id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string;
+    data?: { tripId?: string; workspacePath?: string; chatId?: string };
   }>>({ queryKey: ["/api/notifications"] });
 
   const [notifications, setNotifications] = useState<Array<{
@@ -58,6 +64,8 @@ export default function Notifications() {
     read: boolean;
     icon: any;
     color: string;
+    tripId?: string;
+    workspacePath?: string;
   }>>([]);
 
   useEffect(() => {
@@ -71,6 +79,8 @@ export default function Notifications() {
         read: n.isRead ?? false,
         icon: getNotificationIcon(n.type),
         color: getNotificationColor(n.type),
+        tripId: n.data?.tripId,
+        workspacePath: n.data?.workspacePath,
       }));
       setNotifications(mapped);
     }
@@ -141,12 +151,24 @@ export default function Notifications() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <h3 className={`font-medium ${notification.read ? 'text-[#111827] dark:text-white' : 'text-[#111827] dark:text-white font-semibold'}`}>
                               {notification.title}
                             </h3>
                             <p className="text-sm text-[#6B7280] mt-0.5">{notification.description}</p>
                             <p className="text-xs text-[#9CA3AF] mt-1">{notification.time}</p>
+                            {notification.tripId && (
+                              <Link href={notification.workspacePath || `/expert/workspace/${notification.tripId}`}>
+                                <Button
+                                  size="sm"
+                                  className="mt-2 h-7 px-3 text-xs bg-[#FF385C] hover:bg-[#e0314f] text-white"
+                                  data-testid={`button-open-workspace-${notification.id}`}
+                                >
+                                  <Briefcase className="w-3 h-3 mr-1" />
+                                  Open Workspace
+                                </Button>
+                              </Link>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             {!notification.read && (

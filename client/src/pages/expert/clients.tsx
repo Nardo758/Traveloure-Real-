@@ -243,41 +243,41 @@ export default function ExpertClients() {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          {client.status === "traveling" && client.trips[0] && (
-                            <a
-                              href={`/trip/${client.trips[0].trip_id || client.trips[0].id}?tab=itinerary`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <Button size="sm" variant="outline" data-testid={`button-live-view-${client.id}`}>
-                                <Eye className="w-3 h-3 mr-1" /> Live View
-                              </Button>
-                            </a>
-                          )}
                           <Link href="/chat">
                             <Button size="sm" variant="outline" data-testid={`button-chat-${client.id}`}>
                               <MessageSquare className="w-3 h-3 mr-1" /> Chat
                             </Button>
                           </Link>
-                          {(client.trips[0]?.trip_id || client.trips[0]?.id) ? (
-                            <Link href={`/expert/workspace/${client.trips[0].trip_id || client.trips[0].id}`}>
-                              <Button size="sm" variant="outline" data-testid={`button-itinerary-${client.id}`}>
-                                <Calendar className="w-3 h-3 mr-1" /> Itinerary
-                              </Button>
-                            </Link>
-                          ) : (
-                            <Link href="/expert/assigned-trips">
-                              <Button size="sm" variant="outline" data-testid={`button-itinerary-${client.id}`}>
-                                <Calendar className="w-3 h-3 mr-1" /> Itinerary
-                              </Button>
-                            </Link>
-                          )}
                           <Link href="/expert/ai-assistant">
                             <Button size="sm" variant="outline" data-testid={`button-ai-assist-${client.id}`}>
                               <Bot className="w-3 h-3 mr-1" /> AI Assist
                             </Button>
                           </Link>
                         </div>
+
+                        {/* Per-trip workspace links */}
+                        {client.trips.length > 0 && (
+                          <div className="mt-3 flex flex-col gap-1.5">
+                            <p className="text-xs font-medium text-gray-500">
+                              {client.trips.length === 1 ? "Trip" : `Trips (${client.trips.length})`}
+                            </p>
+                            {client.trips.map((trip: any) => {
+                              const tripId = trip.trip_id || trip.id;
+                              const tripLabel = trip.trip_title || trip.destination || trip.title || "Trip";
+                              return tripId ? (
+                                <Link key={tripId} href={`/expert/workspace/${tripId}`}>
+                                  <div
+                                    className="flex items-center justify-between px-3 py-2 rounded-md border border-gray-200 hover:border-primary/40 hover:bg-gray-50 transition-colors cursor-pointer"
+                                    data-testid={`link-trip-workspace-${tripId}`}
+                                  >
+                                    <span className="text-sm text-gray-700 truncate flex-1">{tripLabel}</span>
+                                    <Calendar className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 ml-2" />
+                                  </div>
+                                </Link>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </CardContent>
