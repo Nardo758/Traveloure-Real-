@@ -174,7 +174,6 @@ import {
           </div>
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-          {commission&&<span style={{fontSize:10,color:"#15803D",fontWeight:700,background:"#DCFCE7",padding:"1px 5px",borderRadius:99}}>{commission}</span>}
           <div style={{display:"flex",gap:4}}>
             {onBook&&(
               <button onClick={onBook} style={{flexShrink:0,padding:"4px 8px",borderRadius:7,fontSize:11,fontWeight:600,background:"white",color:P,border:`1.5px solid ${P}`,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
@@ -495,34 +494,41 @@ import {
               </div>
             )}
 
-            {/* ── Commission Tracker Tab — NEW ── */}
+            {/* ── Earnings / Revenue Share Tab ── */}
             {rightTab==="commission" && (
               <div style={{flex:1,overflowY:"auto",padding:"14px 12px"}}>
-                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}><TrendingUp style={{width:14,height:14,color:P}}/><span style={{fontSize:14,fontWeight:700,color:G[900]}}>Commission Tracker</span></div>
-                <p style={{fontSize:12,color:G[500],marginBottom:14}}>Estimated earnings from this itinerary based on partner rates.</p>
+                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:4}}><TrendingUp style={{width:14,height:14,color:P}}/><span style={{fontSize:14,fontWeight:700,color:G[900]}}>Your Earnings</span></div>
+
+                {/* Model explanation pill */}
+                <div style={{display:"flex",alignItems:"flex-start",gap:7,padding:"8px 10px",background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,marginBottom:14}}>
+                  <DollarSign style={{width:13,height:13,color:"#2563EB",flexShrink:0,marginTop:1}}/>
+                  <span style={{fontSize:11,color:"#1D4ED8",lineHeight:1.5}}>
+                    Traveloure earns booking revenue from partner platforms. <strong>You receive 30% of that as your revenue share</strong> for every booking you add to a client's itinerary.
+                  </span>
+                </div>
 
                 {/* Summary card */}
                 <div style={{background:"linear-gradient(135deg,#FF385C12,#FF6B8A08)",border:`1px solid ${P}30`,borderRadius:12,padding:"14px",marginBottom:14}}>
-                  <div style={{fontSize:11,color:G[500],marginBottom:2}}>Total estimated commission</div>
-                  <div style={{fontSize:28,fontWeight:800,color:G[900]}}>¥24,840</div>
-                  <div style={{fontSize:12,color:"#15803D",fontWeight:600,marginTop:2}}>≈ $165 USD · this trip alone</div>
+                  <div style={{fontSize:11,color:G[500],marginBottom:2}}>Your estimated earnings · this trip</div>
+                  <div style={{fontSize:28,fontWeight:800,color:G[900]}}>¥7,460</div>
+                  <div style={{fontSize:12,color:"#15803D",fontWeight:600,marginTop:2}}>≈ $50 USD · 30% revenue share</div>
                   <div style={{height:1,background:G[200],margin:"10px 0"}}/>
                   <div style={{display:"flex",gap:16}}>
-                    <div><div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase"}}>Confirmed</div><div style={{fontSize:13,fontWeight:700,color:"#15803D"}}>¥18,200</div></div>
-                    <div><div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase"}}>Pending</div><div style={{fontSize:13,fontWeight:700,color:"#B45309"}}>¥6,640</div></div>
-                    <div><div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase"}}>Potential</div><div style={{fontSize:13,fontWeight:700,color:G[500]}}>+¥9,200</div></div>
+                    <div><div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase"}}>Confirmed</div><div style={{fontSize:13,fontWeight:700,color:"#15803D"}}>¥4,655</div></div>
+                    <div><div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase"}}>Pending</div><div style={{fontSize:13,fontWeight:700,color:"#B45309"}}>¥2,805</div></div>
+                    <div><div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase"}}>If gaps filled</div><div style={{fontSize:13,fontWeight:700,color:G[500]}}>+¥2,646</div></div>
                   </div>
                 </div>
 
                 {/* Per-booking breakdown */}
-                <div style={{fontSize:10,fontWeight:700,color:G[400],letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Breakdown by Booking</div>
+                <div style={{fontSize:10,fontWeight:700,color:G[400],letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Your Share · Booking Breakdown</div>
                 {[
-                  {name:"Shinjuku Granbell Hotel",cat:"Hotel · Booking.com",rate:"6%",amount:"¥11,760",status:"confirmed"},
-                  {name:"teamLab Planets",cat:"Activity · Viator",rate:"8%",amount:"¥256",status:"confirmed"},
-                  {name:"Sushi Yoshitake",cat:"Dining · Traveloure",rate:"10%",amount:"¥3,500",status:"confirmed"},
-                  {name:"NRT Airport Transfer",cat:"Transport · 12Go",rate:"5%",amount:"¥2,684",status:"pending"},
-                  {name:"Day 3 Dinner",cat:"Dining · unfilled gap",rate:"8%",amount:"¥est. 2,400",status:"potential"},
-                  {name:"Hakone Transport",cat:"Transport · unfilled",rate:"5%",amount:"¥est. 1,800",status:"potential"},
+                  {name:"Shinjuku Granbell Hotel",cat:"Hotel · Booking.com",platformEarned:"¥11,760",yourShare:"¥3,528",status:"confirmed"},
+                  {name:"teamLab Planets",cat:"Activity · Viator",platformEarned:"¥256",yourShare:"¥77",status:"confirmed"},
+                  {name:"Sushi Yoshitake",cat:"Dining · Traveloure",platformEarned:"¥3,500",yourShare:"¥1,050",status:"confirmed"},
+                  {name:"NRT Airport Transfer",cat:"Transport · 12Go",platformEarned:"¥9,350",yourShare:"¥2,805",status:"pending"},
+                  {name:"Day 3 Dinner",cat:"Dining · unfilled gap",platformEarned:"—",yourShare:"est. ¥720",status:"potential"},
+                  {name:"Hakone Transport",cat:"Transport · unfilled",platformEarned:"—",yourShare:"est. ¥540",status:"potential"},
                 ].map((b,i)=>{
                   const sc: any = {confirmed:"#15803D",pending:"#B45309",potential:G[400]};
                   const bc: any = {confirmed:"#DCFCE7",pending:"#FEF3C7",potential:G[100]};
@@ -530,10 +536,10 @@ import {
                     <div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 10px",border:`1px solid ${G[100]}`,borderRadius:9,marginBottom:7,background:"white"}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:600,color:G[900],overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.name}</div>
-                        <div style={{fontSize:11,color:G[400]}}>{b.cat} · {b.rate}</div>
+                        <div style={{fontSize:11,color:G[400]}}>{b.cat}</div>
                       </div>
                       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
-                        <span style={{fontSize:12,fontWeight:700,color:sc[b.status]}}>{b.amount}</span>
+                        <span style={{fontSize:12,fontWeight:700,color:sc[b.status]}}>{b.yourShare}</span>
                         <span style={{fontSize:10,fontWeight:600,background:bc[b.status],color:sc[b.status],padding:"1px 6px",borderRadius:99,textTransform:"capitalize"}}>{b.status}</span>
                       </div>
                     </div>
@@ -542,7 +548,7 @@ import {
 
                 <div style={{background:"#F0FDF4",border:"1px solid #86EFAC",borderRadius:8,padding:"8px 12px",marginTop:6}}>
                   <div style={{fontSize:11,fontWeight:600,color:"#15803D",display:"flex",alignItems:"center",gap:5}}>
-                    <TrendingUp style={{width:12,height:12}}/> Tip: Fill Day 3 dinner gap to earn an extra ≈¥2,400
+                    <TrendingUp style={{width:12,height:12}}/> Fill Day 3 dinner gap to add ≈¥720 to your earnings
                   </div>
                 </div>
               </div>
@@ -553,9 +559,9 @@ import {
               <div style={{flex:1,overflowY:"auto",padding:"14px 12px"}}>
                 <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12}}><Zap style={{width:14,height:14,color:P}}/><span style={{fontSize:14,fontWeight:700,color:G[900]}}>AI Gap Analysis</span></div>
                 {[
-                  {day:"Day 3",title:"No dinner booked",sev:"high",fix:"Fill with romantic dining recommendation",comm:"est. ¥2,400 commission"},
-                  {day:"Day 5",title:"No transport Shinjuku→Hakone",sev:"high",fix:"Book 12Go Romancecar train",comm:"est. ¥1,800 commission"},
-                  {day:"Day 6",title:"Budget slack ¥32,000",sev:"low",fix:"Add optional activity or hotel upgrade",comm:"est. ¥3,200 commission"},
+                  {day:"Day 3",title:"No dinner booked",sev:"high",fix:"Fill with romantic dining recommendation",comm:"est. ¥720 your share"},
+                  {day:"Day 5",title:"No transport Shinjuku→Hakone",sev:"high",fix:"Book 12Go Romancecar train",comm:"est. ¥540 your share"},
+                  {day:"Day 6",title:"Budget slack ¥32,000",sev:"low",fix:"Add optional activity or hotel upgrade",comm:"est. ¥960 your share"},
                 ].map((g,i)=>(
                   <div key={i} style={{border:`1px solid ${g.sev==="high"?P+"40":G[200]}`,borderRadius:10,padding:"10px 12px",marginBottom:9,background:g.sev==="high"?`${P}05`:"white"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Bdg c={g.sev==="high"?"primary":"gray"}>{g.day}</Bdg><span style={{fontSize:13,fontWeight:600,color:G[900]}}>{g.title}</span></div>
@@ -645,13 +651,13 @@ import {
 
                 {/* ── Section 2: Affiliate Partners ── */}
                 <div>
-                  <p style={{fontSize:11,color:G[500],marginBottom:9}}>Earn commission on bookings made through these external partners.</p>
+                  <p style={{fontSize:11,color:G[500],marginBottom:9}}>External booking networks integrated by Traveloure.</p>
                   {[
-                    {n:"Booking.com",c:"Hotels",comm:"4–8%",e:"🏨",active:true},
-                    {n:"Viator",c:"Activities",comm:"8%",e:"🎭",active:true},
-                    {n:"12Go Asia",c:"Transport",comm:"3–5%",e:"🚅",active:true},
-                    {n:"SafetyWing",c:"Insurance",comm:"10%",e:"🛡️",active:false},
-                    {n:"Airalo",c:"eSIM",comm:"5%",e:"📱",active:false},
+                    {n:"Booking.com",c:"Hotels",e:"🏨",active:true},
+                    {n:"Viator",c:"Activities & Experiences",e:"🎭",active:true},
+                    {n:"12Go Asia",c:"Ground Transport",e:"🚅",active:true},
+                    {n:"SafetyWing",c:"Travel Insurance",e:"🛡️",active:false},
+                    {n:"Airalo",c:"eSIM Data",e:"📱",active:false},
                   ].map((p,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 11px",border:`1px solid ${G[100]}`,borderRadius:9,marginBottom:6,background:"white"}}>
                       <span style={{fontSize:18,flexShrink:0}}>{p.e}</span>
@@ -660,10 +666,10 @@ import {
                           <span style={{fontSize:12,fontWeight:600,color:G[900]}}>{p.n}</span>
                           {p.active&&<Bdg c="green">Active</Bdg>}
                         </div>
-                        <div style={{fontSize:11,color:G[400]}}>{p.c} · {p.comm} commission</div>
+                        <div style={{fontSize:11,color:G[400]}}>{p.c}</div>
                       </div>
                       <button style={{padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:p.active?"white":P,color:p.active?P:"white",border:`1.5px solid ${P}`,cursor:"pointer"}}>
-                        {p.active?"Manage":"Connect →"}
+                        {p.active?"Use":"Connect →"}
                       </button>
                     </div>
                   ))}
