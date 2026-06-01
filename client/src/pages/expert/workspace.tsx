@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -278,6 +278,9 @@ export default function ExpertWorkspace() {
   const [collapsed, setCollapsed] = useState(false);
   const [identityRevealed, setIdentityRevealed] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const noteInitialized = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBriefProvider, setBookingBriefProvider] = useState<string | null>(null);
   const [addingItemDay, setAddingItemDay] = useState<number | null>(null);
 
@@ -305,6 +308,18 @@ export default function ExpertWorkspace() {
     queryFn: () => fetch("/api/provider/services?status=active").then(r => r.json()),
   });
 
+  const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
+    queryKey: [`/api/trips/${tripId}/expert-notes`],
+    enabled: !!tripId,
+  });
+
+  useEffect(() => {
+    if (expertNotesData !== undefined && !noteInitialized.current) {
+      setNoteText(expertNotesData.expertNotes || "");
+      noteInitialized.current = true;
+    }
+  }, [expertNotesData]);
+
   // ── Mutations ──
   const advanceStatusMutation = useMutation({
     mutationFn: async () => {
@@ -327,6 +342,32 @@ export default function ExpertWorkspace() {
       await apiRequest("PATCH", `/api/expert/assignments/${assignment.id}/workspace-status`, {});
     },
   });
+
+  const autoSaveNotesMutation = useMutation({
+    mutationFn: async (notes: string) => {
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/expert-notes`, { expertNotes: notes });
+      return res.json();
+    },
+    onSuccess: () => {
+      setNoteSaveStatus("saved");
+      const t = setTimeout(() => setNoteSaveStatus("idle"), 2000);
+      return () => clearTimeout(t);
+    },
+    onError: () => setNoteSaveStatus("idle"),
+  });
+
+  const handleNoteChange = (text: string) => {
+    setNoteText(text);
+    setNoteSaveStatus("saving");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      autoSaveNotesMutation.mutate(text);
+    }, 1500);
+  };
+
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
 
   const workspaceStatus = assignment?.workspaceStatus || "draft";
   const days = itineraryData?.days || [];
@@ -413,7 +454,21 @@ export default function ExpertWorkspace() {
             <div style={{ fontSize: 10, color: "#A16207", display: "flex", alignItems: "center", gap: 3 }}><Lock style={{ width: 9, height: 9 }} /> Only you can see this</div>
           </div>
         </div>
-        <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add private notes about this client, their preferences, things to avoid..." data-testid="textarea-expert-notes" style={{ flex: 1, minHeight: 48, padding: "6px 9px", fontSize: 11, color: "#713F12", lineHeight: 1.55, background: "white", border: "1px solid #FDE68A", borderRadius: 8, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+          <textarea value={noteText} onChange={e => handleNoteChange(e.target.value)} placeholder="Add private notes about this client, their preferences, things to avoid..." data-testid="textarea-expert-notes" style={{ width: "100%", minHeight: 48, padding: "6px 9px", fontSize: 11, color: "#713F12", lineHeight: 1.55, background: "white", border: "1px solid #FDE68A", borderRadius: 8, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }} />
+          <div style={{ height: 14, display: "flex", alignItems: "center", gap: 4 }}>
+            {noteSaveStatus === "saving" && (
+              <span data-testid="text-notes-saving" style={{ fontSize: 10, color: "#A16207", display: "flex", alignItems: "center", gap: 3 }}>
+                <Loader2 style={{ width: 9, height: 9 }} className="animate-spin" /> Saving…
+              </span>
+            )}
+            {noteSaveStatus === "saved" && (
+              <span data-testid="text-notes-saved" style={{ fontSize: 10, color: "#15803D", display: "flex", alignItems: "center", gap: 3 }}>
+                <CheckCircle style={{ width: 9, height: 9 }} /> Saved
+              </span>
+            )}
+          </div>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, paddingTop: 2 }}>
           <Bdg c="amber">Step {["draft","in_review","notes","pending","delivered"].indexOf(workspaceStatus) + 1} of 5</Bdg>
           {workspaceStatus !== "delivered" && (
