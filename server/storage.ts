@@ -84,8 +84,11 @@ import {
   itineraryChanges, activityComments,
   type ItineraryChange, type InsertItineraryChange,
   type ActivityComment, type InsertActivityComment,
+  itineraryItems, tripExpertAdvisors, providerSettings,
+  type ItineraryItem, type InsertItineraryItem,
+  type ProviderSettings, type InsertProviderSettings,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, avg, inArray, asc } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 
@@ -147,7 +150,7 @@ export interface IStorage {
   updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
 
   // Provider Services
-  getProviderServices(userId: string): Promise<ProviderService[]>;
+  getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
   getAllProviderServices(): Promise<ProviderService[]>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
@@ -453,6 +456,20 @@ export interface IStorage {
   getEnergyTracking(tripId: string): Promise<EnergyTracking[]>;
   saveEnergyTracking(entry: InsertEnergyTracking): Promise<EnergyTracking>;
 
+  // Provider Settings
+  getProviderSettings(userId: string): Promise<any>;
+  upsertProviderSettings(userId: string, settings: Partial<any>): Promise<any>;
+
+  // Itinerary Items CRUD
+  getItineraryItems(tripId: string): Promise<any[]>;
+  createItineraryItem(item: any): Promise<any>;
+  updateItineraryItem(id: string, updates: any): Promise<any>;
+  deleteItineraryItem(id: string): Promise<void>;
+
+  // Expert Workspace Status
+  getExpertAssignment(assignmentId: string): Promise<any>;
+  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string): Promise<any>;
+
   // Expert/Provider Logistics
   getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
   setProviderAvailability(schedule: InsertProviderAvailabilitySchedule): Promise<ProviderAvailabilitySchedule>;
@@ -722,8 +739,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Provider Services
-  async getProviderServices(userId: string): Promise<ProviderService[]> {
-    return await db.select().from(providerServices).where(eq(providerServices.userId, userId));
+  async getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]> {
+    const conditions = [eq(providerServices.userId, userId)];
+    if (filters?.activeOnly) {
+      conditions.push(eq(providerServices.status, 'active'));
+    }
+    if (filters?.category) {
+      conditions.push(ilike(providerServices.serviceType, `%${filters.category}%`));
+    }
+    if (filters?.destination) {
+      conditions.push(ilike(providerServices.location, `%${filters.destination}%`));
+    }
+    return await db.select().from(providerServices)
+      .where(and(...conditions))
+      .orderBy(desc(providerServices.createdAt));
   }
 
   async getAllProviderServices(): Promise<ProviderService[]> {
@@ -3330,6 +3359,67 @@ export class DatabaseStorage implements IStorage {
 
   async deleteActivityComment(id: string): Promise<void> {
     await db.delete(activityComments).where(eq(activityComments.id, id));
+  }
+
+  // Provider Settings
+  async getProviderSettings(userId: string): Promise<ProviderSettings | null> {
+    const [row] = await db.select().from(providerSettings).where(eq(providerSettings.userId, userId));
+    return row ?? null;
+  }
+
+  async upsertProviderSettings(userId: string, settings: Partial<InsertProviderSettings>): Promise<ProviderSettings> {
+    const existing = await this.getProviderSettings(userId);
+    if (existing) {
+      const [updated] = await db.update(providerSettings)
+        .set({ ...settings, updatedAt: new Date() })
+        .where(eq(providerSettings.userId, userId))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(providerSettings)
+        .values({ userId, ...settings })
+        .returning();
+      return created;
+    }
+  }
+
+  // Itinerary Items CRUD
+  async getItineraryItems(tripId: string): Promise<ItineraryItem[]> {
+    return await db.select().from(itineraryItems)
+      .where(eq(itineraryItems.tripId, tripId))
+      .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder), asc(itineraryItems.startTime));
+  }
+
+  async createItineraryItem(item: InsertItineraryItem & { tripId: string }): Promise<ItineraryItem> {
+    const [created] = await db.insert(itineraryItems).values(item).returning();
+    return created;
+  }
+
+  async updateItineraryItem(id: string, updates: Partial<InsertItineraryItem>): Promise<ItineraryItem | undefined> {
+    const [updated] = await db.update(itineraryItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(itineraryItems.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteItineraryItem(id: string): Promise<void> {
+    await db.delete(itineraryItems).where(eq(itineraryItems.id, id));
+  }
+
+  // Expert Workspace Status
+  async getExpertAssignment(assignmentId: string): Promise<any> {
+    const [row] = await db.select().from(tripExpertAdvisors)
+      .where(eq(tripExpertAdvisors.id, assignmentId));
+    return row ?? null;
+  }
+
+  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string): Promise<any> {
+    const [updated] = await db.update(tripExpertAdvisors)
+      .set({ workspaceStatus })
+      .where(eq(tripExpertAdvisors.id, assignmentId))
+      .returning();
+    return updated;
   }
 }
 

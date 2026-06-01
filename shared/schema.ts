@@ -106,6 +106,7 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
   localExpertId: varchar("local_expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   status: varchar("status", { length: 20 }).default("pending"), // Enum: expertAdvisorStatusEnum
+  workspaceStatus: varchar("workspace_status", { length: 20 }).default("draft"), // draft | in_review | delivered
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
@@ -5223,3 +5224,28 @@ export const bookingFeeConfigs = pgTable("booking_fee_configs", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// === Provider Settings ===
+export const providerSettings = pgTable("provider_settings", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  instantBooking: boolean("instant_booking").default(false),
+  autoResponse: boolean("auto_response").default(true),
+  minimumLeadTimeDays: integer("minimum_lead_time_days").default(7),
+  targetResponseTimeHours: integer("target_response_time_hours").default(2),
+  payoutFrequency: varchar("payout_frequency", { length: 20 }).default("monthly"), // weekly | biweekly | monthly
+  minimumPayoutAmount: decimal("minimum_payout_amount", { precision: 10, scale: 2 }).default("100"),
+  notificationsJson: jsonb("notifications_json").default({
+    newBookings: true,
+    bookingUpdates: true,
+    messages: true,
+    reviews: true,
+    payouts: true,
+    marketing: false,
+  }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProviderSettingsSchema = createInsertSchema(providerSettings).omit({ id: true, updatedAt: true });
+export type ProviderSettings = typeof providerSettings.$inferSelect;
+export type InsertProviderSettings = z.infer<typeof insertProviderSettingsSchema>;
