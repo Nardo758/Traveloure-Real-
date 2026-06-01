@@ -27,9 +27,10 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function ExpertProfile() {
   const { user } = useAuth();
@@ -37,6 +38,7 @@ export default function ExpertProfile() {
   const [newSpecialty, setNewSpecialty] = useState("");
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>([]);
+  const [expertNotesStyle, setExpertNotesStyle] = useState("");
 
   const { data: expertProfile, isLoading: profileLoading } = useQuery({
     queryKey: ["/api/experts", user?.id],
@@ -68,6 +70,24 @@ export default function ExpertProfile() {
       setLanguages([]);
     }
   }, [expertProfile]);
+
+  // Sync expertNotesStyle from loaded profile
+  React.useEffect(() => {
+    if ((expertProfile as any)?.expertNotesStyle !== undefined) {
+      setExpertNotesStyle((expertProfile as any).expertNotesStyle || "");
+    }
+  }, [expertProfile]);
+
+  const saveNotesMutation = useMutation({
+    mutationFn: (notesStyle: string) =>
+      apiRequest("PATCH", "/api/expert/profile-notes", { notesStyle }),
+    onSuccess: () => {
+      toast({ title: "Expert Notes style saved" });
+    },
+    onError: () => {
+      toast({ title: "Failed to save", variant: "destructive" });
+    },
+  });
 
   const handleAddSpecialty = () => {
     if (newSpecialty.trim() && !specialties.includes(newSpecialty.trim())) {
@@ -351,12 +371,25 @@ export default function ExpertProfile() {
             ) : (
               <Textarea
                 rows={3}
-                defaultValue={(expertProfile as any)?.expertNotesStyle || ""}
+                value={expertNotesStyle}
+                onChange={(e) => setExpertNotesStyle(e.target.value)}
                 placeholder="e.g., I annotate every stop with local crowd timing, hidden entrances, and personal tips from living here 10+ years."
                 data-testid="input-expert-notes-style"
               />
             )}
-            <p className="text-xs text-amber-700">This description appears on your public profile and service listings to build client trust.</p>
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-amber-700">This description appears on your public profile and service listings to build client trust.</p>
+              <Button
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                disabled={saveNotesMutation.isPending || profileLoading}
+                onClick={() => saveNotesMutation.mutate(expertNotesStyle)}
+                data-testid="button-save-notes-style"
+              >
+                <Save className="w-3.5 h-3.5 mr-1.5" />
+                {saveNotesMutation.isPending ? "Saving…" : "Save"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1780343069578,
+      "tag": "0000_add_expert_notes_columns",
+      "breakpoints": true
+    }
+  ]
+}
