@@ -94,6 +94,7 @@ import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
+import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import { TransferCard } from "@/components/travelpayouts/TransferCard";
 import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportCard";
 import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
@@ -218,13 +219,18 @@ function RestaurantCatalogSection({ destination }: { destination: string }) {
 }
 
 function BookingComCatalogSection({ destination }: { destination: string }) {
-  const queryParams = new URLSearchParams({ type: "hotel", providers: "booking_com", destination, limit: "12" }).toString();
   const { data, isLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: [`/api/catalog/search?${queryParams}`],
+    queryKey: ["/api/catalog/booking", destination],
     enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination, limit: "5" });
+      const res = await fetch(`/api/catalog/booking?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch Booking.com results");
+      return res.json();
+    },
   });
 
-  const items = (data?.items || []).filter(i => i.provider === "booking_com");
+  const items = data?.items || [];
 
   if (isLoading) {
     return (
@@ -249,42 +255,11 @@ function BookingComCatalogSection({ destination }: { destination: string }) {
       <div className="flex items-center gap-2 mb-3">
         <Building2 className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold text-foreground">Hotels via Booking.com</h3>
-        <span className="text-xs text-muted-foreground">({items.length} found)</span>
+        <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100 ml-1">via Travelpayouts ⚡</Badge>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map(item => (
-          <div
-            key={item.id}
-            className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer"
-            data-testid={`card-hotel-bookingcom-${item.id}`}
-          >
-            {item.imageUrl && (
-              <img src={item.imageUrl} alt={item.title} className="w-full h-32 object-cover rounded-lg mb-3" />
-            )}
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="font-semibold text-sm line-clamp-1">{item.title}</h4>
-              {item.rating && (
-                <span className="text-xs text-amber-600 flex items-center gap-0.5 flex-shrink-0">
-                  ★ {item.rating.toFixed(1)}
-                </span>
-              )}
-            </div>
-            {item.destination && (
-              <p className="text-xs text-muted-foreground mt-0.5">{item.destination}</p>
-            )}
-            {item.bookingUrl && (
-              <a
-                href={item.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                data-testid={`link-book-${item.id}`}
-                onClick={e => e.stopPropagation()}
-              >
-                Book on Booking.com →
-              </a>
-            )}
-          </div>
+          <HotelCard key={item.id} item={item} />
         ))}
       </div>
     </div>
