@@ -105,6 +105,8 @@ type Service = {
   status: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
+  revisionsIncluded?: number;
+  includesExpertNotes?: boolean;
 };
 
 type DiscoverResult = {
@@ -558,6 +560,22 @@ function ServiceCard({
               <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
                 {service.deliveryTimeframe}
+              </span>
+            )}
+            {service.includesExpertNotes && (
+              <span
+                className="px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex items-center gap-1"
+                data-testid={`badge-expert-notes-${service.id}`}
+              >
+                📝 Expert Notes
+              </span>
+            )}
+            {(service.revisionsIncluded ?? 0) > 0 && (
+              <span
+                className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300"
+                data-testid={`badge-revisions-${service.id}`}
+              >
+                {service.revisionsIncluded} revision{service.revisionsIncluded === 1 ? "" : "s"}
               </span>
             )}
           </div>
