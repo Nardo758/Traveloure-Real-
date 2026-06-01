@@ -7,4 +7,6 @@ export { GroundTransportCard } from "./GroundTransportCard";
 export { HotelCard } from "./HotelCard";
 export { InsuranceCard } from "./InsuranceCard";
 export { LuggageStorageCard } from "./LuggageStorageCard";
+export { NomadRouteCard } from "./NomadRouteCard";
+export { BookWithExpertButton } from "./BookWithExpertButton";
 export { TravelpayoutsSection } from "./TravelpayoutsSection";

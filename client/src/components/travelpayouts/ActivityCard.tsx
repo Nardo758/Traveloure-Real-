@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, Clock, Star, ExternalLink, Ticket } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 interface ActivityCardProps {
   item: CatalogItem;
@@ -77,28 +78,36 @@ export function ActivityCard({ item, className }: ActivityCardProps) {
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge className={`text-xs hover:opacity-100 ${meta.color}`}>
-              {meta.label}
-            </Badge>
-            {item.price && (
-              <span className="text-sm font-bold text-primary" data-testid={`text-activity-price-${item.id}`}>
-                {item.currency} {item.price.toFixed(0)}
-              </span>
-            )}
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Badge className={`text-xs hover:opacity-100 ${meta.color}`}>
+                {meta.label}
+              </Badge>
+              {item.price && (
+                <span className="text-sm font-bold text-primary" data-testid={`text-activity-price-${item.id}`}>
+                  {item.currency} {item.price.toFixed(0)}
+                </span>
+              )}
+            </div>
+            <Button
+              size="sm"
+              onClick={handleBook}
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              data-testid={`button-book-activity-${item.id}`}
+            >
+              <Ticket className="h-3 w-3" />
+              Book
+              <ExternalLink className="h-3 w-3" />
+            </Button>
           </div>
-          <Button
-            size="sm"
-            onClick={handleBook}
-            variant="outline"
-            className="h-7 text-xs gap-1"
-            data-testid={`button-book-activity-${item.id}`}
-          >
-            <Ticket className="h-3 w-3" />
-            Book
-            <ExternalLink className="h-3 w-3" />
-          </Button>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="activities"
+            className="w-full justify-center"
+            data-testid={`button-expert-activity-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>

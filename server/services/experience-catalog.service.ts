@@ -11,7 +11,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, and, or, ilike, gte, lte, asc, sql } from "drizzle-orm";
+import { eq, and, or, ilike, gte, lte, asc, sql, inArray } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
 import { amadeusService } from "./amadeus.service";
 
@@ -329,6 +329,10 @@ class ExperienceCatalogService {
     if (params.rating !== undefined) {
       conditions.push(gte(activityCache.rating, params.rating.toString()));
     }
+    if (params.providers && params.providers.length > 0) {
+      const normalized = params.providers.map(p => p.toLowerCase());
+      conditions.push(inArray(activityCache.provider, normalized));
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -386,6 +390,10 @@ class ExperienceCatalogService {
     if (params.rating !== undefined) {
       conditions.push(gte(feverEventCache.rating, params.rating.toString()));
     }
+    if (params.providers && params.providers.length > 0) {
+      const normalized = params.providers.map(p => p.toLowerCase());
+      conditions.push(inArray(feverEventCache.provider, normalized));
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -442,6 +450,10 @@ class ExperienceCatalogService {
     }
     if (params.rating !== undefined) {
       conditions.push(gte(hotelCache.rating, params.rating.toString()));
+    }
+    if (params.providers && params.providers.length > 0) {
+      const normalized = params.providers.map(p => p.toLowerCase());
+      conditions.push(inArray(hotelCache.provider, normalized));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
