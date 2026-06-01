@@ -204,17 +204,18 @@ export default function ExpertAssignedTrips() {
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {trip.status === "accepted" && (
-                        <Link href={`/expert/workspace/${trip.trip_id}`}>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5"
-                            data-testid={`button-open-workspace-${trip.trip_id}`}
-                          >
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5"
+                          asChild
+                          data-testid={`button-open-workspace-${trip.trip_id}`}
+                        >
+                          <Link href={`/expert/workspace/${trip.trip_id}`}>
                             <ExternalLink className="w-3.5 h-3.5" />
                             Workspace
-                          </Button>
-                        </Link>
+                          </Link>
+                        </Button>
                       )}
                       <Button
                         size="sm"
