@@ -10173,10 +10173,26 @@ Respond with this exact JSON structure:
   });
 
   // --- Itinerary Intelligence Routes ---
+  // Authoritative GET: requires trip ownership or expert assignment; returns items grouped by day
   app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const items = await itineraryIntelligenceService.getItems(req.params.tripId);
-      res.json(items);
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
+      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      const items = await storage.getItineraryItems(tripId);
+      const grouped: Record<number, typeof items> = {};
+      for (const item of items) {
+        const day = item.dayNumber;
+        if (!grouped[day]) grouped[day] = [];
+        grouped[day].push(item);
+      }
+      const days = Object.keys(grouped)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map((dayNumber) => ({ dayNumber, items: grouped[dayNumber] }));
+      res.json({ days, total: items.length });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch itinerary items" });
     }
@@ -10210,15 +10226,19 @@ Respond with this exact JSON structure:
     }
   });
 
+  // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
   app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const userName = (req.user as any).claims.name || "User";
-      const item = await itineraryIntelligenceService.createItem({
-        ...req.body,
-        tripId: req.params.tripId,
-      });
-      logItineraryChange(req.params.tripId, userName, `Added "${item.title}"`, "add", "owner", item.id);
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
+      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const item = await storage.createItineraryItem(parsed.data as any);
+      logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
       res.status(201).json(item);
     } catch (error) {
       res.status(500).json({ message: "Failed to create itinerary item" });
@@ -16020,51 +16040,12 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // === Itinerary Items CRUD ===
+  // === Itinerary Items CRUD (PATCH + DELETE only; GET/POST defined at Itinerary Intelligence Routes) ===
   async function canAccessTripItems(tripId: string, userId: string): Promise<boolean> {
     const owned = await verifyTripOwnership(tripId, userId);
     if (owned) return true;
     return await storage.isExpertAssignedToTrip(tripId, userId);
   }
-
-  app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const { tripId } = req.params;
-      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
-      const items = await storage.getItineraryItems(tripId);
-      // Group items by day number
-      const grouped: Record<number, typeof items> = {};
-      for (const item of items) {
-        const day = item.dayNumber;
-        if (!grouped[day]) grouped[day] = [];
-        grouped[day].push(item);
-      }
-      const days = Object.keys(grouped)
-        .map(Number)
-        .sort((a, b) => a - b)
-        .map((dayNumber) => ({ dayNumber, items: grouped[dayNumber] }));
-      res.json({ days, total: items.length });
-    } catch (err) {
-      console.error("[ItineraryItems] GET error:", err);
-      res.status(500).json({ message: "Failed to get itinerary items" });
-    }
-  });
-
-  app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const { tripId } = req.params;
-      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
-      const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const item = await storage.createItineraryItem(parsed.data as any);
-      res.status(201).json(item);
-    } catch (err) {
-      console.error("[ItineraryItems] POST error:", err);
-      res.status(500).json({ message: "Failed to create itinerary item" });
-    }
-  });
 
   app.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
     try {
