@@ -108,6 +108,7 @@ export default function ItineraryViewPage() {
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [showChanges, setShowChanges] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [showExpertNotesExpanded, setShowExpertNotesExpanded] = useState(true);
   const [editingActivity, setEditingActivity] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<{ name: string; startTime: string; note: string }>({ name: "", startTime: "", note: "" });
 
@@ -544,6 +545,28 @@ export default function ItineraryViewPage() {
               <CheckCircle className="h-4 w-4 text-green-600" />
               <p className="text-sm text-green-800 dark:text-green-200">Expert edits accepted.</p>
             </div>
+          </div>
+        )}
+
+        {isOwnerView && data.expertNotes && (expertStatus === "acknowledged" || expertStatus === "review_sent") && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="expert-notes-callout">
+            <button
+              className="w-full flex items-center gap-2 p-3 text-left"
+              onClick={() => setShowExpertNotesExpanded(v => !v)}
+              data-testid="button-toggle-expert-notes"
+            >
+              <span className="text-base">📝</span>
+              <span className="text-sm font-medium text-amber-900 dark:text-amber-200 flex-1">Expert Notes from {data.sharedBy?.name || "your expert"}</span>
+              <Clock className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-xs text-amber-600">{showExpertNotesExpanded ? "Hide" : "Show"}</span>
+            </button>
+            {showExpertNotesExpanded && (
+              <div className="px-4 pb-4 pt-1">
+                <p className="text-sm text-amber-800 dark:text-amber-200 italic leading-relaxed">
+                  "{data.expertNotes}"
+                </p>
+              </div>
+            )}
           </div>
         )}
 
