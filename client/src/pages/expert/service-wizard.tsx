@@ -46,6 +46,7 @@ interface ServiceFormData {
   whatIncluded: string;
   status: string;
   includesExpertNotes: boolean;
+  revisionsIncluded: number;
 }
 
 const initialFormData: ServiceFormData = {
@@ -61,6 +62,7 @@ const initialFormData: ServiceFormData = {
   whatIncluded: "",
   status: "draft",
   includesExpertNotes: false,
+  revisionsIncluded: 0,
 };
 
 const serviceTypes = [
@@ -369,6 +371,21 @@ export default function ServiceWizard() {
         )}
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="revisionsIncluded">Revisions Included</Label>
+        <Input
+          id="revisionsIncluded"
+          type="number"
+          min="0"
+          max="20"
+          value={formData.revisionsIncluded}
+          onChange={(e) => setFormData(prev => ({ ...prev, revisionsIncluded: parseInt(e.target.value) || 0 }))}
+          placeholder="0"
+          data-testid="input-revisions"
+        />
+        <p className="text-sm text-gray-500">Number of revision rounds included at no extra charge</p>
+      </div>
+
       <Card className="border-gray-200">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-gray-900">Pricing Tips</CardTitle>
@@ -477,6 +494,10 @@ export default function ServiceWizard() {
             <div>
               <p className="text-sm text-gray-500">Timeframe</p>
               <p className="font-medium">{formData.deliveryTimeframe || "Not specified"}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500">Revisions</p>
+              <p className="font-medium">{formData.revisionsIncluded} included</p>
             </div>
           </div>
 

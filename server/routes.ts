@@ -513,7 +513,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Request expert booking assistance
   const expertBookingRequestSchema = z.object({
     tripId: z.string().min(1, "tripId is required"),
-    notes: z.string().optional().default("")
+    notes: z.string().optional().default(""),
+    expertId: z.string().optional(),
+    serviceId: z.string().optional(),
+    totalAmount: z.number().positive().optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -525,7 +528,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes } = validation.data;
+      const { tripId, notes, expertId, serviceId, totalAmount } = validation.data;
       const userId = (req.user as any).claims.sub;
       
       // Check if this is a real trip vs demo/mock trip
@@ -533,15 +536,38 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (trip && trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      
-      // TODO: In production, this would create a record in expertBookingRequests table
-      // and notify experts. For now, we just acknowledge the request.
-      console.log(`[Expert Booking] Request received for trip ${tripId} from user ${userId}`, { notes, isDemo: !trip });
+
+      let bookingId: string | undefined;
+
+      // If a specific service and expert are provided, create a service_bookings row
+      if (serviceId && expertId && totalAmount) {
+        const service = await storage.getProviderServiceById(serviceId);
+        if (!service) {
+          return res.status(404).json({ message: "Service not found" });
+        }
+        const shareRate = Number(service.revenueShareRate ?? 0.70);
+        const platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
+        const providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
+
+        const booking = await storage.createServiceBooking({
+          serviceId,
+          travelerId: userId,
+          providerId: expertId,
+          tripId,
+          bookingDetails: { notes },
+          status: "pending",
+          totalAmount: String(totalAmount),
+          platformFee: platformFeeAmt,
+          providerEarnings: providerEarningsAmt,
+        });
+        bookingId = booking.id;
+      }
       
       res.status(201).json({ 
         success: true, 
         message: "Expert booking request submitted successfully",
         tripId,
+        bookingId,
         requestedAt: new Date().toISOString()
       });
     } catch (err) {
@@ -3015,7 +3041,36 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     try {
       const userId = (req.user as any).claims.sub;
       const earnings = await storage.getExpertEarnings(userId);
-      const summary = await storage.getExpertEarningsSummary(userId);
+      const rawSummary = await storage.getExpertEarningsSummary(userId);
+      const payouts = await storage.getExpertPayouts(userId);
+
+      // Compute month-to-date earnings
+      const now = new Date();
+      const monthlyEarnings = earnings
+        .filter(e => {
+          if (!e.createdAt) return false;
+          const d = new Date(e.createdAt);
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        })
+        .reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0);
+
+      const lastPayout = payouts[0];
+
+      // Map to the shape the frontend EarningsData interface expects
+      const summary = {
+        totalEarnings: rawSummary.total,
+        monthlyEarnings,
+        pendingPayout: rawSummary.pending,
+        lastPayout: lastPayout ? parseFloat(lastPayout.amount || '0') : 0,
+        lastPayoutDate: lastPayout?.processedAt
+          ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : undefined,
+        // Revenue share breakdown (70% to expert, 30% platform)
+        platformFeeTotal: Number((rawSummary.total / 0.70 * 0.30).toFixed(2)),
+        grossBookingTotal: Number((rawSummary.total / 0.70).toFixed(2)),
+        revenueShareRate: 0.70,
+      };
+
       res.json({ earnings, summary });
     } catch (err) {
       console.error("Error fetching earnings:", err);
@@ -4918,15 +4973,23 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       const completedBookings = bookings.filter(b => b.status === "completed");
       const pendingBookings = bookings.filter(b => b.status === "pending");
       
-      // Monthly breakdown (mock for now)
-      const monthlyRevenue = [
-        { month: "Jan", revenue: totalRevenue * 0.08, bookings: Math.floor(totalBookings * 0.08) },
-        { month: "Feb", revenue: totalRevenue * 0.07, bookings: Math.floor(totalBookings * 0.07) },
-        { month: "Mar", revenue: totalRevenue * 0.09, bookings: Math.floor(totalBookings * 0.09) },
-        { month: "Apr", revenue: totalRevenue * 0.08, bookings: Math.floor(totalBookings * 0.08) },
-        { month: "May", revenue: totalRevenue * 0.10, bookings: Math.floor(totalBookings * 0.10) },
-        { month: "Jun", revenue: totalRevenue * 0.12, bookings: Math.floor(totalBookings * 0.12) },
-      ];
+      // Monthly breakdown from real booking data
+      const now = new Date();
+      const monthlyRevenue = Array.from({ length: 6 }, (_, i) => {
+        const date = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+        const nextDate = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 1);
+        const month = date.toLocaleString('en-US', { month: 'short' });
+        const monthBookings = bookings.filter(b => {
+          if (!b.createdAt) return false;
+          const d = new Date(b.createdAt);
+          return d >= date && d < nextDate && b.status === 'completed';
+        });
+        return {
+          month,
+          revenue: monthBookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0),
+          bookings: monthBookings.length,
+        };
+      });
       
       // Service performance
       const servicePerformance = services.map(s => ({
