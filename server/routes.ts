@@ -15914,7 +15914,9 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (existing.providerId !== userId) return res.status(403).json({ message: "Access denied" });
       const parsed = insertProviderAvailabilityScheduleSchema.partial().safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const updated = await storage.updateProviderAvailabilityRule(id, userId, parsed.data);
+      // Strip providerId from payload — ownership is enforced by ownership check above
+      const { providerId: _pid, ...safeData } = parsed.data as any;
+      const updated = await storage.updateProviderAvailabilityRule(id, userId, safeData);
       if (!updated) return res.status(404).json({ message: "Availability rule not found" });
       res.json(updated);
     } catch (err) {
@@ -16008,7 +16010,9 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const userId = await requireProviderRole(req, res);
       if (!userId) return;
-      const settings = await storage.upsertProviderSettings(userId, req.body);
+      // Strip ownership/identity fields to prevent mass assignment
+      const { userId: _uid, id: _id, createdAt: _ca, updatedAt: _ua, providerId: _pid, ...safeSettings } = req.body as any;
+      const settings = await storage.upsertProviderSettings(userId, safeSettings);
       res.json(settings);
     } catch (err) {
       console.error("[Provider] upsertSettings error:", err);
@@ -16071,7 +16075,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
         .limit(1);
       if (!existing.length) return res.status(404).json({ message: "Item not found in this trip" });
-      const updated = await storage.updateItineraryItem(itemId, req.body);
+      // Strip immutable/ownership fields to prevent mass-assignment
+      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, ...safeBody } = req.body as any;
+      const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);
     } catch (err) {
@@ -16138,20 +16144,27 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!assignment.length) return res.status(403).json({ message: "Not assigned to this trip" });
 
       const allItems = await storage.getItineraryItems(tripId);
-      // Confirmed items: status is confirmed or not in terminal states
+      // Confirmed items only: exclude terminal/cancelled states
+      const CONFIRMED_STATUSES = ["planned", "confirmed", "in_progress", "booked"];
       const items = allItems.filter((item: any) =>
-        item.status !== "cancelled" && item.status !== "skipped" &&
+        CONFIRMED_STATUSES.includes(item.status) &&
         item.bookingStatus !== "cancelled"
       );
 
       const DEFAULT_RATE = 0.30;
+      // Derive expert's revenue share rate from their active services (fallback 0.30)
+      const expertServices = await storage.getProviderServicesByStatus(userId, "active");
+      const expertRate = expertServices.length > 0
+        ? expertServices.reduce((sum: number, svc: any) => sum + parseFloat(svc.revenueShareRate ?? "0.30"), 0) / expertServices.length
+        : DEFAULT_RATE;
+
       let totalGross = 0;
       let expertShare = 0;
       const itemBreakdown: Array<{ id: string; title: string; dayNumber: number; cost: number; revenueShareRate: number; expertEarning: number; platformFee: number }> = [];
 
       for (const item of items) {
         const cost = parseFloat(item.estimatedCost ?? "0");
-        const rate = DEFAULT_RATE;
+        const rate = expertRate;
         const earning = cost * rate;
         const fee = cost - earning;
         totalGross += cost;
@@ -16161,7 +16174,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           title: item.title,
           dayNumber: item.dayNumber,
           cost,
-          revenueShareRate: rate,
+          revenueShareRate: parseFloat(rate.toFixed(4)),
           expertEarning: earning,
           platformFee: fee,
         });
