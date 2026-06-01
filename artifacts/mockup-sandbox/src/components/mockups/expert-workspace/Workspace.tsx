@@ -326,7 +326,7 @@ import {
 
           {/* ══ Zone 1: Left Rail ══ */}
           {!collapsed && (
-            <aside style={{width:256,background:"white",borderRight:`1px solid ${G[200]}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
+            <aside style={{width:282,background:"white",borderRight:`1px solid ${G[200]}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
               <div style={{flex:1,overflowY:"auto",padding:"12px 11px"}}>
 
                 {/* Trip header with identity masking */}
@@ -514,7 +514,7 @@ import {
           </main>
 
           {/* ══ Zone 3: Right Panel ══ */}
-          <aside style={{width:362,background:"white",borderLeft:`1px solid ${G[200]}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
+          <aside style={{width:398,background:"white",borderLeft:`1px solid ${G[200]}`,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
             <div style={{borderBottom:`1px solid ${G[200]}`,padding:"0 10px",display:"flex",gap:0,flexShrink:0}}>
               {[{k:"gaps",l:"⚡ AI Gaps"},{k:"browse",l:"🔍 Browse"},{k:"commission",l:"💰 Earnings"},{k:"providers",l:"👥 Providers"},{k:"affiliates",l:"🔗 Affiliates"}].map(t=>(
                 <button key={t.k} onClick={()=>setRightTab(t.k)} style={{padding:"10px 7px",fontSize:11,fontWeight:600,cursor:"pointer",background:"none",border:"none",borderBottom:rightTab===t.k?`2px solid ${P}`:"2px solid transparent",color:rightTab===t.k?P:G[500],marginBottom:-1,whiteSpace:"nowrap"}}>{t.l}</button>
