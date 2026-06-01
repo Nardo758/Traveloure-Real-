@@ -100,6 +100,241 @@ import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
 import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
 
+interface VenueResult {
+  id: string;
+  name: string;
+  address: string;
+  rating?: number;
+  reviewCount?: number;
+  priceLevel?: number;
+  photos?: string[];
+  phone?: string;
+  website?: string;
+  openingHours?: string;
+  types?: string[];
+}
+
+const PRICE_SYMBOLS: Record<number, string> = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+
+function RestaurantCatalogSection({ destination }: { destination: string }) {
+  const { data, isLoading } = useQuery<{ results: VenueResult[]; count: number }>({
+    queryKey: ["/api/venues/search", { location: destination, type: "restaurant" }],
+    enabled: !!destination,
+  });
+
+  const items = data?.results || [];
+
+  if (isLoading) {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Utensils className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">Restaurants in {destination}</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-40 rounded-xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Utensils className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-semibold text-foreground">Restaurants in {destination}</h3>
+        <span className="text-xs text-muted-foreground">({items.length} found via Google)</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map(item => (
+          <div
+            key={item.id}
+            className="rounded-xl border bg-card overflow-hidden hover:shadow-md transition-shadow"
+            data-testid={`card-restaurant-${item.id}`}
+          >
+            {item.photos?.[0] && (
+              <img src={item.photos[0]} alt={item.name} className="w-full h-32 object-cover" />
+            )}
+            <div className="p-4">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <h4 className="font-semibold text-sm line-clamp-1" data-testid={`text-restaurant-name-${item.id}`}>
+                  {item.name}
+                </h4>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {item.rating && (
+                    <span className="text-xs text-amber-600 font-medium">★ {item.rating.toFixed(1)}</span>
+                  )}
+                  {item.priceLevel && (
+                    <span className="text-xs text-muted-foreground">{PRICE_SYMBOLS[item.priceLevel] ?? ""}</span>
+                  )}
+                </div>
+              </div>
+              {item.address && (
+                <p className="text-xs text-muted-foreground line-clamp-1">{item.address}</p>
+              )}
+              {item.reviewCount && (
+                <p className="text-xs text-muted-foreground mt-0.5">{item.reviewCount.toLocaleString()} reviews</p>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                {item.website ? (
+                  <a
+                    href={item.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-primary text-white rounded-md h-7 px-2 hover:bg-primary/90 transition-colors"
+                    data-testid={`link-restaurant-website-${item.id}`}
+                  >
+                    Reserve / View →
+                  </a>
+                ) : (
+                  <a
+                    href={`https://www.google.com/search?q=${encodeURIComponent(item.name + " " + destination + " restaurant reservation")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-primary text-white rounded-md h-7 px-2 hover:bg-primary/90 transition-colors"
+                    data-testid={`link-restaurant-search-${item.id}`}
+                  >
+                    Find & Reserve →
+                  </a>
+                )}
+                <a
+                  href={`/experts?destination=${encodeURIComponent(destination)}&topic=dining`}
+                  className="flex-1 inline-flex items-center justify-center gap-1 text-xs border border-primary/30 text-primary rounded-md h-7 px-2 hover:bg-primary/5 transition-colors"
+                  data-testid={`link-expert-restaurant-${item.id}`}
+                >
+                  Ask an Expert
+                </a>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BookingComCatalogSection({ destination }: { destination: string }) {
+  const queryParams = new URLSearchParams({ type: "hotel", providers: "booking_com", destination, limit: "12" }).toString();
+  const { data, isLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: [`/api/catalog/search?${queryParams}`],
+    enabled: !!destination,
+  });
+
+  const items = (data?.items || []).filter(i => i.provider === "booking_com");
+
+  if (isLoading) {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Building2 className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">Hotels via Booking.com</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-36 rounded-xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Building2 className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-semibold text-foreground">Hotels via Booking.com</h3>
+        <span className="text-xs text-muted-foreground">({items.length} found)</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map(item => (
+          <div
+            key={item.id}
+            className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer"
+            data-testid={`card-hotel-bookingcom-${item.id}`}
+          >
+            {item.imageUrl && (
+              <img src={item.imageUrl} alt={item.title} className="w-full h-32 object-cover rounded-lg mb-3" />
+            )}
+            <div className="flex items-start justify-between gap-2">
+              <h4 className="font-semibold text-sm line-clamp-1">{item.title}</h4>
+              {item.rating && (
+                <span className="text-xs text-amber-600 flex items-center gap-0.5 flex-shrink-0">
+                  ★ {item.rating.toFixed(1)}
+                </span>
+              )}
+            </div>
+            {item.destination && (
+              <p className="text-xs text-muted-foreground mt-0.5">{item.destination}</p>
+            )}
+            {item.bookingUrl && (
+              <a
+                href={item.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                data-testid={`link-book-${item.id}`}
+                onClick={e => e.stopPropagation()}
+              >
+                Book on Booking.com →
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function isLikelyInternational(destination: string, origin: string): boolean {
+  if (!destination) return false;
+  const parts = destination.split(",");
+  if (parts.length < 2) return true;
+  const destCountry = parts[parts.length - 1].trim().toLowerCase();
+  return !origin.toLowerCase().includes(destCountry);
+}
+
+function extractDestCountry(destination: string): string {
+  const parts = destination.split(",");
+  if (parts.length >= 2) return parts[parts.length - 1].trim();
+  return destination.trim();
+}
+
+function ESimSidebarWidget({ destination, origin }: { destination: string; origin: string }) {
+  const international = isLikelyInternational(destination, origin);
+  const destCountry = extractDestCountry(destination);
+
+  const { data, isLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/esim", { country: destCountry }],
+    enabled: !!destCountry && international,
+  });
+
+  const items = data?.items?.slice(0, 3) ?? [];
+
+  if (!international || isLoading || items.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border bg-gradient-to-br from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 border-violet-100 dark:border-violet-800 p-4 space-y-2" data-testid="esim-sidebar-widget">
+      <p className="text-xs font-semibold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+        📶 Stay connected abroad — eSIM plans via Airalo
+      </p>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Instant data when you land. No physical SIM needed.
+      </p>
+      <div className="space-y-2 pt-1">
+        {items.map(item => (
+          <ESimCard key={item.id} item={item} compact />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TravelpayoutsActivities({ destination }: { destination: string }) {
   const tiqetsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
     queryKey: ["/api/catalog/tiqets", destination],
@@ -2654,6 +2889,14 @@ export default function ExperienceTemplatePage() {
             <TravelpayoutsNomad destination={destination} />
           )}
 
+          {activeTab === "flights" && destination && (
+            <ESimSidebarWidget destination={destination} origin={originCity} />
+          )}
+
+          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+            <BookingComCatalogSection destination={destination} />
+          )}
+
           {(activeTab === "hotels" || activeTab === "accommodations") && (
             <div className="mb-6">
               <HotelSearch
@@ -2719,6 +2962,10 @@ export default function ExperienceTemplatePage() {
               />
               {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
+          )}
+
+          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+            <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
           {activeTab === "services" && (
@@ -2866,6 +3113,11 @@ export default function ExperienceTemplatePage() {
                 }}
               />
             </div>
+          )}
+
+          {/* Restaurant Catalog Section (OpenTable + Booking.com) — shown for dining tabs */}
+          {activeTab === "dining" && destination && (
+            <RestaurantCatalogSection destination={destination} />
           )}
 
           {/* Venue Search Panel - Google Places Integration (dynamically wired to all supported tabs) */}
