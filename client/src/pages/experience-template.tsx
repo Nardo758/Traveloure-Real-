@@ -90,6 +90,56 @@ import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
+import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
+import { ESimCard } from "@/components/travelpayouts/ESimCard";
+import type { CatalogItem } from "@/types/catalog";
+
+function TravelpayoutsActivities({ destination }: { destination: string }) {
+  const tiqetsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/tiqets", destination],
+    enabled: !!destination,
+  });
+  const wegoQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/wegotrip", destination],
+    enabled: !!destination,
+  });
+  const viatorFeedQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/viator-feed", destination],
+    enabled: !!destination,
+  });
+
+  const allItems = [
+    ...(tiqetsQuery.data?.items || []),
+    ...(wegoQuery.data?.items || []),
+    ...(viatorFeedQuery.data?.items || []),
+  ];
+
+  const isLoading = tiqetsQuery.isLoading || wegoQuery.isLoading || viatorFeedQuery.isLoading;
+
+  if (isLoading) return (
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="h-44 rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  );
+
+  if (allItems.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-primary" />
+        More Activities via Partners
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {allItems.map(item => (
+          <ActivityCard key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface CartItem {
   id: string;
@@ -2520,6 +2570,11 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+
+              {/* Travelpayouts: Tiqets, WeGoTrip, Viator discounted feed */}
+              {destination && (
+                <TravelpayoutsActivities destination={destination} />
+              )}
 
               {/* Points of Interest and Destination Safety */}
               {destinationCenter && (
