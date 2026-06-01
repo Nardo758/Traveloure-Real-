@@ -1,3 +1,36 @@
+/*
+ * Expert Workspace — Route Map
+ * ─────────────────────────────────────────────────────────────────
+ * /expert/dashboard              Main expert landing page
+ * /expert/clients                Grouped client list (from assigned trips)
+ * /expert/clients/:id            Individual client detail view
+ * /expert/assigned-trips         Full list of all assigned trips
+ * /expert/workspace/:tripId      Per-trip workspace: suggestions, AI, chat links
+ * /expert/messages               → redirects to /chat (consolidated messaging)
+ * /expert/messages/:clientId     Workspace entry from a client message thread
+ * /expert/bookings               Booking management
+ * /expert/services               Expert service listings
+ * /expert/services/new           Create service (form)
+ * /expert/services/:id/edit      Edit service (form)
+ * /expert/services/templates     Service template library
+ * /expert/service-wizard         Guided service creation wizard
+ * /expert/custom-services        Custom service management
+ * /expert/earnings               Earnings + Stripe Connect payout
+ * /expert/performance            Performance metrics
+ * /expert/revenue-optimization   Revenue optimization dashboard
+ * /expert/leaderboard            Expert leaderboard
+ * /expert/analytics              Business analytics
+ * /expert/templates              Message/response templates
+ * /expert/content-studio         Content creation studio
+ * /expert/content-studio/:type   Specific content type creator
+ * /expert/ai-assistant           Expert AI assistant
+ * /expert/profile                Expert profile settings
+ * /expert/settings               Account settings
+ * /expert/contract-categories    Contract category management
+ * /expert/booking-partners       Booking partner integrations
+ * ─────────────────────────────────────────────────────────────────
+ * All /expert/* routes require ProtectedRoute requiredRole="expert"
+ */
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ExpertSidebar } from "@/components/expert/expert-sidebar";
 import { Bell, Bot } from "lucide-react";

@@ -167,14 +167,18 @@ export default function ExpertDashboard() {
                       <span className="text-xs">Messages</span>
                     </Button>
                   </Link>
-                  <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-quick-itinerary">
-                    <Calendar className="w-5 h-5 mb-1" />
-                    <span className="text-xs">Itinerary</span>
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-quick-content">
-                    <Zap className="w-5 h-5 mb-1" />
-                    <span className="text-xs">Content</span>
-                  </Button>
+                  <Link href="/expert/assigned-trips">
+                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-quick-itinerary">
+                      <Calendar className="w-5 h-5 mb-1" />
+                      <span className="text-xs">Itinerary</span>
+                    </Button>
+                  </Link>
+                  <Link href="/expert/content-studio">
+                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-quick-content">
+                      <Zap className="w-5 h-5 mb-1" />
+                      <span className="text-xs">Content</span>
+                    </Button>
+                  </Link>
                   <Link href="/expert/ai-assistant">
                     <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-quick-ai">
                       <Bot className="w-5 h-5 mb-1" />
@@ -221,15 +225,21 @@ export default function ExpertDashboard() {
                           </Badge>
                         </div>
                         <div className="mt-3 flex gap-2 flex-wrap">
-                          <Button size="sm" variant="outline" className="text-xs" data-testid={`button-chat-${client.id}`}>
-                            <MessageSquare className="w-3 h-3 mr-1" /> Chat
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-xs" data-testid={`button-itinerary-${client.id}`}>
-                            <Calendar className="w-3 h-3 mr-1" /> Itinerary
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-xs" data-testid={`button-ai-assist-${client.id}`}>
-                            <Bot className="w-3 h-3 mr-1" /> AI
-                          </Button>
+                          <Link href="/chat">
+                            <Button size="sm" variant="outline" className="text-xs" data-testid={`button-chat-${client.id}`}>
+                              <MessageSquare className="w-3 h-3 mr-1" /> Chat
+                            </Button>
+                          </Link>
+                          <Link href="/expert/assigned-trips">
+                            <Button size="sm" variant="outline" className="text-xs" data-testid={`button-itinerary-${client.id}`}>
+                              <Calendar className="w-3 h-3 mr-1" /> Itinerary
+                            </Button>
+                          </Link>
+                          <Link href="/expert/ai-assistant">
+                            <Button size="sm" variant="outline" className="text-xs" data-testid={`button-ai-assist-${client.id}`}>
+                              <Bot className="w-3 h-3 mr-1" /> AI
+                            </Button>
+                          </Link>
                         </div>
                       </div>
                     </div>
@@ -321,9 +331,11 @@ export default function ExpertDashboard() {
                 <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
                   <div className="h-full bg-green-500" style={{ width: "65%" }}></div>
                 </div>
-                <Button className="w-full bg-green-600 hover:bg-green-700" data-testid="button-request-payout">
-                  Request Payout
-                </Button>
+                <Link href="/expert/earnings">
+                  <Button className="w-full bg-green-600 hover:bg-green-700" data-testid="button-request-payout">
+                    Request Payout
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
 
@@ -352,9 +364,11 @@ export default function ExpertDashboard() {
                       </Badge>
                     </div>
                     <div className="mt-2 flex gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 text-xs flex-1" data-testid={`button-action-${booking.id}`}>
-                        Review
-                      </Button>
+                      <Link href="/expert/bookings" className="flex-1">
+                        <Button size="sm" variant="ghost" className="h-7 text-xs w-full" data-testid={`button-action-${booking.id}`}>
+                          Review
+                        </Button>
+                      </Link>
                     </div>
                   </div>
                 )) : (
@@ -386,9 +400,11 @@ export default function ExpertDashboard() {
                     <span className="font-semibold text-amber-600">#12</span>
                   </div>
                 </div>
-                <Button variant="outline" size="sm" className="w-full" data-testid="button-view-analytics">
-                  <BarChart3 className="w-4 h-4 mr-1" /> View Analytics
-                </Button>
+                <Link href="/expert/analytics">
+                  <Button variant="outline" size="sm" className="w-full" data-testid="button-view-analytics">
+                    <BarChart3 className="w-4 h-4 mr-1" /> View Analytics
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
 
@@ -413,9 +429,11 @@ export default function ExpertDashboard() {
                   <span className="text-gray-600">Quality Score</span>
                   <span className="font-semibold text-green-600">{aiStats?.avgQualityScore ?? "N/A"}</span>
                 </div>
-                <Button variant="outline" size="sm" className="w-full mt-2" data-testid="button-review-ai-work">
-                  View Details
-                </Button>
+                <Link href="/expert/ai-assistant">
+                  <Button variant="outline" size="sm" className="w-full mt-2" data-testid="button-review-ai-work">
+                    View Details
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </div>
