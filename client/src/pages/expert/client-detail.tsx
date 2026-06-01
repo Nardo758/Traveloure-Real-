@@ -133,13 +133,15 @@ export default function ExpertClientDetail() {
           </div>
           <div className="flex gap-2">
             <Link href="/chat">
-              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90">
+              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-client-detail-message">
                 <MessageSquare className="w-4 h-4 mr-2" /> Message
               </Button>
             </Link>
-            <Button variant="outline">
-              <Calendar className="w-4 h-4 mr-2" /> View Itinerary
-            </Button>
+            <Link href="/expert/assigned-trips">
+              <Button variant="outline" data-testid="button-client-detail-itinerary">
+                <Calendar className="w-4 h-4 mr-2" /> View Itinerary
+              </Button>
+            </Link>
           </div>
         </div>
 
@@ -186,9 +188,11 @@ export default function ExpertClientDetail() {
                     </div>
                   </div>
                 </div>
-                <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90">
-                  View Full Itinerary <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
+                <Link href="/expert/assigned-trips">
+                  <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-client-detail-full-itinerary">
+                    View Full Itinerary <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           </TabsContent>

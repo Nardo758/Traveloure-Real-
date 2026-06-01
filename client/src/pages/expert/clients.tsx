@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 
 const eventTypeIcons: Record<string, any> = {
   travel: Plane,
@@ -242,20 +243,40 @@ export default function ExpertClients() {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          {client.status === "traveling" && (
-                            <Button size="sm" variant="outline" data-testid={`button-live-view-${client.id}`}>
-                              <Eye className="w-3 h-3 mr-1" /> Live View
-                            </Button>
+                          {client.status === "traveling" && client.trips[0] && (
+                            <a
+                              href={`/trip/${client.trips[0].trip_id || client.trips[0].id}?tab=itinerary`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <Button size="sm" variant="outline" data-testid={`button-live-view-${client.id}`}>
+                                <Eye className="w-3 h-3 mr-1" /> Live View
+                              </Button>
+                            </a>
                           )}
-                          <Button size="sm" variant="outline" data-testid={`button-chat-${client.id}`}>
-                            <MessageSquare className="w-3 h-3 mr-1" /> Chat
-                          </Button>
-                          <Button size="sm" variant="outline" data-testid={`button-itinerary-${client.id}`}>
-                            <Calendar className="w-3 h-3 mr-1" /> Itinerary
-                          </Button>
-                          <Button size="sm" variant="outline" data-testid={`button-ai-assist-${client.id}`}>
-                            <Bot className="w-3 h-3 mr-1" /> AI Assist
-                          </Button>
+                          <Link href="/chat">
+                            <Button size="sm" variant="outline" data-testid={`button-chat-${client.id}`}>
+                              <MessageSquare className="w-3 h-3 mr-1" /> Chat
+                            </Button>
+                          </Link>
+                          {(client.trips[0]?.trip_id || client.trips[0]?.id) ? (
+                            <Link href={`/expert/workspace/${client.trips[0].trip_id || client.trips[0].id}`}>
+                              <Button size="sm" variant="outline" data-testid={`button-itinerary-${client.id}`}>
+                                <Calendar className="w-3 h-3 mr-1" /> Itinerary
+                              </Button>
+                            </Link>
+                          ) : (
+                            <Link href="/expert/assigned-trips">
+                              <Button size="sm" variant="outline" data-testid={`button-itinerary-${client.id}`}>
+                                <Calendar className="w-3 h-3 mr-1" /> Itinerary
+                              </Button>
+                            </Link>
+                          )}
+                          <Link href="/expert/ai-assistant">
+                            <Button size="sm" variant="outline" data-testid={`button-ai-assist-${client.id}`}>
+                              <Bot className="w-3 h-3 mr-1" /> AI Assist
+                            </Button>
+                          </Link>
                         </div>
                       </div>
                     </div>
