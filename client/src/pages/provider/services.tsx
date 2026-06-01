@@ -14,6 +14,7 @@ import {
   Image as ImageIcon
 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -93,9 +94,11 @@ export default function ProviderServices() {
               <p className="text-gray-600">{activeCount} of {services?.length || 0} services active</p>
             )}
           </div>
-          <Button data-testid="button-add-service">
-            <Plus className="w-4 h-4 mr-2" /> Add New Service
-          </Button>
+          <Link href="/provider/services/new">
+            <Button data-testid="button-add-service">
+              <Plus className="w-4 h-4 mr-2" /> Add New Service
+            </Button>
+          </Link>
         </div>
 
         {/* Category Filter */}

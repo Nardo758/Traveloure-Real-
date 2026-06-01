@@ -8,14 +8,17 @@ import {
   TrendingUp,
   Calendar,
   CreditCard,
-  ArrowUpRight,
-  ArrowDownRight,
   Clock,
   CheckCircle,
-  Download,
-  Loader2
+  Loader2,
+  PieChart,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
+
+interface ConnectStatus {
+  connected: boolean;
+  status: string;
+}
 
 interface EarningsData {
   earnings: Array<{
@@ -32,6 +35,9 @@ interface EarningsData {
     pendingPayout: number;
     lastPayout: number;
     lastPayoutDate?: string;
+    platformFeeTotal: number;
+    grossBookingTotal: number;
+    revenueShareRate: number;
   };
 }
 
@@ -39,6 +45,12 @@ export default function ExpertEarnings() {
   const { data, isLoading } = useQuery<EarningsData>({
     queryKey: ["/api/expert/earnings"],
   });
+
+  const { data: connectStatus } = useQuery<ConnectStatus>({
+    queryKey: ["/api/stripe/connect/status"],
+  });
+
+  const canRequestPayout = connectStatus?.connected && connectStatus?.status === "active";
 
   const summary = data?.summary;
   const earnings = data?.earnings || [];
@@ -77,6 +89,9 @@ export default function ExpertEarnings() {
     );
   }
 
+  const shareRate = summary?.revenueShareRate ?? 0.70;
+  const platformRate = 1 - shareRate;
+
   return (
     <ExpertLayout title="Earnings">
       <div className="p-6 space-y-6">
@@ -85,10 +100,19 @@ export default function ExpertEarnings() {
             <h1 className="text-2xl font-bold text-gray-900">Earnings Dashboard</h1>
             <p className="text-gray-600">Track your revenue and manage payouts</p>
           </div>
-          <Button className="bg-[#FF385C] " data-testid="button-request-payout">
-            <DollarSign className="w-4 h-4 mr-2" />
-            Request Payout
-          </Button>
+          <div className="flex items-center gap-2">
+            {!canRequestPayout && (
+              <p className="text-sm text-amber-600">Connect Stripe to enable payouts</p>
+            )}
+            <Button
+              className="bg-[#FF385C] disabled:opacity-50"
+              disabled={!canRequestPayout}
+              data-testid="button-request-payout"
+            >
+              <DollarSign className="w-4 h-4 mr-2" />
+              Request Payout
+            </Button>
+          </div>
         </div>
 
         <StripeConnectCard />
@@ -112,6 +136,53 @@ export default function ExpertEarnings() {
             </Card>
           ))}
         </div>
+
+        {/* Revenue Share Breakdown */}
+        <Card className="border border-gray-200" data-testid="card-revenue-share">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <PieChart className="w-5 h-5 text-[#FF385C]" />
+              Revenue Share Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 text-center" data-testid="stat-gross-total">
+                <p className="text-sm text-gray-500 mb-1">Gross Booking Value</p>
+                <p className="text-xl font-bold text-gray-900">
+                  ${(summary?.grossBookingTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Total from all bookings</p>
+              </div>
+              <div className="p-4 bg-red-50 rounded-lg border border-red-100 text-center" data-testid="stat-platform-fee">
+                <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round(platformRate * 100)}%)</p>
+                <p className="text-xl font-bold text-red-700">
+                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
+              </div>
+              <div className="p-4 bg-green-50 rounded-lg border border-green-200 text-center" data-testid="stat-your-share">
+                <p className="text-sm text-green-600 mb-1">Your Share ({Math.round(shareRate * 100)}%)</p>
+                <p className="text-xl font-bold text-green-700">
+                  ${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
+              </div>
+            </div>
+            {/* Visual bar */}
+            <div className="mt-4 h-3 bg-gray-100 rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+              <div
+                className="h-full bg-[#FF385C] transition-all"
+                style={{ width: `${Math.round(platformRate * 100)}%` }}
+              />
+              <div className="h-full bg-green-500 flex-1" />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>Platform {Math.round(platformRate * 100)}%</span>
+              <span>You {Math.round(shareRate * 100)}%</span>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Transactions */}
@@ -152,6 +223,9 @@ export default function ExpertEarnings() {
                               ? "bg-green-50 text-green-700 border-green-200"
                               : "bg-yellow-50 text-yellow-700 border-yellow-200"}
                           >
+                            {transaction.status === "completed"
+                              ? <CheckCircle className="w-3 h-3 mr-1" />
+                              : <Clock className="w-3 h-3 mr-1" />}
                             {transaction.status}
                           </Badge>
                         </div>
