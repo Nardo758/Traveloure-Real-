@@ -251,6 +251,50 @@ function BookingComCatalogSection({ destination }: { destination: string }) {
   );
 }
 
+function isLikelyInternational(destination: string, origin: string): boolean {
+  if (!destination) return false;
+  const parts = destination.split(",");
+  if (parts.length < 2) return true;
+  const destCountry = parts[parts.length - 1].trim().toLowerCase();
+  return !origin.toLowerCase().includes(destCountry);
+}
+
+function extractDestCountry(destination: string): string {
+  const parts = destination.split(",");
+  if (parts.length >= 2) return parts[parts.length - 1].trim();
+  return destination.trim();
+}
+
+function ESimSidebarWidget({ destination, origin }: { destination: string; origin: string }) {
+  const international = isLikelyInternational(destination, origin);
+  const destCountry = extractDestCountry(destination);
+
+  const { data, isLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/esim", { country: destCountry }],
+    enabled: !!destCountry && international,
+  });
+
+  const items = data?.items?.slice(0, 3) ?? [];
+
+  if (!international || isLoading || items.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-xl border bg-gradient-to-br from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 border-violet-100 dark:border-violet-800 p-4 space-y-2" data-testid="esim-sidebar-widget">
+      <p className="text-xs font-semibold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+        📶 Stay connected abroad — eSIM plans via Airalo
+      </p>
+      <p className="text-xs text-muted-foreground -mt-1">
+        Instant data when you land. No physical SIM needed.
+      </p>
+      <div className="space-y-2 pt-1">
+        {items.map(item => (
+          <ESimCard key={item.id} item={item} compact />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TravelpayoutsActivities({ destination }: { destination: string }) {
   const tiqetsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
     queryKey: ["/api/catalog/tiqets", destination],
@@ -2805,6 +2849,10 @@ export default function ExperienceTemplatePage() {
             <TravelpayoutsNomad destination={destination} />
           )}
 
+          {activeTab === "flights" && destination && (
+            <ESimSidebarWidget destination={destination} origin={originCity} />
+          )}
+
           {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
             <BookingComCatalogSection destination={destination} />
           )}
@@ -2874,6 +2922,10 @@ export default function ExperienceTemplatePage() {
               />
               {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
+          )}
+
+          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+            <ESimSidebarWidget destination={destination} origin={originCity} />
           )}
 
           {activeTab === "services" && (
