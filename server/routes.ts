@@ -1731,6 +1731,27 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // Booking.com hotels via Travelpayouts affiliate (instant-connect ⚡)
+  app.get("/api/catalog/booking", isAuthenticated, async (req, res) => {
+    try {
+      const { searchBooking } = await import("./services/travelpayouts/booking.service");
+      const { destination, checkIn, checkOut, guests, limit, currency } = req.query;
+      if (!destination) return res.status(400).json({ message: "destination required" });
+      const items = await searchBooking({
+        destination: destination as string,
+        checkIn: checkIn as string,
+        checkOut: checkOut as string,
+        guests: guests ? parseInt(guests as string) : 2,
+        limit: limit ? parseInt(limit as string) : 5,
+        currency: currency as string,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Booking.com (TP) error:", err);
+      res.status(500).json({ message: "Failed to fetch Booking.com results" });
+    }
+  });
+
   // GetYourGuide activities (instant-connect ⚡)
   app.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
     try {
