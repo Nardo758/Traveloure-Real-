@@ -57,3 +57,7 @@ TWELVEGO_AFFILIATE_ID = "13805109"
 VITE_TWELVEGO_AFFILIATE_ID = "13805109"
 ENVIRONMENT = "PROD"
 ADMIN_ALLOWED_IPS = "127.0.0.1"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
