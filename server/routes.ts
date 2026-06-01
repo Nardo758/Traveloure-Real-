@@ -16230,4 +16230,40 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // GET /api/trips/:tripId/expert-notes — Retrieve expert notes for a trip (assigned expert only)
+  app.get("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const [assignment] = await db.select().from(tripExpertAdvisors)
+        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
+        .limit(1);
+      if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+      const [trip] = await db.select({ expertNotes: trips.expertNotes }).from(trips).where(eq(trips.id, tripId)).limit(1);
+      res.json({ expertNotes: trip?.expertNotes ?? "" });
+    } catch (err) {
+      console.error("[Expert] getExpertNotes error:", err);
+      res.status(500).json({ message: "Failed to get expert notes" });
+    }
+  });
+
+  // PATCH /api/trips/:tripId/expert-notes — Auto-save expert notes (assigned expert only)
+  app.patch("/api/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const { expertNotes } = req.body;
+      if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
+      const [assignment] = await db.select().from(tripExpertAdvisors)
+        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
+        .limit(1);
+      if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
+      await storage.updateTrip(tripId, { expertNotes });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[Expert] saveExpertNotes error:", err);
+      res.status(500).json({ message: "Failed to save expert notes" });
+    }
+  });
+
 }
