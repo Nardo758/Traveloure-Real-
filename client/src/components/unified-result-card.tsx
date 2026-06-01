@@ -28,7 +28,7 @@ export interface UnifiedResult {
   websiteUrl?: string | null;
   website?: string | null;
   phone?: string | null;
-  source: "native" | "serp" | "viator" | "amadeus" | "opentable" | "fever" | "poi" | "transfer" | "safety";
+  source: "native" | "serp" | "viator" | "amadeus" | "booking_com" | "opentable" | "fever" | "poi" | "transfer" | "safety" | "restaurant";
   isPartner?: boolean;
   category?: string | null;
   bookingUrl?: string | null;
@@ -51,7 +51,7 @@ export function UnifiedResultCard({
 }: UnifiedResultCardProps) {
   const [clicked, setClicked] = useState(false);
   
-  const isPartner = result.isPartner || result.source === "native" || result.source === "viator" || result.source === "amadeus" || result.source === "fever";
+  const isPartner = result.isPartner || result.source === "native" || result.source === "viator" || result.source === "amadeus" || result.source === "booking_com" || result.source === "fever" || result.source === "opentable";
   const displayName = result.name || result.title || "Unknown";
   const imageUrl = result.imageUrl || result.thumbnail;
   const websiteUrl = result.websiteUrl || result.website;

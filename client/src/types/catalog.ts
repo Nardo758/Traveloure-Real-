@@ -1,6 +1,6 @@
 export interface CatalogItem {
   id: string;
-  type: "activity" | "hotel" | "event" | "flight" | "transfer" | "car_rental" | "esim" | "transport" | "poi";
+  type: "activity" | "hotel" | "event" | "flight" | "transfer" | "car_rental" | "esim" | "transport" | "poi" | "restaurant";
   provider: string;
   externalId: string;
   title: string;
@@ -19,6 +19,8 @@ export interface CatalogItem {
   affiliateUrl?: string | null;
   source?: string | null;
   lastUpdated: string | null;
+  cuisine?: string | null;
+  priceLevel?: string | null;
 }
 
 export interface CatalogSearchResult {
