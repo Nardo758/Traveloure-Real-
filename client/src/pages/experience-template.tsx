@@ -94,6 +94,10 @@ import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
+import { TransferCard } from "@/components/travelpayouts/TransferCard";
+import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportCard";
+import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
+import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
 
 function TravelpayoutsActivities({ destination }: { destination: string }) {
@@ -147,6 +151,210 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {allItems.map(item => (
           <ActivityCard key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TravelpayoutsTransport({ destination }: { destination: string }) {
+  const [transferFrom, setTransferFrom] = useState("");
+  const [transferTo, setTransferTo] = useState(destination);
+  const [transferSearched, setTransferSearched] = useState(false);
+
+  useEffect(() => { setTransferTo(destination); }, [destination]);
+
+  const transfersQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/transfers", transferFrom, transferTo],
+    enabled: !!transferFrom && !!transferTo && transferSearched,
+    queryFn: async () => {
+      const params = new URLSearchParams({ from: transferFrom, to: transferTo });
+      const res = await fetch(`/api/catalog/transfers?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Transfers fetch failed: ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const groundQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/ground-transport", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({ destination });
+      const res = await fetch(`/api/catalog/ground-transport?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Ground transport fetch failed: ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const transfers = transfersQuery.data?.items || [];
+  const ground = groundQuery.data?.items || [];
+
+  if (!destination) return null;
+
+  return (
+    <div className="mt-6 space-y-6">
+      {/* GetTransfer — requires pickup + dropoff */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+          Private Transfers via GetTransfer
+        </h3>
+        <div className="flex gap-2 mb-3">
+          <input
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="From (e.g. airport, hotel)"
+            value={transferFrom}
+            onChange={e => setTransferFrom(e.target.value)}
+            data-testid="input-transfer-from"
+          />
+          <input
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            placeholder="To"
+            value={transferTo}
+            onChange={e => setTransferTo(e.target.value)}
+            data-testid="input-transfer-to"
+          />
+          <Button
+            size="sm"
+            onClick={() => setTransferSearched(true)}
+            disabled={!transferFrom || !transferTo}
+            data-testid="button-search-transfers"
+          >
+            Search
+          </Button>
+        </div>
+        {transfersQuery.isLoading && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+            ))}
+          </div>
+        )}
+        {transfersQuery.isError && (
+          <p className="text-xs text-destructive">Could not load transfer options. Please try again.</p>
+        )}
+        {!transfersQuery.isLoading && !transfersQuery.isError && transfers.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {transfers.slice(0, 6).map(item => (
+              <TransferCard key={item.id} item={item} />
+            ))}
+          </div>
+        )}
+        {transferSearched && !transfersQuery.isLoading && !transfersQuery.isError && transfers.length === 0 && (
+          <p className="text-xs text-muted-foreground">No transfers found for this route.</p>
+        )}
+      </div>
+
+      {/* Omio ground transport */}
+      {(groundQuery.isLoading || ground.length > 0 || groundQuery.isError) && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
+            Trains & Buses via Omio
+          </h3>
+          {groundQuery.isLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          )}
+          {groundQuery.isError && (
+            <p className="text-xs text-destructive">Could not load ground transport options.</p>
+          )}
+          {!groundQuery.isLoading && ground.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {ground.slice(0, 6).map(item => (
+                <GroundTransportCard key={item.id} item={item} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiscoverCarsWidget({ destination }: { destination: string }) {
+  const today = new Date();
+  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+  const carsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/cars", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        location: destination,
+        pickup: fmt(today),
+        dropoff: fmt(nextWeek),
+        limit: "4",
+      });
+      const res = await fetch(`/api/catalog/cars?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch car rentals");
+      return res.json();
+    },
+  });
+
+  const cars = carsQuery.data?.items || [];
+  if (carsQuery.isLoading) return (
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {Array.from({ length: 2 }).map((_, i) => (
+        <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  );
+  if (carsQuery.isError || cars.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
+        Need a car? — DiscoverCars
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {cars.slice(0, 4).map(item => (
+          <CarRentalCard key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TravelpayoutsNomad({ destination }: { destination: string }) {
+  const nomadQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/nomad", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({ cities: destination, limit: "6" });
+      const res = await fetch(`/api/catalog/nomad?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Nomad routes fetch failed: ${res.status}`);
+      return res.json();
+    },
+  });
+
+  const routes = nomadQuery.data?.items || [];
+  if (nomadQuery.isLoading) return (
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  );
+  if (nomadQuery.isError) return (
+    <p className="mt-4 text-xs text-destructive">Could not load nomad routes.</p>
+  );
+  if (routes.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-violet-500" />
+        Multi-city routes via Kiwi.com Nomad
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {routes.slice(0, 6).map(item => (
+          <NomadRouteCard key={item.id} item={item} />
         ))}
       </div>
     </div>
@@ -2109,6 +2317,7 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+              {destination && <TravelpayoutsTransport destination={destination} />}
             </div>
           )}
 
@@ -2441,6 +2650,10 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
+          {activeTab === "flights" && destination && (
+            <TravelpayoutsNomad destination={destination} />
+          )}
+
           {(activeTab === "hotels" || activeTab === "accommodations") && (
             <div className="mb-6">
               <HotelSearch
@@ -2504,6 +2717,7 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+              {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
           )}
 
