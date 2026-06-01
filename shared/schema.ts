@@ -5192,3 +5192,30 @@ export const reminderEmails = pgTable("reminder_emails", {
   reminderType: text("reminder_type").notNull(),
   status: text("status").notNull().default("sent"),
 });
+
+export const leadRoutingLogs = pgTable("lead_routing_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tripId: uuid("trip_id"),
+  userId: varchar("user_id", { length: 255 }),
+  destination: varchar("destination", { length: 255 }),
+  topic: varchar("topic", { length: 255 }),
+  assignedExpertId: varchar("assigned_expert_id", { length: 255 }),
+  topScore: integer("top_score"),
+  scoresJson: jsonb("scores_json"),
+  overriddenBy: varchar("overridden_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const bookingFeeConfigs = pgTable("booking_fee_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  category: varchar("category", { length: 50 }).notNull().unique(),
+  platformFeePercent: decimal("platform_fee_percent", { precision: 5, scale: 2 }).default("12.00"),
+  expertSharePercent: decimal("expert_share_percent", { precision: 5, scale: 2 }).default("70.00"),
+  aiKeeps100: boolean("ai_keeps_100").default(true),
+  minFee: decimal("min_fee", { precision: 10, scale: 2 }),
+  maxFee: decimal("max_fee", { precision: 10, scale: 2 }),
+  isActive: boolean("is_active").default(true),
+  updatedBy: varchar("updated_by", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});

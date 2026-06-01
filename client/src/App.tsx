@@ -97,6 +97,8 @@ import CreditsBillingPage from "@/pages/credits-billing";
 import ExpertStatusPage from "@/pages/expert-status";
 import ProviderStatusPage from "@/pages/provider-status";
 import ExpertContractCategories from "@/pages/expert/contract-categories";
+import ExpertBookingPartners from "@/pages/expert/booking-partners";
+import AdminFeeConfig from "@/pages/admin/fee-config";
 import ExpertRevenueOptimization from "@/pages/expert/revenue-optimization";
 import ExpertLeaderboard from "@/pages/expert/leaderboard";
 import ExpertAnalytics from "@/pages/expert/analytics";
@@ -426,6 +428,9 @@ function Router() {
       <Route path="/expert/contract-categories">
         {() => <ProtectedRoute component={ExpertContractCategories} requiredRole="expert" />}
       </Route>
+      <Route path="/expert/booking-partners">
+        {() => <ProtectedRoute component={ExpertBookingPartners} requiredRole="expert" />}
+      </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
       <Route path="/ea/dashboard">
@@ -557,6 +562,9 @@ function Router() {
       </Route>
       <Route path="/admin/payouts">
         {() => <ProtectedRoute component={AdminPayouts} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/fee-config">
+        {() => <ProtectedRoute component={AdminFeeConfig} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}
