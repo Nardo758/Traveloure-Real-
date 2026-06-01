@@ -20,7 +20,8 @@ import {
   MoreVertical,
   Eye,
   Pause,
-  Play
+  Play,
+  StickyNote
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -60,6 +61,7 @@ interface ProviderService {
   whatIncluded: string | null;
   location: string | null;
   status: string;
+  includesExpertNotes: boolean | null;
   bookingsCount: number | null;
   totalRevenue: string | null;
   averageRating: string | null;
@@ -205,6 +207,13 @@ export default function ExpertServices() {
           <p className={`text-sm mt-1 line-clamp-2 ${service.status === "active" ? "text-gray-600" : "text-gray-400"}`}>
             {service.description || "No description"}
           </p>
+          {service.includesExpertNotes && (
+            <div className="mt-2">
+              <Badge className="bg-amber-100 text-amber-800 border border-amber-200 text-xs gap-1">
+                <StickyNote className="w-3 h-3" /> Expert Notes included
+              </Badge>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
             <span className="flex items-center gap-1 font-medium text-gray-900">
               <DollarSign className="w-4 h-4 text-green-600" />

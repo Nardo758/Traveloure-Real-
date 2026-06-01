@@ -23,8 +23,10 @@ import {
   Clock,
   DollarSign,
   Package,
-  AlertCircle
+  AlertCircle,
+  StickyNote
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -43,6 +45,7 @@ interface ServiceFormData {
   requirements: string;
   whatIncluded: string;
   status: string;
+  includesExpertNotes: boolean;
 }
 
 const initialFormData: ServiceFormData = {
@@ -57,6 +60,7 @@ const initialFormData: ServiceFormData = {
   requirements: "",
   whatIncluded: "",
   status: "draft",
+  includesExpertNotes: false,
 };
 
 const serviceTypes = [
@@ -418,6 +422,30 @@ export default function ServiceWizard() {
         />
         <p className="text-sm text-gray-500">e.g., Detailed itinerary, booking links, local recommendations</p>
       </div>
+
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center flex-shrink-0">
+              <StickyNote className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="font-semibold text-amber-900 text-sm">Include Expert Notes</p>
+              <p className="text-xs text-amber-700">Add curated insider annotations to every itinerary stop</p>
+            </div>
+          </div>
+          <Switch
+            checked={formData.includesExpertNotes}
+            onCheckedChange={(v) => setFormData(prev => ({ ...prev, includesExpertNotes: v }))}
+            data-testid="switch-expert-notes"
+          />
+        </div>
+        {formData.includesExpertNotes && (
+          <p className="text-xs text-amber-800 border-t border-amber-200 pt-3">
+            Clients will see a <strong>📝 Expert Notes included</strong> badge on your listing. You'll annotate each activity in your private workspace before sending the final plan.
+          </p>
+        )}
+      </div>
     </div>
   );
 
@@ -463,6 +491,13 @@ export default function ServiceWizard() {
             <div>
               <p className="text-sm text-gray-500 mb-1">What is Included</p>
               <p className="text-gray-700">{formData.whatIncluded}</p>
+            </div>
+          )}
+
+          {formData.includesExpertNotes && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+              <StickyNote className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <p className="text-sm text-amber-800 font-medium">Expert Notes included</p>
             </div>
           )}
         </CardContent>
