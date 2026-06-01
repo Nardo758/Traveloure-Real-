@@ -109,6 +109,7 @@ import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
 import CartPage from "@/pages/cart";
+import BrowsePage from "@/pages/browse";
 import MyBookingsPage from "@/pages/my-bookings";
 import ContractViewPage from "@/pages/contract-view";
 import ServiceDetailPage from "@/pages/service-detail";
@@ -569,7 +570,7 @@ function Router() {
         <Redirect to="/discover" />
       </Route>
       <Route path="/browse">
-        <Redirect to="/discover" />
+        <BrowsePage />
       </Route>
       <Route path="/travel-experts">
         <Redirect to="/become-expert" />
