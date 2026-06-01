@@ -334,6 +334,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
   socialFollowers: jsonb("social_followers").default({}), // {"instagram": 50000, "tiktok": 100000, "youtube": 25000}
   verifiedInfluencer: boolean("verified_influencer").default(false),
   influencerTier: varchar("influencer_tier", { length: 20 }), // nano, micro, mid, macro, mega
+  expertNotesStyle: text("expert_notes_style"),
   referralCode: varchar("referral_code", { length: 50 }).unique(),
   tiktokLink: text("tiktok_link"),
   youtubeLink: text("youtube_link"),
@@ -459,6 +460,7 @@ export const providerServices = pgTable("provider_services", {
   deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // pdf, video, call, in_person, voice_notes, async_messaging
   deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
   revisionsIncluded: integer("revisions_included").default(0),
+  includesExpertNotes: boolean("includes_expert_notes").default(false),
   
   // Capacity & Scheduling
   maxConcurrentBookings: integer("max_concurrent_bookings"),

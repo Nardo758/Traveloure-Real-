@@ -21,7 +21,9 @@ import {
   Star,
   Plus,
   X,
-  Save
+  Save,
+  StickyNote,
+  Lock
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -328,6 +330,33 @@ export default function ExpertProfile() {
             <Button variant="outline" size="sm" data-testid="button-add-language">
               <Plus className="w-4 h-4 mr-1" /> Add Language
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Expert Notes Style */}
+        <Card className="border border-amber-200 bg-amber-50/40">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <StickyNote className="w-5 h-5 text-amber-500" />
+              Expert Notes Style
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-100 rounded-lg p-3">
+              <Lock className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+              <p>Expert Notes are private annotations you add to each itinerary stop before sending a plan to a client. Describe your annotation style so clients know what to expect.</p>
+            </div>
+            {profileLoading ? (
+              <Skeleton className="h-24 rounded" />
+            ) : (
+              <Textarea
+                rows={3}
+                defaultValue={(expertProfile as any)?.expertNotesStyle || ""}
+                placeholder="e.g., I annotate every stop with local crowd timing, hidden entrances, and personal tips from living here 10+ years."
+                data-testid="input-expert-notes-style"
+              />
+            )}
+            <p className="text-xs text-amber-700">This description appears on your public profile and service listings to build client trust.</p>
           </CardContent>
         </Card>
 
