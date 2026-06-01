@@ -60,6 +60,19 @@ interface Booking {
   createdAt: string;
 }
 
+interface AssignedTrip {
+  trip_id: string;
+  trip_title: string;
+  destination: string;
+  start_date: string;
+  end_date: string;
+  traveler_name: string;
+  traveler_user_id: string;
+  status: "pending" | "accepted";
+  assigned_at: string;
+  suggestion_count: number;
+}
+
 export default function ExpertDashboard() {
   const [selectedTripId, setSelectedTripId] = useState("");
 
@@ -71,12 +84,17 @@ export default function ExpertDashboard() {
     queryKey: ["/api/expert/bookings"],
   });
 
+  const { data: assignedTrips } = useQuery<AssignedTrip[]>({
+    queryKey: ["/api/expert/assigned-trips"],
+  });
+
   const { data: aiStats } = useQuery<AiStats>({
     queryKey: ["/api/expert/ai-stats"],
   });
 
   const pendingBookings = bookings?.filter(b => b.status === "pending" || b.status === "confirmed") || [];
   const activeClients = pendingBookings.slice(0, 3);
+  const activeTrips = (assignedTrips || []).filter(t => t.status === "accepted").slice(0, 3);
 
   const stats = [
     { label: "Active Clients", value: analytics?.summary?.pendingBookings ?? 0, icon: Users, color: "bg-blue-100 text-blue-600" },
@@ -202,11 +220,53 @@ export default function ExpertDashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {activeClients.length > 0 ? activeClients.map((client) => (
+                {activeTrips.length > 0 ? activeTrips.map((trip) => (
+                  <div
+                    key={trip.trip_id}
+                    className="p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                    data-testid={`card-client-${trip.trip_id}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center flex-shrink-0">
+                        <Plane className="w-5 h-5 text-[#FF385C]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-gray-900">{trip.traveler_name}</p>
+                            <p className="text-sm text-gray-500 mt-0.5 truncate">
+                              {trip.trip_title || trip.destination}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {trip.status}
+                          </Badge>
+                        </div>
+                        <div className="mt-3 flex gap-2 flex-wrap">
+                          <Link href="/chat">
+                            <Button size="sm" variant="outline" className="text-xs" data-testid={`button-chat-${trip.trip_id}`}>
+                              <MessageSquare className="w-3 h-3 mr-1" /> Chat
+                            </Button>
+                          </Link>
+                          <Link href={`/expert/workspace/${trip.trip_id}`}>
+                            <Button size="sm" variant="outline" className="text-xs" data-testid={`button-itinerary-${trip.trip_id}`}>
+                              <Calendar className="w-3 h-3 mr-1" /> Itinerary
+                            </Button>
+                          </Link>
+                          <Link href="/expert/ai-assistant">
+                            <Button size="sm" variant="outline" className="text-xs" data-testid={`button-ai-assist-${trip.trip_id}`}>
+                              <Bot className="w-3 h-3 mr-1" /> AI
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )) : activeClients.length > 0 ? activeClients.map((client) => (
                   <div
                     key={client.id}
                     className="p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
-                    data-testid={`card-client-${client.id}`}
+                    data-testid={`card-client-booking-${client.id}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center flex-shrink-0">
