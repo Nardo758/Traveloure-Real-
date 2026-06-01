@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
@@ -166,6 +166,28 @@ export default function BrowsePage() {
 
   const nights = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
 
+  // Accumulated results for true "load more" (append) behaviour
+  const [allResults, setAllResults] = useState<UnifiedResult[]>([]);
+  const [totalFromApi, setTotalFromApi] = useState(0);
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
+
+  // Fingerprint of search params (excludes offset so changing offset doesn't reset)
+  const searchFingerprint = useMemo(
+    () => JSON.stringify([debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab]),
+    [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab]
+  );
+  const prevFingerprintRef = useRef(searchFingerprint);
+  // When the search fingerprint changes reset offset and accumulated results
+  useEffect(() => {
+    if (prevFingerprintRef.current !== searchFingerprint) {
+      prevFingerprintRef.current = searchFingerprint;
+      setOffset(0);
+      setAllResults([]);
+      setTotalFromApi(0);
+    }
+  }, [searchFingerprint]);
+
+  // Build query params (providers are handled client-side — not sent to API)
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedDestination) params.set("destination", debouncedDestination);
@@ -175,11 +197,10 @@ export default function BrowsePage() {
     if (minRating > 0) params.set("rating", minRating.toString());
     params.set("sortBy", SORT_MAP[sortBy]);
     params.set("type", TAB_TYPES[activeTab] ?? "activity");
-    if (activeProviders.length > 0) params.set("providers", activeProviders.join(","));
     params.set("limit", "20");
     params.set("offset", offset.toString());
     return params.toString();
-  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders, offset]);
+  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, offset]);
 
   const { data, isLoading, isFetching } = useQuery<CatalogSearchResult>({
     queryKey: ["/api/catalog/search", queryParams],
@@ -191,16 +212,25 @@ export default function BrowsePage() {
     staleTime: 60_000,
   });
 
-  const results: UnifiedResult[] = useMemo(
-    () => (data?.items ?? []).map(catalogItemToUnifiedResult),
-    [data]
-  );
-
-  const availableProviders = data?.filters?.providers ?? [];
-
+  // Accumulate results: replace on first page, append on subsequent pages
   useEffect(() => {
-    setOffset(0);
-  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders]);
+    if (!data) return;
+    const newItems = data.items.map(catalogItemToUnifiedResult);
+    setAllResults(prev => offset === 0 ? newItems : [...prev, ...newItems]);
+    setTotalFromApi(data.total);
+    if (data.filters?.providers?.length) {
+      setAvailableProviders(prev => {
+        const merged = Array.from(new Set([...prev, ...data.filters.providers]));
+        return merged;
+      });
+    }
+  }, [data, offset]);
+
+  // Post-filter by active provider chips (client-side narrowing)
+  const displayResults = useMemo(() => {
+    if (activeProviders.length === 0) return allResults;
+    return allResults.filter(r => activeProviders.includes(r.source));
+  }, [allResults, activeProviders]);
 
   const clearAllFilters = useCallback(() => {
     setPriceRange([0, 500]);
@@ -754,19 +784,19 @@ export default function BrowsePage() {
                   {/* Results count */}
                   {activeTab !== "ai-optimization" && (
                     <p className="text-gray-600 text-sm mb-4" data-testid="results-count">
-                      {isLoading || isFetching
+                      {isLoading || (isFetching && offset === 0)
                         ? "Loading..."
-                        : `Showing ${results.length} of ${data?.total ?? 0} results in ${destination || "all destinations"}`}
+                        : `Showing ${displayResults.length}${activeProviders.length > 0 ? ` (filtered from ${allResults.length})` : ""} of ${totalFromApi} results in ${destination || "all destinations"}`}
                     </p>
                   )}
 
                   <TabsContent value="activities" className="mt-0">
                     <UnifiedResultGrid
-                      results={results}
+                      results={displayResults}
                       destination={destination}
-                      isLoading={isLoading || isFetching}
+                      isLoading={isLoading || (isFetching && offset === 0)}
                     />
-                    {!isLoading && results.length === 0 && !isFetching && (
+                    {!isLoading && displayResults.length === 0 && !isFetching && (
                       <div className="text-center py-10">
                         <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                         <p className="text-gray-600 font-medium">No activities found</p>
@@ -780,11 +810,11 @@ export default function BrowsePage() {
 
                   <TabsContent value="hotels" className="mt-0">
                     <UnifiedResultGrid
-                      results={results}
+                      results={displayResults}
                       destination={destination}
-                      isLoading={isLoading || isFetching}
+                      isLoading={isLoading || (isFetching && offset === 0)}
                     />
-                    {!isLoading && results.length === 0 && !isFetching && (
+                    {!isLoading && displayResults.length === 0 && !isFetching && (
                       <div className="text-center py-10">
                         <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                         <p className="text-gray-600 font-medium">No hotels found</p>
@@ -798,11 +828,11 @@ export default function BrowsePage() {
 
                   <TabsContent value="services" className="mt-0">
                     <UnifiedResultGrid
-                      results={results}
+                      results={displayResults}
                       destination={destination}
-                      isLoading={isLoading || isFetching}
+                      isLoading={isLoading || (isFetching && offset === 0)}
                     />
-                    {!isLoading && results.length === 0 && !isFetching && (
+                    {!isLoading && displayResults.length === 0 && !isFetching && (
                       <div className="text-center py-10">
                         <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                         <p className="text-gray-600 font-medium">No events or services found</p>
@@ -841,7 +871,7 @@ export default function BrowsePage() {
                   </TabsContent>
 
                   {/* Load More */}
-                  {activeTab !== "ai-optimization" && !isLoading && results.length > 0 && data && (data.total > offset + 20) && (
+                  {activeTab !== "ai-optimization" && !isLoading && allResults.length > 0 && allResults.length < totalFromApi && (
                     <div className="mt-6 text-center">
                       <Button
                         variant="outline"
