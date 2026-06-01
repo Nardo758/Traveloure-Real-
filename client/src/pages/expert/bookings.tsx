@@ -14,7 +14,7 @@ import {
   ArrowRight
 } from "lucide-react";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -34,6 +34,28 @@ export default function ExpertBookings() {
 
   const { data: bookings, isLoading } = useQuery<Booking[]>({
     queryKey: ["/api/expert/bookings"],
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PATCH", `/api/expert/bookings/${id}/status`, { status }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
+      toast({
+        title: variables.status === "confirmed" ? "Booking Accepted" : "Booking Declined",
+        description:
+          variables.status === "confirmed"
+            ? "The booking has been confirmed."
+            : "The booking has been declined.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Action Failed",
+        description: "Could not update booking status. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const getStatusBadge = (status: string) => {
@@ -185,12 +207,33 @@ export default function ExpertBookings() {
                       )}
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" data-testid={`button-edit-booking-${booking.id}`}>
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" data-testid={`button-cancel-booking-${booking.id}`}>
-                        Cancel
-                      </Button>
+                      {booking.status === "pending" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            disabled={statusMutation.isPending}
+                            onClick={() => statusMutation.mutate({ id: booking.id, status: "confirmed" })}
+                            data-testid={`button-accept-booking-${booking.id}`}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-300 hover:bg-red-50"
+                            disabled={statusMutation.isPending}
+                            onClick={() => statusMutation.mutate({ id: booking.id, status: "cancelled" })}
+                            data-testid={`button-decline-booking-${booking.id}`}
+                          >
+                            Decline
+                          </Button>
+                        </>
+                      ) : (
+                        <Button size="sm" variant="outline" data-testid={`button-edit-booking-${booking.id}`}>
+                          Edit
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
