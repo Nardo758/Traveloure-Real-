@@ -107,14 +107,24 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
     queryKey: ["/api/catalog/viator-feed", destination],
     enabled: !!destination,
   });
+  const gygQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/activities-gyg", destination],
+    enabled: !!destination,
+  });
+  const klookQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/klook", destination],
+    enabled: !!destination,
+  });
 
   const allItems = [
+    ...(gygQuery.data?.items || []),
     ...(tiqetsQuery.data?.items || []),
     ...(wegoQuery.data?.items || []),
     ...(viatorFeedQuery.data?.items || []),
+    ...(klookQuery.data?.items || []),
   ];
 
-  const isLoading = tiqetsQuery.isLoading || wegoQuery.isLoading || viatorFeedQuery.isLoading;
+  const isLoading = tiqetsQuery.isLoading || wegoQuery.isLoading || viatorFeedQuery.isLoading || gygQuery.isLoading || klookQuery.isLoading;
 
   if (isLoading) return (
     <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

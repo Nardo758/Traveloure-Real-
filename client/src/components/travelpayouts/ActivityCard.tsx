@@ -10,10 +10,14 @@ interface ActivityCardProps {
 }
 
 const PROVIDER_META: Record<string, { label: string; color: string }> = {
-  tiqets:       { label: "Tiqets", color: "bg-red-100 text-red-700" },
-  wegotrip:     { label: "WeGoTrip", color: "bg-green-100 text-green-700" },
-  "viator-feed": { label: "Viator", color: "bg-emerald-100 text-emerald-700" },
-  viator:       { label: "Viator", color: "bg-emerald-100 text-emerald-700" },
+  tiqets:         { label: "Tiqets", color: "bg-red-100 text-red-700" },
+  wegotrip:       { label: "WeGoTrip", color: "bg-green-100 text-green-700" },
+  "viator-feed":  { label: "Viator", color: "bg-emerald-100 text-emerald-700" },
+  viator:         { label: "Viator", color: "bg-emerald-100 text-emerald-700" },
+  getyourguide:   { label: "GetYourGuide", color: "bg-yellow-100 text-yellow-700" },
+  klook:          { label: "Klook", color: "bg-pink-100 text-pink-700" },
+  safetywing:     { label: "SafetyWing", color: "bg-teal-100 text-teal-700" },
+  stasher:        { label: "Stasher", color: "bg-amber-100 text-amber-700" },
 };
 
 export function ActivityCard({ item, className }: ActivityCardProps) {
