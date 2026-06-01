@@ -566,13 +566,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         // Notify the expert/provider that a new booking request has arrived
         try {
+          const traveler = await storage.getUser(userId);
+          const travelerName = traveler
+            ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+            : "A traveler";
           await storage.createNotification({
             userId: providerId,
             type: "booking_request",
-            title: "New booking request",
-            message: `You have a new booking request for "${service.serviceName}" ($${totalAmount.toFixed(2)})`,
+            title: "New Booking Request",
+            message: `${travelerName} requested "${service.serviceName}" ($${totalAmount.toFixed(2)})`,
             relatedId: booking.id,
             relatedType: "booking",
+            data: {
+              bookingId: booking.id,
+              serviceName: service.serviceName,
+              travelerName,
+              amount: totalAmount.toFixed(2),
+            },
           });
         } catch (notifErr) {
           // Non-fatal: log but don't fail the booking creation
@@ -5278,14 +5288,28 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         await storage.incrementServiceBookings(item.serviceId, 1);
         
         // Create notification for provider
-        await storage.createNotification({
-          userId: item.service.userId,
-          type: "booking_created",
-          title: "New Booking Request",
-          message: `You have a new booking for ${item.service.serviceName}`,
-          relatedId: booking.id,
-          relatedType: "booking",
-        });
+        try {
+          const traveler = await storage.getUser(userId);
+          const travelerName = traveler
+            ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+            : "A traveler";
+          await storage.createNotification({
+            userId: item.service.userId,
+            type: "booking_request",
+            title: "New Booking Request",
+            message: `${travelerName} booked "${item.service.serviceName}" ($${price.toFixed(2)})`,
+            relatedId: booking.id,
+            relatedType: "booking",
+            data: {
+              bookingId: booking.id,
+              serviceName: item.service.serviceName,
+              travelerName,
+              amount: price.toFixed(2),
+            },
+          });
+        } catch (notifErr) {
+          console.error("Failed to create checkout booking notification:", notifErr);
+        }
         
         bookings.push({ booking, contract });
       }
