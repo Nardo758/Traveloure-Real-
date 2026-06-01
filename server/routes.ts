@@ -66,7 +66,10 @@ import {
   insertTripTransactionSchema,
   insertItineraryItemSchema,
   insertTripEmergencyContactSchema,
-  insertTripAlertSchema
+  insertTripAlertSchema,
+  insertProviderAvailabilityScheduleSchema,
+  insertProviderBlackoutDateSchema,
+  tripExpertAdvisors,
 } from "@shared/schema";
 
 // Helper function to verify trip ownership
@@ -2983,9 +2986,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Calculate fees (platform takes 20%)
+      // Calculate fees (platform takes 30%)
       const price = parseFloat(template.price as string);
-      const platformFee = price * 0.20;
+      const platformFee = price * 0.30;
       const expertEarnings = price - platformFee;
 
       // Create purchase record
@@ -5121,7 +5124,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       return sum + (price * (item.quantity || 1));
     }, 0);
     
-    const platformFee = subtotal * 0.20; // 20% platform fee
+    const platformFee = subtotal * 0.30; // 30% platform fee
     const total = subtotal + platformFee;
     
     res.json({
@@ -5247,7 +5250,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         const price = parseFloat(item.service?.price || "0");
         return sum + (price * (item.quantity || 1));
       }, 0);
-      const platformFee = subtotal * 0.20;
+      const platformFee = subtotal * 0.30;
       const total = subtotal + platformFee;
       
       // Create bookings for each cart item
@@ -5256,7 +5259,7 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        const fee = price * 0.20;
+        const fee = price * 0.30;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -15853,6 +15856,263 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false });
+    }
+  });
+
+  // === Provider Availability Rules ===
+  app.get("/api/provider/availability/rules", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rules = await storage.getProviderAvailability(userId);
+      res.json(rules);
+    } catch (err) {
+      console.error("[Provider] getAvailability error:", err);
+      res.status(500).json({ message: "Failed to get availability rules" });
+    }
+  });
+
+  app.post("/api/provider/availability/rules", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const parsed = insertProviderAvailabilityScheduleSchema.safeParse({ ...req.body, providerId: userId });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const rule = await storage.setProviderAvailability(parsed.data);
+      res.status(201).json(rule);
+    } catch (err) {
+      console.error("[Provider] setAvailability error:", err);
+      res.status(500).json({ message: "Failed to save availability rule" });
+    }
+  });
+
+  app.patch("/api/provider/availability/rules/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const parsed = insertProviderAvailabilityScheduleSchema.partial().safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const updated = await storage.setProviderAvailability({ id, ...parsed.data } as any);
+      res.json(updated);
+    } catch (err) {
+      console.error("[Provider] updateAvailability error:", err);
+      res.status(500).json({ message: "Failed to update availability rule" });
+    }
+  });
+
+  app.delete("/api/provider/availability/rules/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteProviderAvailability(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[Provider] deleteAvailability error:", err);
+      res.status(500).json({ message: "Failed to delete availability rule" });
+    }
+  });
+
+  // === Provider Blackout Dates ===
+  app.get("/api/provider/availability/blackout-dates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const dates = await storage.getProviderBlackoutDates(userId);
+      res.json(dates);
+    } catch (err) {
+      console.error("[Provider] getBlackoutDates error:", err);
+      res.status(500).json({ message: "Failed to get blackout dates" });
+    }
+  });
+
+  app.post("/api/provider/availability/blackout-dates", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const parsed = insertProviderBlackoutDateSchema.safeParse({ ...req.body, providerId: userId });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const date = await storage.addProviderBlackoutDate(parsed.data);
+      res.status(201).json(date);
+    } catch (err) {
+      console.error("[Provider] addBlackoutDate error:", err);
+      res.status(500).json({ message: "Failed to add blackout date" });
+    }
+  });
+
+  app.delete("/api/provider/availability/blackout-dates/:id", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteProviderBlackoutDate(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[Provider] deleteBlackoutDate error:", err);
+      res.status(500).json({ message: "Failed to delete blackout date" });
+    }
+  });
+
+  // === Provider Settings ===
+  app.get("/api/provider/settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.getProviderSettings(userId);
+      if (!settings) {
+        return res.json({
+          instantBooking: false,
+          autoResponse: true,
+          minimumLeadTimeDays: 7,
+          targetResponseTimeHours: 2,
+          payoutFrequency: "monthly",
+          minimumPayoutAmount: "100",
+          notificationsJson: { newBookings: true, bookingUpdates: true, messages: true, reviews: true, payouts: true, marketing: false },
+        });
+      }
+      res.json(settings);
+    } catch (err) {
+      console.error("[Provider] getSettings error:", err);
+      res.status(500).json({ message: "Failed to get settings" });
+    }
+  });
+
+  app.patch("/api/provider/settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const settings = await storage.upsertProviderSettings(userId, req.body);
+      res.json(settings);
+    } catch (err) {
+      console.error("[Provider] upsertSettings error:", err);
+      res.status(500).json({ message: "Failed to save settings" });
+    }
+  });
+
+  // === Itinerary Items CRUD ===
+  app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) return res.status(403).json({ message: "Access denied" });
+      const items = await storage.getItineraryItems(tripId);
+      res.json(items);
+    } catch (err) {
+      console.error("[ItineraryItems] GET error:", err);
+      res.status(500).json({ message: "Failed to get itinerary items" });
+    }
+  });
+
+  app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) return res.status(403).json({ message: "Access denied" });
+      const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
+      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      const item = await storage.createItineraryItem(parsed.data as any);
+      res.status(201).json(item);
+    } catch (err) {
+      console.error("[ItineraryItems] POST error:", err);
+      res.status(500).json({ message: "Failed to create itinerary item" });
+    }
+  });
+
+  app.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId, itemId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) return res.status(403).json({ message: "Access denied" });
+      const updated = await storage.updateItineraryItem(itemId, req.body);
+      if (!updated) return res.status(404).json({ message: "Item not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("[ItineraryItems] PATCH error:", err);
+      res.status(500).json({ message: "Failed to update itinerary item" });
+    }
+  });
+
+  app.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId, itemId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) return res.status(403).json({ message: "Access denied" });
+      await storage.deleteItineraryItem(itemId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[ItineraryItems] DELETE error:", err);
+      res.status(500).json({ message: "Failed to delete itinerary item" });
+    }
+  });
+
+  // === Expert Assignment Workspace Status ===
+  app.patch("/api/expert/assignments/:assignmentId/workspace-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { assignmentId } = req.params;
+      const { workspaceStatus } = req.body;
+      const validStatuses = ["draft", "in_review", "delivered"];
+      if (!workspaceStatus || !validStatuses.includes(workspaceStatus)) {
+        return res.status(400).json({ message: "Invalid workspaceStatus. Must be one of: draft, in_review, delivered" });
+      }
+      const assignment = await storage.getExpertAssignment(assignmentId);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+      if (assignment.localExpertId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
+      res.json(updated);
+    } catch (err) {
+      console.error("[Expert] workspace-status error:", err);
+      res.status(500).json({ message: "Failed to update workspace status" });
+    }
+  });
+
+  // === Trip Commission ===
+  app.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const assignment = await db.select()
+        .from(tripExpertAdvisors)
+        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
+        .limit(1);
+      if (!assignment.length) return res.status(403).json({ message: "Not assigned to this trip" });
+
+      const items = await storage.getItineraryItems(tripId);
+      const services = await storage.getProviderServices(userId);
+
+      const DEFAULT_RATE = 0.30;
+      let totalCost = 0;
+      let totalCommission = 0;
+
+      for (const item of items) {
+        const cost = parseFloat(item.estimatedCost ?? "0");
+        const matchedService = services.find((s: any) => s.id === item.serviceId);
+        const rate = matchedService ? parseFloat(matchedService.revenueShareRate ?? String(DEFAULT_RATE)) : DEFAULT_RATE;
+        totalCost += cost;
+        totalCommission += cost * rate;
+      }
+
+      res.json({
+        tripId,
+        expertId: userId,
+        totalCost: totalCost.toFixed(2),
+        totalCommission: totalCommission.toFixed(2),
+        itemCount: items.length,
+        defaultRate: DEFAULT_RATE,
+      });
+    } catch (err) {
+      console.error("[Commission] GET error:", err);
+      res.status(500).json({ message: "Failed to calculate commission" });
+    }
+  });
+
+  // === Provider Services with Filters ===
+  app.get("/api/provider/services/filtered", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { destination, category, activeOnly } = req.query as Record<string, string>;
+      const services = await storage.getProviderServices(userId, {
+        destination: destination || undefined,
+        category: category || undefined,
+        activeOnly: activeOnly === "true",
+      });
+      res.json(services);
+    } catch (err) {
+      console.error("[Provider] getServices filtered error:", err);
+      res.status(500).json({ message: "Failed to get services" });
     }
   });
 

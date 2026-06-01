@@ -6,18 +6,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { 
   Bell, 
-  Mail, 
   CreditCard, 
   Shield, 
-  Globe, 
   Clock,
   User,
   Building,
   Save
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface ProviderSettingsData {
+  instantBooking: boolean;
+  autoResponse: boolean;
+  minimumLeadTimeDays: number;
+  targetResponseTimeHours: number;
+  payoutFrequency: string;
+  minimumPayoutAmount: string;
+  notificationsJson: Record<string, boolean>;
+}
 
 export default function ProviderSettings() {
+  const { toast } = useToast();
+
+  const { data: serverSettings } = useQuery<ProviderSettingsData>({
+    queryKey: ["/api/provider/settings"],
+  });
+
   const [notifications, setNotifications] = useState({
     newBookings: true,
     bookingUpdates: true,
@@ -26,9 +44,46 @@ export default function ProviderSettings() {
     payouts: true,
     marketing: false,
   });
-
   const [autoResponse, setAutoResponse] = useState(true);
   const [instantBooking, setInstantBooking] = useState(false);
+  const [leadTime, setLeadTime] = useState("7");
+  const [responseTime, setResponseTime] = useState("2");
+  const [payoutFrequency, setPayoutFrequency] = useState("monthly");
+  const [minPayout, setMinPayout] = useState("100");
+
+  useEffect(() => {
+    if (serverSettings) {
+      setInstantBooking(serverSettings.instantBooking ?? false);
+      setAutoResponse(serverSettings.autoResponse ?? true);
+      setLeadTime(String(serverSettings.minimumLeadTimeDays ?? 7));
+      setResponseTime(String(serverSettings.targetResponseTimeHours ?? 2));
+      setPayoutFrequency(serverSettings.payoutFrequency ?? "monthly");
+      setMinPayout(String(serverSettings.minimumPayoutAmount ?? "100"));
+      if (serverSettings.notificationsJson) {
+        setNotifications(serverSettings.notificationsJson as typeof notifications);
+      }
+    }
+  }, [serverSettings]);
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", "/api/provider/settings", {
+        instantBooking,
+        autoResponse,
+        minimumLeadTimeDays: parseInt(leadTime, 10),
+        targetResponseTimeHours: parseInt(responseTime, 10),
+        payoutFrequency,
+        minimumPayoutAmount: minPayout,
+        notificationsJson: notifications,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/settings"] });
+      toast({ title: "Settings saved", description: "Your preferences have been updated." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+    },
+  });
 
   return (
     <ProviderLayout title="Settings">
@@ -43,26 +98,6 @@ export default function ProviderSettings() {
             <CardDescription>Manage your account credentials and security</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  defaultValue="events@grandestatevenue.com"
-                  data-testid="input-email"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input 
-                  id="phone" 
-                  type="tel" 
-                  defaultValue="+1 (707) 555-0123"
-                  data-testid="input-phone"
-                />
-              </div>
-            </div>
             <div className="flex gap-2">
               <Button variant="outline" data-testid="button-change-password">
                 <Shield className="w-4 h-4 mr-2" /> Change Password
@@ -118,7 +153,8 @@ export default function ProviderSettings() {
                 <Input 
                   id="lead-time" 
                   type="number" 
-                  defaultValue="7"
+                  value={leadTime}
+                  onChange={(e) => setLeadTime(e.target.value)}
                   className="w-24"
                   data-testid="input-lead-time"
                 />
@@ -127,12 +163,16 @@ export default function ProviderSettings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="response-time">Target Response Time</Label>
+              <Label htmlFor="response-time">
+                <Clock className="w-4 h-4 inline mr-1" />
+                Target Response Time
+              </Label>
               <div className="flex items-center gap-2">
                 <Input 
                   id="response-time" 
                   type="number" 
-                  defaultValue="2"
+                  value={responseTime}
+                  onChange={(e) => setResponseTime(e.target.value)}
                   className="w-24"
                   data-testid="input-response-time"
                 />
@@ -165,8 +205,8 @@ export default function ProviderSettings() {
               return (
                 <div key={key} className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
-                    <Label className="text-base">{labels[key].title}</Label>
-                    <p className="text-sm text-gray-500">{labels[key].desc}</p>
+                    <Label className="text-base">{labels[key]?.title ?? key}</Label>
+                    <p className="text-sm text-gray-500">{labels[key]?.desc ?? ""}</p>
                   </div>
                   <Switch
                     checked={value}
@@ -191,33 +231,21 @@ export default function ProviderSettings() {
             <CardDescription>Manage your payout methods and preferences</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">Chase Bank</p>
-                <p className="text-sm text-gray-500">Account ending in ****1234</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" data-testid="button-edit-payout">
-                  Edit
-                </Button>
-                <Button variant="ghost" size="sm" data-testid="button-add-payout">
-                  Add New
-                </Button>
-              </div>
-            </div>
-
             <div className="space-y-2">
               <Label>Payout Frequency</Label>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" data-testid="button-payout-weekly">
-                  Weekly
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1" data-testid="button-payout-biweekly">
-                  Bi-weekly
-                </Button>
-                <Button variant="outline" size="sm" className="flex-1" data-testid="button-payout-monthly">
-                  Monthly
-                </Button>
+                {(["weekly", "biweekly", "monthly"] as const).map((freq) => (
+                  <Button
+                    key={freq}
+                    variant={payoutFrequency === freq ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setPayoutFrequency(freq)}
+                    data-testid={`button-payout-${freq}`}
+                  >
+                    {freq.charAt(0).toUpperCase() + freq.slice(1).replace("biweekly", "Bi-weekly")}
+                  </Button>
+                ))}
               </div>
             </div>
 
@@ -227,7 +255,8 @@ export default function ProviderSettings() {
                 <span className="text-gray-600">$</span>
                 <Input 
                   type="number" 
-                  defaultValue="100"
+                  value={minPayout}
+                  onChange={(e) => setMinPayout(e.target.value)}
                   className="w-32"
                   data-testid="input-min-payout"
                 />
@@ -238,8 +267,13 @@ export default function ProviderSettings() {
 
         {/* Save Button */}
         <div className="flex justify-end">
-          <Button data-testid="button-save-settings">
-            <Save className="w-4 h-4 mr-2" /> Save All Settings
+          <Button
+            onClick={() => saveSettingsMutation.mutate()}
+            disabled={saveSettingsMutation.isPending}
+            data-testid="button-save-settings"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {saveSettingsMutation.isPending ? "Saving..." : "Save All Settings"}
           </Button>
         </div>
       </div>
