@@ -1693,6 +1693,181 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // HotelLook hotel search (instant-connect ⚡)
+  app.get("/api/catalog/hotels-look", isAuthenticated, async (req, res) => {
+    try {
+      const { searchHotellook } = await import("./services/travelpayouts/hotellook.service");
+      const { destination, currency, limit } = req.query;
+      if (!destination) return res.status(400).json({ message: "destination required" });
+      const items = await searchHotellook({
+        destination: destination as string,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 20,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("HotelLook error:", err);
+      res.status(500).json({ message: "Failed to search HotelLook" });
+    }
+  });
+
+  // Agoda hotels (instant-connect ⚡)
+  app.get("/api/catalog/agoda", isAuthenticated, async (req, res) => {
+    try {
+      const { searchAgoda } = await import("./services/travelpayouts/agoda.service");
+      const { destination, checkIn, checkOut, guests, limit } = req.query;
+      if (!destination) return res.status(400).json({ message: "destination required" });
+      const items = await searchAgoda({
+        destination: destination as string,
+        checkIn: checkIn as string,
+        checkOut: checkOut as string,
+        guests: guests ? parseInt(guests as string) : 2,
+        limit: limit ? parseInt(limit as string) : 4,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Agoda error:", err);
+      res.status(500).json({ message: "Failed to search Agoda" });
+    }
+  });
+
+  // GetYourGuide activities (instant-connect ⚡)
+  app.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
+    try {
+      const { searchGetYourGuide } = await import("./services/travelpayouts/getyourguide.service");
+      const { destination, currency, limit } = req.query;
+      if (!destination) return res.status(400).json({ message: "destination required" });
+      const items = await searchGetYourGuide({
+        destination: destination as string,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 12,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("GetYourGuide error:", err);
+      res.status(500).json({ message: "Failed to search GetYourGuide" });
+    }
+  });
+
+  // Klook Asia activities (instant-connect ⚡)
+  app.get("/api/catalog/klook", isAuthenticated, async (req, res) => {
+    try {
+      const { searchKlook } = await import("./services/travelpayouts/klook.service");
+      const { destination, currency, limit } = req.query;
+      if (!destination) return res.status(400).json({ message: "destination required" });
+      const items = await searchKlook({
+        destination: destination as string,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 6,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Klook error:", err);
+      res.status(500).json({ message: "Failed to search Klook" });
+    }
+  });
+
+  // Travel insurance — SafetyWing (instant-connect ⚡)
+  app.get("/api/catalog/insurance", isAuthenticated, async (req, res) => {
+    try {
+      const { searchSafetyWingPlans } = await import("./services/travelpayouts/safetywing.service");
+      const { destination, travelers, limit } = req.query;
+      const items = await searchSafetyWingPlans({
+        destination: destination as string,
+        travelers: travelers ? parseInt(travelers as string) : 1,
+        limit: limit ? parseInt(limit as string) : 3,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("SafetyWing error:", err);
+      res.status(500).json({ message: "Failed to fetch insurance plans" });
+    }
+  });
+
+  // Busbud bus routes (instant-connect ⚡)
+  app.get("/api/catalog/bus", isAuthenticated, async (req, res) => {
+    try {
+      const { searchBusbud } = await import("./services/travelpayouts/busbud.service");
+      const { origin, destination, date, passengers, limit, currency } = req.query;
+      const items = await searchBusbud({
+        origin: (origin as string) || "",
+        destination: (destination as string) || "",
+        date: date as string,
+        passengers: passengers ? parseInt(passengers as string) : 1,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 10,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Busbud error:", err);
+      res.status(500).json({ message: "Failed to search Busbud" });
+    }
+  });
+
+  // Airport transfers — Kiwi Taxi + Welcome Pickups (instant-connect ⚡)
+  app.get("/api/catalog/airport-transfers", isAuthenticated, async (req, res) => {
+    try {
+      const { searchKiwiTaxi } = await import("./services/travelpayouts/kiwitaxi.service");
+      const { searchWelcomePickups } = await import("./services/travelpayouts/welcomepickups.service");
+      const { from, to, destination, date, passengers, limit } = req.query;
+
+      const dest = (to || destination) as string || "";
+      const origin = (from as string) || "";
+
+      const [kiwiItems, welcomeItems] = await Promise.all([
+        searchKiwiTaxi({ from: origin, to: dest, date: date as string, passengers: passengers ? parseInt(passengers as string) : 2, limit: 3 }),
+        searchWelcomePickups({ destination: dest, from: origin, passengers: passengers ? parseInt(passengers as string) : 2, limit: 2 }),
+      ]);
+
+      const items = [...kiwiItems, ...welcomeItems];
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Airport transfers error:", err);
+      res.status(500).json({ message: "Failed to search airport transfers" });
+    }
+  });
+
+  // Stasher luggage storage (instant-connect ⚡)
+  app.get("/api/catalog/luggage-storage", isAuthenticated, async (req, res) => {
+    try {
+      const { searchStasher } = await import("./services/travelpayouts/stasher.service");
+      const { destination, date, days, bags, limit } = req.query;
+      if (!destination) return res.status(400).json({ message: "destination required" });
+      const items = await searchStasher({
+        destination: destination as string,
+        date: date as string,
+        days: days ? parseInt(days as string) : 1,
+        bags: bags ? parseInt(bags as string) : 1,
+        limit: limit ? parseInt(limit as string) : 6,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Stasher error:", err);
+      res.status(500).json({ message: "Failed to search Stasher" });
+    }
+  });
+
+  // Rentalcars.com car hire (instant-connect ⚡)
+  app.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
+    try {
+      const { searchRentalcars } = await import("./services/travelpayouts/rentalcars.service");
+      const { pickupLocation, pickupDate, dropoffDate, driverAge, limit, currency } = req.query;
+      if (!pickupLocation) return res.status(400).json({ message: "pickupLocation required" });
+      const items = await searchRentalcars({
+        pickupLocation: pickupLocation as string,
+        pickupDate: pickupDate as string,
+        dropoffDate: dropoffDate as string,
+        driverAge: driverAge ? parseInt(driverAge as string) : 30,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 4,
+      });
+      res.json({ items, total: items.length });
+    } catch (err) {
+      console.error("Rentalcars error:", err);
+      res.status(500).json({ message: "Failed to search Rentalcars" });
+    }
+  });
+
   // Alias: /api/destinations -> /api/catalog/destinations
   app.get("/api/destinations", async (req, res) => {
     try {
