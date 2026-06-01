@@ -1,15 +1,14 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
 
 const OMIO_FEED_URL = "https://www.travelpayouts.com/omio/destinations.json";
-
-let cache: { data: any[]; fetchedAt: number } | null = null;
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+const BRAND = "omio";
+const CACHE_KEY = "omio:feed";
 
 async function fetchOmioDestinations(): Promise<any[]> {
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
-    return cache.data;
-  }
+  const cached = await getCachedFeed(BRAND, CACHE_KEY);
+  if (cached !== null) return cached;
 
   const token = getTravelpayoutsToken();
   if (!token) return [];
@@ -22,7 +21,7 @@ async function fetchOmioDestinations(): Promise<any[]> {
 
   const data = await res.json();
   const items = Array.isArray(data) ? data : data?.destinations || data?.data || [];
-  cache = { data: items, fetchedAt: Date.now() };
+  await setCachedFeed(BRAND, CACHE_KEY, items);
   return items;
 }
 
