@@ -20,7 +20,8 @@ import {
   FileText,
   Cpu,
   MapPin,
-  Banknote
+  Banknote,
+  Percent,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -37,6 +38,7 @@ const navItems = [
   { icon: ClipboardList, label: "Plans", href: "/admin/plans" },
   { icon: DollarSign, label: "Revenue", href: "/admin/revenue" },
   { icon: Banknote, label: "Payouts", href: "/admin/payouts" },
+  { icon: Percent, label: "Fee Config", href: "/admin/fee-config" },
   { icon: BarChart3, label: "Analytics", href: "/admin/analytics" },
   { icon: MapPin, label: "Tourism", href: "/admin/tourism-analytics" },
   { icon: Cpu, label: "AI Costs", href: "/admin/ai-costs" },

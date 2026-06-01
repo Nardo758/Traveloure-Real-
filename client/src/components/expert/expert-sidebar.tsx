@@ -34,6 +34,7 @@ import {
   Lightbulb,
   Palette,
   Settings,
+  Link2,
 } from "lucide-react";
 
 const menuGroups = [
@@ -50,6 +51,7 @@ const menuGroups = [
     label: "BUSINESS",
     items: [
       { title: "Services", href: "/expert/services", icon: Briefcase },
+      { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
       { title: "Content Studio", href: "/expert/content-studio", icon: Palette },
       { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
       { title: "Earnings", href: "/expert/earnings", icon: DollarSign },

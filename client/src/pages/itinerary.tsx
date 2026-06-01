@@ -50,6 +50,7 @@ import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
 import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
 import { TripLogisticsDashboard } from "@/components/logistics";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
+import { BookingFeeBreakdown } from "@/components/itinerary/BookingFeeBreakdown";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
@@ -744,6 +745,13 @@ export default function ItineraryPage() {
                     const partnerBookings = allActivities.filter((a: any) => (a.bookingType || getBookingType(a.type)) === 'partner' && !a.booked);
                     const inAppTotal = inAppBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
                     const partnerTotal = partnerBookings.reduce((sum: number, a: any) => sum + (a.price || 0), 0);
+                    const pendingTotal = inAppTotal + partnerTotal;
+                    const platformFeePercent = 12;
+                    const expertSharePercent = 70;
+                    const feeAI = Math.round(pendingTotal * (platformFeePercent / 100) * 100) / 100;
+                    const feeExpert = feeAI;
+                    const expertEarns = Math.round(feeExpert * (expertSharePercent / 100) * 100) / 100;
+                    const platformFromExpert = Math.round(feeExpert * ((100 - expertSharePercent) / 100) * 100) / 100;
                     return (
                       <>
                         <div className="flex items-center justify-between p-2.5 bg-primary/5 rounded-lg">
@@ -767,9 +775,35 @@ export default function ItineraryPage() {
                           </div>
                         </div>
                         <div className="border-t pt-2 mt-1 flex items-center justify-between">
-                          <span className="text-sm font-semibold text-foreground">Total Pending</span>
-                          <span className="text-base font-bold text-primary" data-testid="text-total-pending">${inAppTotal + partnerTotal}</span>
+                          <span className="text-sm font-semibold text-foreground">Subtotal</span>
+                          <span className="text-base font-bold text-foreground" data-testid="text-total-pending">${pendingTotal}</span>
                         </div>
+                        {pendingTotal > 0 && (
+                          <div className="space-y-2 pt-1" data-testid="fee-breakdown-section">
+                            {/* AI booking fee row */}
+                            <div className="rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-100 dark:border-violet-800 px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+                                  <span className="text-xs font-medium text-violet-800 dark:text-violet-200">If AI books</span>
+                                </div>
+                                <span className="text-xs font-semibold text-violet-700 dark:text-violet-300" data-testid="text-ai-fee">+${feeAI.toFixed(2)} fee</span>
+                              </div>
+                              <p className="text-[10px] text-violet-600/80 dark:text-violet-400/80 mt-0.5">Platform keeps 100% of the {platformFeePercent}% fee</p>
+                            </div>
+                            {/* Expert booking fee row */}
+                            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-800 px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <UserCheck className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                                  <span className="text-xs font-medium text-amber-800 dark:text-amber-200">If Expert books</span>
+                                </div>
+                                <span className="text-xs font-semibold text-amber-700 dark:text-amber-300" data-testid="text-expert-fee">+${feeExpert.toFixed(2)} fee</span>
+                              </div>
+                              <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">Expert earns ${expertEarns.toFixed(2)} · Platform ${platformFromExpert.toFixed(2)}</p>
+                            </div>
+                          </div>
+                        )}
                       </>
                     );
                   })()}
