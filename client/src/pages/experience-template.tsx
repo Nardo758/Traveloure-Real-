@@ -94,6 +94,9 @@ import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
+import { TransferCard } from "@/components/travelpayouts/TransferCard";
+import { GroundTransportCard } from "@/components/travelpayouts/GroundTransportCard";
+import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
 import type { CatalogItem } from "@/types/catalog";
 
 function TravelpayoutsActivities({ destination }: { destination: string }) {
@@ -147,6 +150,103 @@ function TravelpayoutsActivities({ destination }: { destination: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {allItems.map(item => (
           <ActivityCard key={item.id} item={item} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TravelpayoutsTransport({ destination }: { destination: string }) {
+  const transfersQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/transfers", destination],
+    enabled: !!destination,
+  });
+  const groundQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/ground-transport", destination],
+    enabled: !!destination,
+  });
+
+  const transfers = transfersQuery.data?.items || [];
+  const ground = groundQuery.data?.items || [];
+  const isLoading = transfersQuery.isLoading || groundQuery.isLoading;
+
+  if (!destination) return null;
+
+  if (isLoading) return (
+    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
+      ))}
+    </div>
+  );
+
+  if (transfers.length === 0 && ground.length === 0) return null;
+
+  return (
+    <div className="mt-6 space-y-6">
+      {transfers.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+            Private Transfers via GetTransfer
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {transfers.slice(0, 6).map(item => (
+              <TransferCard key={item.id} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+      {ground.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
+            Trains & Buses via Omio
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {ground.slice(0, 6).map(item => (
+              <GroundTransportCard key={item.id} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DiscoverCarsWidget({ destination }: { destination: string }) {
+  const today = new Date();
+  const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().split("T")[0];
+
+  const carsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/cars", destination],
+    enabled: !!destination,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        location: destination,
+        pickup: fmt(today),
+        dropoff: fmt(nextWeek),
+        limit: "4",
+      });
+      const res = await fetch(`/api/catalog/cars?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch car rentals");
+      return res.json();
+    },
+  });
+
+  const cars = carsQuery.data?.items || [];
+  if (carsQuery.isLoading || cars.length === 0) return null;
+
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
+        Need a car? — DiscoverCars
+      </h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {cars.slice(0, 4).map(item => (
+          <CarRentalCard key={item.id} item={item} />
         ))}
       </div>
     </div>
@@ -2109,6 +2209,7 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+              {destination && <TravelpayoutsTransport destination={destination} />}
             </div>
           )}
 
@@ -2504,6 +2605,7 @@ export default function ExperienceTemplatePage() {
                   });
                 }}
               />
+              {destination && <DiscoverCarsWidget destination={destination} />}
             </div>
           )}
 
