@@ -2616,8 +2616,8 @@ export default function ExperienceTemplatePage() {
             <div className="mb-6">
               <FeverEventsSection
                 destination={destination}
-                startDate={startDate}
-                endDate={endDate}
+                startDate={startDate?.toISOString().split('T')[0]}
+                endDate={endDate?.toISOString().split('T')[0]}
               />
             </div>
           )}
@@ -2626,7 +2626,7 @@ export default function ExperienceTemplatePage() {
             <div className="mb-6">
               <AmadeusTransfers
                 destination={destination || ""}
-                startDate={startDate}
+                startDate={startDate?.toISOString().split('T')[0]}
                 travelers={adults + kids}
                 onAddToCart={(item) => {
                   addToCart({
