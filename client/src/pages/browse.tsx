@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,20 +20,44 @@ import {
   Plus,
   X,
   Star,
-  Clock,
   Calendar,
   MapPin,
-  Check,
   Sparkles,
-  Plane,
-  Building,
-  Ticket,
   ChevronDown,
   Wand2,
   SlidersHorizontal,
   Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { UnifiedResultGrid, UnifiedResult } from "@/components/unified-result-card";
+
+interface CatalogItem {
+  id: string;
+  type: string;
+  provider: string;
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  price: number | null;
+  rating: number | null;
+  reviewCount: number | null;
+  destination: string | null;
+  categories: string[];
+  bookingUrl: string | null;
+  affiliateUrl: string | null;
+}
+
+interface CatalogSearchResult {
+  items: CatalogItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: {
+    destinations: string[];
+    priceRange: { min: number; max: number };
+    providers: string[];
+  };
+}
 
 interface CartItem {
   id: string;
@@ -45,49 +70,9 @@ interface CartItem {
   provider?: string;
 }
 
-interface Activity {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  rating: number;
-  reviewCount: number;
-  duration: string;
-  provider: string;
-  image?: string;
-  features: string[];
-  dates: string;
-}
-
-interface Hotel {
-  id: string;
-  name: string;
-  description: string;
-  pricePerNight: number;
-  totalPrice: number;
-  rating: number;
-  reviewCount: number;
-  location: string;
-  provider: string;
-  features: string[];
-  roomType: string;
-}
-
-interface Service {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  rating: number;
-  reviewCount: number;
-  provider: string;
-  features: string[];
-  category: string;
-}
-
 const preferenceFilters = [
   "Beach",
-  "Adventure", 
+  "Adventure",
   "Culture",
   "Food",
   "Nightlife",
@@ -97,161 +82,69 @@ const preferenceFilters = [
   "Wellness",
 ];
 
-const sampleActivities: Activity[] = [
-  {
-    id: "act-1",
-    name: "Eiffel Tower Skip-the-Line + Summit Access",
-    description: "Skip the 2-hour wait with priority access to summit. Includes elevator to all levels + panoramic city views.",
-    price: 89,
-    rating: 4.8,
-    reviewCount: 12483,
-    duration: "2 hours",
-    provider: "GetYourGuide",
-    features: ["Skip-the-line", "Mobile ticket", "Free cancellation"],
-    dates: "Flexible dates",
-  },
-  {
-    id: "act-2",
-    name: "Champagne Day Trip: Moet, Dom Perignon + Lunch",
-    description: "Full-day tour to Champagne region. Visit Moet & Chandon, Dom Perignon cellars. Includes tastings, lunch, transport.",
-    price: 249,
-    rating: 4.9,
-    reviewCount: 3421,
-    duration: "9 hours",
-    provider: "Viator",
-    features: ["Transport included", "Lunch included", "24hr cancellation"],
-    dates: "Available Jan 4,6,8",
-  },
-  {
-    id: "act-3",
-    name: "Louvre Museum Skip-Line + Mona Lisa Priority",
-    description: "Skip ticket lines + fast-track to Mona Lisa. Expert guide shares secrets of Venus de Milo, Winged Victory & more.",
-    price: 65,
-    rating: 4.7,
-    reviewCount: 18932,
-    duration: "3 hours",
-    provider: "Klook",
-    features: ["Skip-the-line", "Expert guide", "Free cancellation"],
-    dates: "Flexible dates",
-  },
-  {
-    id: "act-4",
-    name: "Paris Food Tour: Marais District + Wine Tasting",
-    description: "Authentic food tour through historic Marais. 10+ tastings: cheese, charcuterie, pastries, wine. Small groups (max 10).",
-    price: 119,
-    rating: 5.0,
-    reviewCount: 892,
-    duration: "3.5 hours",
-    provider: "Fever",
-    features: ["Local guide", "All food included", "Small group"],
-    dates: "Daily except Monday",
-  },
-  {
-    id: "act-5",
-    name: "Moulin Rouge Show + Champagne + 3-Course Dinner",
-    description: "Iconic cabaret show with 100 performers. Includes VIP seats, 3-course French dinner, half-bottle Champagne per person.",
-    price: 189,
-    rating: 4.6,
-    reviewCount: 7234,
-    duration: "4 hours",
-    provider: "GetYourGuide",
-    features: ["VIP seating", "Dinner included", "Champagne included"],
-    dates: "Nightly 9pm",
-  },
-];
+function priceToLevel(price: number | null): string | null {
+  if (price === null || price === undefined) return null;
+  if (price < 30) return "$";
+  if (price < 100) return "$$";
+  if (price < 300) return "$$$";
+  return "$$$$";
+}
 
-const sampleHotels: Hotel[] = [
-  {
-    id: "hotel-1",
-    name: "Hotel Monge - Boutique Hotel, Latin Quarter",
-    description: "Charming boutique hotel in historic building. Modern rooms with Eiffel Tower views. Walking distance to Notre Dame.",
-    pricePerNight: 190,
-    totalPrice: 1330,
-    rating: 4.7,
-    reviewCount: 2483,
-    location: "Latin Quarter",
-    provider: "Booking.com",
-    features: ["Free WiFi", "Breakfast available", "Free cancellation"],
-    roomType: "Superior Double (2 guests)",
-  },
-  {
-    id: "hotel-2",
-    name: "The Hoxton, Paris - Trendy Boutique Hotel",
-    description: "Hip boutique hotel in renovated 18th-century building. Rooftop terrace, locally-curated design, trendy bar.",
-    pricePerNight: 235,
-    totalPrice: 1645,
-    rating: 4.8,
-    reviewCount: 3921,
-    location: "2nd Arr.",
-    provider: "Hotels.com",
-    features: ["Free WiFi", "Minibar", "Free cancellation", "Breakfast available"],
-    roomType: "Cosy Room (2 guests)",
-  },
-  {
-    id: "hotel-3",
-    name: "Airbnb: Charming Marais Apartment",
-    description: "Authentic Parisian flat in best neighborhood. Exposed beams, full kitchen, balcony. Perfect for couples. Hosted by Marie.",
-    pricePerNight: 160,
-    totalPrice: 1120,
-    rating: 4.9,
-    reviewCount: 187,
-    location: "Marais",
-    provider: "Airbnb",
-    features: ["WiFi", "Kitchen", "Washer", "Flexible cancellation"],
-    roomType: "1-bedroom apartment (2 guests)",
-  },
-];
+function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
+  const providerToSource = (p: string): UnifiedResult["source"] => {
+    switch (p.toLowerCase()) {
+      case "viator": return "viator";
+      case "fever": return "fever";
+      case "amadeus": return "amadeus";
+      default: return "native";
+    }
+  };
 
-const sampleServices: Service[] = [
-  {
-    id: "svc-1",
-    name: "Private Airport Transfer: CDG to Hotel",
-    description: "Private sedan picks you up at CDG Airport. Driver meets you at arrivals with name sign. Direct to your hotel.",
-    price: 75,
-    rating: 4.9,
-    reviewCount: 12483,
-    provider: "Welcome Pickups",
-    features: ["Flight tracking", "Meet & greet", "Free cancellation"],
-    category: "Transportation",
-  },
-  {
-    id: "svc-2",
-    name: "7-Day Paris Metro Pass (Unlimited Zones 1-3)",
-    description: "Unlimited metro, bus, RER travel for 7 days. Covers all major attractions in zones 1-3 including Versailles.",
-    price: 54,
-    rating: 4.6,
-    reviewCount: 8234,
-    provider: "Viator",
-    features: ["Mobile ticket", "Instant delivery", "Covers Versailles"],
-    category: "Transportation",
-  },
-  {
-    id: "svc-3",
-    name: "Vacation Photoshoot: 1-Hour Session + 50 Photos",
-    description: "Professional photographer captures your Paris moments. Choose iconic locations: Eiffel Tower, Louvre, Seine. 50+ edited photos delivered within 7 days.",
-    price: 189,
-    rating: 4.9,
-    reviewCount: 4231,
-    provider: "Flytographer",
-    features: ["Pro photographer", "Choose location", "7-day delivery"],
-    category: "Photography",
-  },
-  {
-    id: "svc-4",
-    name: "Paris Museum Pass: 4 Days Unlimited Access",
-    description: "Skip ticket lines at 60+ museums & monuments. Includes Louvre, Versailles, Orsay, Arc de Triomphe, Notre Dame.",
-    price: 67,
-    rating: 4.8,
-    reviewCount: 23492,
-    provider: "GetYourGuide",
-    features: ["60+ attractions", "Skip-the-line", "Mobile ticket"],
-    category: "Passes",
-  },
-];
+  const base: UnifiedResult = {
+    id: item.id,
+    name: item.title,
+    rating: item.rating ?? null,
+    reviewCount: item.reviewCount ?? null,
+    priceLevel: priceToLevel(item.price),
+    description: item.description ?? null,
+    imageUrl: item.imageUrl ?? null,
+    source: providerToSource(item.provider),
+    isPartner: item.provider === "viator" || item.provider === "fever" || item.provider === "amadeus",
+    category: item.categories?.[0] ?? null,
+    bookingUrl: item.bookingUrl ?? item.affiliateUrl ?? null,
+    address: item.destination ?? null,
+  };
+
+  return base;
+}
+
+type SortOption = "popular" | "rating" | "price-low" | "price-high";
+
+const SORT_MAP: Record<SortOption, string> = {
+  popular: "popular",
+  rating: "rating",
+  "price-low": "price_low",
+  "price-high": "price_high",
+};
+
+const TAB_TYPES: Record<string, string> = {
+  activities: "activity",
+  hotels: "hotel",
+  services: "event,poi,transfer",
+};
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 export default function BrowsePage() {
   const [, setLocation] = useLocation();
-  const [destination, setDestination] = useState("Paris, France");
+  const [destination, setDestination] = useState("Paris");
   const [startDate, setStartDate] = useState("2026-01-02");
   const [endDate, setEndDate] = useState("2026-01-09");
   const [travelers, setTravelers] = useState(2);
@@ -260,141 +153,72 @@ export default function BrowsePage() {
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(true);
-  
-  // Advanced filter states
+  const [activeProviders, setActiveProviders] = useState<string[]>([]);
+  const [offset, setOffset] = useState(0);
+
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 500]);
   const [minRating, setMinRating] = useState<number>(0);
-  const [sortBy, setSortBy] = useState<string>("popular");
+  const [sortBy, setSortBy] = useState<SortOption>("popular");
   const [searchQuery, setSearchQuery] = useState("");
+
+  const debouncedDestination = useDebouncedValue(destination, 500);
+  const debouncedQuery = useDebouncedValue(searchQuery, 400);
 
   const nights = Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
 
-  // Filter and sort activities
-  const filteredActivities = useMemo(() => {
-    let results = [...sampleActivities];
-    
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      results = results.filter(a => 
-        a.name.toLowerCase().includes(query) ||
-        a.description.toLowerCase().includes(query) ||
-        a.provider.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply price range filter
-    results = results.filter(a => a.price >= priceRange[0] && a.price <= priceRange[1]);
-    
-    // Apply rating filter
-    results = results.filter(a => a.rating >= minRating);
-    
-    // Apply sorting
-    switch (sortBy) {
-      case "price-low":
-        results.sort((a, b) => a.price - b.price);
-        break;
-      case "price-high":
-        results.sort((a, b) => b.price - a.price);
-        break;
-      case "rating":
-        results.sort((a, b) => b.rating - a.rating);
-        break;
-      case "reviews":
-        results.sort((a, b) => b.reviewCount - a.reviewCount);
-        break;
-      default: // popular - sort by rating * review count
-        results.sort((a, b) => (b.rating * b.reviewCount) - (a.rating * a.reviewCount));
-    }
-    
-    return results;
-  }, [searchQuery, priceRange, minRating, sortBy]);
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedDestination) params.set("destination", debouncedDestination);
+    if (debouncedQuery) params.set("query", debouncedQuery);
+    if (priceRange[0] > 0) params.set("priceMin", priceRange[0].toString());
+    if (priceRange[1] < 500) params.set("priceMax", priceRange[1].toString());
+    if (minRating > 0) params.set("rating", minRating.toString());
+    params.set("sortBy", SORT_MAP[sortBy]);
+    params.set("type", TAB_TYPES[activeTab] ?? "activity");
+    if (activeProviders.length > 0) params.set("providers", activeProviders.join(","));
+    params.set("limit", "20");
+    params.set("offset", offset.toString());
+    return params.toString();
+  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders, offset]);
 
-  // Filter and sort hotels
-  const filteredHotels = useMemo(() => {
-    let results = [...sampleHotels];
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      results = results.filter(h => 
-        h.name.toLowerCase().includes(query) ||
-        h.description.toLowerCase().includes(query) ||
-        h.location.toLowerCase().includes(query)
-      );
-    }
-    
-    results = results.filter(h => h.pricePerNight >= priceRange[0] && h.pricePerNight <= priceRange[1]);
-    results = results.filter(h => h.rating >= minRating);
-    
-    switch (sortBy) {
-      case "price-low":
-        results.sort((a, b) => a.pricePerNight - b.pricePerNight);
-        break;
-      case "price-high":
-        results.sort((a, b) => b.pricePerNight - a.pricePerNight);
-        break;
-      case "rating":
-        results.sort((a, b) => b.rating - a.rating);
-        break;
-      case "reviews":
-        results.sort((a, b) => b.reviewCount - a.reviewCount);
-        break;
-      default:
-        results.sort((a, b) => (b.rating * b.reviewCount) - (a.rating * a.reviewCount));
-    }
-    
-    return results;
-  }, [searchQuery, priceRange, minRating, sortBy]);
+  const { data, isLoading, isFetching } = useQuery<CatalogSearchResult>({
+    queryKey: ["/api/catalog/search", queryParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/catalog/search?${queryParams}`);
+      if (!res.ok) throw new Error("Failed to fetch catalog");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
 
-  // Filter and sort services
-  const filteredServices = useMemo(() => {
-    let results = [...sampleServices];
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      results = results.filter(s => 
-        s.name.toLowerCase().includes(query) ||
-        s.description.toLowerCase().includes(query) ||
-        s.category.toLowerCase().includes(query)
-      );
-    }
-    
-    results = results.filter(s => s.price >= priceRange[0] && s.price <= priceRange[1]);
-    results = results.filter(s => s.rating >= minRating);
-    
-    switch (sortBy) {
-      case "price-low":
-        results.sort((a, b) => a.price - b.price);
-        break;
-      case "price-high":
-        results.sort((a, b) => b.price - a.price);
-        break;
-      case "rating":
-        results.sort((a, b) => b.rating - a.rating);
-        break;
-      case "reviews":
-        results.sort((a, b) => b.reviewCount - a.reviewCount);
-        break;
-      default:
-        results.sort((a, b) => (b.rating * b.reviewCount) - (a.rating * a.reviewCount));
-    }
-    
-    return results;
-  }, [searchQuery, priceRange, minRating, sortBy]);
+  const results: UnifiedResult[] = useMemo(
+    () => (data?.items ?? []).map(catalogItemToUnifiedResult),
+    [data]
+  );
 
-  const clearAllFilters = () => {
+  const availableProviders = data?.filters?.providers ?? [];
+
+  useEffect(() => {
+    setOffset(0);
+  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders]);
+
+  const clearAllFilters = useCallback(() => {
     setPriceRange([0, 500]);
     setMinRating(0);
     setSortBy("popular");
     setSearchQuery("");
     setSelectedFilters([]);
-  };
+    setActiveProviders([]);
+    setOffset(0);
+  }, []);
 
-  const activeFiltersCount = (priceRange[0] > 0 || priceRange[1] < 500 ? 1 : 0) +
+  const activeFiltersCount =
+    (priceRange[0] > 0 || priceRange[1] < 500 ? 1 : 0) +
     (minRating > 0 ? 1 : 0) +
     (sortBy !== "popular" ? 1 : 0) +
     (searchQuery ? 1 : 0) +
-    selectedFilters.length;
+    selectedFilters.length +
+    activeProviders.length;
 
   const addToCart = (item: CartItem) => {
     setCart((prev) => {
@@ -429,12 +253,19 @@ export default function BrowsePage() {
     );
   };
 
+  const toggleProvider = (provider: string) => {
+    setActiveProviders((prev) =>
+      prev.includes(provider) ? prev.filter((p) => p !== provider) : [...prev, provider]
+    );
+  };
+
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const platformFee = Math.round(cartTotal * 0.03);
   const grandTotal = cartTotal + platformFee;
 
   const handleSubmitDetails = (e: React.FormEvent) => {
     e.preventDefault();
+    setOffset(0);
   };
 
   return (
@@ -442,7 +273,7 @@ export default function BrowsePage() {
       <div className="min-h-screen bg-gray-50">
         {/* Hero Section with Trip Details Form */}
         <div className="relative h-[280px] md:h-[320px]">
-          <div 
+          <div
             className="absolute inset-0 bg-cover bg-center"
             style={{
               backgroundImage: "url('https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=1600&q=80')",
@@ -450,7 +281,7 @@ export default function BrowsePage() {
           >
             <div className="absolute inset-0 bg-black/30" />
           </div>
-          
+
           {/* Trip Details Card */}
           <div className="absolute right-4 md:right-12 top-1/2 -translate-y-1/2 w-[360px] md:w-[420px]">
             <Card className="bg-white/95 backdrop-blur shadow-xl border-0">
@@ -459,7 +290,7 @@ export default function BrowsePage() {
                   <h2 className="text-lg font-semibold text-gray-900">Trip Details</h2>
                   <Sparkles className="w-5 h-5 text-[#FF385C]" />
                 </div>
-                
+
                 <form onSubmit={handleSubmitDetails} className="space-y-4">
                   <div>
                     <Label htmlFor="trip-to" className="text-sm text-gray-600">Trip to:</Label>
@@ -510,12 +341,26 @@ export default function BrowsePage() {
                     </div>
                   </div>
 
+                  <div>
+                    <Label htmlFor="travelers" className="text-sm text-gray-600">Travelers:</Label>
+                    <Select value={travelers.toString()} onValueChange={(v) => setTravelers(parseInt(v))}>
+                      <SelectTrigger id="travelers" className="mt-1" data-testid="select-travelers">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[1, 2, 3, 4, 5, 6].map((n) => (
+                          <SelectItem key={n} value={n.toString()}>{n} {n === 1 ? "traveler" : "travelers"}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <Button
                     type="submit"
                     className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
                     data-testid="button-submit-trip"
                   >
-                    Submit Trip Details
+                    Search
                   </Button>
                 </form>
               </CardContent>
@@ -526,17 +371,14 @@ export default function BrowsePage() {
         {/* Tabs and Content Section */}
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-4">
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+            <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setOffset(0); }} className="flex-1">
               <div className="flex items-center justify-between gap-4">
                 <TabsList className="bg-transparent p-0 h-auto gap-1">
                   <TabsTrigger
                     value="activities"
                     className={cn(
                       "rounded-full px-4 py-2 text-sm font-medium",
-                      activeTab === "activities"
-                        ? "bg-[#FF385C] text-white"
-                        : "bg-gray-100 text-gray-700"
+                      activeTab === "activities" ? "bg-[#FF385C] text-white" : "bg-gray-100 text-gray-700"
                     )}
                     data-testid="tab-activities"
                   >
@@ -546,9 +388,7 @@ export default function BrowsePage() {
                     value="hotels"
                     className={cn(
                       "rounded-full px-4 py-2 text-sm font-medium",
-                      activeTab === "hotels"
-                        ? "bg-[#FF385C] text-white"
-                        : "bg-gray-100 text-gray-700"
+                      activeTab === "hotels" ? "bg-[#FF385C] text-white" : "bg-gray-100 text-gray-700"
                     )}
                     data-testid="tab-hotels"
                   >
@@ -558,21 +398,17 @@ export default function BrowsePage() {
                     value="services"
                     className={cn(
                       "rounded-full px-4 py-2 text-sm font-medium",
-                      activeTab === "services"
-                        ? "bg-[#FF385C] text-white"
-                        : "bg-gray-100 text-gray-700"
+                      activeTab === "services" ? "bg-[#FF385C] text-white" : "bg-gray-100 text-gray-700"
                     )}
                     data-testid="tab-services"
                   >
-                    Services
+                    Events & More
                   </TabsTrigger>
                   <TabsTrigger
                     value="ai-optimization"
                     className={cn(
                       "rounded-full px-4 py-2 text-sm font-medium flex items-center gap-1",
-                      activeTab === "ai-optimization"
-                        ? "bg-[#FF385C] text-white"
-                        : "bg-gray-100 text-gray-700"
+                      activeTab === "ai-optimization" ? "bg-[#FF385C] text-white" : "bg-gray-100 text-gray-700"
                     )}
                     data-testid="tab-ai-optimization"
                   >
@@ -740,8 +576,8 @@ export default function BrowsePage() {
                 </Sheet>
               </div>
 
-              {/* Advanced Filters Section */}
-              <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="mt-4 mb-6">
+              {/* Filters Section */}
+              <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen} className="mt-4 mb-4">
                 <div className="flex items-center justify-between mb-3">
                   <CollapsibleTrigger asChild>
                     <Button variant="ghost" size="sm" className="gap-2 text-gray-700" data-testid="button-toggle-filters">
@@ -776,7 +612,7 @@ export default function BrowsePage() {
                         </Label>
                         <div className="relative">
                           <Input
-                            placeholder="Search by name, provider, or description..."
+                            placeholder="Search by name or description..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-9"
@@ -843,14 +679,13 @@ export default function BrowsePage() {
                           <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
                             Sort By
                           </Label>
-                          <Select value={sortBy} onValueChange={setSortBy}>
+                          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
                             <SelectTrigger className="w-full" data-testid="select-sort">
                               <SelectValue placeholder="Sort by..." />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="popular">Most Popular</SelectItem>
                               <SelectItem value="rating">Highest Rated</SelectItem>
-                              <SelectItem value="reviews">Most Reviews</SelectItem>
                               <SelectItem value="price-low">Price: Low to High</SelectItem>
                               <SelectItem value="price-high">Price: High to Low</SelectItem>
                             </SelectContent>
@@ -888,250 +723,95 @@ export default function BrowsePage() {
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Provider Filter Chips */}
+              {availableProviders.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4" data-testid="provider-filter-chips">
+                  <span className="text-sm text-gray-500 self-center mr-1">Providers:</span>
+                  {availableProviders.map((provider) => (
+                    <Button
+                      key={provider}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleProvider(provider)}
+                      className={cn(
+                        "rounded-full capitalize text-xs h-7",
+                        activeProviders.includes(provider)
+                          ? "bg-[#FF385C] text-white border-[#FF385C]"
+                          : "bg-white text-gray-700"
+                      )}
+                      data-testid={`chip-provider-${provider}`}
+                    >
+                      {provider}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
               {/* Two Column Layout */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left Column - Inventory */}
+                {/* Left Column - Catalog Results */}
                 <div>
-                  <TabsContent value="activities" className="mt-0 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-gray-600 text-sm">
-                        Showing {filteredActivities.length} of {sampleActivities.length} activities in {destination}
-                      </p>
-                    </div>
+                  {/* Results count */}
+                  {activeTab !== "ai-optimization" && (
+                    <p className="text-gray-600 text-sm mb-4" data-testid="results-count">
+                      {isLoading || isFetching
+                        ? "Loading..."
+                        : `Showing ${results.length} of ${data?.total ?? 0} results in ${destination || "all destinations"}`}
+                    </p>
+                  )}
 
-                    <div className="space-y-3">
-                      {filteredActivities.length === 0 ? (
-                        <Card className="p-8 text-center">
-                          <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                          <p className="text-gray-600 font-medium">No activities match your filters</p>
-                          <p className="text-sm text-gray-500 mt-1">Try adjusting your search or price range</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={clearAllFilters}
-                            className="mt-3"
-                            data-testid="button-clear-activity-filters"
-                          >
-                            Clear filters
-                          </Button>
-                        </Card>
-                      ) : filteredActivities.map((activity) => (
-                        <Card key={activity.id} className="overflow-hidden" data-testid={`card-activity-${activity.id}`}>
-                          <CardContent className="p-0">
-                            <div className="flex">
-                              <div className="w-32 h-32 bg-gray-200 flex-shrink-0 flex items-center justify-center">
-                                <Ticket className="w-8 h-8 text-gray-400" />
-                              </div>
-                              <div className="flex-1 p-3">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className="font-medium text-gray-900 text-sm mb-1 line-clamp-1">{activity.name}</h3>
-                                    <p className="text-xs text-gray-500 mb-1">via {activity.provider}</p>
-                                    <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
-                                      <span className="flex items-center gap-1">
-                                        <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                                        {activity.rating}
-                                      </span>
-                                      <span className="flex items-center gap-1">
-                                        <Clock className="w-3 h-3" /> {activity.duration}
-                                      </span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {activity.features.slice(0, 2).map((feature) => (
-                                        <Badge key={feature} variant="secondary" className="text-xs py-0">
-                                          <Check className="w-2 h-2 mr-1" /> {feature}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="text-right flex-shrink-0">
-                                    <p className="text-lg font-bold text-gray-900">${activity.price}</p>
-                                    <p className="text-xs text-gray-500 mb-2">per person</p>
-                                    <Button
-                                      size="sm"
-                                      className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-                                      onClick={() =>
-                                        addToCart({
-                                          id: activity.id,
-                                          type: "activity",
-                                          name: activity.name,
-                                          price: activity.price * travelers,
-                                          quantity: 1,
-                                          details: `${travelers} people x $${activity.price}`,
-                                          provider: activity.provider,
-                                        })
-                                      }
-                                      data-testid={`button-add-${activity.id}`}
-                                    >
-                                      <Plus className="w-3 h-3 mr-1" /> Add
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                  <TabsContent value="activities" className="mt-0">
+                    <UnifiedResultGrid
+                      results={results}
+                      destination={destination}
+                      isLoading={isLoading || isFetching}
+                    />
+                    {!isLoading && results.length === 0 && !isFetching && (
+                      <div className="text-center py-10">
+                        <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-600 font-medium">No activities found</p>
+                        <p className="text-sm text-gray-500 mt-1">Try a different destination or adjust your filters</p>
+                        <Button variant="outline" size="sm" onClick={clearAllFilters} className="mt-3" data-testid="button-clear-activity-filters">
+                          Clear filters
+                        </Button>
+                      </div>
+                    )}
                   </TabsContent>
 
-                  <TabsContent value="hotels" className="mt-0 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-gray-600 text-sm">
-                        Showing {filteredHotels.length} of {sampleHotels.length} properties in {destination}
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      {filteredHotels.length === 0 ? (
-                        <Card className="p-8 text-center">
-                          <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                          <p className="text-gray-600 font-medium">No hotels match your filters</p>
-                          <p className="text-sm text-gray-500 mt-1">Try adjusting your search or price range</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={clearAllFilters}
-                            className="mt-3"
-                            data-testid="button-clear-hotel-filters"
-                          >
-                            Clear filters
-                          </Button>
-                        </Card>
-                      ) : filteredHotels.map((hotel) => (
-                        <Card key={hotel.id} className="overflow-hidden" data-testid={`card-hotel-${hotel.id}`}>
-                          <CardContent className="p-0">
-                            <div className="flex">
-                              <div className="w-32 h-32 bg-gray-200 flex-shrink-0 flex items-center justify-center">
-                                <Building className="w-8 h-8 text-gray-400" />
-                              </div>
-                              <div className="flex-1 p-3">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className="font-medium text-gray-900 text-sm mb-1 line-clamp-1">{hotel.name}</h3>
-                                    <p className="text-xs text-gray-500 mb-1">via {hotel.provider}</p>
-                                    <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
-                                      <span className="flex items-center gap-1">
-                                        <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                                        {hotel.rating}
-                                      </span>
-                                      <span className="flex items-center gap-1">
-                                        <MapPin className="w-3 h-3" /> {hotel.location}
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-gray-600">{hotel.roomType}</p>
-                                  </div>
-                                  <div className="text-right flex-shrink-0">
-                                    <p className="text-lg font-bold text-gray-900">${hotel.totalPrice}</p>
-                                    <p className="text-xs text-gray-500 mb-2">{nights} nights</p>
-                                    <Button
-                                      size="sm"
-                                      className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-                                      onClick={() =>
-                                        addToCart({
-                                          id: hotel.id,
-                                          type: "hotel",
-                                          name: hotel.name,
-                                          price: hotel.totalPrice,
-                                          quantity: 1,
-                                          details: `${nights} nights`,
-                                          provider: hotel.provider,
-                                        })
-                                      }
-                                      data-testid={`button-add-${hotel.id}`}
-                                    >
-                                      <Plus className="w-3 h-3 mr-1" /> Add
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                  <TabsContent value="hotels" className="mt-0">
+                    <UnifiedResultGrid
+                      results={results}
+                      destination={destination}
+                      isLoading={isLoading || isFetching}
+                    />
+                    {!isLoading && results.length === 0 && !isFetching && (
+                      <div className="text-center py-10">
+                        <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-600 font-medium">No hotels found</p>
+                        <p className="text-sm text-gray-500 mt-1">Try a different destination or adjust your filters</p>
+                        <Button variant="outline" size="sm" onClick={clearAllFilters} className="mt-3" data-testid="button-clear-hotel-filters">
+                          Clear filters
+                        </Button>
+                      </div>
+                    )}
                   </TabsContent>
 
-                  <TabsContent value="services" className="mt-0 space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-gray-600 text-sm">
-                        Showing {filteredServices.length} of {sampleServices.length} services in {destination}
-                      </p>
-                    </div>
-
-                    <div className="space-y-3">
-                      {filteredServices.length === 0 ? (
-                        <Card className="p-8 text-center">
-                          <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-                          <p className="text-gray-600 font-medium">No services match your filters</p>
-                          <p className="text-sm text-gray-500 mt-1">Try adjusting your search or price range</p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={clearAllFilters}
-                            className="mt-3"
-                            data-testid="button-clear-service-filters"
-                          >
-                            Clear filters
-                          </Button>
-                        </Card>
-                      ) : filteredServices.map((service) => (
-                        <Card key={service.id} className="overflow-hidden" data-testid={`card-service-${service.id}`}>
-                          <CardContent className="p-0">
-                            <div className="flex">
-                              <div className="w-32 h-32 bg-gray-200 flex-shrink-0 flex items-center justify-center">
-                                <Plane className="w-8 h-8 text-gray-400" />
-                              </div>
-                              <div className="flex-1 p-3">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <h3 className="font-medium text-gray-900 text-sm mb-1 line-clamp-1">{service.name}</h3>
-                                    <p className="text-xs text-gray-500 mb-1">via {service.provider}</p>
-                                    <div className="flex items-center gap-2 text-xs text-gray-600 mb-2">
-                                      <span className="flex items-center gap-1">
-                                        <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                                        {service.rating}
-                                      </span>
-                                      <Badge variant="secondary" className="text-xs py-0">
-                                        {service.category}
-                                      </Badge>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {service.features.slice(0, 2).map((feature) => (
-                                        <Badge key={feature} variant="secondary" className="text-xs py-0">
-                                          <Check className="w-2 h-2 mr-1" /> {feature}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="text-right flex-shrink-0">
-                                    <p className="text-lg font-bold text-gray-900">${service.price}</p>
-                                    <p className="text-xs text-gray-500 mb-2">total</p>
-                                    <Button
-                                      size="sm"
-                                      className="bg-[#FF385C] hover:bg-[#E23350] text-white"
-                                      onClick={() =>
-                                        addToCart({
-                                          id: service.id,
-                                          type: "service",
-                                          name: service.name,
-                                          price: service.price,
-                                          quantity: 1,
-                                          provider: service.provider,
-                                        })
-                                      }
-                                      data-testid={`button-add-${service.id}`}
-                                    >
-                                      <Plus className="w-3 h-3 mr-1" /> Add
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
+                  <TabsContent value="services" className="mt-0">
+                    <UnifiedResultGrid
+                      results={results}
+                      destination={destination}
+                      isLoading={isLoading || isFetching}
+                    />
+                    {!isLoading && results.length === 0 && !isFetching && (
+                      <div className="text-center py-10">
+                        <Filter className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-gray-600 font-medium">No events or services found</p>
+                        <p className="text-sm text-gray-500 mt-1">Try a different destination or adjust your filters</p>
+                        <Button variant="outline" size="sm" onClick={clearAllFilters} className="mt-3" data-testid="button-clear-service-filters">
+                          Clear filters
+                        </Button>
+                      </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="ai-optimization" className="mt-0">
@@ -1140,7 +820,7 @@ export default function BrowsePage() {
                         <Wand2 className="w-12 h-12 text-purple-600 mx-auto mb-4" />
                         <h3 className="text-xl font-semibold text-gray-900 mb-2">AI-Powered Trip Optimization</h3>
                         <p className="text-gray-600 mb-4">
-                          Add at least 3 items to your cart to unlock AI optimization. 
+                          Add at least 3 items to your cart to unlock AI optimization.
                           Our AI will analyze your selections and suggest alternatives that could save you money and time.
                         </p>
                         {cart.length >= 3 ? (
@@ -1159,6 +839,20 @@ export default function BrowsePage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
+
+                  {/* Load More */}
+                  {activeTab !== "ai-optimization" && !isLoading && results.length > 0 && data && (data.total > offset + 20) && (
+                    <div className="mt-6 text-center">
+                      <Button
+                        variant="outline"
+                        onClick={() => setOffset((prev) => prev + 20)}
+                        disabled={isFetching}
+                        data-testid="button-load-more"
+                      >
+                        {isFetching ? "Loading..." : "Load more"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Column - Map */}
@@ -1170,7 +864,7 @@ export default function BrowsePage() {
                           <div className="text-center">
                             <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                             <p className="text-gray-500 font-medium">Interactive Map</p>
-                            <p className="text-sm text-gray-400">Showing locations in {destination}</p>
+                            <p className="text-sm text-gray-400">Showing locations in {destination || "your destination"}</p>
                           </div>
                         </div>
                       </CardContent>
