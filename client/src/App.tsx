@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { ExpertLayout } from "@/components/expert/expert-layout";
+import { ProviderLayout } from "@/components/provider/provider-layout";
 import { useAuth } from "@/hooks/use-auth";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
 import { SignInModalProvider } from "@/contexts/SignInModalContext";
@@ -174,6 +176,18 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   return <Component {...rest} />;
+}
+
+function ChatWithRoleLayout() {
+  const { user } = useAuth();
+  const role = user?.role ?? "user";
+  if (["local_expert", "travel_expert", "event_planner", "expert"].includes(role)) {
+    return <ExpertLayout title="Messages"><Chat /></ExpertLayout>;
+  }
+  if (role === "service_provider") {
+    return <ProviderLayout title="Messages"><Chat /></ProviderLayout>;
+  }
+  return <DashboardLayout><Chat /></DashboardLayout>;
 }
 
 function Router() {
@@ -610,7 +624,7 @@ function Router() {
       </Route>
       
       <Route path="/chat">
-        {() => <DashboardLayout><ProtectedRoute component={Chat} /></DashboardLayout>}
+        {() => <ProtectedRoute component={ChatWithRoleLayout} />}
       </Route>
       <Route path="/ai-assistant">
         {() => <DashboardLayout><ProtectedRoute component={AIAssistant} /></DashboardLayout>}
