@@ -1113,6 +1113,59 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     res.json(forms);
   });
 
+  // Admin: Get active platform service providers with their services
+  app.get("/api/admin/platform-service-providers", isAuthenticated, async (req, res) => {
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const { serviceProviderForms, providerServices, serviceCategories } = await import("@shared/schema");
+
+    // Get approved provider forms
+    const approvedForms = await db
+      .select()
+      .from(serviceProviderForms)
+      .where(eq(serviceProviderForms.status, "approved"))
+      .orderBy(sql`created_at desc`);
+
+    // For each provider, fetch their services and user info
+    const enriched = await Promise.all(approvedForms.map(async (form) => {
+      const [providerUser] = await db.select({ id: users.id, name: users.name, email: users.email, profileImageUrl: users.profileImageUrl })
+        .from(users).where(eq(users.id, form.userId));
+
+      const services = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          serviceType: providerServices.serviceType,
+          price: providerServices.price,
+          priceType: providerServices.priceType,
+          deliveryMethod: providerServices.deliveryMethod,
+          status: providerServices.status,
+          isFeatured: providerServices.isFeatured,
+          bookingsCount: providerServices.bookingsCount,
+          totalRevenue: providerServices.totalRevenue,
+          averageRating: providerServices.averageRating,
+          reviewCount: providerServices.reviewCount,
+          location: providerServices.location,
+          formStatus: providerServices.formStatus,
+          categoryId: providerServices.categoryId,
+        })
+        .from(providerServices)
+        .where(eq(providerServices.userId, form.userId))
+        .orderBy(sql`bookings_count desc`);
+
+      const totalBookings = services.reduce((s, sv) => s + (sv.bookingsCount ?? 0), 0);
+      const totalRevenue = services.reduce((s, sv) => s + parseFloat(sv.totalRevenue ?? "0"), 0);
+      const activeServices = services.filter(sv => sv.status === "active").length;
+
+      return { ...form, user: providerUser ?? null, services, totalBookings, totalRevenue, activeServices };
+    }));
+
+    res.json(enriched);
+  });
+
   // Admin: Update provider application status
   app.patch("/api/admin/provider-applications/:id/status", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, (req.user as any).claims.sub)).then(r => r[0]);
