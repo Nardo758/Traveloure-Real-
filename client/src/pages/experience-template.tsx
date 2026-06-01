@@ -177,6 +177,80 @@ function RestaurantCatalogSection({ destination }: { destination: string }) {
   );
 }
 
+function BookingComCatalogSection({ destination }: { destination: string }) {
+  const queryParams = new URLSearchParams({ type: "hotel", providers: "booking_com", destination, limit: "12" }).toString();
+  const { data, isLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
+    queryKey: [`/api/catalog/search?${queryParams}`],
+    enabled: !!destination,
+  });
+
+  const items = (data?.items || []).filter(i => i.provider === "booking_com");
+
+  if (isLoading) {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Building2 className="h-4 w-4 text-primary" />
+          <h3 className="text-sm font-semibold">Hotels via Booking.com</h3>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="h-36 rounded-xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <Building2 className="h-4 w-4 text-primary" />
+        <h3 className="text-sm font-semibold text-foreground">Hotels via Booking.com</h3>
+        <span className="text-xs text-muted-foreground">({items.length} found)</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {items.map(item => (
+          <div
+            key={item.id}
+            className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer"
+            data-testid={`card-hotel-bookingcom-${item.id}`}
+          >
+            {item.imageUrl && (
+              <img src={item.imageUrl} alt={item.title} className="w-full h-32 object-cover rounded-lg mb-3" />
+            )}
+            <div className="flex items-start justify-between gap-2">
+              <h4 className="font-semibold text-sm line-clamp-1">{item.title}</h4>
+              {item.rating && (
+                <span className="text-xs text-amber-600 flex items-center gap-0.5 flex-shrink-0">
+                  ★ {item.rating.toFixed(1)}
+                </span>
+              )}
+            </div>
+            {item.destination && (
+              <p className="text-xs text-muted-foreground mt-0.5">{item.destination}</p>
+            )}
+            {item.bookingUrl && (
+              <a
+                href={item.bookingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                data-testid={`link-book-${item.id}`}
+                onClick={e => e.stopPropagation()}
+              >
+                Book on Booking.com →
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TravelpayoutsActivities({ destination }: { destination: string }) {
   const tiqetsQuery = useQuery<{ items: CatalogItem[]; total: number }>({
     queryKey: ["/api/catalog/tiqets", destination],
@@ -2729,6 +2803,10 @@ export default function ExperienceTemplatePage() {
 
           {activeTab === "flights" && destination && (
             <TravelpayoutsNomad destination={destination} />
+          )}
+
+          {(activeTab === "hotels" || activeTab === "accommodations") && destination && (
+            <BookingComCatalogSection destination={destination} />
           )}
 
           {(activeTab === "hotels" || activeTab === "accommodations") && (

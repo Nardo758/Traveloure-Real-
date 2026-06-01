@@ -45,6 +45,9 @@ class BookingComService {
       console.log("[BookingCom] Affiliate ID not configured — skipping live fetch");
       return [];
     }
+    if (!API_KEY) {
+      console.warn("[BookingCom] BOOKING_COM_API_KEY not set — requests will be sent without auth header. Most affiliate endpoints require both the affiliate ID and API key.");
+    }
 
     try {
       const params = new URLSearchParams({

@@ -469,6 +469,7 @@ class ExperienceCatalogService {
     if (params.rating !== undefined) {
       conditions.push(gte(hotelCache.rating, params.rating.toString()));
     }
+    // Provider-level filtering: restrict to requested providers using inArray
     if (params.providers && params.providers.length > 0) {
       const normalized = params.providers.map(p => p.toLowerCase());
       conditions.push(inArray(hotelCache.provider, normalized));
