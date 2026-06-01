@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,6 +108,35 @@ export default function ExpertsPage() {
   
   const [aiMatchOpen, setAiMatchOpen] = useState(false);
   const [aiDestination, setAiDestination] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const destParam = params.get("destination");
+    const topicParam = params.get("topic");
+    if (destParam) {
+      setAiDestination(destParam);
+      setSearchQuery(destParam);
+      const match = destinations.find(d =>
+        d.toLowerCase().startsWith(destParam.toLowerCase().split(",")[0])
+      );
+      if (match) setSelectedDestination(match);
+      setAiMatchOpen(true);
+    }
+    if (topicParam) {
+      const topicToSpecialty: Record<string, string> = {
+        activities: "Cultural Tours",
+        flights: "Business Travel",
+        hotels: "Luxury Travel",
+        transfers: "Adventure Travel",
+        "car-rental": "Adventure Travel",
+        transport: "Adventure Travel",
+        insurance: "Adventure Travel",
+        "luggage-storage": "Adventure Travel",
+      };
+      const specialty = topicToSpecialty[topicParam];
+      if (specialty) setSelectedSpecialty(specialty);
+    }
+  }, []);
   const [aiStartDate, setAiStartDate] = useState<Date | undefined>(undefined);
   const [aiEndDate, setAiEndDate] = useState<Date | undefined>(undefined);
   const [aiAdults, setAiAdults] = useState("2");

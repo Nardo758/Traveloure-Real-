@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plane, Clock, ExternalLink, ArrowRight } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 interface FlightCardProps {
   item: CatalogItem;
@@ -68,19 +69,27 @@ export function FlightCard({ item, className }: FlightCardProps) {
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <Badge className={`text-xs hover:opacity-100 ${providerColor}`}>
-            {providerLabel}
-          </Badge>
-          <Button
-            size="sm"
-            onClick={handleBook}
-            className="h-7 text-xs gap-1"
-            data-testid={`button-book-flight-${item.id}`}
-          >
-            Search Flights
-            <ExternalLink className="h-3 w-3" />
-          </Button>
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <Badge className={`text-xs hover:opacity-100 ${providerColor}`}>
+              {providerLabel}
+            </Badge>
+            <Button
+              size="sm"
+              onClick={handleBook}
+              className="h-7 text-xs gap-1"
+              data-testid={`button-book-flight-${item.id}`}
+            >
+              Search Flights
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          </div>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="flights"
+            className="w-full justify-center"
+            data-testid={`button-expert-flight-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>

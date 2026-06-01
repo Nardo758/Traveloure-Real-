@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, Star, ExternalLink, Building2 } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 const PROVIDER_META: Record<string, { label: string; color: string }> = {
   hotellook:  { label: "HotelLook", color: "bg-blue-100 text-blue-700" },
@@ -50,18 +51,26 @@ export function HotelCard({ item, className }: { item: CatalogItem; className?: 
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Badge className={`text-xs hover:opacity-100 ${meta.color}`}>{meta.label}</Badge>
-            {item.price && (
-              <span className="text-sm font-bold text-primary" data-testid={`text-hotel-price-${item.id}`}>
-                from ${item.price.toFixed(0)}
-              </span>
-            )}
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Badge className={`text-xs hover:opacity-100 ${meta.color}`}>{meta.label}</Badge>
+              {item.price && (
+                <span className="text-sm font-bold text-primary" data-testid={`text-hotel-price-${item.id}`}>
+                  from ${item.price.toFixed(0)}
+                </span>
+              )}
+            </div>
+            <Button size="sm" onClick={handleBook} variant="outline" className="h-7 text-xs gap-1" data-testid={`button-book-hotel-${item.id}`}>
+              <Building2 className="h-3 w-3" />Book<ExternalLink className="h-3 w-3" />
+            </Button>
           </div>
-          <Button size="sm" onClick={handleBook} variant="outline" className="h-7 text-xs gap-1" data-testid={`button-book-hotel-${item.id}`}>
-            <Building2 className="h-3 w-3" />Book<ExternalLink className="h-3 w-3" />
-          </Button>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="hotels"
+            className="w-full justify-center"
+            data-testid={`button-expert-hotel-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>

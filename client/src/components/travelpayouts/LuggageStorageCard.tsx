@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MapPin, ShoppingBag, Star, ExternalLink } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 export function LuggageStorageCard({ item, className }: { item: CatalogItem; className?: string }) {
   const handleBook = () => {
@@ -48,16 +49,24 @@ export function LuggageStorageCard({ item, className }: { item: CatalogItem; cla
           <Badge variant="outline" className="text-xs">Stasher certified</Badge>
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <Badge className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-100">Stasher · Storage</Badge>
-          <Button
-            size="sm"
-            onClick={handleBook}
-            className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-700"
-            data-testid={`button-book-luggage-${item.id}`}
-          >
-            Book<ExternalLink className="h-3 w-3" />
-          </Button>
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <Badge className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-100">Stasher · Storage</Badge>
+            <Button
+              size="sm"
+              onClick={handleBook}
+              className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-700"
+              data-testid={`button-book-luggage-${item.id}`}
+            >
+              Book<ExternalLink className="h-3 w-3" />
+            </Button>
+          </div>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="luggage-storage"
+            className="w-full justify-center"
+            data-testid={`button-expert-luggage-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>

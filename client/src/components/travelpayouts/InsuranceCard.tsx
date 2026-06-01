@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, Star, ExternalLink, Clock } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 export function InsuranceCard({ item, className }: { item: CatalogItem; className?: string }) {
   const handleBuy = () => {
@@ -54,16 +55,24 @@ export function InsuranceCard({ item, className }: { item: CatalogItem; classNam
           ))}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <Badge className="text-xs bg-teal-100 text-teal-700 hover:bg-teal-100">SafetyWing · Insurance</Badge>
-          <Button
-            size="sm"
-            onClick={handleBuy}
-            className="h-7 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
-            data-testid={`button-buy-insurance-${item.id}`}
-          >
-            Get Plan<ExternalLink className="h-3 w-3" />
-          </Button>
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <Badge className="text-xs bg-teal-100 text-teal-700 hover:bg-teal-100">SafetyWing · Insurance</Badge>
+            <Button
+              size="sm"
+              onClick={handleBuy}
+              className="h-7 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
+              data-testid={`button-buy-insurance-${item.id}`}
+            >
+              Get Plan<ExternalLink className="h-3 w-3" />
+            </Button>
+          </div>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="insurance"
+            className="w-full justify-center"
+            data-testid={`button-expert-insurance-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>

@@ -1,8 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Car, Clock, Users, ExternalLink, Star } from "lucide-react";
+import { Car, Clock, ExternalLink, Star } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 interface TransferCardProps {
   item: CatalogItem;
@@ -60,19 +61,27 @@ export function TransferCard({ item, className }: TransferCardProps) {
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
-            via GetTransfer
-          </Badge>
-          <Button
-            size="sm"
-            onClick={handleBook}
-            className="h-7 text-xs gap-1"
-            data-testid={`button-book-transfer-${item.id}`}
-          >
-            Book Transfer
-            <ExternalLink className="h-3 w-3" />
-          </Button>
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
+              via GetTransfer
+            </Badge>
+            <Button
+              size="sm"
+              onClick={handleBook}
+              className="h-7 text-xs gap-1"
+              data-testid={`button-book-transfer-${item.id}`}
+            >
+              Book Transfer
+              <ExternalLink className="h-3 w-3" />
+            </Button>
+          </div>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="transfers"
+            className="w-full justify-center"
+            data-testid={`button-expert-transfer-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>

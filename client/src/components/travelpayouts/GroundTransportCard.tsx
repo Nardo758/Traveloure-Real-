@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Train, Bus, ArrowRight, ExternalLink } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { BookWithExpertButton } from "./BookWithExpertButton";
 
 interface GroundTransportCardProps {
   item: CatalogItem;
@@ -47,22 +48,30 @@ export function GroundTransportCard({ item, className }: GroundTransportCardProp
           )}
         </div>
 
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex gap-1.5">
-            <Badge className="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-100">Omio</Badge>
-            {item.tags.filter(t => !["omio"].includes(t)).slice(0, 2).map(t => (
-              <Badge key={t} variant="outline" className="text-xs capitalize">{t}</Badge>
-            ))}
+        <div className="mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex gap-1.5">
+              <Badge className="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-100">Omio</Badge>
+              {item.tags.filter(t => !["omio"].includes(t)).slice(0, 2).map(t => (
+                <Badge key={t} variant="outline" className="text-xs capitalize">{t}</Badge>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              onClick={handleBook}
+              className="h-7 text-xs gap-1"
+              data-testid={`button-book-transport-${item.id}`}
+            >
+              Compare
+              <ExternalLink className="h-3 w-3" />
+            </Button>
           </div>
-          <Button
-            size="sm"
-            onClick={handleBook}
-            className="h-7 text-xs gap-1"
-            data-testid={`button-book-transport-${item.id}`}
-          >
-            Compare
-            <ExternalLink className="h-3 w-3" />
-          </Button>
+          <BookWithExpertButton
+            destination={item.destination}
+            topic="transport"
+            className="w-full justify-center"
+            data-testid={`button-expert-transport-${item.id}`}
+          />
         </div>
       </CardContent>
     </Card>
