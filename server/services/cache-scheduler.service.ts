@@ -150,6 +150,13 @@ class CacheSchedulerService {
     };
   }
 
+  // Popular destinations to seed on first run (ensures cache populates even with empty DB)
+  private static readonly SEED_DESTINATIONS = [
+    "Tokyo", "Paris", "London", "New York", "Barcelona",
+    "Dubai", "Bangkok", "Bali", "Rome", "Sydney",
+    "Amsterdam", "Lisbon", "Prague", "Singapore", "Kyoto",
+  ];
+
   private async refreshBookingComHotels(): Promise<{ refreshed: number; errors: string[] }> {
     const errors: string[] = [];
     let refreshed = 0;
@@ -158,16 +165,24 @@ class CacheSchedulerService {
       const staleThreshold = new Date();
       staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
 
-      const staleCities = await db
+      const cachedCities = await db
         .selectDistinct({ city: hotelCache.city, lastUpdated: hotelCache.lastUpdated })
         .from(hotelCache)
         .where(eq(hotelCache.provider, "booking_com"));
 
-      const toRefresh = staleCities.filter(({ lastUpdated }) =>
+      const staleCached = cachedCities.filter(({ lastUpdated }) =>
         !lastUpdated || new Date(lastUpdated) < staleThreshold
       );
 
-      console.log(`[CacheScheduler] Found ${toRefresh.length} cities with stale Booking.com hotel data`);
+      // Merge stale cached cities with seed destinations not yet in cache
+      const cachedCityNames = new Set(cachedCities.map(c => c.city?.toLowerCase()).filter(Boolean));
+      const seedEntries = CacheSchedulerService.SEED_DESTINATIONS
+        .filter(city => !cachedCityNames.has(city.toLowerCase()))
+        .map(city => ({ city, lastUpdated: null as Date | null }));
+
+      const toRefresh = [...staleCached, ...seedEntries];
+
+      console.log(`[CacheScheduler] Booking.com: ${staleCached.length} stale + ${seedEntries.length} unseeded cities to refresh`);
 
       for (let i = 0; i < toRefresh.length; i += BATCH_SIZE) {
         const batch = toRefresh.slice(i, i + BATCH_SIZE);
@@ -199,15 +214,23 @@ class CacheSchedulerService {
       const staleThreshold = new Date();
       staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
 
-      const staleCities = await db
+      const cachedCities = await db
         .selectDistinct({ city: restaurantCache.city, lastUpdated: restaurantCache.lastUpdated })
         .from(restaurantCache);
 
-      const toRefresh = staleCities.filter(({ lastUpdated }) =>
+      const staleCached = cachedCities.filter(({ lastUpdated }) =>
         !lastUpdated || new Date(lastUpdated) < staleThreshold
       );
 
-      console.log(`[CacheScheduler] Found ${toRefresh.length} cities with stale OpenTable restaurant data`);
+      // Merge stale cached cities with seed destinations not yet in cache
+      const cachedCityNames = new Set(cachedCities.map(c => c.city?.toLowerCase()).filter(Boolean));
+      const seedEntries = CacheSchedulerService.SEED_DESTINATIONS
+        .filter(city => !cachedCityNames.has(city.toLowerCase()))
+        .map(city => ({ city, lastUpdated: null as Date | null }));
+
+      const toRefresh = [...staleCached, ...seedEntries];
+
+      console.log(`[CacheScheduler] OpenTable: ${staleCached.length} stale + ${seedEntries.length} unseeded cities to refresh`);
 
       for (let i = 0; i < toRefresh.length; i += BATCH_SIZE) {
         const batch = toRefresh.slice(i, i + BATCH_SIZE);

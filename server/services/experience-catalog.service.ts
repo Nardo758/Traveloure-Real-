@@ -15,6 +15,8 @@ import {
 import { eq, and, or, ilike, gte, lte, asc, sql, inArray } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
 import { amadeusService } from "./amadeus.service";
+import { bookingComService } from "./booking-com.service";
+import { openTableService } from "./opentable.service";
 
 // ─────────────────────────────────────────────
 // Discriminated union content model
@@ -474,15 +476,28 @@ class ExperienceCatalogService {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const hotels = await db.select()
+    let hotels = await db.select()
       .from(hotelCache)
       .where(whereClause)
       .limit(limit)
       .offset(offset);
 
+    // Fetch-on-miss: if no Booking.com results exist for this destination, trigger a live fetch and re-query
+    const hasBookingComResults = hotels.some(h => h.provider === "booking_com");
+    const wantsBookingCom = !params.providers || params.providers.length === 0 || params.providers.includes("booking_com");
+    if (!hasBookingComResults && params.destination && wantsBookingCom) {
+      try {
+        await bookingComService.upsertHotelsToCache(params.destination);
+        hotels = await db.select().from(hotelCache).where(whereClause).limit(limit).offset(offset);
+      } catch (err: any) {
+        this.catalogLogger.warn({ err }, "Booking.com fetch-on-miss failed, using existing cache");
+      }
+    }
+
     return hotels.map(h => {
       const media = h.media as { url?: string }[] | null;
       const firstImage = media && media.length > 0 ? media[0].url : null;
+      const rawData = h.rawData as { bookingUrl?: string; affiliateUrl?: string } | null;
       
       return {
         id: h.id,
@@ -503,8 +518,8 @@ class ExperienceCatalogService {
         duration: null,
         categories: (h.amenities as string[]) || [],
         tags: [],
-        bookingUrl: null,
-        affiliateUrl: null,
+        bookingUrl: h.provider === "booking_com" ? (rawData?.bookingUrl || null) : null,
+        affiliateUrl: h.provider === "booking_com" ? (rawData?.affiliateUrl || null) : null,
         lastUpdated: h.lastUpdated,
         amenities: (h.amenities as string[]) || [],
       };
@@ -662,11 +677,21 @@ class ExperienceCatalogService {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const restaurants = await db.select()
+    let restaurants = await db.select()
       .from(restaurantCache)
       .where(whereClause)
       .limit(limit)
       .offset(offset);
+
+    // Fetch-on-miss: if cache is empty for this destination, trigger a live OpenTable fetch
+    if (restaurants.length === 0 && params.destination) {
+      try {
+        await openTableService.upsertRestaurantsToCache(params.destination);
+        restaurants = await db.select().from(restaurantCache).where(whereClause).limit(limit).offset(offset);
+      } catch (err: any) {
+        this.catalogLogger.warn({ err }, "OpenTable fetch-on-miss failed, returning empty");
+      }
+    }
 
     return restaurants.map(r => ({
       id: r.id,
