@@ -3,7 +3,8 @@ import {
     AlertTriangle, Send, MessageSquare, Plus, Filter, Zap,
     Navigation, Train, Footprints, Car, Lock, Unlock, Eye, EyeOff,
     FileText, DollarSign, CheckCircle, Clock, ChevronDown, LayoutTemplate,
-    TrendingUp, StickyNote
+    TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
+    Phone, CreditCard, CalendarDays
   } from "lucide-react";
   import { useState } from "react";
 
@@ -90,7 +91,74 @@ import {
     );
   }
 
-  function PCard({ name, cat, rating, price, tag, commission }: any) {
+  function BookingBriefModal({ provider, onClose }: { provider: string; onClose: () => void }) {
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+        <div style={{background:"white",borderRadius:16,width:"100%",maxWidth:420,boxShadow:"0 20px 60px rgba(0,0,0,0.25)",overflow:"hidden"}}>
+          {/* Header */}
+          <div style={{padding:"14px 18px",borderBottom:`1px solid ${G[200]}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:32,height:32,borderRadius:8,background:`${P}15`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <ShieldCheck style={{width:16,height:16,color:P}}/>
+              </div>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:G[900]}}>Booking Brief</div>
+                <div style={{fontSize:11,color:G[500]}}>Secure client details for {provider}</div>
+              </div>
+            </div>
+            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:G[400],padding:4,display:"flex"}}>
+              <X style={{width:18,height:18}}/>
+            </button>
+          </div>
+
+          {/* Privacy notice */}
+          <div style={{margin:"12px 18px 0",padding:"8px 12px",background:"#EFF6FF",border:"1px solid #BFDBFE",borderRadius:8,display:"flex",alignItems:"flex-start",gap:8}}>
+            <Lock style={{width:13,height:13,color:"#2563EB",flexShrink:0,marginTop:1}}/>
+            <span style={{fontSize:11,color:"#1D4ED8",lineHeight:1.5}}>
+              Booking context only. Use these details to complete your client's reservation. Do not save or share with unrelated third parties.
+            </span>
+          </div>
+
+          {/* Client details */}
+          <div style={{padding:"14px 18px",display:"flex",flexDirection:"column",gap:10}}>
+            {[
+              {icon:<User style={{width:13,height:13}}/>, label:"Booking name", value:"Sarah & James Chen"},
+              {icon:<Mail style={{width:13,height:13}}/>, label:"Confirmation email", value:"sarah.chen@gmail.com"},
+              {icon:<Phone style={{width:13,height:13}}/>, label:"Contact number", value:"+44 7700 900847"},
+              {icon:<CreditCard style={{width:13,height:13}}/>, label:"Passport (lead traveller)", value:"GB · GN123456 · Exp 2029"},
+              {icon:<CalendarDays style={{width:13,height:13}}/>, label:"Travel dates", value:"Mar 15–22, 2025 · 2 adults"},
+            ].map((row,i) => (
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",background:G[50],borderRadius:8,border:`1px solid ${G[200]}`}}>
+                <div style={{color:G[400],flexShrink:0}}>{row.icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:10,color:G[400],fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{row.label}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:G[900]}}>{row.value}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Special notes */}
+          <div style={{margin:"0 18px",padding:"9px 12px",background:"#FFFBEB",border:"1px solid #FEF08A",borderRadius:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#B45309",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:3}}>Special requirements</div>
+            <div style={{fontSize:12,color:"#92400E"}}>No crowds / private seating preferred. Cherry blossom view if available. Anniversary setup — surprise element.</div>
+          </div>
+
+          {/* Actions */}
+          <div style={{padding:"14px 18px",display:"flex",gap:8}}>
+            <button onClick={onClose} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${G[200]}`,background:"white",fontSize:13,fontWeight:600,color:G[600],cursor:"pointer"}}>
+              Cancel
+            </button>
+            <button style={{flex:2,padding:"8px",borderRadius:8,border:"none",background:P,color:"white",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              <ExternalLink style={{width:13,height:13}}/> Continue to {provider}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function PCard({ name, cat, rating, price, tag, commission, onBook }: any) {
     return (
       <div style={{display:"flex",alignItems:"center",gap:9,padding:"9px 10px",borderRadius:10,border:`1px solid ${G[100]}`,background:"white",marginBottom:7,boxShadow:"0 1px 3px rgba(0,0,0,0.03)"}}>
         <div style={{width:38,height:38,borderRadius:8,background:G[100],flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>🍽</div>
@@ -107,7 +175,14 @@ import {
         </div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
           {commission&&<span style={{fontSize:10,color:"#15803D",fontWeight:700,background:"#DCFCE7",padding:"1px 5px",borderRadius:99}}>{commission}</span>}
-          <button style={{flexShrink:0,padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:P,color:"white",border:"none",cursor:"pointer"}}>Add to Day 3</button>
+          <div style={{display:"flex",gap:4}}>
+            {onBook&&(
+              <button onClick={onBook} style={{flexShrink:0,padding:"4px 8px",borderRadius:7,fontSize:11,fontWeight:600,background:"white",color:P,border:`1.5px solid ${P}`,cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+                <ExternalLink style={{width:10,height:10}}/> Book
+              </button>
+            )}
+            <button style={{flexShrink:0,padding:"4px 9px",borderRadius:7,fontSize:11,fontWeight:600,background:P,color:"white",border:"none",cursor:"pointer"}}>Add to Day 3</button>
+          </div>
         </div>
       </div>
     );
@@ -158,6 +233,7 @@ import {
     const [collapsed, setCollapsed] = useState(false);
     const [identityRevealed, setIdentityRevealed] = useState(false);
     const [noteText, setNoteText] = useState("Client is very budget-aware despite honeymoon setting. James mentioned surprise cherry blossom picnic as a priority. Avoid Shibuya Crossing — crowds anxiety noted in intake form.");
+    const [bookingBriefProvider, setBookingBriefProvider] = useState<string|null>(null);
 
     const clientCode = "TK-2847";
     const clientName = "Sarah & James C.";
@@ -165,6 +241,7 @@ import {
 
     return (
       <div style={{fontFamily:"'Inter',-apple-system,sans-serif",height:"100vh",display:"flex",flexDirection:"column",background:G[50],overflow:"hidden"}}>
+        {bookingBriefProvider && <BookingBriefModal provider={bookingBriefProvider} onClose={()=>setBookingBriefProvider(null)}/>}
 
         {/* ── Header ── */}
         <header style={{height:56,background:"white",borderBottom:`1px solid ${G[200]}`,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",flexShrink:0}}>
@@ -409,11 +486,11 @@ import {
                   <Sparkles style={{width:13,height:13,color:P,flexShrink:0}}/>
                   <span style={{fontSize:11,color:P}}>Filtered for <strong>Honeymoon</strong> · romantic dining · Day 3 gap</span>
                 </div>
-                <PCard name="Kozue Restaurant" cat="Fine Dining" rating="4.9" price="¥¥¥¥" tag="Romantic" commission="8% comm."/>
-                <PCard name="Nakamura-ro Kaiseki" cat="Japanese" rating="4.7" price="¥¥¥" commission="6% comm."/>
-                <PCard name="Nobu Tokyo" cat="Contemporary" rating="4.8" price="¥¥¥¥" commission="8% comm."/>
+                <PCard name="Kozue Restaurant" cat="Fine Dining" rating="4.9" price="¥¥¥¥" tag="Romantic" commission="8% comm." onBook={()=>setBookingBriefProvider("Viator")}/>
+                <PCard name="Nakamura-ro Kaiseki" cat="Japanese" rating="4.7" price="¥¥¥" commission="6% comm." onBook={()=>setBookingBriefProvider("Viator")}/>
+                <PCard name="Nobu Tokyo" cat="Contemporary" rating="4.8" price="¥¥¥¥" commission="8% comm." onBook={()=>setBookingBriefProvider("Booking.com")}/>
                 <PCard name="New York Bar, Park Hyatt" cat="Cocktail Bar" rating="4.9" price="¥¥" tag="Views"/>
-                <PCard name="Tempura Tsunahachi" cat="Traditional" rating="4.6" price="¥¥" commission="5% comm."/>
+                <PCard name="Tempura Tsunahachi" cat="Traditional" rating="4.6" price="¥¥" commission="5% comm." onBook={()=>setBookingBriefProvider("Viator")}/>
                 <div style={{marginTop:10,paddingTop:8,borderTop:`1px solid ${G[100]}`,textAlign:"center"}}><span style={{fontSize:10,color:G[400]}}>Powered by Traveloure · Viator · Google Places</span></div>
               </div>
             )}
