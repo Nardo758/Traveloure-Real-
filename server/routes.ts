@@ -16184,5 +16184,20 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Expert's assignment record for a specific trip (includes id + workspaceStatus)
+  app.get("/api/trips/:tripId/my-assignment", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { tripId } = req.params;
+      const [assignment] = await db.select().from(tripExpertAdvisors)
+        .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
+        .limit(1);
+      if (!assignment) return res.status(404).json({ message: "Not assigned to this trip" });
+      res.json(assignment);
+    } catch (err) {
+      console.error("[Expert] getMyAssignment error:", err);
+      res.status(500).json({ message: "Failed to get assignment" });
+    }
+  });
 
 }
