@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { LogIn, Shield, Sparkles, Heart, Mail, Lock, User, Loader2, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { getRoleHomePath } from "@/App";
+import { getRoleHomePath } from "@/lib/role-utils";
 
 interface SignInModalProps {
   open: boolean;
