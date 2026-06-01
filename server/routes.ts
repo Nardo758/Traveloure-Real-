@@ -5264,7 +5264,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        const fee = price * 0.30;
+        const serviceRate = parseFloat(item.service.revenueShareRate ?? "0.30");
+        const fee = price * serviceRate;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -15864,10 +15865,23 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Helper: enforce service_provider role on provider-only routes
+  async function requireProviderRole(req: any, res: any): Promise<string | null> {
+    const userId = (req.user as any)?.claims?.sub;
+    if (!userId) { res.status(401).json({ message: "Unauthorized" }); return null; }
+    const user = await storage.getUser(userId);
+    if (!user || user.role !== "service_provider") {
+      res.status(403).json({ message: "Service provider role required" });
+      return null;
+    }
+    return userId;
+  }
+
   // === Provider Availability Rules ===
   app.get("/api/provider/availability/rules", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const rules = await storage.getProviderAvailability(userId);
       res.json(rules);
     } catch (err) {
@@ -15878,7 +15892,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/availability/rules", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const parsed = insertProviderAvailabilityScheduleSchema.safeParse({ ...req.body, providerId: userId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const rule = await storage.setProviderAvailability(parsed.data);
@@ -15891,7 +15906,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.patch("/api/provider/availability/rules/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const { id } = req.params;
       const existing = await storage.getProviderAvailabilityById(id);
       if (!existing) return res.status(404).json({ message: "Availability rule not found" });
@@ -15909,7 +15925,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/provider/availability/rules/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const existing = await storage.getProviderAvailabilityById(req.params.id);
       if (!existing) return res.status(404).json({ message: "Availability rule not found" });
       if (existing.providerId !== userId) return res.status(403).json({ message: "Access denied" });
@@ -15924,7 +15941,8 @@ export async function registerDiscoveryRoutes(app: Express) {
   // === Provider Blackout Dates ===
   app.get("/api/provider/availability/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const dates = await storage.getProviderBlackoutDates(userId);
       res.json(dates);
     } catch (err) {
@@ -15935,7 +15953,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.post("/api/provider/availability/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const parsed = insertProviderBlackoutDateSchema.safeParse({ ...req.body, providerId: userId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const date = await storage.addProviderBlackoutDate(parsed.data);
@@ -15948,7 +15967,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/provider/availability/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const existing = await storage.getProviderBlackoutDateById(req.params.id);
       if (!existing) return res.status(404).json({ message: "Blackout date not found" });
       if (existing.providerId !== userId) return res.status(403).json({ message: "Access denied" });
@@ -15963,7 +15983,8 @@ export async function registerDiscoveryRoutes(app: Express) {
   // === Provider Settings ===
   app.get("/api/provider/settings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const settings = await storage.getProviderSettings(userId);
       if (!settings) {
         return res.json({
@@ -15985,7 +16006,8 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.patch("/api/provider/settings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims.sub;
+      const userId = await requireProviderRole(req, res);
+      if (!userId) return;
       const settings = await storage.upsertProviderSettings(userId, req.body);
       res.json(settings);
     } catch (err) {
@@ -16007,7 +16029,18 @@ export async function registerDiscoveryRoutes(app: Express) {
       const { tripId } = req.params;
       if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
-      res.json(items);
+      // Group items by day number
+      const grouped: Record<number, typeof items> = {};
+      for (const item of items) {
+        const day = item.dayNumber;
+        if (!grouped[day]) grouped[day] = [];
+        grouped[day].push(item);
+      }
+      const days = Object.keys(grouped)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map((dayNumber) => ({ dayNumber, items: grouped[dayNumber] }));
+      res.json({ days, total: items.length });
     } catch (err) {
       console.error("[ItineraryItems] GET error:", err);
       res.status(500).json({ message: "Failed to get itinerary items" });
@@ -16072,7 +16105,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       const { workspaceStatus } = req.body;
       const validTransitions: Record<string, string[]> = {
         draft: ["in_review"],
-        in_review: ["delivered", "draft"],
+        in_review: ["delivered"],
         delivered: [],
       };
       if (!workspaceStatus || !(workspaceStatus in validTransitions)) {
@@ -16105,13 +16138,16 @@ export async function registerDiscoveryRoutes(app: Express) {
       if (!assignment.length) return res.status(403).json({ message: "Not assigned to this trip" });
 
       const allItems = await storage.getItineraryItems(tripId);
-      const EXCLUDED_STATUSES = ["cancelled", "skipped"];
-      const items = allItems.filter((item: any) => !EXCLUDED_STATUSES.includes(item.status));
+      // Confirmed items: status is confirmed or not in terminal states
+      const items = allItems.filter((item: any) =>
+        item.status !== "cancelled" && item.status !== "skipped" &&
+        item.bookingStatus !== "cancelled"
+      );
 
       const DEFAULT_RATE = 0.30;
       let totalGross = 0;
       let expertShare = 0;
-      const itemBreakdown: Array<{ id: string; title: string; cost: number; revenueShareRate: number; expertEarning: number; platformFee: number }> = [];
+      const itemBreakdown: Array<{ id: string; title: string; dayNumber: number; cost: number; revenueShareRate: number; expertEarning: number; platformFee: number }> = [];
 
       for (const item of items) {
         const cost = parseFloat(item.estimatedCost ?? "0");
@@ -16123,6 +16159,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         itemBreakdown.push({
           id: item.id,
           title: item.title,
+          dayNumber: item.dayNumber,
           cost,
           revenueShareRate: rate,
           expertEarning: earning,
