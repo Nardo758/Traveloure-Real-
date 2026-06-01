@@ -1720,6 +1720,24 @@ export const safetyCache = pgTable("safety_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
+export const restaurantCache = pgTable("restaurant_cache", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  externalId: varchar("external_id", { length: 100 }).notNull().unique(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  cuisine: varchar("cuisine", { length: 255 }),
+  priceLevel: varchar("price_level", { length: 10 }),
+  rating: varchar("rating", { length: 10 }),
+  reviewCount: integer("review_count").default(0),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  city: varchar("city", { length: 255 }),
+  bookingUrl: text("booking_url"),
+  imageUrl: text("image_url"),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // Cache schemas and types
 export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
 export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
@@ -1752,6 +1770,10 @@ export type FeverEventCache = typeof feverEventCache.$inferSelect;
 export type InsertFeverEventCache = z.infer<typeof insertFeverEventCacheSchema>;
 export type UserFilterPreferences = typeof userFilterPreferences.$inferSelect;
 export type InsertUserFilterPreferences = z.infer<typeof insertUserFilterPreferencesSchema>;
+
+export const insertRestaurantCacheSchema = createInsertSchema(restaurantCache).omit({ id: true, lastUpdated: true });
+export type RestaurantCache = typeof restaurantCache.$inferSelect;
+export type InsertRestaurantCache = z.infer<typeof insertRestaurantCacheSchema>;
 
 // Coordination Hub schemas and types
 export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });
