@@ -994,17 +994,11 @@ export class DatabaseStorage implements IStorage {
     return newService;
   }
 
-  async incrementServiceBookings(id: string, amount: number): Promise<void> {
-    const service = await this.getProviderServiceById(id);
-    if (service) {
-      await db.update(providerServices)
-        .set({ 
-          bookingsCount: (service.bookingsCount || 0) + 1,
-          totalRevenue: String(Number(service.totalRevenue || 0) + amount),
-          updatedAt: new Date()
-        })
-        .where(eq(providerServices.id, id));
-    }
+  async incrementServiceBookings(id: string, _amount: number): Promise<void> {
+    // Only increment bookingsCount here; totalRevenue is updated on booking completion.
+    await db.update(providerServices)
+      .set({ bookingsCount: sql`${providerServices.bookingsCount} + 1`, updatedAt: new Date() })
+      .where(eq(providerServices.id, id));
   }
 
   // Service Bookings
@@ -1029,11 +1023,6 @@ export class DatabaseStorage implements IStorage {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newBooking] = await db.insert(serviceBookings).values({ ...booking, trackingNumber }).returning();
     
-    // Increment bookingsCount on the service
-    await db.update(providerServices)
-      .set({ bookingsCount: sql`${providerServices.bookingsCount} + 1` })
-      .where(eq(providerServices.id, newBooking.serviceId));
-    
     // Auto-register in content tracking system
     await this.registerContent({
       trackingNumber,
@@ -1049,6 +1038,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined> {
+    // Read prior status before applying any update so side-effects are idempotent.
+    const prior = await this.getServiceBooking(id);
+    if (!prior) return undefined;
+    const priorStatus = prior.status;
+
     const updates: any = { status, updatedAt: new Date() };
     if (status === "confirmed") updates.confirmedAt = new Date();
     if (status === "completed") updates.completedAt = new Date();
@@ -1061,13 +1055,17 @@ export class DatabaseStorage implements IStorage {
       .set(updates)
       .where(eq(serviceBookings.id, id))
       .returning();
-    
-    if (updated && status === "completed") {
+
+    if (!updated) return undefined;
+
+    // Only fire completion side-effects on the FIRST transition to "completed".
+    const isFirstCompletion = status === "completed" && priorStatus !== "completed";
+    if (isFirstCompletion) {
       const grossAmount = parseFloat(updated.totalAmount || '0');
       const platformFee = parseFloat(updated.platformFee || '0');
       const providerEarningsAmount = parseFloat(updated.providerEarnings || '0');
       
-      // Update service totalRevenue
+      // Atomically add provider earnings to service totalRevenue
       if (providerEarningsAmount > 0) {
         await db.update(providerServices)
           .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
@@ -1092,7 +1090,7 @@ export class DatabaseStorage implements IStorage {
         });
       }
       
-      // Create provider earning record only if amount > 0
+      // Create earnings ledger entries only if amount > 0
       if (providerEarningsAmount > 0) {
         await this.createProviderEarning({
           providerId: updated.providerId,
@@ -1118,8 +1116,11 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    // Decrement bookingsCount when booking is cancelled or refunded
-    if (updated && (status === "cancelled" || status === "refunded")) {
+    // Only decrement bookingsCount on the FIRST transition to cancelled/refunded.
+    const cancelStatuses = ["cancelled", "refunded"];
+    const isFirstCancellation =
+      cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || '');
+    if (isFirstCancellation) {
       await db.update(providerServices)
         .set({ bookingsCount: sql`GREATEST(${providerServices.bookingsCount} - 1, 0)` })
         .where(eq(providerServices.id, updated.serviceId));
