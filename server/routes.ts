@@ -1401,9 +1401,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         limit, 
         offset,
         providers,
+        type,
         experienceTypeSlug,
         tabSlug
       } = req.query;
+
+      const validContentTypes = ["activity", "event", "hotel", "flight", "poi", "transfer", "safety"] as const;
+      type ContentType = typeof validContentTypes[number];
+      const parsedTypes: ContentType[] | undefined = type
+        ? (type as string).split(",").filter((t): t is ContentType => validContentTypes.includes(t as ContentType))
+        : undefined;
 
       const result = await experienceCatalogService.searchCatalog({
         destination: destination as string | undefined,
@@ -1415,6 +1422,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
         providers: providers ? (providers as string).split(",") : undefined,
+        type: parsedTypes && parsedTypes.length > 0 ? parsedTypes : undefined,
         experienceTypeSlug: experienceTypeSlug as string | undefined,
         tabSlug: tabSlug as string | undefined,
       });
