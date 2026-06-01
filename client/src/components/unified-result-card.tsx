@@ -28,7 +28,7 @@ export interface UnifiedResult {
   websiteUrl?: string | null;
   website?: string | null;
   phone?: string | null;
-  source: "native" | "serp" | "viator" | "amadeus" | "opentable" | "fever";
+  source: "native" | "serp" | "viator" | "amadeus" | "opentable" | "fever" | "poi" | "transfer" | "safety";
   isPartner?: boolean;
   category?: string | null;
   bookingUrl?: string | null;
