@@ -563,6 +563,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           providerEarnings: providerEarningsAmt,
         });
         bookingId = booking.id;
+
+        // Notify the expert/provider that a new booking request has arrived
+        try {
+          await storage.createNotification({
+            userId: providerId,
+            type: "booking_request",
+            title: "New booking request",
+            message: `You have a new booking request for "${service.serviceName}" ($${totalAmount.toFixed(2)})`,
+            relatedId: booking.id,
+            relatedType: "booking",
+          });
+        } catch (notifErr) {
+          // Non-fatal: log but don't fail the booking creation
+          console.error("Failed to create booking notification:", notifErr);
+        }
       }
       
       res.status(201).json({ 
@@ -3056,35 +3071,59 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const earnings = await storage.getExpertEarnings(userId);
-      const rawSummary = await storage.getExpertEarningsSummary(userId);
-      const payouts = await storage.getExpertPayouts(userId);
 
-      // Compute month-to-date earnings
+      // Fetch all service bookings for this provider and payout history
+      const [bookings, earnings, payouts] = await Promise.all([
+        storage.getServiceBookings({ providerId: userId }),
+        storage.getExpertEarnings(userId),
+        storage.getExpertPayouts(userId),
+      ]);
+
+      // Aggregate directly from service_bookings (never from expert_earnings ledger)
       const now = new Date();
-      const monthlyEarnings = earnings
-        .filter(e => {
-          if (!e.createdAt) return false;
-          const d = new Date(e.createdAt);
-          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        })
-        .reduce((sum, e) => sum + parseFloat(e.amount || '0'), 0);
+      let grossBookingTotal = 0;
+      let platformFeeTotal = 0;
+      let totalEarnings = 0;
+      let pendingPayout = 0;
+      let monthlyEarnings = 0;
+
+      for (const b of bookings) {
+        const gross = Number(b.totalAmount ?? 0);
+        const fee = Number(b.platformFee ?? 0);
+        const earned = Number(b.providerEarnings ?? 0);
+
+        grossBookingTotal += gross;
+        platformFeeTotal += fee;
+
+        if (b.status === "completed") {
+          totalEarnings += earned;
+          const completedAt = b.completedAt ? new Date(b.completedAt) : null;
+          if (completedAt && completedAt.getMonth() === now.getMonth() && completedAt.getFullYear() === now.getFullYear()) {
+            monthlyEarnings += earned;
+          }
+        } else if (b.status === "pending" || b.status === "confirmed") {
+          pendingPayout += earned;
+        }
+      }
+
+      // Effective share rate from actual data; fall back to per-service rate or 0.30
+      const effectiveRate = grossBookingTotal > 0
+        ? Number(((totalEarnings + pendingPayout) / grossBookingTotal).toFixed(4))
+        : 0.30;
 
       const lastPayout = payouts[0];
 
-      // Map to the shape the frontend EarningsData interface expects
       const summary = {
-        totalEarnings: rawSummary.total,
+        totalEarnings,
         monthlyEarnings,
-        pendingPayout: rawSummary.pending,
+        pendingPayout,
         lastPayout: lastPayout ? parseFloat(lastPayout.amount || '0') : 0,
         lastPayoutDate: lastPayout?.processedAt
           ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : undefined,
-        // Revenue share breakdown (30% to expert, 70% platform)
-        platformFeeTotal: Number((rawSummary.total / 0.30 * 0.70).toFixed(2)),
-        grossBookingTotal: Number((rawSummary.total / 0.30).toFixed(2)),
-        revenueShareRate: 0.30,
+        platformFeeTotal: Number(platformFeeTotal.toFixed(2)),
+        grossBookingTotal: Number(grossBookingTotal.toFixed(2)),
+        revenueShareRate: effectiveRate,
       };
 
       res.json({ earnings, summary });
