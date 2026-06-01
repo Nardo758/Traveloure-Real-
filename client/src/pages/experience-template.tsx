@@ -89,6 +89,8 @@ import { TwelveGoTransport } from "@/components/TwelveGoTransport";
 import { TripTransportPlanner } from "@/components/trip-transport-planner";
 import { AmadeusPOIs } from "@/components/amadeus-pois";
 import { AmadeusSafety } from "@/components/amadeus-safety";
+import { AmadeusTransfers } from "@/components/amadeus-transfers";
+import { FeverEventsSection } from "@/components/fever-events-section";
 import { VenueSearchPanel, TAB_FALLBACK_CONFIG } from "@/components/venue-search-panel";
 import { ActivityCard } from "@/components/travelpayouts/ActivityCard";
 import { ESimCard } from "@/components/travelpayouts/ESimCard";
@@ -231,7 +233,9 @@ const experienceConfigs: Record<string, ExperienceConfig> = {
     heroImage: "https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600&q=80",
     tabs: [
       { id: "activities", label: "Activities", icon: Palmtree, category: "activities" },
+      { id: "events", label: "Events", icon: Ticket, category: "events" },
       { id: "hotels", label: "Hotels", icon: Hotel, category: "hotels" },
+      { id: "transfers", label: "Transfers", icon: Car, category: "transfers" },
       { id: "services", label: "Services", icon: Wrench, category: "services-travel" },
       { id: "dining", label: "Dining", icon: Utensils, category: "dining" },
       { id: "flights", label: "Flights", icon: Plane, category: "flights" },
@@ -2618,8 +2622,40 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
+          {activeTab === "events" && (
+            <div className="mb-6">
+              <FeverEventsSection
+                destination={destination}
+                startDate={startDate?.toISOString().split('T')[0]}
+                endDate={endDate?.toISOString().split('T')[0]}
+              />
+            </div>
+          )}
+
+          {activeTab === "transfers" && (
+            <div className="mb-6">
+              <AmadeusTransfers
+                destination={destination || ""}
+                startDate={startDate?.toISOString().split('T')[0]}
+                travelers={adults + kids}
+                onAddToCart={(item) => {
+                  addToCart({
+                    id: item.id,
+                    type: "transportation",
+                    name: item.name,
+                    price: item.price,
+                    quantity: item.quantity,
+                    provider: item.provider,
+                    details: item.details,
+                    isExternal: item.isExternal,
+                  });
+                }}
+              />
+            </div>
+          )}
+
           {/* Venue Search Panel - Google Places Integration (dynamically wired to all supported tabs) */}
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && activeTab !== "planning-tools" && activeTab !== "itinerary-builder" && (
             (activeTab === "vendors" || activeTab in TAB_FALLBACK_CONFIG) && (
               <div className="mb-6">
                 <VenueSearchPanel
@@ -2638,7 +2674,7 @@ export default function ExperienceTemplatePage() {
             )
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
           <div className="mb-4 flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
               {filteredServices.length > 0 
@@ -2661,7 +2697,7 @@ export default function ExperienceTemplatePage() {
           </div>
           )}
 
-          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && (
+          {activeTab !== "flights" && activeTab !== "hotels" && activeTab !== "services" && activeTab !== "activities" && activeTab !== "events" && activeTab !== "transfers" && (
             <div className="flex gap-6">
               <div className="flex-1">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
