@@ -485,7 +485,7 @@ export const providerServices = pgTable("provider_services", {
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
   reviewCount: integer("review_count").default(0),
-  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.70"),
+  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.30"),
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
