@@ -652,11 +652,12 @@ export const vendorAssignments = pgTable("vendor_assignments", {
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  type: varchar("type", { length: 50 }).notNull(), // booking_created, booking_confirmed, message_received, review_received, etc.
+  type: varchar("type", { length: 50 }).notNull(), // booking_request, booking_confirmed, message_received, review_received, etc.
   title: varchar("title", { length: 255 }).notNull(),
   message: text("message").notNull(),
   relatedId: varchar("related_id", { length: 255 }), // ID of related entity (booking, message, etc.)
   relatedType: varchar("related_type", { length: 50 }), // booking, message, review, contract
+  data: jsonb("data"), // Arbitrary payload e.g. { bookingId, serviceName, travelerName, amount }
   isRead: boolean("is_read").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
