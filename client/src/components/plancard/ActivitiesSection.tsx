@@ -243,6 +243,7 @@ export function ActivitiesSection({
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
   const [legModes, setLegModes] = useState<Record<string, string>>({});
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!day?.dayNum || !day.activities) {
@@ -480,10 +481,34 @@ export function ActivitiesSection({
 
                   {a.expertNote && (
                     <div
-                      className="mt-2 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 italic"
-                      data-testid={`text-expert-note-${a.id}`}
+                      className="mt-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 overflow-hidden"
+                      data-testid={`expert-note-callout-${a.id}`}
                     >
-                      💡 {a.expertNote}
+                      <button
+                        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-left"
+                        onClick={() =>
+                          setExpandedNotes(prev => ({ ...prev, [a.id]: !prev[a.id] }))
+                        }
+                        data-testid={`button-toggle-expert-note-${a.id}`}
+                      >
+                        <span className="text-[11px]">💡</span>
+                        <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300 flex-1">
+                          Expert Tip
+                        </span>
+                        <ChevronDown
+                          className={`w-3 h-3 text-amber-600 transition-transform flex-shrink-0 ${
+                            expandedNotes[a.id] ? "rotate-180" : ""
+                          }`}
+                        />
+                      </button>
+                      {expandedNotes[a.id] && (
+                        <div
+                          className="px-2.5 pb-2.5 text-[11px] text-amber-800 dark:text-amber-300 italic leading-relaxed"
+                          data-testid={`text-expert-note-${a.id}`}
+                        >
+                          {a.expertNote}
+                        </div>
+                      )}
                     </div>
                   )}
 
