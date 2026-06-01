@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import {
   XCircle,
   Clock,
   Users,
+  ExternalLink,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -200,15 +202,30 @@ export default function ExpertAssignedTrips() {
                         </span>
                       </div>
                     </div>
-                    <Button
-                      size="sm"
-                      className="flex-shrink-0 gap-1.5"
-                      onClick={() => openDialog(trip)}
-                      data-testid={`button-suggest-${trip.trip_id}`}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Suggest
-                    </Button>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {trip.status === "accepted" && (
+                        <Link href={`/expert/workspace/${trip.trip_id}`}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1.5"
+                            data-testid={`button-open-workspace-${trip.trip_id}`}
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            Workspace
+                          </Button>
+                        </Link>
+                      )}
+                      <Button
+                        size="sm"
+                        className="gap-1.5"
+                        onClick={() => openDialog(trip)}
+                        data-testid={`button-suggest-${trip.trip_id}`}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Suggest
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
