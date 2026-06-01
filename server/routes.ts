@@ -2530,6 +2530,22 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // PATCH /api/expert/profile-notes — Save expert's notes style description
+  app.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { notesStyle } = req.body;
+      if (typeof notesStyle !== "string") {
+        return res.status(400).json({ message: "notesStyle must be a string" });
+      }
+      await storage.updateLocalExpertFormNotesStyle(userId, notesStyle.trim());
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert notes style:", err);
+      res.status(500).json({ message: "Failed to save" });
+    }
+  });
+
   // Get current expert's selected services (authenticated)
   app.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
