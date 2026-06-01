@@ -111,6 +111,7 @@ import ExpertServiceForm from "@/pages/expert/service-form";
 import ProviderServiceForm from "@/pages/provider/service-form";
 import ServiceWizard from "@/pages/expert/service-wizard";
 import ServiceTemplates from "@/pages/expert/service-templates";
+import ExpertWorkspace from "@/pages/expert/workspace";
 import CartPage from "@/pages/cart";
 import BrowsePage from "@/pages/browse";
 import MyBookingsPage from "@/pages/my-bookings";
@@ -431,6 +432,12 @@ function Router() {
       </Route>
       <Route path="/expert/booking-partners">
         {() => <ProtectedRoute component={ExpertBookingPartners} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/service-wizard">
+        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/workspace/:tripId">
+        {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
