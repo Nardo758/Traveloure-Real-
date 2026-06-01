@@ -2,11 +2,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DashboardLayout } from "@/components/dashboard-layout";
-import { Bell, MessageSquare, Calendar, CreditCard, Bot, Check, Trash2, Briefcase } from "lucide-react";
+import { Bell, MessageSquare, Calendar, CreditCard, Bot, Check, Trash2, Briefcase, X } from "lucide-react";
 import { motion } from "framer-motion";
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 function getRelativeTime(dateStr: string): string {
   const now = new Date();
@@ -32,7 +34,8 @@ function getNotificationIcon(type: string) {
     case "ai": return Bot;
     case "reminder": return Calendar;
     case "credits": return CreditCard;
-    case "booking_request": return Briefcase;
+    case "booking_request":
+    case "booking_created": return Briefcase;
     default: return Bell;
   }
 }
@@ -44,34 +47,60 @@ function getNotificationColor(type: string) {
     case "ai": return "bg-[#FFE3E8] text-[#FF385C]";
     case "reminder": return "bg-green-100 text-green-600";
     case "credits": return "bg-yellow-100 text-yellow-600";
-    case "booking_request": return "bg-purple-100 text-purple-600";
+    case "booking_request":
+    case "booking_created": return "bg-purple-100 text-purple-600";
     default: return "bg-gray-100 text-gray-600";
   }
 }
 
-export default function Notifications() {
-  const { data: notificationsFromApi } = useQuery<Array<{
-    id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string;
-    data?: { tripId?: string; workspacePath?: string; chatId?: string };
-  }>>({ queryKey: ["/api/notifications"] });
-
-  const [notifications, setNotifications] = useState<Array<{
-    id: number;
-    type: string;
-    title: string;
-    description: string;
-    time: string;
-    read: boolean;
-    icon: any;
-    color: string;
+interface ApiNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  relatedId?: string;
+  relatedType?: string;
+  data?: {
+    bookingId?: string;
+    serviceName?: string;
+    travelerName?: string;
+    amount?: string;
     tripId?: string;
     workspacePath?: string;
-  }>>([]);
+    chatId?: string;
+  };
+}
+
+interface MappedNotification {
+  id: string;
+  index: number;
+  type: string;
+  title: string;
+  description: string;
+  time: string;
+  read: boolean;
+  icon: any;
+  color: string;
+  bookingId?: string;
+  tripId?: string;
+  workspacePath?: string;
+}
+
+export default function Notifications() {
+  const { toast } = useToast();
+  const { data: notificationsFromApi } = useQuery<ApiNotification[]>({
+    queryKey: ["/api/notifications"],
+  });
+
+  const [notifications, setNotifications] = useState<MappedNotification[]>([]);
 
   useEffect(() => {
     if (notificationsFromApi) {
       const mapped = notificationsFromApi.map((n, index) => ({
-        id: index + 1,
+        id: n.id,
+        index: index + 1,
         type: n.type ?? "message",
         title: n.title,
         description: n.message,
@@ -79,6 +108,7 @@ export default function Notifications() {
         read: n.isRead ?? false,
         icon: getNotificationIcon(n.type),
         color: getNotificationColor(n.type),
+        bookingId: n.data?.bookingId ?? n.relatedId,
         tripId: n.data?.tripId,
         workspacePath: n.data?.workspacePath,
       }));
@@ -86,26 +116,61 @@ export default function Notifications() {
     }
   }, [notificationsFromApi]);
 
+  const acceptMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("PATCH", `/api/expert/bookings/${bookingId}/status`, { status: "confirmed" }),
+    onSuccess: (_, bookingId) => {
+      toast({ title: "Booking accepted", description: "The booking has been confirmed." });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/bookings"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to accept booking", variant: "destructive" });
+    },
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: (bookingId: string) =>
+      apiRequest("PATCH", `/api/expert/bookings/${bookingId}/status`, { status: "cancelled", reason: "Declined by provider" }),
+    onSuccess: () => {
+      toast({ title: "Booking declined", description: "The booking request has been declined." });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/bookings"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to decline booking", variant: "destructive" });
+    },
+  });
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const markAllRead = () => {
+  const markAllRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      await apiRequest("POST", "/api/notifications/mark-all-read", {});
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+    } catch (_) {}
   };
 
-  const markAsRead = (id: number) => {
-    setNotifications(prev => prev.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    ));
+  const markAsRead = async (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    try {
+      await apiRequest("PATCH", `/api/notifications/${id}/read`, {});
+    } catch (_) {}
   };
 
-  const deleteNotification = (id: number) => {
+  const deleteNotification = async (id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+    try {
+      await apiRequest("DELETE", `/api/notifications/${id}`, {});
+    } catch (_) {}
   };
+
+  const isBookingNotif = (type: string) => type === "booking_request" || type === "booking_created";
 
   return (
     <DashboardLayout>
       <div className="p-6 max-w-3xl mx-auto space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
@@ -130,7 +195,6 @@ export default function Notifications() {
           )}
         </div>
 
-        {/* Notifications List */}
         {notifications.length > 0 ? (
           <div className="space-y-3">
             {notifications.map((notification, i) => (
@@ -142,7 +206,7 @@ export default function Notifications() {
               >
                 <Card
                   className={`border ${notification.read ? 'border-[#E5E7EB] bg-white dark:bg-gray-800' : 'border-[#FF385C]/20 bg-[#FFF1F3] dark:bg-[#FF385C]/10'}`}
-                  data-testid={`notification-${notification.id}`}
+                  data-testid={`notification-${notification.index}`}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start gap-4">
@@ -157,18 +221,60 @@ export default function Notifications() {
                             </h3>
                             <p className="text-sm text-[#6B7280] mt-0.5">{notification.description}</p>
                             <p className="text-xs text-[#9CA3AF] mt-1">{notification.time}</p>
-                            {notification.tripId && (
+
+                            {isBookingNotif(notification.type) && notification.bookingId ? (
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-3 text-xs bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={() => {
+                                    acceptMutation.mutate(notification.bookingId!);
+                                    markAsRead(notification.id);
+                                  }}
+                                  disabled={acceptMutation.isPending || declineMutation.isPending}
+                                  data-testid={`button-accept-booking-${notification.index}`}
+                                >
+                                  <Check className="w-3 h-3 mr-1" />
+                                  Accept
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-3 text-xs border-red-300 text-red-600 hover:bg-red-50"
+                                  onClick={() => {
+                                    declineMutation.mutate(notification.bookingId!);
+                                    markAsRead(notification.id);
+                                  }}
+                                  disabled={acceptMutation.isPending || declineMutation.isPending}
+                                  data-testid={`button-decline-booking-${notification.index}`}
+                                >
+                                  <X className="w-3 h-3 mr-1" />
+                                  Decline
+                                </Button>
+                                <Link href="/expert/bookings">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 px-3 text-xs text-[#FF385C] hover:text-[#e0314f]"
+                                    data-testid={`button-view-booking-${notification.index}`}
+                                  >
+                                    <Briefcase className="w-3 h-3 mr-1" />
+                                    View Bookings
+                                  </Button>
+                                </Link>
+                              </div>
+                            ) : notification.tripId ? (
                               <Link href={notification.workspacePath || `/expert/workspace/${notification.tripId}`}>
                                 <Button
                                   size="sm"
                                   className="mt-2 h-7 px-3 text-xs bg-[#FF385C] hover:bg-[#e0314f] text-white"
-                                  data-testid={`button-open-workspace-${notification.id}`}
+                                  data-testid={`button-open-workspace-${notification.index}`}
                                 >
                                   <Briefcase className="w-3 h-3 mr-1" />
                                   Open Workspace
                                 </Button>
                               </Link>
-                            )}
+                            ) : null}
                           </div>
                           <div className="flex items-center gap-1 flex-shrink-0">
                             {!notification.read && (
@@ -177,7 +283,7 @@ export default function Notifications() {
                                 variant="ghost"
                                 className="h-8 w-8 text-[#6B7280] hover:text-[#111827]"
                                 onClick={() => markAsRead(notification.id)}
-                                data-testid={`button-mark-read-${notification.id}`}
+                                data-testid={`button-mark-read-${notification.index}`}
                               >
                                 <Check className="w-4 h-4" />
                               </Button>
@@ -187,7 +293,7 @@ export default function Notifications() {
                               variant="ghost"
                               className="h-8 w-8 text-[#6B7280] hover:text-red-500"
                               onClick={() => deleteNotification(notification.id)}
-                              data-testid={`button-delete-${notification.id}`}
+                              data-testid={`button-delete-${notification.index}`}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>

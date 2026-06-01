@@ -167,8 +167,16 @@ export default function ServiceWizard() {
   };
 
   const handleSubmit = (asDraft: boolean = false) => {
+    const requirements = formData.requirements
+      ? formData.requirements.split("\n").map(s => s.trim()).filter(Boolean)
+      : [];
+    const whatIncluded = formData.whatIncluded
+      ? formData.whatIncluded.split("\n").map(s => s.trim()).filter(Boolean)
+      : [];
     createMutation.mutate({
       ...formData,
+      requirements: requirements as any,
+      whatIncluded: whatIncluded as any,
       status: asDraft ? "draft" : "active",
     });
   };
