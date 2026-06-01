@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Calendar,
   Clock,
@@ -33,6 +36,14 @@ interface BlackoutDate {
 
 export default function AvailabilityManagement() {
   const [selectedDay, setSelectedDay] = useState("Monday");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [maxBookings, setMaxBookings] = useState("5");
+  const [showBlackoutForm, setShowBlackoutForm] = useState(false);
+  const [blackoutStart, setBlackoutStart] = useState("");
+  const [blackoutEnd, setBlackoutEnd] = useState("");
+  const [blackoutReason, setBlackoutReason] = useState("");
+  const { toast } = useToast();
 
   const { data: availabilityRules } = useQuery<AvailabilityRule[]>({
     queryKey: ["/api/provider/availability/rules"],
@@ -40,6 +51,68 @@ export default function AvailabilityManagement() {
 
   const { data: blackoutDates } = useQuery<BlackoutDate[]>({
     queryKey: ["/api/provider/availability/blackout-dates"],
+  });
+
+  const saveRuleMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/provider/availability/rules", {
+        dayOfWeek: selectedDay,
+        startTime,
+        endTime,
+        maxBookingsPerDay: parseInt(maxBookings, 10),
+        isActive: true,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/availability/rules"] });
+      toast({ title: "Schedule saved", description: `${selectedDay} schedule updated.` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save schedule.", variant: "destructive" });
+    },
+  });
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest("DELETE", `/api/provider/availability/rules/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/availability/rules"] });
+      toast({ title: "Rule deleted" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete rule.", variant: "destructive" });
+    },
+  });
+
+  const addBlackoutMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/provider/availability/blackout-dates", {
+        startDate: blackoutStart,
+        endDate: blackoutEnd,
+        reason: blackoutReason,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/availability/blackout-dates"] });
+      setShowBlackoutForm(false);
+      setBlackoutStart("");
+      setBlackoutEnd("");
+      setBlackoutReason("");
+      toast({ title: "Blackout date added" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to add blackout date.", variant: "destructive" });
+    },
+  });
+
+  const deleteBlackoutMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest("DELETE", `/api/provider/availability/blackout-dates/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/availability/blackout-dates"] });
+      toast({ title: "Blackout date removed" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete blackout date.", variant: "destructive" });
+    },
   });
 
   const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -104,7 +177,8 @@ export default function AvailabilityManagement() {
                       </label>
                       <input
                         type="time"
-                        defaultValue="09:00"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         data-testid="input-start-time"
                       />
@@ -115,7 +189,8 @@ export default function AvailabilityManagement() {
                       </label>
                       <input
                         type="time"
-                        defaultValue="17:00"
+                        value={endTime}
+                        onChange={(e) => setEndTime(e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         data-testid="input-end-time"
                       />
@@ -129,7 +204,8 @@ export default function AvailabilityManagement() {
                     <input
                       type="number"
                       min="1"
-                      defaultValue="5"
+                      value={maxBookings}
+                      onChange={(e) => setMaxBookings(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                       data-testid="input-max-bookings"
                     />
@@ -138,15 +214,24 @@ export default function AvailabilityManagement() {
                   <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
                     <p className="text-sm text-blue-700">
-                      {selectedDay} is available from 9:00 AM to 5:00 PM (8 hours)
+                      {selectedDay} is available from {startTime} to {endTime}
                     </p>
                   </div>
 
                   <div className="flex gap-2">
-                    <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-save-schedule">
-                      Save Schedule
+                    <Button
+                      className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                      onClick={() => saveRuleMutation.mutate()}
+                      disabled={saveRuleMutation.isPending}
+                      data-testid="button-save-schedule"
+                    >
+                      {saveRuleMutation.isPending ? "Saving..." : "Save Schedule"}
                     </Button>
-                    <Button variant="outline" data-testid="button-reset-schedule">
+                    <Button
+                      variant="outline"
+                      onClick={() => { setStartTime("09:00"); setEndTime("17:00"); setMaxBookings("5"); }}
+                      data-testid="button-reset-schedule"
+                    >
                       Reset to Default
                     </Button>
                   </div>
@@ -160,11 +245,64 @@ export default function AvailabilityManagement() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-2">
                 <CardTitle className="text-lg">Blackout Dates</CardTitle>
-                <Button size="sm" data-testid="button-add-blackout">
+                <Button size="sm" onClick={() => setShowBlackoutForm(true)} data-testid="button-add-blackout">
                   <Plus className="w-4 h-4 mr-1" /> Add Blackout Date
                 </Button>
               </CardHeader>
               <CardContent className="space-y-4">
+                {showBlackoutForm && (
+                  <div className="p-4 border border-blue-200 rounded-lg bg-blue-50 space-y-3">
+                    <p className="font-medium text-sm text-blue-900">New Blackout Date</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Start Date</label>
+                        <input
+                          type="date"
+                          value={blackoutStart}
+                          onChange={(e) => setBlackoutStart(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          data-testid="input-blackout-start"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">End Date</label>
+                        <input
+                          type="date"
+                          value={blackoutEnd}
+                          onChange={(e) => setBlackoutEnd(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          data-testid="input-blackout-end"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-600 mb-1">Reason</label>
+                      <input
+                        type="text"
+                        value={blackoutReason}
+                        onChange={(e) => setBlackoutReason(e.target.value)}
+                        placeholder="e.g. Vacation, maintenance..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        data-testid="input-blackout-reason"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                        onClick={() => addBlackoutMutation.mutate()}
+                        disabled={addBlackoutMutation.isPending || !blackoutStart || !blackoutEnd}
+                        data-testid="button-confirm-blackout"
+                      >
+                        {addBlackoutMutation.isPending ? "Saving..." : "Save"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setShowBlackoutForm(false)} data-testid="button-cancel-blackout">
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {(blackoutDates || []).length > 0 ? (
                   (blackoutDates || []).map((blackout) => (
                     <div
@@ -187,14 +325,9 @@ export default function AvailabilityManagement() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          data-testid={`button-edit-blackout-${blackout.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
                           className="text-red-600"
+                          onClick={() => deleteBlackoutMutation.mutate(blackout.id)}
+                          disabled={deleteBlackoutMutation.isPending}
                           data-testid={`button-delete-blackout-${blackout.id}`}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -206,7 +339,7 @@ export default function AvailabilityManagement() {
                   <div className="text-center py-8">
                     <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">No blackout dates scheduled</p>
-                    <Button variant="outline" className="mt-4" data-testid="button-add-first-blackout">
+                    <Button variant="outline" className="mt-4" onClick={() => setShowBlackoutForm(true)} data-testid="button-add-first-blackout">
                       <Plus className="w-4 h-4 mr-1" /> Add Your First Blackout Date
                     </Button>
                   </div>
@@ -248,14 +381,9 @@ export default function AvailabilityManagement() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            data-testid={`button-edit-rule-${rule.id}`}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
                             className="text-red-600"
+                            onClick={() => deleteRuleMutation.mutate(rule.id)}
+                            disabled={deleteRuleMutation.isPending}
                             data-testid={`button-delete-rule-${rule.id}`}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -267,7 +395,7 @@ export default function AvailabilityManagement() {
                 ) : (
                   <div className="text-center py-8">
                     <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">No custom booking rules</p>
+                    <p className="text-gray-500">No custom booking rules. Create them via the Weekly Schedule tab.</p>
                   </div>
                 )}
               </CardContent>
