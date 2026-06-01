@@ -220,6 +220,7 @@ import {
   const STEPS = [
     { key:"draft", label:"Draft", icon:<FileText style={{width:11,height:11}}/> },
     { key:"review", label:"Expert Review", icon:<Eye style={{width:11,height:11}}/> },
+    { key:"notes", label:"Expert Notes", icon:<StickyNote style={{width:11,height:11}}/> },
     { key:"pending", label:"Awaiting Approval", icon:<Clock style={{width:11,height:11}}/> },
     { key:"confirmed", label:"Confirmed", icon:<CheckCircle style={{width:11,height:11}}/> },
   ];
@@ -321,6 +322,35 @@ import {
         {/* ── Approval Workflow Bar ── */}
         <ApprovalBar current="review" />
 
+        {/* ── Expert Notes Panel (workflow step after Expert Review) ── */}
+        <div style={{background:"#FEFCE8",borderBottom:`1px solid #FEF08A`,padding:"8px 18px",display:"flex",alignItems:"flex-start",gap:10,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,paddingTop:2,flexShrink:0}}>
+            <div style={{width:22,height:22,borderRadius:7,background:"#EAB308",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <StickyNote style={{width:12,height:12,color:"white"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:"#713F12",letterSpacing:"0.02em"}}>Expert Notes</div>
+              <div style={{fontSize:10,color:"#A16207",display:"flex",alignItems:"center",gap:3}}><Lock style={{width:9,height:9}}/> Only you can see this</div>
+            </div>
+          </div>
+          <textarea
+            value={noteText}
+            onChange={e=>setNoteText(e.target.value)}
+            style={{
+              flex:1,minHeight:52,padding:"6px 9px",fontSize:11,
+              color:"#713F12",lineHeight:1.55,
+              background:"white",border:"1px solid #FDE68A",borderRadius:8,
+              resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"
+            }}
+          />
+          <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0,paddingTop:2}}>
+            <Bdg c="amber">Step 3 of 5</Bdg>
+            <button style={{padding:"5px 10px",borderRadius:7,fontSize:11,fontWeight:600,background:"#EAB308",color:"white",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>
+              Mark Complete →
+            </button>
+          </div>
+        </div>
+
         {/* ── Body ── */}
         <div style={{display:"flex",flex:1,overflow:"hidden"}}>
 
@@ -419,27 +449,6 @@ import {
                   </div>
                 </div>
 
-                {/* Expert Private Notes — NEW */}
-                <div style={{marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
-                    <div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <div style={{fontSize:10,fontWeight:700,color:G[400],letterSpacing:"0.08em",textTransform:"uppercase"}}>Expert Notes</div>
-                      <Bdg c="violet">Private</Bdg>
-                    </div>
-                    <StickyNote style={{width:12,height:12,color:G[400]}}/>
-                  </div>
-                  <textarea
-                    value={noteText}
-                    onChange={e=>setNoteText(e.target.value)}
-                    style={{
-                      width:"100%",minHeight:72,padding:"7px 8px",fontSize:11,
-                      color:G[700],lineHeight:1.5,
-                      background:"#FEFCE8",border:"1px solid #FEF08A",borderRadius:8,
-                      resize:"none",outline:"none",fontFamily:"inherit",boxSizing:"border-box"
-                    }}
-                  />
-                  <div style={{fontSize:10,color:G[400],marginTop:3}}>🔒 Only you can see this</div>
-                </div>
 
                 <button style={{width:"100%",padding:"6px 12px",borderRadius:8,border:`1px solid ${G[200]}`,background:"white",fontSize:12,color:G[600],cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontWeight:500}}>
                   <Navigation style={{width:12,height:12}}/> Open Full Logistics <ChevronRight style={{width:11,height:11,color:G[400]}}/>
