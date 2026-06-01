@@ -1,410 +1,832 @@
-import { useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { ExpertLayout } from "@/components/expert/expert-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ArrowLeft,
-  Bot,
-  Calendar,
-  MapPin,
-  Lightbulb,
-  Loader2,
-  PlusCircle,
-  ExternalLink,
-  Clock,
-  Users,
-} from "lucide-react";
-import { Link, useLocation } from "wouter";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useParams, useLocation, Link } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2,
+  AlertTriangle, Send, MessageSquare, Plus, Filter, Zap,
+  Navigation, Train, Footprints, Car, Lock, Eye, EyeOff,
+  FileText, DollarSign, CheckCircle, Clock, LayoutTemplate,
+  TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
+  Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
+} from "lucide-react";
+
+const P = "#FF385C";
+const G: Record<number, string> = {
+  50: "#F9FAFB", 100: "#F3F4F6", 200: "#E5E7EB", 300: "#D1D5DB",
+  400: "#9CA3AF", 500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827",
+};
+
+function Av({ i, s = 32 }: { i: string; s?: number }) {
+  return (
+    <div style={{ width: s, height: s, borderRadius: "50%", background: "linear-gradient(135deg,#FF385C,#FF6B8A)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: s * 0.35, fontWeight: 600, flexShrink: 0 }}>{i}</div>
+  );
+}
+
+function Bdg({ children, c = "gray" }: { children: any; c?: string }) {
+  const m: any = {
+    gray: { bg: G[100], tx: G[600] }, amber: { bg: "#FEF3C7", tx: "#B45309" },
+    green: { bg: "#BBF7D0", tx: "#15803D" }, rose: { bg: "#FFE4E6", tx: "#BE123C" },
+    violet: { bg: "#EDE9FE", tx: "#7C3AED" }, blue: { bg: "#DBEAFE", tx: "#2563EB" },
+    primary: { bg: P + "18", tx: P }, teal: { bg: "#CCFBF1", tx: "#0F766E" },
+  };
+  const col = m[c] || m.gray;
+  return <span style={{ background: col.bg, color: col.tx, fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 99, display: "inline-flex", alignItems: "center", gap: 3 }}>{children}</span>;
+}
+
+function Chip({ children, active = false, onClick }: any) {
+  return <button data-testid={`chip-${String(children).toLowerCase().replace(/[^a-z0-9]/g, "-")}`} onClick={onClick} style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 500, cursor: "pointer", border: active ? `1.5px solid ${P}` : `1.5px solid ${G[200]}`, background: active ? `${P}0F` : "white", color: active ? P : G[600] }}>{children}</button>;
+}
+
+function TConn({ mode, dur }: { mode: string; dur: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0 2px 10px", margin: "1px 0" }}>
+      <div style={{ width: 1, height: 12, background: G[200], marginLeft: 3 }} />
+      <div style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", background: G[50], border: `1px solid ${G[200]}`, borderRadius: 99, color: G[500], fontSize: 11 }}>
+        {mode === "walk" ? <Footprints style={{ width: 10, height: 10 }} /> : mode === "taxi" ? <Car style={{ width: 10, height: 10 }} /> : <Train style={{ width: 10, height: 10 }} />}
+        {dur}
+      </div>
+    </div>
+  );
+}
+
+const CAT_DOTS: Record<string, string> = { food: "#EA580C", culture: "#2563EB", activity: "#2563EB", hotel: "#7C3AED", transport: "#16A34A", accommodation: "#7C3AED", dining: "#EA580C" };
+
+function ARow({ time, cat, name, price, edited, alts, gap, onAddOne, onEdit }: any) {
+  if (gap) return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, border: `1.5px dashed ${P}50`, background: `${P}06`, margin: "3px 0" }}>
+      <AlertTriangle style={{ width: 13, height: 13, color: P, flexShrink: 0 }} />
+      <span style={{ fontSize: 12, color: P, fontWeight: 500 }}>No dinner booked — <span onClick={onAddOne} style={{ textDecoration: "underline", cursor: "pointer" }}>Add one?</span></span>
+    </div>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 7px", borderRadius: 8, background: "white", border: `1px solid ${G[100]}`, margin: "2px 0" }}>
+      <span style={{ fontSize: 11, color: G[400], minWidth: 40, fontFamily: "monospace", flexShrink: 0 }}>{time || "—"}</span>
+      <div style={{ width: 7, height: 7, borderRadius: "50%", background: CAT_DOTS[cat] || G[400], flexShrink: 0 }} />
+      <span style={{ fontSize: 13, color: G[900], fontWeight: 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+      {price && <span style={{ fontSize: 11, color: G[500], background: G[100], padding: "2px 6px", borderRadius: 6, flexShrink: 0 }}>{price}</span>}
+      {edited && <Bdg c="amber">edited</Bdg>}
+      {alts && <button style={{ fontSize: 11, color: P, background: `${P}10`, border: `1px solid ${P}30`, borderRadius: 6, padding: "2px 7px", cursor: "pointer", flexShrink: 0, fontWeight: 500 }}>Find Alternatives</button>}
+      {onEdit && <button onClick={onEdit} data-testid={`button-edit-item-${name?.slice(0, 20)}`} style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: G[400], flexShrink: 0, display: "flex" }}><Pencil style={{ width: 11, height: 11 }} /></button>}
+    </div>
+  );
+}
+
+function DayCard({ day, date, loc, children, onAdd, onTemplate }: any) {
+  return (
+    <div style={{ background: "white", borderRadius: 12, border: `1px solid ${G[200]}`, boxShadow: "0 1px 4px rgba(0,0,0,0.06)", marginBottom: 12, overflow: "hidden" }}>
+      <div style={{ padding: "9px 14px", borderBottom: `1px solid ${G[100]}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: `${P}22`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: P }}>{day}</div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>Day {day} · {date}</div>
+            {loc && <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: G[500] }}><MapPin style={{ width: 10, height: 10 }} />{loc}</div>}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 5 }}>
+          <button onClick={onTemplate} data-testid={`button-template-day-${day}`} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: G[600], background: G[50], border: `1px solid ${G[200]}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 500 }}>
+            <LayoutTemplate style={{ width: 11, height: 11 }} /> Template
+          </button>
+          <button onClick={onAdd} data-testid={`button-add-day-${day}`} style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: P, background: `${P}10`, border: `1px solid ${P}30`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontWeight: 500 }}>
+            <Plus style={{ width: 11, height: 11 }} /> Add
+          </button>
+        </div>
+      </div>
+      <div style={{ padding: "8px 10px" }}>{children}</div>
+    </div>
+  );
+}
+
+const STEPS = [
+  { key: "draft", label: "Draft", icon: <FileText style={{ width: 11, height: 11 }} /> },
+  { key: "in_review", label: "Expert Review", icon: <Eye style={{ width: 11, height: 11 }} /> },
+  { key: "notes", label: "Expert Notes", icon: <StickyNote style={{ width: 11, height: 11 }} /> },
+  { key: "pending", label: "Awaiting Approval", icon: <Clock style={{ width: 11, height: 11 }} /> },
+  { key: "delivered", label: "Confirmed", icon: <CheckCircle style={{ width: 11, height: 11 }} /> },
+];
+
+function ApprovalBar({ current, onSubmit, isPending }: { current: string; onSubmit: () => void; isPending: boolean }) {
+  const idx = STEPS.findIndex(s => s.key === current);
+  const effectiveIdx = idx === -1 ? 0 : idx;
+  return (
+    <div style={{ background: "white", borderBottom: `1px solid ${G[200]}`, padding: "7px 18px", display: "flex", alignItems: "center", gap: 0, flexShrink: 0 }}>
+      {STEPS.map((s, i) => {
+        const done = i < effectiveIdx, active = i === effectiveIdx, future = i > effectiveIdx;
+        return (
+          <div key={s.key} style={{ display: "flex", alignItems: "center", flex: i < STEPS.length - 1 ? 1 : "auto" as any }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 10px 3px 6px", borderRadius: 99, background: active ? `${P}12` : done ? "#F0FDF4" : "transparent", border: active ? `1.5px solid ${P}40` : done ? "1.5px solid #86EFAC" : "1.5px solid transparent" }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: active ? P : done ? "#22C55E" : "white", border: future ? `1.5px solid ${G[300]}` : "none", color: active || done ? "white" : G[400], flexShrink: 0 }}>
+                {done ? <CheckCircle style={{ width: 11, height: 11 }} /> : s.icon}
+              </div>
+              <span style={{ fontSize: 11, fontWeight: active ? 700 : 500, color: active ? P : done ? "#15803D" : G[400], whiteSpace: "nowrap" }}>{s.label}</span>
+            </div>
+            {i < STEPS.length - 1 && <div style={{ flex: 1, height: 1, background: i < effectiveIdx ? "#86EFAC" : G[200], margin: "0 2px" }} />}
+          </div>
+        );
+      })}
+      {current !== "delivered" && (
+        <button onClick={onSubmit} disabled={isPending} data-testid="button-submit-approval" style={{ marginLeft: 12, padding: "4px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: isPending ? "not-allowed" : "pointer", flexShrink: 0, display: "flex", alignItems: "center", gap: 4, opacity: isPending ? 0.7 : 1 }}>
+          {isPending ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Send style={{ width: 10, height: 10 }} />}
+          {current === "draft" ? "Submit for Review" : "Mark Delivered"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function BookingBriefModal({ provider, travelerName, onClose, onConfirm }: { provider: string; travelerName: string; onClose: () => void; onConfirm: () => void }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "white", borderRadius: 16, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.25)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: `${P}15`, display: "flex", alignItems: "center", justifyContent: "center" }}><ShieldCheck style={{ width: 16, height: 16, color: P }} /></div>
+            <div><div style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Booking Brief</div><div style={{ fontSize: 11, color: G[500] }}>Secure client details for {provider}</div></div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: G[400], padding: 4, display: "flex" }}><X style={{ width: 18, height: 18 }} /></button>
+        </div>
+        <div style={{ margin: "12px 18px 0", padding: "8px 12px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <Lock style={{ width: 13, height: 13, color: "#2563EB", flexShrink: 0, marginTop: 1 }} />
+          <span style={{ fontSize: 11, color: "#1D4ED8", lineHeight: 1.5 }}>Booking context only. Use these details to complete your client's reservation. Do not save or share with unrelated third parties.</span>
+        </div>
+        <div style={{ padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {[
+            { icon: <User style={{ width: 13, height: 13 }} />, label: "Booking name", value: travelerName || "Client" },
+            { icon: <CalendarDays style={{ width: 13, height: 13 }} />, label: "Trip details", value: "See trip dates in workspace" },
+          ].map((row, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: G[50], borderRadius: 8, border: `1px solid ${G[200]}` }}>
+              <div style={{ color: G[400], flexShrink: 0 }}>{row.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{row.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>{row.value}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "14px 18px", display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "8px", borderRadius: 8, border: `1.5px solid ${G[200]}`, background: "white", fontSize: 13, fontWeight: 600, color: G[600], cursor: "pointer" }}>Cancel</button>
+          <button onClick={() => { onConfirm(); onClose(); }} data-testid="button-confirm-booking" style={{ flex: 2, padding: "8px", borderRadius: 8, border: "none", background: P, color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <ExternalLink style={{ width: 13, height: 13 }} /> Continue to {provider}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddItemModal({ dayNumber, tripId, onClose }: { dayNumber: number; tripId: string; onClose: () => void }) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
+      onClose();
+    },
+    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+  });
+  const handleSubmit = () => {
+    if (!form.title.trim()) return;
+    createMutation.mutate({ ...form, dayNumber, estimatedCost: form.estimatedCost ? parseFloat(form.estimatedCost) : undefined });
+  };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "white", borderRadius: 16, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>Add Item — Day {dayNumber}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: G[400] }}><X style={{ width: 18, height: 18 }} /></button>
+        </div>
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Title *</label>
+            <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Senso-ji Temple visit" data-testid="input-add-item-title" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, outline: "none", boxSizing: "border-box" as any }} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Type</label>
+              <select value={form.itemType} onChange={e => setForm(f => ({ ...f, itemType: e.target.value }))} data-testid="select-add-item-type" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, background: "white" }}>
+                <option value="activity">Activity</option>
+                <option value="dining">Dining</option>
+                <option value="hotel">Hotel</option>
+                <option value="transport">Transport</option>
+                <option value="culture">Culture</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Start Time</label>
+              <input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} data-testid="input-add-item-time" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13 }} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Location</label>
+              <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Venue name" data-testid="input-add-item-location" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13 }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Est. Cost (USD)</label>
+              <input type="number" value={form.estimatedCost} onChange={e => setForm(f => ({ ...f, estimatedCost: e.target.value }))} placeholder="0" data-testid="input-add-item-cost" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13 }} />
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: "0 18px 18px", display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "9px", borderRadius: 8, border: `1.5px solid ${G[200]}`, background: "white", fontSize: 13, fontWeight: 600, color: G[600], cursor: "pointer" }}>Cancel</button>
+          <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending} data-testid="button-add-item-confirm" style={{ flex: 2, padding: "9px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            {createMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add Item
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface AssignedTrip {
-  trip_id: string;
-  trip_title: string;
-  destination: string;
-  start_date: string;
-  end_date: string;
-  traveler_name: string;
-  status: "pending" | "accepted";
-  assigned_at: string;
-  suggestion_count: number;
+  trip_id: string; trip_title: string; destination: string;
+  start_date: string; end_date: string; traveler_name: string;
+  status: string; assigned_at: string; suggestion_count: number;
 }
-
-interface TripSuggestion {
-  id: string;
-  type: string;
-  day_number: number | null;
-  title: string;
-  description: string | null;
-  estimated_cost: string | null;
-  status: "pending" | "approved" | "rejected";
-  rejection_note: string | null;
-  created_at: string;
+interface ItineraryItem {
+  id: string; title: string; itemType: string; status: string; dayNumber: number;
+  startTime?: string | null; estimatedCost?: string | null; locationName?: string | null;
+  bookingStatus?: string | null; notes?: string | null;
 }
+interface ItineraryData { days: { dayNumber: number; items: ItineraryItem[] }[]; total: number; }
+interface CommissionData {
+  totalGross: string; expertShare: string; platformFee: string;
+  revenueShareRate: number; itemCount: number;
+  itemBreakdown: { id: string; title: string; dayNumber: number; cost: string; revenueShareRate: number; expertEarning: string; platformFee: string }[];
+}
+interface MyAssignment { id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null; }
 
-const SUGGESTION_TYPES = [
-  { value: "activity", label: "Activity" },
-  { value: "food", label: "Food / Restaurant" },
-  { value: "accommodation", label: "Accommodation" },
-  { value: "transport", label: "Transport" },
-  { value: "venue", label: "Venue" },
-  { value: "note", label: "General note" },
-];
+const formatCost = (c?: string | null) => {
+  if (!c || c === "0" || c === "0.00") return null;
+  const n = parseFloat(c);
+  return isNaN(n) ? null : `$${n.toLocaleString()}`;
+};
+const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
 
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [form, setForm] = useState({
-    type: "activity",
-    dayNumber: "",
-    title: "",
-    description: "",
-    estimatedCost: "",
-  });
 
-  const { data: assignedTrips, isLoading } = useQuery<AssignedTrip[]>({
-    queryKey: ["/api/expert/assigned-trips"],
-  });
+  const [rightTab, setRightTab] = useState("gaps");
+  const [cat, setCat] = useState("all");
+  const [cTab, setCTab] = useState("itinerary");
+  const [collapsed, setCollapsed] = useState(false);
+  const [identityRevealed, setIdentityRevealed] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [bookingBriefProvider, setBookingBriefProvider] = useState<string | null>(null);
+  const [addingItemDay, setAddingItemDay] = useState<number | null>(null);
 
-  const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery<{
-    suggestions: TripSuggestion[];
-  }>({
-    queryKey: [`/api/trips/${tripId}/suggestions`],
+  // ── Data fetching ──
+  const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({ queryKey: ["/api/expert/assigned-trips"] });
+  const trip = assignedTrips?.find(t => t.trip_id === tripId);
+
+  const { data: itineraryData, isLoading: itemsLoading } = useQuery<ItineraryData>({
+    queryKey: [`/api/trips/${tripId}/itinerary-items`],
     enabled: !!tripId,
   });
 
-  const submitSuggestionMutation = useMutation({
-    mutationFn: async (payload: any) => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/suggestions`, payload);
+  const { data: commission, isLoading: commissionLoading } = useQuery<CommissionData>({
+    queryKey: [`/api/trips/${tripId}/commission`],
+    enabled: !!tripId,
+  });
+
+  const { data: assignment, isLoading: assignmentLoading } = useQuery<MyAssignment>({
+    queryKey: [`/api/trips/${tripId}/my-assignment`],
+    enabled: !!tripId,
+  });
+
+  const { data: providers } = useQuery<any[]>({
+    queryKey: ["/api/provider/services", { status: "active" }],
+    queryFn: () => fetch("/api/provider/services?status=active").then(r => r.json()),
+  });
+
+  // ── Mutations ──
+  const advanceStatusMutation = useMutation({
+    mutationFn: async () => {
+      if (!assignment?.id) throw new Error("No assignment");
+      const current = assignment.workspaceStatus || "draft";
+      const next = current === "draft" ? "in_review" : "delivered";
+      const res = await apiRequest("PATCH", `/api/expert/assignments/${assignment.id}/workspace-status`, { workspaceStatus: next });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/suggestions`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/expert/assigned-trips"] });
-      setForm({ type: "activity", dayNumber: "", title: "", description: "", estimatedCost: "" });
-      toast({ title: "Suggestion sent!", description: "The traveler will review your idea." });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/my-assignment`] });
+      toast({ title: "Status updated", description: "Workspace status advanced successfully." });
     },
-    onError: (err: any) => {
-      toast({ title: "Could not submit suggestion", description: err.message, variant: "destructive" });
+    onError: (e: any) => toast({ title: "Could not update status", description: e.message, variant: "destructive" }),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!assignment?.id) return;
+      await apiRequest("PATCH", `/api/expert/assignments/${assignment.id}/workspace-status`, {});
     },
   });
 
-  const trip = assignedTrips?.find((t) => t.trip_id === tripId);
+  const workspaceStatus = assignment?.workspaceStatus || "draft";
+  const days = itineraryData?.days || [];
+  const totalItems = itineraryData?.total || 0;
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  // Detect evening dinner gap (no dining item in evening)
+  const daysWithDinnerGap = days.filter(d => {
+    const hasEvening = d.items.some(i => {
+      const t = i.startTime; if (!t) return false;
+      const h = parseInt(t.split(":")[0]); return h >= 18 && (i.itemType === "dining" || i.itemType === "food");
+    });
+    return !hasEvening && d.items.length > 0;
+  }).map(d => d.dayNumber);
 
-  const handleSubmit = () => {
-    if (!tripId || !form.title.trim()) return;
-    const payload: any = { type: form.type, title: form.title.trim() };
-    if (form.dayNumber) payload.dayNumber = parseInt(form.dayNumber, 10);
-    if (form.description.trim()) payload.description = form.description.trim();
-    if (form.estimatedCost) payload.estimatedCost = parseFloat(form.estimatedCost);
-    submitSuggestionMutation.mutate(payload);
-  };
+  const isLoading = tripsLoading || assignmentLoading;
 
-  const suggestions = suggestionsData?.suggestions || [];
+  if (!tripId) return <div style={{ padding: 40, textAlign: "center", color: G[500] }}>No trip selected.</div>;
+
+  if (isLoading) return (
+    <div style={{ padding: 40, display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, margin: "0 auto" }}>
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-32 rounded-xl" />
+      <Skeleton className="h-48 rounded-xl" />
+    </div>
+  );
+
+  if (!trip && !tripsLoading) return (
+    <div style={{ padding: 40, textAlign: "center" }}>
+      <Users style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
+      <div style={{ fontSize: 18, fontWeight: 600, color: G[900], marginBottom: 8 }}>Trip not found</div>
+      <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, or it no longer exists.</div>
+      <button onClick={() => setLocation("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
+    </div>
+  );
+
+  const tripTitle = trip?.trip_title || trip?.destination || `Trip ${tripId}`;
+  const travelerCode = trip?.trip_id?.slice(-6)?.toUpperCase() || "??????";
+  const travelerName = trip?.traveler_name || "Client";
 
   return (
-    <ExpertLayout title={trip ? `Workspace: ${trip.trip_title || trip.destination}` : "Workspace"}>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm">
-          <Link href="/expert/dashboard">
-            <button
-              className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="link-workspace-back-dashboard"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Dashboard
-            </button>
-          </Link>
-          <span className="text-muted-foreground">/</span>
-          <Link href="/expert/clients">
-            <button
-              className="text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="link-workspace-back-clients"
-            >
-              Clients
-            </button>
-          </Link>
-          <span className="text-muted-foreground">/</span>
-          <span className="text-foreground font-medium">
-            {isLoading ? "Loading…" : trip ? (trip.trip_title || trip.destination) : `Trip ${tripId}`}
-          </span>
-        </div>
+    <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", height: "100vh", display: "flex", flexDirection: "column", background: G[50], overflow: "hidden" }}>
+      {bookingBriefProvider && (
+        <BookingBriefModal provider={bookingBriefProvider} travelerName={identityRevealed ? travelerName : `Client #${travelerCode}`} onClose={() => setBookingBriefProvider(null)} onConfirm={() => { toast({ title: "Opening " + bookingBriefProvider, description: "Use client details to complete the booking." }); }} />
+      )}
+      {addingItemDay !== null && tripId && (
+        <AddItemModal dayNumber={addingItemDay} tripId={tripId} onClose={() => setAddingItemDay(null)} />
+      )}
 
-        {isLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-32 rounded-xl" />
-            <Skeleton className="h-48 rounded-xl" />
+      {/* ── Header ── */}
+      <header style={{ height: 56, background: "white", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setCollapsed(!collapsed)} data-testid="button-toggle-sidebar" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: G[500], display: "flex" }}><Menu style={{ width: 20, height: 20 }} /></button>
+          <Link href="/expert/dashboard"><button style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: G[400], fontSize: 13 }}><ArrowLeft style={{ width: 14, height: 14 }} /></button></Link>
+          <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>Itinerary Workspace</span>
+          <ChevronRight style={{ width: 14, height: 14, color: G[400] }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", background: G[50], borderRadius: 99, border: `1px solid ${G[200]}` }}>
+            <Lock style={{ width: 11, height: 11, color: G[400] }} />
+            <span style={{ fontSize: 13, color: G[600], fontWeight: 500 }} data-testid="text-client-identity">
+              {identityRevealed ? travelerName : `Client #${travelerCode}`}
+            </span>
+            <button onClick={() => setIdentityRevealed(!identityRevealed)} data-testid="button-reveal-identity" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0, color: G[400] }}>
+              {identityRevealed ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
+            </button>
           </div>
-        ) : !trip ? (
-          /* Trip not found / not assigned */
-          <Card>
-            <CardContent className="p-12 text-center">
-              <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-40" />
-              <h3 className="text-lg font-semibold mb-2">Trip not found</h3>
-              <p className="text-muted-foreground text-sm mb-6">
-                This trip isn't assigned to you, or it may no longer exist.
-              </p>
-              <Link href="/expert/assigned-trips">
-                <Button data-testid="button-workspace-back-assigned">View Assigned Trips</Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            {/* Trip header */}
-            <Card>
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h1 className="text-xl font-bold text-foreground">
-                        {trip.trip_title || trip.destination}
-                      </h1>
-                      <Badge
-                        variant={trip.status === "accepted" ? "default" : "secondary"}
-                        className="text-xs"
-                        data-testid="badge-workspace-status"
-                      >
-                        {trip.status === "accepted" ? "Active" : "Pending"}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <MapPin className="w-3.5 h-3.5" />
-                        {trip.destination}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5" />
-                        {formatDate(trip.start_date)} – {formatDate(trip.end_date)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="w-3.5 h-3.5" />
-                        {trip.traveler_name}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        Assigned {formatDate(trip.assigned_at)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <a
-                      href={`/trip/${trip.trip_id}?tab=itinerary`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <Button variant="outline" size="sm" className="gap-1.5" data-testid="button-workspace-open-itinerary">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Full Itinerary
-                      </Button>
-                    </a>
-                    <Link href="/chat">
-                      <Button variant="outline" size="sm" className="gap-1.5" data-testid="button-workspace-open-chat">
-                        Message Client
-                      </Button>
-                    </Link>
-                    <Link href="/expert/ai-assistant">
-                      <Button variant="outline" size="sm" className="gap-1.5" data-testid="button-workspace-ai-assist">
-                        <Bot className="w-3.5 h-3.5" />
-                        AI Assist
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", background: "#F0FDF4", borderRadius: 99, border: "1px solid #BBF7D0" }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#16A34A" }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#15803D" }}>AI: Active</span>
+          </div>
+          <Av i={travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()} s={32} />
+        </div>
+      </header>
 
-            {/* Empty state — no suggestions yet */}
-            {!suggestionsLoading && suggestions.length === 0 && (
-              <Card className="border-2 border-dashed border-muted-foreground/25 bg-muted/20">
-                <CardContent className="p-10 text-center">
-                  <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-                    <PlusCircle className="w-7 h-7 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Start Building This Itinerary</h3>
-                  <p className="text-muted-foreground text-sm max-w-sm mx-auto mb-6">
-                    No suggestions yet for this trip. Add your first recommendation or use AI to
-                    generate ideas based on the destination.
-                  </p>
-                  <div className="flex items-center justify-center gap-3 flex-wrap">
-                    <Link href="/expert/ai-assistant">
-                      <Button className="gap-2" data-testid="button-workspace-ai-quickstart">
-                        <Bot className="w-4 h-4" />
-                        AI Quick Start
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="outline"
-                      className="gap-2"
-                      onClick={() => document.getElementById("suggestion-form")?.scrollIntoView({ behavior: "smooth" })}
-                      data-testid="button-workspace-add-first"
-                    >
-                      <Lightbulb className="w-4 h-4" />
-                      Add First Suggestion
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+      {/* ── Approval Bar ── */}
+      <ApprovalBar current={workspaceStatus} onSubmit={() => advanceStatusMutation.mutate()} isPending={advanceStatusMutation.isPending} />
 
-            {/* Existing suggestions */}
-            {suggestions.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4 text-amber-500" />
-                    Your Suggestions ({suggestions.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2" data-testid="workspace-suggestions-list">
-                  {suggestions.map((s) => (
-                    <div
-                      key={s.id}
-                      className={`rounded-lg border p-3 text-sm ${
-                        s.status === "approved"
-                          ? "border-green-200 bg-green-50/50"
-                          : s.status === "rejected"
-                          ? "border-red-200 bg-red-50/50"
-                          : "border-border bg-muted/20"
-                      }`}
-                      data-testid={`workspace-suggestion-${s.id}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-foreground flex-1 truncate">{s.title}</span>
-                        <Badge
-                          variant={
-                            s.status === "approved"
-                              ? "default"
-                              : s.status === "rejected"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className="text-[10px] flex-shrink-0"
-                        >
-                          {s.status}
-                        </Badge>
-                      </div>
-                      {s.description && (
-                        <p className="text-xs text-muted-foreground mt-1">{s.description}</p>
-                      )}
-                      {s.rejection_note && (
-                        <p className="text-xs text-red-600 italic mt-1">"{s.rejection_note}"</p>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Add suggestion form */}
-            <Card id="suggestion-form">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Add a Suggestion</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ws-type">Type</Label>
-                    <Select
-                      value={form.type}
-                      onValueChange={(v) => setForm((f) => ({ ...f, type: v }))}
-                    >
-                      <SelectTrigger id="ws-type" data-testid="select-workspace-type">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SUGGESTION_TYPES.map((t) => (
-                          <SelectItem key={t.value} value={t.value}>
-                            {t.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="ws-day">Day (optional)</Label>
-                    <Input
-                      id="ws-day"
-                      type="number"
-                      min={1}
-                      placeholder="e.g. 2"
-                      value={form.dayNumber}
-                      onChange={(e) => setForm((f) => ({ ...f, dayNumber: e.target.value }))}
-                      data-testid="input-workspace-day"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ws-title">Title *</Label>
-                  <Input
-                    id="ws-title"
-                    placeholder="e.g. Visit Senso-ji Temple at sunrise"
-                    value={form.title}
-                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                    data-testid="input-workspace-title"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ws-desc">Details (optional)</Label>
-                  <Textarea
-                    id="ws-desc"
-                    placeholder="Why this is special, how to book, insider tips…"
-                    rows={3}
-                    value={form.description}
-                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                    data-testid="input-workspace-description"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="ws-cost">Estimated cost USD (optional)</Label>
-                  <Input
-                    id="ws-cost"
-                    type="number"
-                    min={0}
-                    placeholder="0"
-                    value={form.estimatedCost}
-                    onChange={(e) => setForm((f) => ({ ...f, estimatedCost: e.target.value }))}
-                    data-testid="input-workspace-cost"
-                  />
-                </div>
-                <Button
-                  className="w-full gap-2"
-                  onClick={handleSubmit}
-                  disabled={submitSuggestionMutation.isPending || !form.title.trim()}
-                  data-testid="button-workspace-submit-suggestion"
-                >
-                  {submitSuggestionMutation.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Lightbulb className="w-4 h-4" />
-                  )}
-                  Send suggestion
-                </Button>
-              </CardContent>
-            </Card>
-          </>
-        )}
+      {/* ── Expert Notes ── */}
+      <div style={{ background: "#FEFCE8", borderBottom: `1px solid #FEF08A`, padding: "8px 18px", display: "flex", alignItems: "flex-start", gap: 10, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 2, flexShrink: 0 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 7, background: "#EAB308", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><StickyNote style={{ width: 12, height: 12, color: "white" }} /></div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#713F12", letterSpacing: "0.02em" }}>Expert Notes</div>
+            <div style={{ fontSize: 10, color: "#A16207", display: "flex", alignItems: "center", gap: 3 }}><Lock style={{ width: 9, height: 9 }} /> Only you can see this</div>
+          </div>
+        </div>
+        <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Add private notes about this client, their preferences, things to avoid..." data-testid="textarea-expert-notes" style={{ flex: 1, minHeight: 48, padding: "6px 9px", fontSize: 11, color: "#713F12", lineHeight: 1.55, background: "white", border: "1px solid #FDE68A", borderRadius: 8, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, paddingTop: 2 }}>
+          <Bdg c="amber">Step {["draft","in_review","notes","pending","delivered"].indexOf(workspaceStatus) + 1} of 5</Bdg>
+          {workspaceStatus !== "delivered" && (
+            <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending} data-testid="button-mark-complete" style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "#EAB308", color: "white", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
+              Mark Complete →
+            </button>
+          )}
+        </div>
       </div>
-    </ExpertLayout>
+
+      {/* ── Body ── */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+        {/* ── Left Rail ── */}
+        {!collapsed && (
+          <aside style={{ width: 282, background: "white", borderRight: `1px solid ${G[200]}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 11px" }}>
+
+              {/* Trip card */}
+              <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 11, border: `1px solid ${G[200]}` }}>
+                <div style={{ height: 64, background: "linear-gradient(135deg,#FF385C22,#FF6B8A33)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                  <span style={{ fontSize: 24 }}>✈️</span>
+                  <div style={{ position: "absolute", bottom: 6, right: 8, background: "white", borderRadius: 6, padding: "2px 6px", fontSize: 10, fontWeight: 600, color: P }}>
+                    {trip ? `${Math.max(1, Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / 86400000))} nights` : "—"}
+                  </div>
+                  <div style={{ position: "absolute", top: 6, left: 8, display: "flex", alignItems: "center", gap: 4, background: "rgba(0,0,0,0.35)", borderRadius: 99, padding: "2px 7px" }}>
+                    <Lock style={{ width: 9, height: 9, color: "white" }} /><span style={{ fontSize: 9, color: "white", fontWeight: 600 }}>PRIVATE</span>
+                  </div>
+                </div>
+                <div style={{ padding: "9px 11px" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>{tripTitle}</div>
+                  {trip && <div style={{ fontSize: 11, color: G[500], marginTop: 2 }}>📅 {formatDate(trip.start_date)} – {formatDate(trip.end_date)}</div>}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <Av i={identityRevealed ? (travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()) : "??"} s={20} />
+                      <span style={{ fontSize: 12, color: G[700], fontWeight: 500 }} data-testid="text-left-rail-client">{identityRevealed ? travelerName : `Client #${travelerCode}`}</span>
+                    </div>
+                    <button onClick={() => setIdentityRevealed(!identityRevealed)} data-testid="button-left-rail-reveal" style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: `1px solid ${G[200]}`, borderRadius: 99, padding: "2px 7px", fontSize: 10, color: G[500], cursor: "pointer", fontWeight: 600 }}>
+                      {identityRevealed ? <><EyeOff style={{ width: 9, height: 9 }} /> Hide</> : <><Eye style={{ width: 9, height: 9 }} /> Reveal</>}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trip stats */}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Trip Overview</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {trip?.destination && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", background: G[50], borderRadius: 7, border: `1px solid ${G[200]}` }}>
+                      <MapPin style={{ width: 11, height: 11, color: P, flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: G[700] }}>{trip.destination}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", background: G[50], borderRadius: 7, border: `1px solid ${G[200]}` }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: P, flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: G[700] }}>Status</div>
+                      <div style={{ fontSize: 10, color: G[400] }}>{trip?.status === "accepted" ? "Active assignment" : "Pending acceptance"}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Item count */}
+              {totalItems > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Itinerary</div>
+                  <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <span style={{ fontSize: 11, color: G[600], fontWeight: 500 }}>Total items</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: G[900] }}>{totalItems}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 11, color: G[600], fontWeight: 500 }}>Days planned</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: G[900] }}>{days.length}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Commission summary */}
+              {commission && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>Your Earnings</div>
+                  <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                      <span style={{ fontSize: 11, color: G[600] }}>Revenue share</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#15803D" }}>${parseFloat(commission.expertShare).toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontSize: 10, color: G[500] }}>{Math.round(commission.revenueShareRate * 100)}% of gross · {commission.itemCount} items</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* AI gaps */}
+              {daysWithDinnerGap.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 5 }}>AI Gap Analysis</div>
+                  <div style={{ background: "#FFFBEB", border: "1px solid #FEF3C7", borderRadius: 8, padding: "8px 10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 5 }}><AlertTriangle style={{ width: 13, height: 13, color: "#D97706" }} /><span style={{ fontSize: 12, fontWeight: 700, color: "#B45309" }}>{daysWithDinnerGap.length} gap{daysWithDinnerGap.length > 1 ? "s" : ""} found</span></div>
+                    {daysWithDinnerGap.map(d => <div key={d} style={{ display: "flex", gap: 5, marginBottom: 3 }}><span style={{ fontSize: 10, color: "#D97706", marginTop: 1 }}>•</span><span style={{ fontSize: 11, color: "#B45309" }}>Day {d} — no evening dining</span></div>)}
+                  </div>
+                </div>
+              )}
+
+              <button onClick={() => setLocation(`/trip/${tripId}?tab=itinerary`)} data-testid="button-open-full-logistics" style={{ width: "100%", padding: "6px 12px", borderRadius: 8, border: `1px solid ${G[200]}`, background: "white", fontSize: 12, color: G[600], cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontWeight: 500 }}>
+                <Navigation style={{ width: 12, height: 12 }} /> Open Full Itinerary <ChevronRight style={{ width: 11, height: 11, color: G[400] }} />
+              </button>
+            </div>
+          </aside>
+        )}
+
+        {/* ── Center Itinerary ── */}
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+          <div style={{ background: "white", borderBottom: `1px solid ${G[200]}`, padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 44, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 4 }}>
+              {[{ k: "itinerary", l: "📋 Itinerary" }, { k: "map", l: "🗺 Map View" }].map(t => (
+                <button key={t.k} onClick={() => setCTab(t.k)} data-testid={`tab-center-${t.k}`} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 13, fontWeight: 500, background: cTab === t.k ? `${P}12` : "none", color: cTab === t.k ? P : G[500], border: cTab === t.k ? `1.5px solid ${P}40` : "1.5px solid transparent", cursor: "pointer" }}>{t.l}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Link href={`/chat`}>
+                <button data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                  <MessageSquare style={{ width: 13, height: 13 }} /> Chat
+                </button>
+              </Link>
+              <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending || workspaceStatus === "delivered"} data-testid="button-send-edits" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, opacity: workspaceStatus === "delivered" ? 0.5 : 1 }}>
+                <Send style={{ width: 13, height: 13 }} /> Send Edits
+              </button>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+            {cTab === "map" ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", flexDirection: "column", gap: 12 }}>
+                <MapPin style={{ width: 40, height: 40, color: G[300] }} />
+                <div style={{ fontSize: 15, fontWeight: 600, color: G[600] }}>Map view coming soon</div>
+                <div style={{ fontSize: 13, color: G[400] }}>Open the full itinerary to see the map view</div>
+                <a href={`/trip/${tripId}?tab=transport`} target="_blank" rel="noopener noreferrer">
+                  <button data-testid="button-open-map-itinerary" style={{ padding: "8px 16px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Open Full Itinerary</button>
+                </a>
+              </div>
+            ) : itemsLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {[1, 2, 3].map(i => <div key={i} style={{ background: "white", borderRadius: 12, border: `1px solid ${G[200]}`, padding: 16, height: 100 }}><Skeleton className="h-full w-full" /></div>)}
+              </div>
+            ) : days.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📋</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: G[900], marginBottom: 8 }}>No itinerary items yet</div>
+                <div style={{ fontSize: 13, color: G[500], marginBottom: 20 }}>Start building the itinerary by adding activities, dining, and transport for each day.</div>
+                <button onClick={() => setAddingItemDay(1)} data-testid="button-add-first-item" style={{ padding: "9px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Plus style={{ width: 14, height: 14 }} /> Add First Item
+                </button>
+              </div>
+            ) : (
+              <>
+                {days.map(d => (
+                  <DayCard key={d.dayNumber} day={d.dayNumber} date={`Day ${d.dayNumber}`} loc={trip?.destination || ""} onAdd={() => setAddingItemDay(d.dayNumber)} onTemplate={() => toast({ title: "Templates coming soon" })}>
+                    {d.items.map((item, idx) => (
+                      <div key={item.id}>
+                        {idx > 0 && item.startTime && <TConn mode="walk" dur="walk" />}
+                        <ARow
+                          time={item.startTime}
+                          cat={item.itemType}
+                          name={item.title}
+                          price={formatCost(item.estimatedCost)}
+                          edited={item.bookingStatus === "pending"}
+                          alts={item.itemType === "dining" || item.itemType === "food"}
+                          onEdit={() => toast({ title: "Edit coming soon", description: item.title })}
+                        />
+                      </div>
+                    ))}
+                    {daysWithDinnerGap.includes(d.dayNumber) && (
+                      <ARow gap onAddOne={() => { setRightTab("browse"); }} />
+                    )}
+                  </DayCard>
+                ))}
+
+                {/* Budget footer */}
+                {commission && (
+                  <div style={{ background: "white", borderRadius: 10, border: `1px solid ${G[200]}`, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", gap: 20 }}>
+                      {[
+                        { l: "Activities", v: days.reduce((s, d) => s + d.items.filter(i => i.itemType === "activity" || i.itemType === "culture").reduce((a, i) => a + parseFloat(i.estimatedCost || "0"), 0), 0) },
+                        { l: "Dining", v: days.reduce((s, d) => s + d.items.filter(i => i.itemType === "dining" || i.itemType === "food").reduce((a, i) => a + parseFloat(i.estimatedCost || "0"), 0), 0) },
+                        { l: "Transport", v: days.reduce((s, d) => s + d.items.filter(i => i.itemType === "transport").reduce((a, i) => a + parseFloat(i.estimatedCost || "0"), 0), 0) },
+                        { l: "Hotels", v: days.reduce((s, d) => s + d.items.filter(i => i.itemType === "hotel" || i.itemType === "accommodation").reduce((a, i) => a + parseFloat(i.estimatedCost || "0"), 0), 0) },
+                      ].map(s => (
+                        <div key={s.l}><div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{s.l}</div><div style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>${s.v.toLocaleString()}</div></div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase" }}>Total Est.</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: P }}>${parseFloat(commission.totalGross).toLocaleString()}</div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </main>
+
+        {/* ── Right Panel ── */}
+        <aside style={{ width: 380, background: "white", borderLeft: `1px solid ${G[200]}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+          <div style={{ borderBottom: `1px solid ${G[200]}`, padding: "0 10px", display: "flex", gap: 0, flexShrink: 0, overflowX: "auto" }}>
+            {[{ k: "gaps", l: "⚡ AI Gaps" }, { k: "browse", l: "🔍 Browse" }, { k: "commission", l: "💰 Earnings" }, { k: "providers", l: "👥 Providers" }, { k: "affiliates", l: "🔗 Affiliates" }].map(t => (
+              <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${P}` : "2px solid transparent", color: rightTab === t.k ? P : G[500], marginBottom: -1, whiteSpace: "nowrap" }}>{t.l}</button>
+            ))}
+          </div>
+
+          {/* AI Gaps Tab */}
+          {rightTab === "gaps" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}><Zap style={{ width: 14, height: 14, color: P }} /><span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>AI Gap Analysis</span></div>
+              {daysWithDinnerGap.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "40px 20px" }}>
+                  <CheckCircle style={{ width: 36, height: 36, color: "#22C55E", margin: "0 auto 12px" }} />
+                  <div style={{ fontSize: 14, fontWeight: 600, color: G[900], marginBottom: 6 }}>No gaps found!</div>
+                  <div style={{ fontSize: 12, color: G[500] }}>All days have complete coverage.</div>
+                </div>
+              ) : (
+                daysWithDinnerGap.map((d, i) => (
+                  <div key={d} style={{ border: `1px solid ${P}40`, borderRadius: 10, padding: "10px 12px", marginBottom: 9, background: `${P}05` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><Bdg c="primary">Day {d}</Bdg><span style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>No evening dining booked</span></div>
+                    <p style={{ fontSize: 12, color: G[500], margin: "0 0 5px" }}>Add a dinner recommendation for this evening</p>
+                    <div style={{ fontSize: 11, color: "#15803D", fontWeight: 600, marginBottom: 7 }}>💰 Add a restaurant to earn commission</div>
+                    <button onClick={() => { setRightTab("browse"); setCat("dining"); }} data-testid={`button-fill-gap-day-${d}`} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 12, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer" }}>Fill This Gap →</button>
+                  </div>
+                ))
+              )}
+              {totalItems > 0 && commission && (
+                <div style={{ background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: 8, padding: "8px 12px", marginTop: 6 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#15803D", display: "flex", alignItems: "center", gap: 5 }}>
+                    <TrendingUp style={{ width: 12, height: 12 }} /> Your estimated earnings: ${parseFloat(commission.expertShare).toFixed(2)}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Browse Tab */}
+          {rightTab === "browse" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Providers</span>
+                  {trip?.destination && <span style={{ fontSize: 11, background: G[100], padding: "2px 7px", borderRadius: 99, color: G[500], display: "flex", alignItems: "center", gap: 3 }}><MapPin style={{ width: 10, height: 10 }} /> {trip.destination}</span>}
+                </div>
+                <button style={{ background: "none", border: "none", cursor: "pointer", color: G[400] }}><Filter style={{ width: 14, height: 14 }} /></button>
+              </div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
+                {[{ k: "all", l: "All" }, { k: "dining", l: "🍽 Dining" }, { k: "activities", l: "🏛 Activities" }, { k: "hotels", l: "🏨 Hotels" }, { k: "transport", l: "🚌 Transport" }].map(c => (
+                  <Chip key={c.k} active={cat === c.k} onClick={() => setCat(c.k)}>{c.l}</Chip>
+                ))}
+              </div>
+              <div style={{ background: `${P}08`, border: `1px solid ${P}25`, borderRadius: 8, padding: "6px 10px", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Sparkles style={{ width: 13, height: 13, color: P, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: P }}>Filtered for {trip?.destination || "destination"} · {cat === "all" ? "all categories" : cat}</span>
+              </div>
+              {providers && providers.length > 0 ? (
+                providers.filter(p => cat === "all" || p.category?.toLowerCase().includes(cat) || p.serviceType?.toLowerCase().includes(cat)).slice(0, 8).map((p: any) => (
+                  <div key={p.id} data-testid={`card-provider-${p.id}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 10px", borderRadius: 10, border: `1px solid ${G[100]}`, background: "white", marginBottom: 7, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 8, background: G[100], flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17 }}>🏢</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: G[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.serviceName}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
+                        <span style={{ fontSize: 11, color: G[500] }}>{p.serviceType || p.category}</span>
+                        {p.price && <><span style={{ color: G[300] }}>·</span><span style={{ fontSize: 11, color: G[500] }}>${p.price}</span></>}
+                      </div>
+                    </div>
+                    <button onClick={() => setAddingItemDay(daysWithDinnerGap[0] || 1)} data-testid={`button-add-provider-${p.id}`} style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      <Plus style={{ width: 10, height: 10 }} /> Add
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <div style={{ textAlign: "center", padding: "30px 0", color: G[400], fontSize: 13 }}>
+                  <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+                  No platform providers found for this destination yet.
+                  <div style={{ marginTop: 10 }}>
+                    <button onClick={() => setBookingBriefProvider("Viator")} data-testid="button-browse-viator" style={{ padding: "6px 14px", borderRadius: 7, background: P, color: "white", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Browse Viator</button>
+                  </div>
+                </div>
+              )}
+              <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${G[100]}`, textAlign: "center" }}><span style={{ fontSize: 10, color: G[400] }}>Powered by Traveloure · Viator · Google Places</span></div>
+            </div>
+          )}
+
+          {/* Earnings / Commission Tab */}
+          {rightTab === "commission" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}><TrendingUp style={{ width: 14, height: 14, color: P }} /><span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Your Earnings</span></div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "8px 10px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 8, marginBottom: 14 }}>
+                <DollarSign style={{ width: 13, height: 13, color: "#2563EB", flexShrink: 0, marginTop: 1 }} />
+                <span style={{ fontSize: 11, color: "#1D4ED8", lineHeight: 1.5 }}>Traveloure earns booking revenue from partner platforms. <strong>You receive {commission ? Math.round(commission.revenueShareRate * 100) : 30}% of that as your revenue share</strong> for every booking you add to a client's itinerary.</span>
+              </div>
+              {commissionLoading ? <Skeleton className="h-32 mb-4" /> : commission ? (
+                <>
+                  <div style={{ background: "linear-gradient(135deg,#FF385C12,#FF6B8A08)", border: `1px solid ${P}30`, borderRadius: 12, padding: "14px", marginBottom: 14 }}>
+                    <div style={{ fontSize: 11, color: G[500], marginBottom: 2 }}>Your estimated earnings · this trip</div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: G[900] }}>${parseFloat(commission.expertShare).toFixed(2)}</div>
+                    <div style={{ fontSize: 12, color: "#15803D", fontWeight: 600, marginTop: 2 }}>{Math.round(commission.revenueShareRate * 100)}% revenue share · {commission.itemCount} items</div>
+                    <div style={{ height: 1, background: G[200], margin: "10px 0" }} />
+                    <div style={{ display: "flex", gap: 16 }}>
+                      <div><div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase" }}>Gross</div><div style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>${parseFloat(commission.totalGross).toFixed(2)}</div></div>
+                      <div><div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase" }}>Your Share</div><div style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>${parseFloat(commission.expertShare).toFixed(2)}</div></div>
+                      <div><div style={{ fontSize: 10, color: G[400], fontWeight: 600, textTransform: "uppercase" }}>Platform</div><div style={{ fontSize: 13, fontWeight: 700, color: G[500] }}>${parseFloat(commission.platformFee).toFixed(2)}</div></div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Booking Breakdown</div>
+                  {commission.itemBreakdown.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "20px 0", color: G[400], fontSize: 13 }}>No confirmed items yet.</div>
+                  ) : (
+                    commission.itemBreakdown.map((b, i) => (
+                      <div key={b.id || i} data-testid={`row-commission-${i}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 10px", border: `1px solid ${G[100]}`, borderRadius: 9, marginBottom: 7, background: "white" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: G[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.title}</div>
+                          <div style={{ fontSize: 11, color: G[400] }}>Day {b.dayNumber} · ${parseFloat(b.cost).toFixed(2)} gross</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#15803D" }}>${parseFloat(b.expertEarning).toFixed(2)}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, background: "#DCFCE7", color: "#15803D", padding: "1px 6px", borderRadius: 99 }}>confirmed</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "20px 0", color: G[400], fontSize: 13 }}>No earnings data yet — add items to the itinerary to start earning.</div>
+              )}
+            </div>
+          )}
+
+          {/* Providers Tab */}
+          {rightTab === "providers" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 6, background: P, display: "flex", alignItems: "center", justifyContent: "center" }}><User style={{ width: 11, height: 11, color: "white" }} /></div>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Platform Service Providers</span>
+                  </div>
+                  {trip?.destination && <Bdg c="primary">{trip.destination}</Bdg>}
+                </div>
+                <p style={{ fontSize: 11, color: G[500], marginBottom: 10 }}>Traveloure-verified providers you can book directly for this client.</p>
+                {providers && providers.length > 0 ? providers.slice(0, 6).map((p: any, i: number) => (
+                  <div key={p.id || i} data-testid={`card-sp-${p.id}`} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", border: `1px solid ${G[100]}`, borderRadius: 10, marginBottom: 7, background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                    <div style={{ width: 38, height: 38, borderRadius: "50%", background: `linear-gradient(135deg,${P}30,${P}60)`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🏢</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 1 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>{p.serviceName}</span>
+                        {p.status === "active" && <div title="Active" style={{ width: 14, height: 14, borderRadius: "50%", background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><CheckCircle style={{ width: 9, height: 9, color: "white" }} /></div>}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: G[700], marginBottom: 1 }}>{p.serviceType || p.category || "Service"}</div>
+                      {p.location && <div style={{ fontSize: 11, color: G[400], marginBottom: 4 }}>{p.location}</div>}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {p.price && <span style={{ fontSize: 11, color: G[600], fontWeight: 600 }}>${p.price}</span>}
+                        <button onClick={() => setBookingBriefProvider(p.serviceName)} data-testid={`button-book-provider-${p.id}`} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                          <CheckCircle style={{ width: 10, height: 10 }} /> Book
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )) : (
+                  <div style={{ textAlign: "center", padding: "30px 0", color: G[400], fontSize: 13 }}>
+                    <Users style={{ width: 32, height: 32, color: G[300], margin: "0 auto 8px" }} />
+                    No platform providers found yet.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Affiliates Tab */}
+          {rightTab === "affiliates" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 7, background: `${P}22`, display: "flex", alignItems: "center", justifyContent: "center" }}><Link2 style={{ width: 11, height: 11, color: P }} /></div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Affiliate Networks</span>
+              </div>
+              <p style={{ fontSize: 11, color: G[500], marginBottom: 12 }}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client.</p>
+              {[
+                { n: "Booking.com", c: "Hotels", e: "🏨", active: true, note: "Use for hotel reservations — enter client details from Booking Brief" },
+                { n: "Viator", c: "Activities & Experiences", e: "🎭", active: true, note: "Best for tours, tickets & experiences — client name required at checkout" },
+                { n: "12Go Asia", c: "Ground Transport", e: "🚅", active: true, note: "Trains, buses, ferries — great for multi-city transport legs" },
+                { n: "SafetyWing", c: "Travel Insurance", e: "🛡️", active: false, note: "Connect to offer travel insurance add-ons" },
+                { n: "Airalo", c: "eSIM Data", e: "📱", active: false, note: "Connect to offer destination eSIM before departure" },
+              ].map((aff, i) => (
+                <div key={i} data-testid={`card-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ padding: "10px 11px", border: `1px solid ${aff.active ? G[200] : G[100]}`, borderRadius: 10, marginBottom: 8, background: "white" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: aff.active ? 6 : 0 }}>
+                    <span style={{ fontSize: 20, flexShrink: 0 }}>{aff.e}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: G[900] }}>{aff.n}</span>
+                        {aff.active && <Bdg c="green">Active</Bdg>}
+                      </div>
+                      <div style={{ fontSize: 11, color: G[400] }}>{aff.c}</div>
+                    </div>
+                    <button onClick={() => aff.active ? setBookingBriefProvider(aff.n) : toast({ title: "Coming soon", description: `${aff.n} integration is in progress.` })} data-testid={`button-affiliate-${aff.n.toLowerCase().replace(/[^a-z0-9]/g, "-")}`} style={{ flexShrink: 0, padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: aff.active ? "white" : P, color: aff.active ? P : "white", border: `1.5px solid ${P}`, cursor: "pointer" }}>
+                      {aff.active ? "Open →" : "Connect →"}
+                    </button>
+                  </div>
+                  {aff.active && <div style={{ fontSize: 11, color: G[500], background: G[50], borderRadius: 6, padding: "5px 8px" }}>{aff.note}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
+    </div>
   );
 }
