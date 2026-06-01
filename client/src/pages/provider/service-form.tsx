@@ -14,8 +14,11 @@ import {
 } from "@/components/ui/select";
 import { DynamicPricingEditor } from "@/components/shared/dynamic-pricing-editor";
 import { useState } from "react";
-import { useParams } from "wouter";
-import { Plus, Trash2 } from "lucide-react";
+import { useParams, useLocation } from "wouter";
+import { Plus, Trash2, Loader2 } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ServiceFormData {
   name: string;
@@ -34,63 +37,111 @@ interface ServiceFormData {
   active: boolean;
 }
 
-const MOCK_SERVICE = {
-  id: "1",
-  name: "Airport Transfer (Kansai)",
-  category: "Transport",
-  description: "Premium airport transfer service from Kansai International Airport to your destination in Kyoto.",
-  basePrice: 85,
-  priceType: "Fixed" as const,
-  duration: "2-3 hours",
-  photos: ["photo1.jpg"],
-  whatIncluded: ["Vehicle", "Driver", "Luggage"],
-  maxConcurrentClients: 4,
-  maxGroupSize: 8,
-  serviceArea: "Kyoto, Osaka, Nara",
-  pickupAvailable: true,
-  pickupRadius: 15,
+const EMPTY_FORM: ServiceFormData = {
+  name: "",
+  category: "",
+  description: "",
+  basePrice: 0,
+  priceType: "Fixed",
+  duration: "",
+  photos: [],
+  whatIncluded: [],
+  maxConcurrentClients: 1,
+  maxGroupSize: 4,
+  serviceArea: "",
+  pickupAvailable: false,
+  pickupRadius: 0,
   active: true,
 };
 
 export default function ProviderServiceForm() {
   const params = useParams<{ id: string }>();
   const isEditMode = !!params?.id;
-  const [formData, setFormData] = useState<ServiceFormData>(
-    isEditMode ? MOCK_SERVICE : {
-      name: "",
-      category: "",
-      description: "",
-      basePrice: 0,
-      priceType: "Fixed",
-      duration: "",
-      photos: [],
-      whatIncluded: [],
-      maxConcurrentClients: 1,
-      maxGroupSize: 4,
-      serviceArea: "",
-      pickupAvailable: false,
-      pickupRadius: 0,
-      active: true,
+  const [, navigate] = useLocation();
+  const { toast } = useToast();
+
+  const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
+    queryKey: ["/api/provider/services", params?.id],
+    enabled: isEditMode,
+  });
+
+  const [formData, setFormData] = useState<ServiceFormData>(() => {
+    if (isEditMode && existingService) {
+      return {
+        name: existingService.serviceName || "",
+        category: existingService.serviceType || "",
+        description: existingService.description || "",
+        basePrice: Number(existingService.price || 0),
+        priceType: "Fixed",
+        duration: existingService.deliveryTimeframe || "",
+        photos: [],
+        whatIncluded: (existingService.whatIncluded as string[]) || [],
+        maxConcurrentClients: existingService.maxConcurrentBookings || 1,
+        maxGroupSize: 4,
+        serviceArea: existingService.location || "",
+        pickupAvailable: false,
+        pickupRadius: 0,
+        active: existingService.status === "active",
+      };
     }
-  );
+    return EMPTY_FORM;
+  });
+
   const [newIncluded, setNewIncluded] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: async (draft: boolean) => {
+      const payload = {
+        serviceName: formData.name,
+        description: formData.description,
+        serviceType: formData.category.toLowerCase() || "planning",
+        price: String(formData.basePrice),
+        priceType: formData.priceType.toLowerCase().replace("-", "_"),
+        deliveryTimeframe: formData.duration,
+        whatIncluded: formData.whatIncluded,
+        maxConcurrentBookings: formData.maxConcurrentClients,
+        location: formData.serviceArea || "Unknown",
+        status: draft ? "draft" : (formData.active ? "active" : "draft"),
+      };
+      if (isEditMode) {
+        return apiRequest("PATCH", `/api/provider/services/${params!.id}`, payload);
+      }
+      return apiRequest("POST", "/api/provider/services", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      toast({ title: isEditMode ? "Service updated" : "Service created successfully" });
+      navigate("/provider/services");
+    },
+    onError: (error: any) => {
+      toast({
+        title: isEditMode ? "Failed to update service" : "Failed to create service",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
-      setFormData({
-        ...formData,
-        whatIncluded: [...formData.whatIncluded, newIncluded],
-      });
+      setFormData({ ...formData, whatIncluded: [...formData.whatIncluded, newIncluded] });
       setNewIncluded("");
     }
   };
 
   const handleRemoveIncluded = (index: number) => {
-    setFormData({
-      ...formData,
-      whatIncluded: formData.whatIncluded.filter((_, i) => i !== index),
-    });
+    setFormData({ ...formData, whatIncluded: formData.whatIncluded.filter((_, i) => i !== index) });
   };
+
+  if (isEditMode && loadingExisting) {
+    return (
+      <ProviderLayout title="Edit Service">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+        </div>
+      </ProviderLayout>
+    );
+  }
 
   return (
     <ProviderLayout title={isEditMode ? "Edit Service" : "New Service"}>
@@ -109,6 +160,7 @@ export default function ProviderServiceForm() {
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="e.g., Airport Transfer"
                 className="mt-2"
+                data-testid="input-service-name"
               />
             </div>
 
@@ -121,6 +173,7 @@ export default function ProviderServiceForm() {
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                 placeholder="e.g., Transport, Tour, Equipment"
                 className="mt-2"
+                data-testid="input-category"
               />
             </div>
 
@@ -134,6 +187,7 @@ export default function ProviderServiceForm() {
                 placeholder="Describe your service in detail..."
                 rows={4}
                 className="mt-2"
+                data-testid="input-description"
               />
             </div>
 
@@ -147,12 +201,13 @@ export default function ProviderServiceForm() {
                   value={formData.basePrice}
                   onChange={(e) => setFormData({ ...formData, basePrice: parseInt(e.target.value) || 0 })}
                   className="mt-2"
+                  data-testid="input-base-price"
                 />
               </div>
               <div>
                 <Label htmlFor="priceType">Price Type</Label>
                 <Select value={formData.priceType} onValueChange={(val: any) => setFormData({ ...formData, priceType: val })}>
-                  <SelectTrigger id="priceType" className="mt-2">
+                  <SelectTrigger id="priceType" className="mt-2" data-testid="select-price-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -166,22 +221,15 @@ export default function ProviderServiceForm() {
 
             {/* Duration */}
             <div>
-              <Label htmlFor="duration">Duration *</Label>
+              <Label htmlFor="duration">Duration</Label>
               <Input
                 id="duration"
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                 placeholder="e.g., 2-3 hours, Full day"
                 className="mt-2"
+                data-testid="input-duration"
               />
-            </div>
-
-            {/* Photos */}
-            <div>
-              <Label>Photos</Label>
-              <div className="mt-2 border-2 border-dashed rounded-lg p-8 text-center">
-                <p className="text-sm text-muted-foreground">Drag photos here or click to upload</p>
-              </div>
             </div>
 
             {/* What's Included */}
@@ -189,12 +237,13 @@ export default function ProviderServiceForm() {
               <Label>What's Included</Label>
               <div className="mt-2 space-y-2">
                 {formData.whatIncluded.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded">
+                  <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded" data-testid={`item-included-${idx}`}>
                     <span className="text-sm">{item}</span>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleRemoveIncluded(idx)}
+                      data-testid={`button-remove-included-${idx}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -207,8 +256,9 @@ export default function ProviderServiceForm() {
                   onChange={(e) => setNewIncluded(e.target.value)}
                   placeholder="Add an item..."
                   onKeyDown={(e) => e.key === "Enter" && handleAddIncluded()}
+                  data-testid="input-add-included"
                 />
-                <Button onClick={handleAddIncluded} variant="outline" size="icon">
+                <Button onClick={handleAddIncluded} variant="outline" size="icon" data-testid="button-add-included">
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
@@ -223,18 +273,7 @@ export default function ProviderServiceForm() {
                 value={formData.maxConcurrentClients}
                 onChange={(e) => setFormData({ ...formData, maxConcurrentClients: parseInt(e.target.value) || 1 })}
                 className="mt-2"
-              />
-            </div>
-
-            {/* Max Group Size */}
-            <div>
-              <Label htmlFor="maxGroupSize">Max Group Size</Label>
-              <Input
-                id="maxGroupSize"
-                type="number"
-                value={formData.maxGroupSize}
-                onChange={(e) => setFormData({ ...formData, maxGroupSize: parseInt(e.target.value) || 1 })}
-                className="mt-2"
+                data-testid="input-max-clients"
               />
             </div>
 
@@ -247,6 +286,7 @@ export default function ProviderServiceForm() {
                 onChange={(e) => setFormData({ ...formData, serviceArea: e.target.value })}
                 placeholder="e.g., Kyoto, Osaka, Nara"
                 className="mt-2"
+                data-testid="input-service-area"
               />
             </div>
 
@@ -257,10 +297,10 @@ export default function ProviderServiceForm() {
                 id="pickup"
                 checked={formData.pickupAvailable}
                 onCheckedChange={(checked) => setFormData({ ...formData, pickupAvailable: checked })}
+                data-testid="switch-pickup"
               />
             </div>
 
-            {/* Pickup Radius */}
             {formData.pickupAvailable && (
               <div>
                 <Label htmlFor="pickupRadius">Pickup Radius (km)</Label>
@@ -270,6 +310,7 @@ export default function ProviderServiceForm() {
                   value={formData.pickupRadius}
                   onChange={(e) => setFormData({ ...formData, pickupRadius: parseInt(e.target.value) || 0 })}
                   className="mt-2"
+                  data-testid="input-pickup-radius"
                 />
               </div>
             )}
@@ -281,22 +322,37 @@ export default function ProviderServiceForm() {
 
             {/* Active Toggle */}
             <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
-              <Label htmlFor="active" className="cursor-pointer">Active</Label>
+              <Label htmlFor="active" className="cursor-pointer">Active (visible to travelers)</Label>
               <Switch
                 id="active"
                 checked={formData.active}
                 onCheckedChange={(checked) => setFormData({ ...formData, active: checked })}
+                data-testid="switch-active"
               />
             </div>
 
             {/* Buttons */}
             <div className="flex gap-3 pt-4">
-              <Button variant="outline" onClick={() => window.history.back()}>
+              <Button variant="outline" onClick={() => navigate("/provider/services")} data-testid="button-cancel">
                 Cancel
               </Button>
-              <Button variant="outline">Save Draft</Button>
-              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90">
-                Publish
+              <Button
+                variant="outline"
+                onClick={() => createMutation.mutate(true)}
+                disabled={createMutation.isPending}
+                data-testid="button-save-draft"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Save Draft
+              </Button>
+              <Button
+                className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                onClick={() => createMutation.mutate(false)}
+                disabled={createMutation.isPending || !formData.name || !formData.description || !formData.basePrice}
+                data-testid="button-publish"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {isEditMode ? "Update Service" : "Publish"}
               </Button>
             </div>
           </CardContent>

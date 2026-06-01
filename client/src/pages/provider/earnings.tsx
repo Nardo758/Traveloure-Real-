@@ -18,12 +18,23 @@ import { useMemo } from "react";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 
+interface ConnectStatus {
+  connected: boolean;
+  status: string;
+}
+
 type BookingWithService = ServiceBooking & { service?: ProviderService };
 
 export default function ProviderEarnings() {
   const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
     queryKey: ["/api/provider/bookings"],
   });
+
+  const { data: connectStatus } = useQuery<ConnectStatus>({
+    queryKey: ["/api/stripe/connect/status"],
+  });
+
+  const canRequestPayout = connectStatus?.connected && connectStatus?.status === "active";
 
   const stats = useMemo(() => {
     if (!bookings) return { total: 0, thisMonth: 0, pending: 0, available: 0 };
@@ -138,8 +149,11 @@ export default function ProviderEarnings() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button data-testid="button-request-payout">
+        <div className="flex flex-wrap gap-3 items-center">
+          {!canRequestPayout && (
+            <p className="text-sm text-amber-600">Connect Stripe to enable payouts</p>
+          )}
+          <Button disabled={!canRequestPayout} className="disabled:opacity-50" data-testid="button-request-payout">
             <DollarSign className="w-4 h-4 mr-2" /> Request Payout
           </Button>
           <Button variant="outline" data-testid="button-download-statement">
