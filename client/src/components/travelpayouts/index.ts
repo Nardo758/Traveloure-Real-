@@ -1,7 +1,10 @@
-export { TransferCard } from "./TransferCard";
+export { FlightCard } from "./FlightCard";
 export { CarRentalCard } from "./CarRentalCard";
 export { ESimCard } from "./ESimCard";
-export { FlightCard } from "./FlightCard";
 export { ActivityCard } from "./ActivityCard";
+export { TransferCard } from "./TransferCard";
 export { GroundTransportCard } from "./GroundTransportCard";
+export { HotelCard } from "./HotelCard";
+export { InsuranceCard } from "./InsuranceCard";
+export { LuggageStorageCard } from "./LuggageStorageCard";
 export { TravelpayoutsSection } from "./TravelpayoutsSection";
