@@ -587,6 +587,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               amount: totalAmount.toFixed(2),
             },
           });
+
+          // Send email alert to the provider
+          const provider = await storage.getUser(providerId);
+          if (provider?.email) {
+            const { sendBookingAlertEmail } = await import("./services/email.service");
+            const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
+            await sendBookingAlertEmail({
+              providerEmail: provider.email,
+              providerName,
+              bookingId: booking.id,
+              serviceName: service.serviceName,
+              travelerName,
+              amount: totalAmount.toFixed(2),
+            });
+          }
         } catch (notifErr) {
           // Non-fatal: log but don't fail the booking creation
           console.error("Failed to create booking notification:", notifErr);
@@ -5316,6 +5331,21 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
               amount: price.toFixed(2),
             },
           });
+
+          // Send email alert to the provider
+          const provider = await storage.getUser(item.service.userId);
+          if (provider?.email) {
+            const { sendBookingAlertEmail } = await import("./services/email.service");
+            const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
+            await sendBookingAlertEmail({
+              providerEmail: provider.email,
+              providerName,
+              bookingId: booking.id,
+              serviceName: item.service.serviceName,
+              travelerName,
+              amount: price.toFixed(2),
+            });
+          }
         } catch (notifErr) {
           console.error("Failed to create checkout booking notification:", notifErr);
         }
