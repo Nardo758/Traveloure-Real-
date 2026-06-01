@@ -15425,6 +15425,188 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // ─── Booking Fee Config (Admin) ─────────────────────────────────────────────
+  app.get("/api/admin/fee-config", isAuthenticated, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          id, category,
+          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
+          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
+          ai_keeps_100,
+          CAST(min_fee AS FLOAT) AS min_fee,
+          CAST(max_fee AS FLOAT) AS max_fee,
+          is_active,
+          updated_by,
+          updated_at
+        FROM booking_fee_configs
+        ORDER BY category
+      `);
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/admin/fee-config", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const {
+        category,
+        platformFeePercent,
+        expertSharePercent,
+        aiKeeps100,
+        minFee,
+        maxFee,
+        isActive,
+      } = req.body;
+
+      if (!category) return res.status(400).json({ error: "category required" });
+
+      await db.execute(sql`
+        INSERT INTO booking_fee_configs (
+          id, category, platform_fee_percent, expert_share_percent,
+          ai_keeps_100, min_fee, max_fee, is_active, updated_by, created_at, updated_at
+        ) VALUES (
+          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 70},
+          ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
+          ${userId}, NOW(), NOW()
+        )
+        ON CONFLICT (category) DO UPDATE SET
+          platform_fee_percent = EXCLUDED.platform_fee_percent,
+          expert_share_percent  = EXCLUDED.expert_share_percent,
+          ai_keeps_100          = EXCLUDED.ai_keeps_100,
+          min_fee               = EXCLUDED.min_fee,
+          max_fee               = EXCLUDED.max_fee,
+          is_active             = EXCLUDED.is_active,
+          updated_by            = EXCLUDED.updated_by,
+          updated_at            = NOW()
+      `);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/booking-fee-config?category=accommodation
+  // Used by itinerary page to get the live fee rate for a category
+  app.get("/api/booking-fee-config", async (req, res) => {
+    try {
+      const category = (req.query.category as string) || "default";
+      const result = await db.execute(sql`
+        SELECT
+          CAST(platform_fee_percent AS FLOAT) AS platform_fee_percent,
+          CAST(expert_share_percent AS FLOAT)  AS expert_share_percent,
+          ai_keeps_100,
+          CAST(min_fee AS FLOAT) AS min_fee,
+          CAST(max_fee AS FLOAT) AS max_fee
+        FROM booking_fee_configs
+        WHERE category = ${category} AND is_active = true
+        LIMIT 1
+      `);
+
+      if (result.rows && result.rows.length > 0) {
+        return res.json(result.rows[0]);
+      }
+
+      // Fallback defaults
+      const defaults: Record<string, number> = {
+        accommodation: 15, activities: 12, transportation: 10,
+        flights: 8, insurance: 10, car_rental: 10, dining: 8, esim: 9, luggage: 10,
+      };
+      res.json({
+        platform_fee_percent: defaults[category] ?? 12,
+        expert_share_percent: 70,
+        ai_keeps_100: true,
+        min_fee: null,
+        max_fee: null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ─── Smart Lead Routing ──────────────────────────────────────────────────────
+  // POST /api/leads/route  — score experts and auto-assign
+  app.post("/api/leads/route", isAuthenticated, async (req, res) => {
+    try {
+      const { leadRoutingService } = await import('./services/lead-routing.service');
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { destination, topic, tripId, requestType } = req.body;
+
+      if (!destination) return res.status(400).json({ error: "destination required" });
+
+      const result = await leadRoutingService.routeLead({
+        destination,
+        topic,
+        tripId,
+        userId,
+        requestType,
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error('Lead routing error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/leads/score-preview?destination=Paris&topic=food
+  // Used by admin to preview expert scoring without committing
+  app.get("/api/leads/score-preview", isAuthenticated, async (req, res) => {
+    try {
+      const { leadRoutingService } = await import('./services/lead-routing.service');
+      const destination = (req.query.destination as string) || '';
+      const topic = (req.query.topic as string) || '';
+
+      const scores = await leadRoutingService.scoreExperts({ destination, topic });
+      res.json({ scores });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/admin/lead-routing-logs — admin view of all routing decisions
+  app.get("/api/admin/lead-routing-logs", isAuthenticated, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 50;
+      const result = await db.execute(sql`
+        SELECT
+          lrl.*,
+          u.first_name || ' ' || u.last_name AS user_name,
+          eu.first_name || ' ' || eu.last_name AS expert_name
+        FROM lead_routing_logs lrl
+        LEFT JOIN users u ON u.id = lrl.user_id
+        LEFT JOIN users eu ON eu.id = lrl.assigned_expert_id
+        ORDER BY lrl.created_at DESC
+        LIMIT ${limit}
+      `);
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // PATCH /api/admin/lead-routing-logs/:id/override — admin override assignment
+  app.patch("/api/admin/lead-routing-logs/:id/override", isAuthenticated, async (req, res) => {
+    try {
+      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const { id } = req.params;
+      const { newExpertId } = req.body;
+
+      await db.execute(sql`
+        UPDATE lead_routing_logs
+        SET assigned_expert_id = ${newExpertId}, overridden_by = ${adminId}
+        WHERE id = ${id}
+      `);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Auto-capture accommodation preference from hotel searches/bookings
   app.post("/api/track/accommodation-preference", async (req, res) => {
     try {
