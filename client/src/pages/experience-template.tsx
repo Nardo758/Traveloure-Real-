@@ -100,25 +100,40 @@ import { CarRentalCard } from "@/components/travelpayouts/CarRentalCard";
 import { NomadRouteCard } from "@/components/travelpayouts/NomadRouteCard";
 import type { CatalogItem } from "@/types/catalog";
 
+interface VenueResult {
+  id: string;
+  name: string;
+  address: string;
+  rating?: number;
+  reviewCount?: number;
+  priceLevel?: number;
+  photos?: string[];
+  phone?: string;
+  website?: string;
+  openingHours?: string;
+  types?: string[];
+}
+
+const PRICE_SYMBOLS: Record<number, string> = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
+
 function RestaurantCatalogSection({ destination }: { destination: string }) {
-  const queryParams = new URLSearchParams({ type: "restaurant", destination, limit: "20" }).toString();
-  const { data, isLoading } = useQuery<{ items: CatalogItem[]; total: number }>({
-    queryKey: [`/api/catalog/search?${queryParams}`],
+  const { data, isLoading } = useQuery<{ results: VenueResult[]; count: number }>({
+    queryKey: ["/api/venues/search", { location: destination, type: "restaurant" }],
     enabled: !!destination,
   });
 
-  const items = data?.items || [];
+  const items = data?.results || [];
 
   if (isLoading) {
     return (
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Utensils className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-semibold">Restaurants via OpenTable</h3>
+          <h3 className="text-sm font-semibold">Restaurants in {destination}</h3>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-36 rounded-xl bg-muted animate-pulse" />
+            <div key={i} className="h-40 rounded-xl bg-muted animate-pulse" />
           ))}
         </div>
       </div>
@@ -131,45 +146,70 @@ function RestaurantCatalogSection({ destination }: { destination: string }) {
     <div className="mb-6">
       <div className="flex items-center gap-2 mb-3">
         <Utensils className="h-4 w-4 text-primary" />
-        <h3 className="text-sm font-semibold text-foreground">Restaurants via OpenTable</h3>
-        <span className="text-xs text-muted-foreground">({items.length} found)</span>
+        <h3 className="text-sm font-semibold text-foreground">Restaurants in {destination}</h3>
+        <span className="text-xs text-muted-foreground">({items.length} found via Google)</span>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.map(item => (
           <div
             key={item.id}
-            className="rounded-xl border bg-card p-4 hover-elevate cursor-pointer"
+            className="rounded-xl border bg-card overflow-hidden hover:shadow-md transition-shadow"
             data-testid={`card-restaurant-${item.id}`}
           >
-            {item.imageUrl && (
-              <img src={item.imageUrl} alt={item.title} className="w-full h-32 object-cover rounded-lg mb-3" />
+            {item.photos?.[0] && (
+              <img src={item.photos[0]} alt={item.name} className="w-full h-32 object-cover" />
             )}
-            <div className="flex items-start justify-between gap-2">
-              <h4 className="font-semibold text-sm line-clamp-1">{item.title}</h4>
-              {item.rating && (
-                <span className="text-xs text-amber-600 flex items-center gap-0.5 flex-shrink-0">
-                  ★ {item.rating.toFixed(1)}
-                </span>
+            <div className="p-4">
+              <div className="flex items-start justify-between gap-2 mb-1">
+                <h4 className="font-semibold text-sm line-clamp-1" data-testid={`text-restaurant-name-${item.id}`}>
+                  {item.name}
+                </h4>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {item.rating && (
+                    <span className="text-xs text-amber-600 font-medium">★ {item.rating.toFixed(1)}</span>
+                  )}
+                  {item.priceLevel && (
+                    <span className="text-xs text-muted-foreground">{PRICE_SYMBOLS[item.priceLevel] ?? ""}</span>
+                  )}
+                </div>
+              </div>
+              {item.address && (
+                <p className="text-xs text-muted-foreground line-clamp-1">{item.address}</p>
               )}
+              {item.reviewCount && (
+                <p className="text-xs text-muted-foreground mt-0.5">{item.reviewCount.toLocaleString()} reviews</p>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                {item.website ? (
+                  <a
+                    href={item.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-primary text-white rounded-md h-7 px-2 hover:bg-primary/90 transition-colors"
+                    data-testid={`link-restaurant-website-${item.id}`}
+                  >
+                    Reserve / View →
+                  </a>
+                ) : (
+                  <a
+                    href={`https://www.google.com/search?q=${encodeURIComponent(item.name + " " + destination + " restaurant reservation")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 inline-flex items-center justify-center gap-1 text-xs bg-primary text-white rounded-md h-7 px-2 hover:bg-primary/90 transition-colors"
+                    data-testid={`link-restaurant-search-${item.id}`}
+                  >
+                    Find & Reserve →
+                  </a>
+                )}
+                <a
+                  href={`/experts?destination=${encodeURIComponent(destination)}&topic=dining`}
+                  className="flex-1 inline-flex items-center justify-center gap-1 text-xs border border-primary/30 text-primary rounded-md h-7 px-2 hover:bg-primary/5 transition-colors"
+                  data-testid={`link-expert-restaurant-${item.id}`}
+                >
+                  Ask an Expert
+                </a>
+              </div>
             </div>
-            {item.cuisine && (
-              <p className="text-xs text-muted-foreground mt-0.5">{item.cuisine}</p>
-            )}
-            {item.destination && (
-              <p className="text-xs text-muted-foreground mt-0.5">{item.destination}</p>
-            )}
-            {item.bookingUrl && (
-              <a
-                href={item.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                data-testid={`link-reserve-${item.id}`}
-                onClick={e => e.stopPropagation()}
-              >
-                Reserve on OpenTable →
-              </a>
-            )}
           </div>
         ))}
       </div>
