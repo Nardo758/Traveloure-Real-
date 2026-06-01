@@ -5163,6 +5163,19 @@ export const sharedTrips = pgTable("shared_trips", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const travelpayoutsCache = pgTable("travelpayouts_cache", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  brand: varchar("brand", { length: 100 }).notNull(),
+  cacheKey: varchar("cache_key", { length: 500 }).notNull().unique(),
+  data: jsonb("data").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTravelpayoutsCacheSchema = createInsertSchema(travelpayoutsCache).omit({ id: true, createdAt: true });
+export type InsertTravelpayoutsCache = z.infer<typeof insertTravelpayoutsCacheSchema>;
+export type TravelpayoutsCache = typeof travelpayoutsCache.$inferSelect;
+
 export const sharedTripViews = pgTable("shared_trip_views", {
   id: uuid("id").primaryKey().defaultRandom(),
   sharedTripId: uuid("shared_trip_id"),
