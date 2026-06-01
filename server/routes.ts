@@ -514,9 +514,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   const expertBookingRequestSchema = z.object({
     tripId: z.string().min(1, "tripId is required"),
     notes: z.string().optional().default(""),
-    expertId: z.string().optional(),
     serviceId: z.string().optional(),
-    totalAmount: z.number().positive().optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -528,7 +526,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, expertId, serviceId, totalAmount } = validation.data;
+      const { tripId, notes, serviceId } = validation.data;
       const userId = (req.user as any).claims.sub;
       
       // Check if this is a real trip vs demo/mock trip
@@ -539,20 +537,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       let bookingId: string | undefined;
 
-      // If a specific service and expert are provided, create a service_bookings row
-      if (serviceId && expertId && totalAmount) {
+      // If a specific service is requested, create a service_bookings row
+      // All financial and attribution values are derived server-side from the service record
+      if (serviceId) {
         const service = await storage.getProviderServiceById(serviceId);
         if (!service) {
           return res.status(404).json({ message: "Service not found" });
         }
-        const shareRate = Number(service.revenueShareRate ?? 0.70);
+        // Derive provider and pricing server-side — never trust client input
+        const providerId = service.userId;
+        const totalAmount = Number(service.price ?? 0);
+        const shareRate = Number(service.revenueShareRate ?? 0.30);
         const platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
         const providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
 
         const booking = await storage.createServiceBooking({
           serviceId,
           travelerId: userId,
-          providerId: expertId,
+          providerId,
           tripId,
           bookingDetails: { notes },
           status: "pending",
@@ -1225,6 +1227,20 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     const userId = (req.user as any).claims.sub;
     const services = await storage.getProviderServices(userId);
     res.json(services);
+  });
+
+  // Get a single provider service by ID (ownership required)
+  app.get("/api/provider/services/:id", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      res.json(service);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch service" });
+    }
   });
 
   // Create a new service
@@ -3065,10 +3081,10 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         lastPayoutDate: lastPayout?.processedAt
           ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : undefined,
-        // Revenue share breakdown (70% to expert, 30% platform)
-        platformFeeTotal: Number((rawSummary.total / 0.70 * 0.30).toFixed(2)),
-        grossBookingTotal: Number((rawSummary.total / 0.70).toFixed(2)),
-        revenueShareRate: 0.70,
+        // Revenue share breakdown (30% to expert, 70% platform)
+        platformFeeTotal: Number((rawSummary.total / 0.30 * 0.70).toFixed(2)),
+        grossBookingTotal: Number((rawSummary.total / 0.30).toFixed(2)),
+        revenueShareRate: 0.30,
       };
 
       res.json({ earnings, summary });

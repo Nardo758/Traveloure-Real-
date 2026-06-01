@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DynamicPricingEditor } from "@/components/shared/dynamic-pricing-editor";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -27,6 +27,9 @@ interface ServiceFormData {
   basePrice: number;
   priceType: "Fixed" | "Range" | "Per-person";
   duration: string;
+  deliveryMethod: "in-person" | "video-call" | "hybrid";
+  revisionsIncluded: number;
+  includesExpertNotes: boolean;
   photos: string[];
   whatIncluded: string[];
   maxConcurrentClients: number;
@@ -44,6 +47,9 @@ const EMPTY_FORM: ServiceFormData = {
   basePrice: 0,
   priceType: "Fixed",
   duration: "",
+  deliveryMethod: "in-person",
+  revisionsIncluded: 0,
+  includesExpertNotes: false,
   photos: [],
   whatIncluded: [],
   maxConcurrentClients: 1,
@@ -53,6 +59,28 @@ const EMPTY_FORM: ServiceFormData = {
   pickupRadius: 0,
   active: true,
 };
+
+function mapServiceToForm(s: any): ServiceFormData {
+  return {
+    name: s.serviceName || "",
+    category: s.serviceType || "",
+    description: s.description || "",
+    basePrice: Number(s.price || 0),
+    priceType: "Fixed",
+    duration: s.deliveryTimeframe || "",
+    deliveryMethod: s.deliveryMethod || "in-person",
+    revisionsIncluded: Number(s.revisionsIncluded || 0),
+    includesExpertNotes: Boolean(s.includesExpertNotes),
+    photos: [],
+    whatIncluded: (s.whatIncluded as string[]) || [],
+    maxConcurrentClients: s.maxConcurrentBookings || 1,
+    maxGroupSize: 4,
+    serviceArea: s.location || "",
+    pickupAvailable: false,
+    pickupRadius: 0,
+    active: s.status === "active",
+  };
+}
 
 export default function ProviderServiceForm() {
   const params = useParams<{ id: string }>();
@@ -65,27 +93,13 @@ export default function ProviderServiceForm() {
     enabled: isEditMode,
   });
 
-  const [formData, setFormData] = useState<ServiceFormData>(() => {
-    if (isEditMode && existingService) {
-      return {
-        name: existingService.serviceName || "",
-        category: existingService.serviceType || "",
-        description: existingService.description || "",
-        basePrice: Number(existingService.price || 0),
-        priceType: "Fixed",
-        duration: existingService.deliveryTimeframe || "",
-        photos: [],
-        whatIncluded: (existingService.whatIncluded as string[]) || [],
-        maxConcurrentClients: existingService.maxConcurrentBookings || 1,
-        maxGroupSize: 4,
-        serviceArea: existingService.location || "",
-        pickupAvailable: false,
-        pickupRadius: 0,
-        active: existingService.status === "active",
-      };
+  const [formData, setFormData] = useState<ServiceFormData>(EMPTY_FORM);
+
+  useEffect(() => {
+    if (existingService) {
+      setFormData(mapServiceToForm(existingService));
     }
-    return EMPTY_FORM;
-  });
+  }, [existingService]);
 
   const [newIncluded, setNewIncluded] = useState("");
 
@@ -98,6 +112,9 @@ export default function ProviderServiceForm() {
         price: String(formData.basePrice),
         priceType: formData.priceType.toLowerCase().replace("-", "_"),
         deliveryTimeframe: formData.duration,
+        deliveryMethod: formData.deliveryMethod,
+        revisionsIncluded: formData.revisionsIncluded,
+        includesExpertNotes: formData.includesExpertNotes,
         whatIncluded: formData.whatIncluded,
         maxConcurrentBookings: formData.maxConcurrentClients,
         location: formData.serviceArea || "Unknown",
@@ -221,7 +238,7 @@ export default function ProviderServiceForm() {
 
             {/* Duration */}
             <div>
-              <Label htmlFor="duration">Duration</Label>
+              <Label htmlFor="duration">Duration / Delivery Timeframe</Label>
               <Input
                 id="duration"
                 value={formData.duration}
@@ -229,6 +246,53 @@ export default function ProviderServiceForm() {
                 placeholder="e.g., 2-3 hours, Full day"
                 className="mt-2"
                 data-testid="input-duration"
+              />
+            </div>
+
+            {/* Delivery Method */}
+            <div>
+              <Label htmlFor="deliveryMethod">Delivery Method</Label>
+              <Select
+                value={formData.deliveryMethod}
+                onValueChange={(val: any) => setFormData({ ...formData, deliveryMethod: val })}
+              >
+                <SelectTrigger id="deliveryMethod" className="mt-2" data-testid="select-delivery-method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="in-person">In-person</SelectItem>
+                  <SelectItem value="video-call">Video call</SelectItem>
+                  <SelectItem value="hybrid">Hybrid</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Revisions Included */}
+            <div>
+              <Label htmlFor="revisionsIncluded">Revisions Included</Label>
+              <Input
+                id="revisionsIncluded"
+                type="number"
+                min={0}
+                value={formData.revisionsIncluded}
+                onChange={(e) => setFormData({ ...formData, revisionsIncluded: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+                className="mt-2"
+                data-testid="input-revisions-included"
+              />
+            </div>
+
+            {/* Expert Notes */}
+            <div className="flex items-center justify-between bg-secondary p-3 rounded-lg">
+              <div>
+                <Label htmlFor="expertNotes" className="cursor-pointer">Includes Expert Notes</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Add personalised expert commentary to this service</p>
+              </div>
+              <Switch
+                id="expertNotes"
+                checked={formData.includesExpertNotes}
+                onCheckedChange={(checked) => setFormData({ ...formData, includesExpertNotes: checked })}
+                data-testid="switch-expert-notes"
               />
             </div>
 
