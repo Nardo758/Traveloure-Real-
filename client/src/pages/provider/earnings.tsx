@@ -10,8 +10,8 @@ import {
   Calendar,
   Download,
   ArrowUpRight,
-  ArrowDownRight,
-  Loader2
+  Loader2,
+  PieChart,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
@@ -110,6 +110,18 @@ export default function ProviderEarnings() {
   }, [bookings]);
 
   const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
+
+  const revenueBreakdown = useMemo(() => {
+    if (!bookings) return { gross: 0, platformFee: 0, providerShare: 0, effectiveRate: 0.30 };
+    let gross = 0, fee = 0, share = 0;
+    for (const b of bookings) {
+      gross += Number(b.totalAmount ?? 0);
+      fee += Number(b.platformFee ?? 0);
+      share += Number(b.providerEarnings ?? 0);
+    }
+    const effectiveRate = gross > 0 ? share / gross : 0.30;
+    return { gross, platformFee: fee, providerShare: share, effectiveRate };
+  }, [bookings]);
 
   if (isLoading) {
     return (
@@ -224,6 +236,52 @@ export default function ProviderEarnings() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Revenue Share Breakdown */}
+        <Card data-testid="card-revenue-share">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <PieChart className="w-5 h-5 text-[#FF385C]" />
+              Revenue Share Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 text-center" data-testid="stat-gross-total">
+                <p className="text-sm text-gray-500 mb-1">Gross Booking Value</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                  ${revenueBreakdown.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Total from all bookings</p>
+              </div>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
+                <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)</p>
+                <p className="text-xl font-bold text-red-700">
+                  -${revenueBreakdown.platformFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
+              </div>
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
+                <p className="text-sm text-green-600 mb-1">Your Share ({Math.round(revenueBreakdown.effectiveRate * 100)}%)</p>
+                <p className="text-xl font-bold text-green-700">
+                  ${revenueBreakdown.providerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
+              </div>
+            </div>
+            <div className="mt-4 h-3 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+              <div
+                className="h-full bg-[#FF385C] transition-all"
+                style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
+              />
+              <div className="h-full bg-green-500 flex-1" />
+            </div>
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>Platform {Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%</span>
+              <span>You {Math.round(revenueBreakdown.effectiveRate * 100)}%</span>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
