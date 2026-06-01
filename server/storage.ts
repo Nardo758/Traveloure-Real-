@@ -472,11 +472,15 @@ export interface IStorage {
 
   // Expert/Provider Logistics
   getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
+  getProviderAvailabilityById(id: string): Promise<ProviderAvailabilitySchedule | undefined>;
   setProviderAvailability(schedule: InsertProviderAvailabilitySchedule): Promise<ProviderAvailabilitySchedule>;
+  updateProviderAvailabilityRule(id: string, providerId: string, updates: Partial<InsertProviderAvailabilitySchedule>): Promise<ProviderAvailabilitySchedule | undefined>;
   deleteProviderAvailability(id: string): Promise<void>;
   getProviderBlackoutDates(providerId: string): Promise<ProviderBlackoutDate[]>;
+  getProviderBlackoutDateById(id: string): Promise<ProviderBlackoutDate | undefined>;
   addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate>;
   deleteProviderBlackoutDate(id: string): Promise<void>;
+  isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
   getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]>;
   createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest>;
@@ -3167,9 +3171,23 @@ export class DatabaseStorage implements IStorage {
       .orderBy(providerAvailabilitySchedule.dayOfWeek);
   }
 
+  async getProviderAvailabilityById(id: string): Promise<ProviderAvailabilitySchedule | undefined> {
+    const [row] = await db.select().from(providerAvailabilitySchedule)
+      .where(eq(providerAvailabilitySchedule.id, id));
+    return row;
+  }
+
   async setProviderAvailability(schedule: InsertProviderAvailabilitySchedule): Promise<ProviderAvailabilitySchedule> {
     const [created] = await db.insert(providerAvailabilitySchedule).values(schedule).returning();
     return created;
+  }
+
+  async updateProviderAvailabilityRule(id: string, providerId: string, updates: Partial<InsertProviderAvailabilitySchedule>): Promise<ProviderAvailabilitySchedule | undefined> {
+    const [updated] = await db.update(providerAvailabilitySchedule)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(providerAvailabilitySchedule.id, id), eq(providerAvailabilitySchedule.providerId, providerId)))
+      .returning();
+    return updated;
   }
 
   async deleteProviderAvailability(id: string): Promise<void> {
@@ -3182,6 +3200,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(providerBlackoutDates.startDate);
   }
 
+  async getProviderBlackoutDateById(id: string): Promise<ProviderBlackoutDate | undefined> {
+    const [row] = await db.select().from(providerBlackoutDates)
+      .where(eq(providerBlackoutDates.id, id));
+    return row;
+  }
+
   async addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate> {
     const [created] = await db.insert(providerBlackoutDates).values(blackout).returning();
     return created;
@@ -3189,6 +3213,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProviderBlackoutDate(id: string): Promise<void> {
     await db.delete(providerBlackoutDates).where(eq(providerBlackoutDates.id, id));
+  }
+
+  async isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean> {
+    const [row] = await db.select({ id: tripExpertAdvisors.id }).from(tripExpertAdvisors)
+      .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, expertId)))
+      .limit(1);
+    return !!row;
   }
 
   async getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]> {
