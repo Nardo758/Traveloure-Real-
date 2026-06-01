@@ -1487,6 +1487,204 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // === Travelpayouts Provider Routes ===
+
+  // Flights: Aviasales
+  app.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
+    try {
+      const { searchAviasalesFlights } = await import("./services/travelpayouts/aviasales.service");
+      const { searchKiwiFlights } = await import("./services/travelpayouts/kiwi.service");
+      const { origin, destination, departDate, returnDate, currency, limit, provider } = req.query;
+
+      if (!origin) return res.status(400).json({ message: "origin is required" });
+
+      const [aviasales, kiwi] = await Promise.allSettled([
+        !provider || provider === "aviasales"
+          ? searchAviasalesFlights({ origin: origin as string, destination: destination as string, departDate: departDate as string, returnDate: returnDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
+          : Promise.resolve([]),
+        !provider || provider === "kiwi"
+          ? searchKiwiFlights({ flyFrom: origin as string, flyTo: destination as string, dateFrom: departDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
+          : Promise.resolve([]),
+      ]);
+
+      const items = [
+        ...(aviasales.status === "fulfilled" ? aviasales.value : []),
+        ...(kiwi.status === "fulfilled" ? kiwi.value : []),
+      ];
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Flights search error:", error);
+      res.status(500).json({ message: "Failed to search flights" });
+    }
+  });
+
+  // Flights: Kiwi Nomad routing
+  app.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
+    try {
+      const { searchKiwiNomad } = await import("./services/travelpayouts/kiwi.service");
+      const { cities, nights_from, nights_to, currency } = req.query;
+
+      if (!cities) return res.status(400).json({ message: "cities[] is required" });
+
+      const cityList = Array.isArray(cities) ? cities as string[] : (cities as string).split(",");
+      const items = await searchKiwiNomad({
+        cities: cityList,
+        nights_in_dst_from: nights_from ? parseInt(nights_from as string) : undefined,
+        nights_in_dst_to: nights_to ? parseInt(nights_to as string) : undefined,
+        currency: currency as string,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Nomad search error:", error);
+      res.status(500).json({ message: "Failed to search nomad routes" });
+    }
+  });
+
+  // Transfers: GetTransfer
+  app.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
+    try {
+      const { searchGetTransferOptions } = await import("./services/travelpayouts/gettransfer.service");
+      const { from, to, date, passengers, currency } = req.query;
+
+      if (!from || !to) return res.status(400).json({ message: "from and to are required" });
+
+      const items = await searchGetTransferOptions({
+        from: from as string,
+        to: to as string,
+        date: date as string,
+        passengers: passengers ? parseInt(passengers as string) : 2,
+        currency: currency as string,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Transfers search error:", error);
+      res.status(500).json({ message: "Failed to search transfers" });
+    }
+  });
+
+  // Car Rentals: DiscoverCars
+  app.get("/api/catalog/cars", isAuthenticated, async (req, res) => {
+    try {
+      const { searchDiscoverCars } = await import("./services/travelpayouts/discovercars.service");
+      const { location, pickup, dropoff, dropoffLocation, currency, limit } = req.query;
+
+      if (!location && !pickup) return res.status(400).json({ message: "location or pickup is required" });
+      if (!pickup) return res.status(400).json({ message: "pickup date is required" });
+      if (!dropoff) return res.status(400).json({ message: "dropoff date is required" });
+
+      const items = await searchDiscoverCars({
+        pickupLocation: (location || pickup) as string,
+        pickupDate: pickup as string,
+        dropoffDate: dropoff as string,
+        dropoffLocation: dropoffLocation as string,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 10,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Car rental search error:", error);
+      res.status(500).json({ message: "Failed to search car rentals" });
+    }
+  });
+
+  // eSIM: Airalo
+  app.get("/api/catalog/esim", isAuthenticated, async (req, res) => {
+    try {
+      const { searchAiraloEsim } = await import("./services/travelpayouts/airalo.service");
+      const { country, countryCode, limit } = req.query;
+
+      const items = await searchAiraloEsim({
+        country: country as string,
+        countryCode: countryCode as string,
+        limit: limit ? parseInt(limit as string) : 10,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("eSIM search error:", error);
+      res.status(500).json({ message: "Failed to search eSIM plans" });
+    }
+  });
+
+  // Activities: Tiqets
+  app.get("/api/catalog/tiqets", isAuthenticated, async (req, res) => {
+    try {
+      const { searchTiqetsProducts } = await import("./services/travelpayouts/tiqets.service");
+      const { destination, city, currency, limit } = req.query;
+
+      const items = await searchTiqetsProducts({
+        city: (city || destination) as string,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 20,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Tiqets search error:", error);
+      res.status(500).json({ message: "Failed to search Tiqets products" });
+    }
+  });
+
+  // Activities: WeGoTrip
+  app.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
+    try {
+      const { searchWeGoTripProducts } = await import("./services/travelpayouts/wegotrip.service");
+      const { destination, city, limit } = req.query;
+
+      const items = await searchWeGoTripProducts({
+        city: (city || destination) as string,
+        limit: limit ? parseInt(limit as string) : 20,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("WeGoTrip search error:", error);
+      res.status(500).json({ message: "Failed to search WeGoTrip products" });
+    }
+  });
+
+  // Activities: Viator discounted feed
+  app.get("/api/catalog/viator-feed", isAuthenticated, async (req, res) => {
+    try {
+      const { searchViatorFeedProducts } = await import("./services/travelpayouts/viator-feed.service");
+      const { destination, currency, limit } = req.query;
+
+      const items = await searchViatorFeedProducts({
+        destination: destination as string,
+        currency: currency as string,
+        limit: limit ? parseInt(limit as string) : 20,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Viator feed error:", error);
+      res.status(500).json({ message: "Failed to fetch Viator feed" });
+    }
+  });
+
+  // Ground transport: Omio
+  app.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) => {
+    try {
+      const { searchOmioRoutes } = await import("./services/travelpayouts/omio.service");
+      const { origin, destination, limit } = req.query;
+
+      const items = await searchOmioRoutes({
+        origin: origin as string,
+        destination: destination as string,
+        limit: limit ? parseInt(limit as string) : 10,
+      });
+
+      res.json({ items, total: items.length });
+    } catch (error) {
+      console.error("Ground transport error:", error);
+      res.status(500).json({ message: "Failed to search ground transport" });
+    }
+  });
+
   // Alias: /api/destinations -> /api/catalog/destinations
   app.get("/api/destinations", async (req, res) => {
     try {

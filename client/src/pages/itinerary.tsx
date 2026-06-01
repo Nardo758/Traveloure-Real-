@@ -49,6 +49,7 @@ import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
 import { DayTransportPanel } from "@/components/itinerary/DayTransportPanel";
 import { TripLogisticsDashboard } from "@/components/logistics";
+import { ESimCard } from "@/components/travelpayouts/ESimCard";
 
 type BookingType = 'inApp' | 'partner';
 type BookingStatus = 'pending' | 'booked' | 'confirmed';
@@ -76,6 +77,28 @@ function getPartnerUrl(partnerName: string | undefined, destination?: string): s
   return '#';
 }
 
+
+function ESimSidebarWidget({ destination }: { destination: string }) {
+  const { data, isLoading } = useQuery<{ items: import("@/types/catalog").CatalogItem[]; total: number }>({
+    queryKey: ["/api/catalog/esim", destination],
+    enabled: !!destination,
+  });
+
+  const items = data?.items?.slice(0, 2) ?? [];
+
+  if (isLoading || items.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border bg-gradient-to-br from-violet-50 to-blue-50 dark:from-violet-950/30 dark:to-blue-950/30 border-violet-100 dark:border-violet-800 p-3 space-y-2">
+      <p className="text-xs font-semibold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+        <span>📶</span> Stay connected — eSIM plans
+      </p>
+      {items.map(item => (
+        <ESimCard key={item.id} item={item} compact />
+      ))}
+    </div>
+  );
+}
 
 function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
   if (!activities || activities.length < 2) return [];
@@ -752,6 +775,8 @@ export default function ItineraryPage() {
                   })()}
                 </CardContent>
               </Card>
+
+            <ESimSidebarWidget destination={itinerary.destination} />
 
             <Card className="bg-white dark:bg-gray-800">
               <CardContent className="p-4">

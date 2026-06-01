@@ -29,7 +29,7 @@ export interface CatalogSearchParams {
 
 export interface CatalogItem {
   id: string;
-  type: "activity" | "hotel" | "event" | "flight";
+  type: "activity" | "hotel" | "event" | "flight" | "transfer" | "car_rental" | "esim" | "transport" | "poi";
   provider: string;
   externalId: string;
   title: string;
@@ -45,6 +45,8 @@ export interface CatalogItem {
   categories: string[];
   tags: string[];
   bookingUrl: string | null;
+  affiliateUrl?: string | null;
+  source?: string | null;
   lastUpdated: Date | null;
 }
 
