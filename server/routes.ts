@@ -1406,7 +1406,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         tabSlug
       } = req.query;
 
-      const validContentTypes = ["activity", "event", "hotel", "flight", "poi", "transfer", "safety"] as const;
+      const validContentTypes = ["activity", "event", "hotel", "flight", "poi", "transfer", "safety", "restaurant"] as const;
       type ContentType = typeof validContentTypes[number];
       const parsedTypes: ContentType[] | undefined = type
         ? (type as string).split(",").filter((t): t is ContentType => validContentTypes.includes(t as ContentType))

@@ -1,8 +1,10 @@
 import { db } from "../db";
-import { hotelCache, activityCache, flightCache, hotelOfferCache } from "@shared/schema";
+import { hotelCache, activityCache, flightCache, hotelOfferCache, restaurantCache } from "@shared/schema";
 import { sql, eq, gte, lte, and, desc } from "drizzle-orm";
 import { cacheService } from "./cache.service";
 import { feverCacheService } from "./fever-cache.service";
+import { bookingComService } from "./booking-com.service";
+import { openTableService } from "./opentable.service";
 
 // Configuration
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -18,6 +20,8 @@ interface CacheRefreshStats {
   activitiesRefreshed: number;
   flightsRefreshed: number;
   feverEventsRefreshed: number;
+  bookingComHotelsRefreshed: number;
+  openTableRestaurantsRefreshed: number;
   errors: string[];
   lastRefreshTime: Date;
 }
@@ -104,6 +108,16 @@ class CacheSchedulerService {
       stats.feverEventsRefreshed = feverResult.refreshed;
       stats.errors.push(...feverResult.errors);
 
+      // Refresh Booking.com hotels for known cities
+      const bookingComResult = await this.refreshBookingComHotels();
+      stats.bookingComHotelsRefreshed = bookingComResult.refreshed;
+      stats.errors.push(...bookingComResult.errors);
+
+      // Refresh OpenTable restaurants for known cities
+      const openTableResult = await this.refreshOpenTableRestaurants();
+      stats.openTableRestaurantsRefreshed = openTableResult.refreshed;
+      stats.errors.push(...openTableResult.errors);
+
       // Note: TravelPulse city intelligence is refreshed by its dedicated scheduler
       // (travelpulse-scheduler.service.ts) to manage Grok AI rate limits separately
 
@@ -129,9 +143,92 @@ class CacheSchedulerService {
       activitiesRefreshed: 0,
       flightsRefreshed: 0,
       feverEventsRefreshed: 0,
+      bookingComHotelsRefreshed: 0,
+      openTableRestaurantsRefreshed: 0,
       errors: [],
       lastRefreshTime: new Date(),
     };
+  }
+
+  private async refreshBookingComHotels(): Promise<{ refreshed: number; errors: string[] }> {
+    const errors: string[] = [];
+    let refreshed = 0;
+
+    try {
+      const staleThreshold = new Date();
+      staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
+
+      const staleCities = await db
+        .selectDistinct({ city: hotelCache.city, lastUpdated: hotelCache.lastUpdated })
+        .from(hotelCache)
+        .where(eq(hotelCache.provider, "booking_com"));
+
+      const toRefresh = staleCities.filter(({ lastUpdated }) =>
+        !lastUpdated || new Date(lastUpdated) < staleThreshold
+      );
+
+      console.log(`[CacheScheduler] Found ${toRefresh.length} cities with stale Booking.com hotel data`);
+
+      for (let i = 0; i < toRefresh.length; i += BATCH_SIZE) {
+        const batch = toRefresh.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async ({ city }) => {
+          if (!city) return;
+          try {
+            const count = await bookingComService.upsertHotelsToCache(city);
+            refreshed += count;
+          } catch (err: any) {
+            errors.push(`Booking.com refresh error for ${city}: ${err.message}`);
+          }
+        }));
+        if (i + BATCH_SIZE < toRefresh.length) {
+          await this.delay(BATCH_DELAY_MS);
+        }
+      }
+    } catch (error: any) {
+      errors.push(`Booking.com refresh general error: ${error.message}`);
+    }
+
+    return { refreshed, errors };
+  }
+
+  private async refreshOpenTableRestaurants(): Promise<{ refreshed: number; errors: string[] }> {
+    const errors: string[] = [];
+    let refreshed = 0;
+
+    try {
+      const staleThreshold = new Date();
+      staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
+
+      const staleCities = await db
+        .selectDistinct({ city: restaurantCache.city, lastUpdated: restaurantCache.lastUpdated })
+        .from(restaurantCache);
+
+      const toRefresh = staleCities.filter(({ lastUpdated }) =>
+        !lastUpdated || new Date(lastUpdated) < staleThreshold
+      );
+
+      console.log(`[CacheScheduler] Found ${toRefresh.length} cities with stale OpenTable restaurant data`);
+
+      for (let i = 0; i < toRefresh.length; i += BATCH_SIZE) {
+        const batch = toRefresh.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async ({ city }) => {
+          if (!city) return;
+          try {
+            const count = await openTableService.upsertRestaurantsToCache(city);
+            refreshed += count;
+          } catch (err: any) {
+            errors.push(`OpenTable refresh error for ${city}: ${err.message}`);
+          }
+        }));
+        if (i + BATCH_SIZE < toRefresh.length) {
+          await this.delay(BATCH_DELAY_MS);
+        }
+      }
+    } catch (error: any) {
+      errors.push(`OpenTable refresh general error: ${error.message}`);
+    }
+
+    return { refreshed, errors };
   }
 
   // Refresh stale Fever event data

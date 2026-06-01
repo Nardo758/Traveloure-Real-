@@ -18,7 +18,7 @@ import {
 
 interface CatalogItem {
   id: string;
-  type: "activity" | "hotel" | "event" | "flight";
+  type: "activity" | "hotel" | "event" | "flight" | "restaurant";
   provider: string;
   externalId: string;
   title: string;
@@ -54,6 +54,7 @@ const typeIcons = {
   hotel: Building2,
   event: Calendar,
   flight: Plane,
+  restaurant: Ticket,
 };
 
 const typeColors = {
@@ -61,12 +62,15 @@ const typeColors = {
   hotel: "#3B82F6",
   event: "#8B5CF6",
   flight: "#F59E0B",
+  restaurant: "#F97316",
 };
 
 const providerLabels: Record<string, string> = {
   viator: "Viator",
   fever: "Fever",
   amadeus: "Amadeus",
+  booking_com: "Booking.com",
+  opentable: "OpenTable",
 };
 
 const typeToTemplateSlug: Record<string, string> = {
@@ -74,6 +78,7 @@ const typeToTemplateSlug: Record<string, string> = {
   hotel: "travel",
   event: "date-night",
   flight: "travel",
+  restaurant: "date-night",
 };
 
 export default function ExperienceDiscovery() {
@@ -293,7 +298,7 @@ export default function ExperienceDiscovery() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium" data-testid="label-providers">Providers</label>
                     <div className="flex flex-wrap gap-2">
-                      {["viator", "fever", "amadeus"].map((p) => (
+                      {["viator", "fever", "amadeus", "booking_com", "opentable"].map((p) => (
                         <Badge
                           key={p}
                           variant={selectedProviders.includes(p) ? "default" : "outline"}

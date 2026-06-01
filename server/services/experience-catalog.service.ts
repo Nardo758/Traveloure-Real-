@@ -4,6 +4,7 @@ import {
   hotelCache, 
   feverEventCache,
   poiCache,
+  restaurantCache,
   experienceTypes,
   experienceTemplateTabs,
   experienceTemplateFilters,
@@ -119,6 +120,12 @@ export interface TransportItem extends BaseItem {
   transportMode: string | null;
 }
 
+export interface RestaurantItem extends BaseItem {
+  type: "restaurant";
+  cuisine: string | null;
+  priceLevel: string | null;
+}
+
 export type CatalogItem =
   | ActivityItem
   | EventItem
@@ -129,7 +136,8 @@ export type CatalogItem =
   | SafetyItem
   | CarRentalItem
   | EsimItem
-  | TransportItem;
+  | TransportItem
+  | RestaurantItem;
 
 // ─────────────────────────────────────────────
 // Search params / result shapes
@@ -148,7 +156,7 @@ export interface CatalogSearchParams {
   offset?: number;
   providers?: string[];
   /** When provided, constrains which content types are queried */
-  type?: Array<"activity" | "event" | "hotel" | "flight" | "poi" | "transfer" | "safety">;
+  type?: Array<"activity" | "event" | "hotel" | "flight" | "poi" | "transfer" | "safety" | "restaurant">;
 }
 
 export interface CatalogSearchResult {
@@ -237,6 +245,10 @@ class ExperienceCatalogService {
         const transfers = await this.searchTransfers(params, batchSize, 0);
         items.push(...transfers);
       }
+      if (shouldFetch("restaurant")) {
+        const restaurants = await this.searchRestaurants(params, batchSize, 0);
+        items.push(...restaurants);
+      }
       // flight: date-specific, stays as direct Amadeus call — no-op in generic search
     } else {
       // Legacy providers[] behaviour
@@ -250,9 +262,13 @@ class ExperienceCatalogService {
         const events = await this.searchEvents(params, batchSize, 0);
         items.push(...events);
       }
-      if (providers.includes("amadeus")) {
+      if (providers.includes("amadeus") || providers.includes("booking_com")) {
         const hotels = await this.searchHotels(params, batchSize, 0);
         items.push(...hotels);
+      }
+      if (providers.includes("opentable")) {
+        const restaurants = await this.searchRestaurants(params, batchSize, 0);
+        items.push(...restaurants);
       }
     }
 
@@ -624,6 +640,59 @@ class ExperienceCatalogService {
       this.catalogLogger.warn({ err }, "Live Amadeus safety search failed, returning empty");
       return [];
     }
+  }
+
+  private async searchRestaurants(params: CatalogSearchParams, limit: number, offset: number): Promise<RestaurantItem[]> {
+    const conditions = [];
+
+    if (params.destination) {
+      conditions.push(ilike(restaurantCache.city, `%${params.destination}%`));
+    }
+    if (params.query) {
+      conditions.push(
+        or(
+          ilike(restaurantCache.name, `%${params.query}%`),
+          ilike(restaurantCache.cuisine, `%${params.query}%`)
+        )
+      );
+    }
+    if (params.rating !== undefined) {
+      conditions.push(gte(restaurantCache.rating, params.rating.toString()));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const restaurants = await db.select()
+      .from(restaurantCache)
+      .where(whereClause)
+      .limit(limit)
+      .offset(offset);
+
+    return restaurants.map(r => ({
+      id: r.id,
+      type: "restaurant" as const,
+      provider: "opentable",
+      externalId: r.externalId,
+      title: r.name,
+      description: r.description,
+      imageUrl: r.imageUrl,
+      price: null,
+      currency: "USD",
+      rating: r.rating ? parseFloat(r.rating) : null,
+      reviewCount: r.reviewCount,
+      destination: r.city,
+      location: r.latitude && r.longitude
+        ? { lat: parseFloat(r.latitude), lng: parseFloat(r.longitude) }
+        : null,
+      duration: null,
+      categories: r.cuisine ? [r.cuisine] : ["restaurant"],
+      tags: [],
+      bookingUrl: r.bookingUrl,
+      affiliateUrl: r.bookingUrl,
+      lastUpdated: r.lastUpdated,
+      cuisine: r.cuisine,
+      priceLevel: r.priceLevel,
+    }));
   }
 
   /**
