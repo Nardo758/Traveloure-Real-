@@ -99,6 +99,17 @@ function DayCard({ day, date, loc, children, onAdd, onTemplate }: any) {
   );
 }
 
+function formatRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin === 1) return "1 min ago";
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr === 1) return "1 hr ago";
+  return `${diffHr} hr ago`;
+}
+
 const STEPS = [
   { key: "draft", label: "Draft", icon: <FileText style={{ width: 11, height: 11 }} /> },
   { key: "in_review", label: "Expert Review", icon: <Eye style={{ width: 11, height: 11 }} /> },
@@ -279,6 +290,8 @@ export default function ExpertWorkspace() {
   const [identityRevealed, setIdentityRevealed] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBriefProvider, setBookingBriefProvider] = useState<string | null>(null);
@@ -343,6 +356,11 @@ export default function ExpertWorkspace() {
     },
   });
 
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(n => n + 1), 30000);
+    return () => clearInterval(id);
+  }, []);
+
   const autoSaveNotesMutation = useMutation({
     mutationFn: async (notes: string) => {
       const res = await apiRequest("PATCH", `/api/trips/${tripId}/expert-notes`, { expertNotes: notes });
@@ -350,6 +368,7 @@ export default function ExpertWorkspace() {
     },
     onSuccess: () => {
       setNoteSaveStatus("saved");
+      setLastSavedAt(new Date());
       const t = setTimeout(() => setNoteSaveStatus("idle"), 2000);
       return () => clearTimeout(t);
     },
@@ -465,6 +484,11 @@ export default function ExpertWorkspace() {
             {noteSaveStatus === "saved" && (
               <span data-testid="text-notes-saved" style={{ fontSize: 10, color: "#15803D", display: "flex", alignItems: "center", gap: 3 }}>
                 <CheckCircle style={{ width: 9, height: 9 }} /> Saved
+              </span>
+            )}
+            {noteSaveStatus === "idle" && lastSavedAt && (
+              <span data-testid="text-notes-last-saved" style={{ fontSize: 10, color: "#A16207", display: "flex", alignItems: "center", gap: 3 }}>
+                <Clock style={{ width: 9, height: 9 }} /> Last saved {formatRelativeTime(lastSavedAt)}
               </span>
             )}
           </div>
