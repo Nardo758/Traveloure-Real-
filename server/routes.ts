@@ -1256,7 +1256,12 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // Get provider's services
   app.get("/api/provider/services", isAuthenticated, async (req, res) => {
     const userId = (req.user as any).claims.sub;
-    const services = await storage.getProviderServices(userId);
+    const { destination, category, activeOnly } = req.query as Record<string, string>;
+    const services = await storage.getProviderServices(userId, {
+      destination: destination || undefined,
+      category: category || undefined,
+      activeOnly: activeOnly === "true",
+    });
     res.json(services);
   });
 
@@ -15886,10 +15891,15 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.patch("/api/provider/availability/rules/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
       const { id } = req.params;
+      const existing = await storage.getProviderAvailabilityById(id);
+      if (!existing) return res.status(404).json({ message: "Availability rule not found" });
+      if (existing.providerId !== userId) return res.status(403).json({ message: "Access denied" });
       const parsed = insertProviderAvailabilityScheduleSchema.partial().safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const updated = await storage.setProviderAvailability({ id, ...parsed.data } as any);
+      const updated = await storage.updateProviderAvailabilityRule(id, userId, parsed.data);
+      if (!updated) return res.status(404).json({ message: "Availability rule not found" });
       res.json(updated);
     } catch (err) {
       console.error("[Provider] updateAvailability error:", err);
@@ -15899,6 +15909,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/provider/availability/rules/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getProviderAvailabilityById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Availability rule not found" });
+      if (existing.providerId !== userId) return res.status(403).json({ message: "Access denied" });
       await storage.deleteProviderAvailability(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -15934,6 +15948,10 @@ export async function registerDiscoveryRoutes(app: Express) {
 
   app.delete("/api/provider/availability/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any).claims.sub;
+      const existing = await storage.getProviderBlackoutDateById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Blackout date not found" });
+      if (existing.providerId !== userId) return res.status(403).json({ message: "Access denied" });
       await storage.deleteProviderBlackoutDate(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -15977,12 +15995,17 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   // === Itinerary Items CRUD ===
+  async function canAccessTripItems(tripId: string, userId: string): Promise<boolean> {
+    const owned = await verifyTripOwnership(tripId, userId);
+    if (owned) return true;
+    return await storage.isExpertAssignedToTrip(tripId, userId);
+  }
+
   app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId } = req.params;
-      const owned = await verifyTripOwnership(tripId, userId);
-      if (!owned) return res.status(403).json({ message: "Access denied" });
+      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
       res.json(items);
     } catch (err) {
@@ -15995,8 +16018,7 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId } = req.params;
-      const owned = await verifyTripOwnership(tripId, userId);
-      if (!owned) return res.status(403).json({ message: "Access denied" });
+      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
@@ -16011,8 +16033,11 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId, itemId } = req.params;
-      const owned = await verifyTripOwnership(tripId, userId);
-      if (!owned) return res.status(403).json({ message: "Access denied" });
+      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
+      const existing = await db.select().from(itineraryItems)
+        .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
+        .limit(1);
+      if (!existing.length) return res.status(404).json({ message: "Item not found in this trip" });
       const updated = await storage.updateItineraryItem(itemId, req.body);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);
@@ -16026,8 +16051,11 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const userId = (req.user as any).claims.sub;
       const { tripId, itemId } = req.params;
-      const owned = await verifyTripOwnership(tripId, userId);
-      if (!owned) return res.status(403).json({ message: "Access denied" });
+      if (!(await canAccessTripItems(tripId, userId))) return res.status(403).json({ message: "Access denied" });
+      const existing = await db.select({ id: itineraryItems.id }).from(itineraryItems)
+        .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
+        .limit(1);
+      if (!existing.length) return res.status(404).json({ message: "Item not found in this trip" });
       await storage.deleteItineraryItem(itemId);
       res.json({ success: true });
     } catch (err) {
@@ -16042,14 +16070,20 @@ export async function registerDiscoveryRoutes(app: Express) {
       const userId = (req.user as any).claims.sub;
       const { assignmentId } = req.params;
       const { workspaceStatus } = req.body;
-      const validStatuses = ["draft", "in_review", "delivered"];
-      if (!workspaceStatus || !validStatuses.includes(workspaceStatus)) {
-        return res.status(400).json({ message: "Invalid workspaceStatus. Must be one of: draft, in_review, delivered" });
+      const validTransitions: Record<string, string[]> = {
+        draft: ["in_review"],
+        in_review: ["delivered", "draft"],
+        delivered: [],
+      };
+      if (!workspaceStatus || !(workspaceStatus in validTransitions)) {
+        return res.status(400).json({ message: "Invalid workspaceStatus. Must be: draft, in_review, or delivered" });
       }
       const assignment = await storage.getExpertAssignment(assignmentId);
       if (!assignment) return res.status(404).json({ message: "Assignment not found" });
-      if (assignment.localExpertId !== userId) {
-        return res.status(403).json({ message: "Access denied" });
+      if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
+      const current = assignment.workspaceStatus ?? "draft";
+      if (!validTransitions[current]?.includes(workspaceStatus)) {
+        return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
       }
       const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
       res.json(updated);
@@ -16070,28 +16104,48 @@ export async function registerDiscoveryRoutes(app: Express) {
         .limit(1);
       if (!assignment.length) return res.status(403).json({ message: "Not assigned to this trip" });
 
-      const items = await storage.getItineraryItems(tripId);
-      const services = await storage.getProviderServices(userId);
+      const allItems = await storage.getItineraryItems(tripId);
+      const EXCLUDED_STATUSES = ["cancelled", "skipped"];
+      const items = allItems.filter((item: any) => !EXCLUDED_STATUSES.includes(item.status));
 
       const DEFAULT_RATE = 0.30;
-      let totalCost = 0;
-      let totalCommission = 0;
+      let totalGross = 0;
+      let expertShare = 0;
+      const itemBreakdown: Array<{ id: string; title: string; cost: number; revenueShareRate: number; expertEarning: number; platformFee: number }> = [];
 
       for (const item of items) {
         const cost = parseFloat(item.estimatedCost ?? "0");
-        const matchedService = services.find((s: any) => s.id === item.serviceId);
-        const rate = matchedService ? parseFloat(matchedService.revenueShareRate ?? String(DEFAULT_RATE)) : DEFAULT_RATE;
-        totalCost += cost;
-        totalCommission += cost * rate;
+        const rate = DEFAULT_RATE;
+        const earning = cost * rate;
+        const fee = cost - earning;
+        totalGross += cost;
+        expertShare += earning;
+        itemBreakdown.push({
+          id: item.id,
+          title: item.title,
+          cost,
+          revenueShareRate: rate,
+          expertEarning: earning,
+          platformFee: fee,
+        });
       }
+
+      const platformFee = totalGross - expertShare;
 
       res.json({
         tripId,
         expertId: userId,
-        totalCost: totalCost.toFixed(2),
-        totalCommission: totalCommission.toFixed(2),
+        totalGross: totalGross.toFixed(2),
+        expertShare: expertShare.toFixed(2),
+        platformFee: platformFee.toFixed(2),
+        revenueShareRate: DEFAULT_RATE,
         itemCount: items.length,
-        defaultRate: DEFAULT_RATE,
+        itemBreakdown: itemBreakdown.map(b => ({
+          ...b,
+          cost: b.cost.toFixed(2),
+          expertEarning: b.expertEarning.toFixed(2),
+          platformFee: b.platformFee.toFixed(2),
+        })),
       });
     } catch (err) {
       console.error("[Commission] GET error:", err);
@@ -16099,21 +16153,5 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
-  // === Provider Services with Filters ===
-  app.get("/api/provider/services/filtered", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any).claims.sub;
-      const { destination, category, activeOnly } = req.query as Record<string, string>;
-      const services = await storage.getProviderServices(userId, {
-        destination: destination || undefined,
-        category: category || undefined,
-        activeOnly: activeOnly === "true",
-      });
-      res.json(services);
-    } catch (err) {
-      console.error("[Provider] getServices filtered error:", err);
-      res.status(500).json({ message: "Failed to get services" });
-    }
-  });
 
 }
