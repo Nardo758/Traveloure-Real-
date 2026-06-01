@@ -1029,6 +1029,11 @@ export class DatabaseStorage implements IStorage {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newBooking] = await db.insert(serviceBookings).values({ ...booking, trackingNumber }).returning();
     
+    // Increment bookingsCount on the service
+    await db.update(providerServices)
+      .set({ bookingsCount: sql`${providerServices.bookingsCount} + 1` })
+      .where(eq(providerServices.id, newBooking.serviceId));
+    
     // Auto-register in content tracking system
     await this.registerContent({
       trackingNumber,
@@ -1062,6 +1067,13 @@ export class DatabaseStorage implements IStorage {
       const platformFee = parseFloat(updated.platformFee || '0');
       const providerEarningsAmount = parseFloat(updated.providerEarnings || '0');
       
+      // Update service totalRevenue
+      if (providerEarningsAmount > 0) {
+        await db.update(providerServices)
+          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
+          .where(eq(providerServices.id, updated.serviceId));
+      }
+      
       // Record platform revenue if there's a platform fee
       if (platformFee > 0) {
         await this.recordPlatformRevenue({
@@ -1092,7 +1104,25 @@ export class DatabaseStorage implements IStorage {
           description: `Earnings from booking ${updated.trackingNumber || id}`,
           status: 'pending',
         });
+
+        // Also record in expert earnings ledger (provider may be an expert)
+        await this.createExpertEarning({
+          expertId: updated.providerId,
+          type: 'consulting',
+          amount: String(providerEarningsAmount),
+          referenceId: updated.id,
+          referenceType: 'service_booking',
+          description: `Service booking earnings from ${updated.trackingNumber || id}`,
+          status: 'pending',
+        });
       }
+    }
+
+    // Decrement bookingsCount when booking is cancelled or refunded
+    if (updated && (status === "cancelled" || status === "refunded")) {
+      await db.update(providerServices)
+        .set({ bookingsCount: sql`GREATEST(${providerServices.bookingsCount} - 1, 0)` })
+        .where(eq(providerServices.id, updated.serviceId));
     }
     
     return updated;
