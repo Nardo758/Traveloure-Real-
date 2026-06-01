@@ -9479,6 +9479,27 @@ Respond with this exact JSON structure:
   });
 
   // ============================================
+  // GEOCODE HELPER (for map centering)
+  // ============================================
+
+  app.get("/api/geocode", async (req, res) => {
+    try {
+      const { address } = req.query as { address?: string };
+      if (!address) return res.status(400).json({ message: "address required" });
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (!apiKey) return res.status(503).json({ message: "Maps API not configured" });
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${apiKey}`;
+      const resp = await fetch(url);
+      const data: any = await resp.json();
+      const loc = data.results?.[0]?.geometry?.location;
+      if (!loc) return res.status(404).json({ message: "Location not found" });
+      res.json({ lat: loc.lat, lng: loc.lng, formattedAddress: data.results[0].formatted_address });
+    } catch (e: any) {
+      res.status(500).json({ message: "Geocode failed", error: e.message });
+    }
+  });
+
+  // ============================================
   // LIVE EXPERIENCE SEARCH (Google Places + Platform)
   // Used by the Expert Workspace Browse tab
   // ============================================
