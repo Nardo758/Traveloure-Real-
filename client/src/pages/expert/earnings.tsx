@@ -89,7 +89,7 @@ export default function ExpertEarnings() {
     );
   }
 
-  const shareRate = summary?.revenueShareRate ?? 0.70;
+  const shareRate = summary?.revenueShareRate ?? 0.30;
   const platformRate = 1 - shareRate;
 
   return (
