@@ -90,17 +90,20 @@ function priceToLevel(price: number | null): string | null {
   return "$$$$";
 }
 
-function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
-  const providerToSource = (p: string): UnifiedResult["source"] => {
-    switch (p.toLowerCase()) {
-      case "viator": return "viator";
-      case "fever": return "fever";
-      case "amadeus": return "amadeus";
-      default: return "native";
-    }
-  };
+const PARTNER_PROVIDERS = new Set(["viator", "fever", "amadeus"]);
 
-  const base: UnifiedResult = {
+function providerToSource(p: string): UnifiedResult["source"] {
+  switch (p.toLowerCase()) {
+    case "viator": return "viator";
+    case "fever": return "fever";
+    case "amadeus": return "amadeus";
+    default: return "native";
+  }
+}
+
+function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
+  const normalizedProvider = item.provider.toLowerCase();
+  return {
     id: item.id,
     name: item.title,
     rating: item.rating ?? null,
@@ -109,13 +112,12 @@ function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
     description: item.description ?? null,
     imageUrl: item.imageUrl ?? null,
     source: providerToSource(item.provider),
-    isPartner: item.provider === "viator" || item.provider === "fever" || item.provider === "amadeus",
-    category: item.categories?.[0] ?? null,
+    isPartner: PARTNER_PROVIDERS.has(normalizedProvider),
+    // Store normalized provider name in category so chips can filter accurately
+    category: normalizedProvider,
     bookingUrl: item.bookingUrl ?? item.affiliateUrl ?? null,
     address: item.destination ?? null,
   };
-
-  return base;
 }
 
 type SortOption = "popular" | "rating" | "price-low" | "price-high";
@@ -173,8 +175,8 @@ export default function BrowsePage() {
 
   // Fingerprint of search params (excludes offset so changing offset doesn't reset)
   const searchFingerprint = useMemo(
-    () => JSON.stringify([debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab]),
-    [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab]
+    () => JSON.stringify([debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders]),
+    [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders]
   );
   const prevFingerprintRef = useRef(searchFingerprint);
   // When the search fingerprint changes reset offset and accumulated results
@@ -187,7 +189,7 @@ export default function BrowsePage() {
     }
   }, [searchFingerprint]);
 
-  // Build query params (providers are handled client-side — not sent to API)
+  // Build query params — providers sent to API for server-side narrowing
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedDestination) params.set("destination", debouncedDestination);
@@ -197,10 +199,11 @@ export default function BrowsePage() {
     if (minRating > 0) params.set("rating", minRating.toString());
     params.set("sortBy", SORT_MAP[sortBy]);
     params.set("type", TAB_TYPES[activeTab] ?? "activity");
+    if (activeProviders.length > 0) params.set("providers", activeProviders.join(","));
     params.set("limit", "20");
     params.set("offset", offset.toString());
     return params.toString();
-  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, offset]);
+  }, [debouncedDestination, debouncedQuery, priceRange, minRating, sortBy, activeTab, activeProviders, offset]);
 
   const { data, isLoading, isFetching } = useQuery<CatalogSearchResult>({
     queryKey: ["/api/catalog/search", queryParams],
@@ -226,10 +229,12 @@ export default function BrowsePage() {
     }
   }, [data, offset]);
 
-  // Post-filter by active provider chips (client-side narrowing)
+  // Secondary client-side filter (backup for immediate UX; API already server-filters)
+  // Uses r.category which holds the normalized provider name from catalogItemToUnifiedResult
   const displayResults = useMemo(() => {
     if (activeProviders.length === 0) return allResults;
-    return allResults.filter(r => activeProviders.includes(r.source));
+    const normalized = activeProviders.map(p => p.toLowerCase());
+    return allResults.filter(r => normalized.includes(r.category ?? ""));
   }, [allResults, activeProviders]);
 
   const clearAllFilters = useCallback(() => {
