@@ -381,6 +381,24 @@ export default function ExpertWorkspace() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [noteSaveStatus]);
 
+  // ── popstate guard: intercept browser back/forward while save is pending ──
+  useEffect(() => {
+    if (noteSaveStatus !== "saving") return;
+
+    const currentPath = window.location.pathname + window.location.search;
+
+    const handlePopState = () => {
+      const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
+      if (!confirmed) {
+        window.history.pushState(null, "", currentPath);
+        setLocation(currentPath);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [noteSaveStatus]);
+
   // ── safeNavigate: intercept in-app navigation while save is pending ──
   const safeNavigate = (path: string) => {
     if (noteSaveStatus === "saving") {
