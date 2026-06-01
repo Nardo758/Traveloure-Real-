@@ -138,6 +138,24 @@ import ItineraryViewPage from "@/pages/itinerary-view";
 import SharedTripPage from "@/pages/shared-trip";
 import { Loader2 } from "lucide-react";
 
+const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
+const PROVIDER_ROLES = ["service_provider"];
+
+function userHasRequiredRole(userRole: string, requiredRole: string): boolean {
+  if (userRole === "admin") return true;
+  if (requiredRole === "expert") return EXPERT_ROLES.includes(userRole);
+  if (requiredRole === "provider") return PROVIDER_ROLES.includes(userRole);
+  return userRole === requiredRole;
+}
+
+export function getRoleHomePath(role: string): string {
+  if (EXPERT_ROLES.includes(role)) return "/expert/dashboard";
+  if (PROVIDER_ROLES.includes(role)) return "/provider/dashboard";
+  if (role === "executive_assistant") return "/ea/dashboard";
+  if (role === "admin") return "/admin/dashboard";
+  return "/dashboard";
+}
+
 function ProtectedRoute({ component: Component, skipTermsCheck = false, requiredRole, ...rest }: any) {
   const { user, isLoading } = useAuth();
 
@@ -161,7 +179,7 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   }
 
   // Check role-based access
-  if (requiredRole && user.role !== requiredRole && user.role !== "admin") {
+  if (requiredRole && !userHasRequiredRole(user.role ?? "user", requiredRole)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
         <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
