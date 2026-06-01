@@ -1,8 +1,8 @@
 import express, { type Request, Response, NextFunction, RequestHandler } from "express";
 import crypto from "crypto";
+import { createServer, request as httpRequest } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
-import { createServer } from "http";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedCustomServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
@@ -72,6 +72,7 @@ app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
 app.use("/api/activities", searchRateLimiter as RequestHandler);
 app.use("/api/auth", authRateLimiter as RequestHandler);
+
 
 export function log(message: string, source = "express") {
   logger.info({ source }, message);
@@ -175,6 +176,26 @@ async function runDatabaseSeeding() {
 
 (async () => {
   await registerRoutes(httpServer, app);
+
+  // Proxy /__mockup/* to the mockup sandbox dev server (port 23636)
+  // Must be registered after API routes but before Vite's catch-all
+  app.use("/__mockup", (req: Request, res: Response) => {
+    const options = {
+      hostname: "localhost",
+      port: 23636,
+      path: `/__mockup${req.url}`,
+      method: req.method,
+      headers: { ...req.headers, host: "localhost:23636" },
+    };
+    const proxy = httpRequest(options, (upstream) => {
+      res.writeHead(upstream.statusCode ?? 200, upstream.headers);
+      upstream.pipe(res);
+    });
+    proxy.on("error", (_err) => {
+      if (!res.headersSent) res.status(502).send("Mockup sandbox unavailable");
+    });
+    proxy.end();
+  });
 
   // Set up frontend serving before error handlers
   if (process.env.NODE_ENV === "production") {
