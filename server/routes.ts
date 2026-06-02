@@ -2772,16 +2772,15 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       });
     }
 
-    // Filter by neighbourhood name (case-insensitive word-prefix match)
+    // Filter by neighbourhood name (case-insensitive substring match, minimum 3 chars)
     if (neighbourhood) {
       const nbh = neighbourhood.toLowerCase().trim();
-      filtered = filtered.filter((expert: any) => {
-        const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
-        return neighborhoods.some((n: string) => {
-          const words = n.toLowerCase().split(/[\s\-,]+/);
-          return words.some((word: string) => word.startsWith(nbh));
+      if (nbh.length >= 3) {
+        filtered = filtered.filter((expert: any) => {
+          const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+          return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
         });
-      });
+      }
     }
 
     // Filter by experience type name (not ID)
