@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart } from "lucide-react";
+import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "wouter";
 import { useState } from "react";
@@ -45,6 +45,8 @@ interface ExpertCardProps {
       responseTime?: string;
       city?: string;
       country?: string;
+      neighborhoods?: string[];
+      localityProof?: string;
     };
   };
   showServices?: boolean;
@@ -76,6 +78,8 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter }
   const hasMetrics = reviewsCount !== null || tripsCount !== null;
   
   const specialties = expert.specialties || expert.specializations?.slice(0, 2) || [];
+  const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+  const showNeighbourhoods = neighbourhoods.length > 0;
 
   return (
     <Card className="hover-elevate transition-all duration-200 overflow-visible group" data-testid={`card-expert-${expert.id}`}>
@@ -186,6 +190,25 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter }
                 <Languages className="w-3 h-3" />
                 {languages.slice(0, 2).join(", ")}
               </span>
+            )}
+          </div>
+        )}
+
+        {showNeighbourhoods && (
+          <div className="flex flex-wrap items-center gap-1 mt-1.5" data-testid="neighbourhood-chips">
+            <Home className="w-3 h-3 text-[#6B7280] shrink-0" />
+            {neighbourhoods.slice(0, 3).map((n, idx) => (
+              <Badge
+                key={idx}
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 border-[#E5E7EB] dark:border-gray-600 text-[#6B7280] dark:text-gray-400"
+                data-testid={`badge-neighbourhood-${idx}`}
+              >
+                {n}
+              </Badge>
+            ))}
+            {neighbourhoods.length > 3 && (
+              <span className="text-[10px] text-[#9CA3AF]">+{neighbourhoods.length - 3}</span>
             )}
           </div>
         )}

@@ -36,6 +36,7 @@ import {
   Sparkles,
   Brain,
   Target,
+  Home,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -103,6 +104,7 @@ export default function ExpertsPage() {
   const [selectedSpecialty, setSelectedSpecialty] = useState("All Specialties");
   const [selectedLanguage, setSelectedLanguage] = useState("All Languages");
   const [selectedExperienceType, setSelectedExperienceType] = useState("");
+  const [neighbourhoodQuery, setNeighbourhoodQuery] = useState("");
   const [sortBy, setSortBy] = useState("recommended");
   const [favorites, setFavorites] = useState<string[]>([]);
   
@@ -194,10 +196,12 @@ export default function ExpertsPage() {
   // Filter experts by search and other criteria
   const filteredExperts = apiExperts.filter((expert: any) => {
     const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.toLowerCase();
+    const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
     const matchesSearch =
       searchQuery === "" ||
       fullName.includes(searchQuery.toLowerCase()) ||
-      expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+      expert.specializations?.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      neighbourhoods.some((n: string) => n.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesDestination =
       selectedDestination === "All Destinations" ||
@@ -207,7 +211,11 @@ export default function ExpertsPage() {
       selectedLanguage === "All Languages" ||
       expert.expertForm?.languages?.includes(selectedLanguage);
 
-    return matchesSearch && matchesDestination && matchesLanguage;
+    const matchesNeighbourhood =
+      neighbourhoodQuery.trim() === "" ||
+      neighbourhoods.some((n: string) => n.toLowerCase().includes(neighbourhoodQuery.toLowerCase()));
+
+    return matchesSearch && matchesDestination && matchesLanguage && matchesNeighbourhood;
   });
 
   const sortedExperts = [...filteredExperts].sort((a: any, b: any) => {
@@ -538,10 +546,16 @@ export default function ExpertsPage() {
                 </SelectContent>
               </Select>
 
-              <Button variant="outline" className="border-[#E5E7EB]" data-testid="button-more-filters">
-                <Filter className="w-4 h-4 mr-2" />
-                More Filters
-              </Button>
+              <div className="relative">
+                <Home className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Neighbourhood (e.g. Shimokitazawa)"
+                  value={neighbourhoodQuery}
+                  onChange={(e) => setNeighbourhoodQuery(e.target.value)}
+                  className="pl-9 h-10 border-[#E5E7EB] bg-white w-56 text-sm"
+                  data-testid="input-neighbourhood-filter"
+                />
+              </div>
             </div>
 
             <div className="flex items-center gap-3">
@@ -607,6 +621,7 @@ export default function ExpertsPage() {
                   setSelectedDestination("All Destinations");
                   setSelectedLanguage("All Languages");
                   setSelectedExperienceType("");
+                  setNeighbourhoodQuery("");
                 }}
                 data-testid="button-clear-filters"
               >

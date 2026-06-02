@@ -25,6 +25,7 @@ import {
   Globe,
   Briefcase,
   ShieldCheck,
+  Home,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -143,6 +144,16 @@ export default function ExpertDetailPage() {
   const specializations = expert.expertForm?.specializations || [];
   const destinations = expert.expertForm?.destinations || [];
   const bio = expert.expertForm?.bio || "Experienced local expert ready to help plan your perfect trip.";
+  const neighbourhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+  const localityProof: string = expert.expertForm?.localityProof || "";
+
+  const localityProofLabels: Record<string, string> = {
+    born_raised: "Born & raised here",
+    long_term_10yr: "Long-term resident (10+ years)",
+    resident_5yr: "Resident (5+ years)",
+    current_resident: "Current resident (1–5 years)",
+  };
+  const localityProofLabel = localityProofLabels[localityProof] || "";
   const superExpert = expert.superExpert || false;
   const verified = expert.verified || true;
   const idVerified = expert.expertForm?.identityVerificationStatus === "verified";
@@ -298,6 +309,33 @@ export default function ExpertDetailPage() {
                                 <Badge key={dest} variant="secondary">
                                   <Globe className="w-3 h-3 mr-1" />
                                   {dest}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {neighbourhoods.length > 0 && (
+                          <div data-testid="section-areas-of-knowledge">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Home className="w-4 h-4 text-muted-foreground" />
+                              <h3 className="font-semibold">Areas of deep knowledge</h3>
+                              {localityProofLabel && (
+                                <Badge variant="secondary" className="text-xs font-normal" data-testid="badge-locality-proof">
+                                  {localityProofLabel}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {neighbourhoods.map((n: string, idx: number) => (
+                                <Badge
+                                  key={idx}
+                                  variant="outline"
+                                  className="flex items-center gap-1"
+                                  data-testid={`badge-neighbourhood-detail-${idx}`}
+                                >
+                                  <MapPin className="w-3 h-3" />
+                                  {n}
                                 </Badge>
                               ))}
                             </div>

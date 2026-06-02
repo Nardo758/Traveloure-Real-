@@ -396,7 +396,9 @@ const mockExperts = [
     languages: ["English", "Japanese"],
     responseTime: "< 1 hour",
     destinations: ["Kyoto", "Nara", "Osaka"],
-    yearsOfExperience: "14 years"
+    yearsOfExperience: "14 years",
+    neighborhoods: ["Gion", "Higashiyama", "Fushimi"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Takeshi",
@@ -409,7 +411,9 @@ const mockExperts = [
     languages: ["English", "Japanese", "Korean"],
     responseTime: "< 2 hours",
     destinations: ["Kyoto", "Nara", "Kobe", "Lake Biwa"],
-    yearsOfExperience: "9 years"
+    yearsOfExperience: "9 years",
+    neighborhoods: ["Arashiyama", "Nishiki", "Pontocho", "Shimogamo"],
+    localityProof: "long_term_10yr",
   }
 ];
 
@@ -448,9 +452,20 @@ export async function seedMockExperts() {
           responseTime: expert.responseTime,
           yearsOfExperience: expert.yearsOfExperience,
           bio: expert.bio,
+          neighborhoods: (expert as any).neighborhoods || [],
+          localityProof: (expert as any).localityProof || null,
           status: "approved",
         });
         console.log(`  → Created expert form for: ${expert.firstName} ${expert.lastName}`);
+      } else if ((expert as any).neighborhoods?.length > 0) {
+        // Update existing form with neighbourhood data if present in seed config
+        await db.update(localExpertForms)
+          .set({
+            neighborhoods: (expert as any).neighborhoods,
+            localityProof: (expert as any).localityProof || null,
+          })
+          .where(eq(localExpertForms.userId, existingExpert[0].id));
+        console.log(`  → Updated neighbourhoods for: ${expert.firstName} ${expert.lastName}`);
       }
       existed++;
       continue;
@@ -479,6 +494,8 @@ export async function seedMockExperts() {
       responseTime: expert.responseTime,
       yearsOfExperience: expert.yearsOfExperience,
       bio: expert.bio,
+      neighborhoods: (expert as any).neighborhoods || [],
+      localityProof: (expert as any).localityProof || null,
       status: "approved",
     });
     
