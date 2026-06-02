@@ -362,7 +362,7 @@ export function MapControlCenter({
     const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
     const mode = getDominantRawMode(day?.transports);
     if (acts.length === 0) {
-      openInMaps({ destination: { lat: 0, lng: 0, name: tripDestination }, app: "google" });
+      openInMaps({ destination: { name: tripDestination }, app: "google" });
       return;
     }
     openInMaps({ waypoints: buildWaypoints(acts), mode, app: "google" });
@@ -372,7 +372,7 @@ export function MapControlCenter({
     const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
     const mode = getDominantRawMode(day?.transports);
     if (acts.length === 0) {
-      openInMaps({ destination: { lat: 0, lng: 0, name: tripDestination }, app: "apple" });
+      openInMaps({ destination: { name: tripDestination }, app: "apple" });
       return;
     }
     openInMaps({ waypoints: buildWaypoints(acts), mode, app: "apple" });

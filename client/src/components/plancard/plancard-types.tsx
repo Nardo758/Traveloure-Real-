@@ -73,7 +73,13 @@ export function getTemplateConfig(eventType: string | null | undefined): Templat
 }
 
 export function getDestinationPhotoUrl(destination: string): string {
-  return `https://source.unsplash.com/800x400/?${encodeURIComponent(destination)},travel,landmark`;
+  const seed = destination
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+  const idNum = seed.split("").reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) >>> 0, 0) % 900 + 100;
+  return `https://picsum.photos/seed/${seed}-${idNum}/800/400`;
 }
 
 export function getEnergyProfile(day: PlanCardDay | undefined | null): string {
