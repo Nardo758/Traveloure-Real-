@@ -1,12 +1,23 @@
 /**
  * BookingFlowModal - Complete booking flow
- * Handles: Planning → Cart Review → Payment → Confirmation
+ * Handles: Planning → [Visa Intake] → Cart Review → Payment → Confirmation
  */
 
 import React, { useState } from 'react';
-import { X, ShoppingCart, CreditCard, CheckCircle } from 'lucide-react';
+import { X, ShoppingCart, CreditCard, CheckCircle, Globe, FileText } from 'lucide-react';
 import StripeCheckout from './StripeCheckout';
 import BookingConfirmation from './BookingConfirmation';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 interface CartItem {
   id: string;
@@ -20,6 +31,7 @@ interface CartItem {
   price: number;
   location: string;
   metadata?: any;
+  serviceCategory?: string;
 }
 
 interface BookingFlowModalProps {
@@ -37,7 +49,55 @@ interface BookingFlowModalProps {
   userEmail?: string;
 }
 
-type FlowStep = 'review' | 'payment' | 'confirmation';
+type FlowStep = 'visa_intake' | 'review' | 'payment' | 'confirmation';
+
+interface VisaIntakeData {
+  passportNationality: string;
+  destinationCountry: string;
+  travelStartDate: string;
+  travelEndDate: string;
+  visaType: string;
+  specialCircumstances: string;
+}
+
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia",
+  "Austria", "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Belarus", "Belgium", "Belize",
+  "Brazil", "Brunei", "Bulgaria", "Cambodia", "Cameroon", "Canada", "Chile", "China", "Colombia",
+  "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic", "Denmark", "Ecuador", "Egypt",
+  "Estonia", "Ethiopia", "Finland", "France", "Germany", "Ghana", "Greece", "Guatemala",
+  "Hungary", "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
+  "Jamaica", "Japan", "Jordan", "Kazakhstan", "Kenya", "Kuwait", "Latvia", "Lebanon",
+  "Lithuania", "Luxembourg", "Malaysia", "Mexico", "Morocco", "Myanmar", "Nepal",
+  "Netherlands", "New Zealand", "Nigeria", "Norway", "Oman", "Pakistan", "Panama", "Peru",
+  "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda",
+  "Saudi Arabia", "Singapore", "South Africa", "South Korea", "Spain", "Sri Lanka",
+  "Sweden", "Switzerland", "Taiwan", "Tanzania", "Thailand", "Turkey", "Uganda", "Ukraine",
+  "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan",
+  "Venezuela", "Vietnam", "Zimbabwe",
+];
+
+const VISA_TYPES = [
+  { value: "tourist", label: "Tourist / Holiday" },
+  { value: "business", label: "Business" },
+  { value: "student", label: "Student" },
+  { value: "work", label: "Work" },
+  { value: "transit", label: "Transit" },
+  { value: "other", label: "Other" },
+];
+
+function isVisaAssistanceService(item: CartItem): boolean {
+  // Primary: use the authoritative categorySlug resolved server-side from service_categories JOIN
+  const serverSlug: string = (item as any).service?.categorySlug ?? "";
+  if (serverSlug) {
+    return serverSlug === "visa-assistance";
+  }
+  // Fallback for items built outside the cart API (e.g. visa-help page direct booking)
+  return (
+    item.serviceCategory === "visa-assistance" ||
+    item.serviceCategory === "visa_assistance"
+  );
+}
 
 export default function BookingFlowModal({
   isOpen,
@@ -47,56 +107,37 @@ export default function BookingFlowModal({
   userId,
   userEmail,
 }: BookingFlowModalProps) {
-  const [currentStep, setCurrentStep] = useState<FlowStep>('review');
+  const hasVisaService = cartItems.some(isVisaAssistanceService);
+  const [currentStep, setCurrentStep] = useState<FlowStep>(hasVisaService ? 'visa_intake' : 'review');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
+  // Visa intake state
+  const [visaIntake, setVisaIntake] = useState<VisaIntakeData>({
+    passportNationality: "",
+    destinationCountry: "",
+    travelStartDate: tripData.startDate || "",
+    travelEndDate: tripData.endDate || "",
+    visaType: "tourist",
+    specialCircumstances: "",
+  });
+
   // Payment state
   const [paymentIntent, setPaymentIntent] = useState<any>(null);
   const [bookingIds, setBookingIds] = useState<string[]>([]);
-  
+
   // Confirmation state
   const [confirmedBookings, setConfirmedBookings] = useState<any[]>([]);
   const [paymentIntentId, setPaymentIntentId] = useState('');
-  
-  // Pricing state
-  const [priceEstimate, setPriceEstimate] = useState<any>(null);
 
-  // Calculate totals
+  // Pricing
   const subtotal = cartItems.reduce((sum, item) => sum + item.price, 0);
-  const platformFee = subtotal * 0.12; // 12% platform fee
+  const platformFee = subtotal * 0.12;
   const total = subtotal + platformFee;
 
-  // Fetch price estimate
-  const fetchPriceEstimate = async () => {
-    try {
-      const response = await fetch('/api/bookings/estimate-cost', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tripItems: cartItems.map(item => ({
-            providerId: item.providerId,
-            date: item.date,
-            travelers: tripData.travelers,
-            category: item.itemType,
-          })),
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch estimate');
-      
-      const data = await response.json();
-      setPriceEstimate(data);
-    } catch (err) {
-      console.error('Price estimate error:', err);
-    }
-  };
-
-  // Process cart and create payment intent
   const handleProceedToPayment = async () => {
     setIsLoading(true);
     setError('');
-
     try {
       const response = await fetch('/api/bookings/process-cart', {
         method: 'POST',
@@ -105,6 +146,7 @@ export default function BookingFlowModal({
           userId,
           cartItems,
           paymentMethod: 'full',
+          bookingMetadata: hasVisaService ? visaIntake : undefined,
         }),
       });
 
@@ -114,16 +156,12 @@ export default function BookingFlowModal({
       }
 
       const data = await response.json();
-
       if (data.errors && data.errors.length > 0) {
         throw new Error(data.errors.join(', '));
       }
 
-      // Store payment intent and booking IDs
       setPaymentIntent(data.paymentIntent);
       setBookingIds(data.instantBookings.map((b: any) => b.id));
-
-      // Move to payment step
       setCurrentStep('payment');
     } catch (err: any) {
       console.error('Process cart error:', err);
@@ -133,29 +171,21 @@ export default function BookingFlowModal({
     }
   };
 
-  // Handle payment success
   const handlePaymentSuccess = async (paymentIntentIdFromStripe: string) => {
     setIsLoading(true);
     setPaymentIntentId(paymentIntentIdFromStripe);
-
     try {
-      // Confirm bookings
       const confirmPromises = bookingIds.map(bookingId =>
         fetch('/api/bookings/confirm-payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bookingId,
-            paymentIntentId: paymentIntentIdFromStripe,
-          }),
+          body: JSON.stringify({ bookingId, paymentIntentId: paymentIntentIdFromStripe }),
         })
       );
-
       await Promise.all(confirmPromises);
 
-      // Mock confirmed bookings (replace with actual data from API)
       setConfirmedBookings(
-        cartItems.map((item, index) => ({
+        cartItems.map((item) => ({
           ...item,
           confirmationCode: `TRV${Math.random().toString(36).substring(2, 12).toUpperCase()}`,
           serviceAmount: item.price,
@@ -163,8 +193,6 @@ export default function BookingFlowModal({
           totalAmount: item.price * 1.12,
         }))
       );
-
-      // Move to confirmation
       setCurrentStep('confirmation');
     } catch (err: any) {
       console.error('Confirmation error:', err);
@@ -174,19 +202,25 @@ export default function BookingFlowModal({
     }
   };
 
-  // Handle payment error
   const handlePaymentError = (errorMessage: string) => {
     setError(errorMessage);
   };
 
-  // Handle completion
   const handleComplete = () => {
     onClose();
-    // Navigate to trips page
     window.location.href = '/my-trips';
   };
 
   if (!isOpen) return null;
+
+  const stepLabel = (step: FlowStep) => {
+    switch (step) {
+      case 'visa_intake': return 'Visa Details';
+      case 'review': return 'Review Booking';
+      case 'payment': return 'Payment';
+      case 'confirmation': return 'Confirmed';
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -195,24 +229,10 @@ export default function BookingFlowModal({
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center rounded-t-2xl">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              {currentStep === 'review' && (
-                <>
-                  <ShoppingCart className="w-6 h-6 text-purple-600" />
-                  Review Your Booking
-                </>
-              )}
-              {currentStep === 'payment' && (
-                <>
-                  <CreditCard className="w-6 h-6 text-purple-600" />
-                  Payment
-                </>
-              )}
-              {currentStep === 'confirmation' && (
-                <>
-                  <CheckCircle className="w-6 h-6 text-green-600" />
-                  Confirmed
-                </>
-              )}
+              {currentStep === 'visa_intake' && <><Globe className="w-6 h-6 text-blue-600" />Visa Details</>}
+              {currentStep === 'review' && <><ShoppingCart className="w-6 h-6 text-purple-600" />Review Your Booking</>}
+              {currentStep === 'payment' && <><CreditCard className="w-6 h-6 text-purple-600" />Payment</>}
+              {currentStep === 'confirmation' && <><CheckCircle className="w-6 h-6 text-green-600" />Confirmed</>}
             </h2>
             {currentStep === 'review' && (
               <p className="text-sm text-gray-600 mt-1">
@@ -220,19 +240,137 @@ export default function BookingFlowModal({
               </p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition"
-          >
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
             <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Content */}
         <div className="px-6 py-6">
-          {/* Review Step */}
+
+          {/* ── Visa Intake Step ── */}
+          {currentStep === 'visa_intake' && (
+            <div className="space-y-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                <FileText className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-blue-800">
+                  Your expert needs these details to prepare your visa assistance. All information is kept confidential.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="passportNationality">Passport Nationality</Label>
+                  <Select
+                    value={visaIntake.passportNationality}
+                    onValueChange={(v) => setVisaIntake(prev => ({ ...prev, passportNationality: v }))}
+                  >
+                    <SelectTrigger id="passportNationality" data-testid="select-visa-passport">
+                      <SelectValue placeholder="Select passport country…" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {COUNTRIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="destinationCountry">Destination Country</Label>
+                  <Select
+                    value={visaIntake.destinationCountry}
+                    onValueChange={(v) => setVisaIntake(prev => ({ ...prev, destinationCountry: v }))}
+                  >
+                    <SelectTrigger id="destinationCountry" data-testid="select-visa-destination">
+                      <SelectValue placeholder="Select destination…" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {COUNTRIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="travelStartDate">Intended Travel Start Date</Label>
+                  <Input
+                    id="travelStartDate"
+                    type="date"
+                    value={visaIntake.travelStartDate}
+                    onChange={(e) => setVisaIntake(prev => ({ ...prev, travelStartDate: e.target.value }))}
+                    data-testid="input-visa-start-date"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="travelEndDate">Intended Travel End Date</Label>
+                  <Input
+                    id="travelEndDate"
+                    type="date"
+                    value={visaIntake.travelEndDate}
+                    onChange={(e) => setVisaIntake(prev => ({ ...prev, travelEndDate: e.target.value }))}
+                    data-testid="input-visa-end-date"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="visaType">Visa Type</Label>
+                <Select
+                  value={visaIntake.visaType}
+                  onValueChange={(v) => setVisaIntake(prev => ({ ...prev, visaType: v }))}
+                >
+                  <SelectTrigger id="visaType" data-testid="select-visa-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VISA_TYPES.map(t => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="specialCircumstances">Special Circumstances (optional)</Label>
+                <Textarea
+                  id="specialCircumstances"
+                  value={visaIntake.specialCircumstances}
+                  onChange={(e) => setVisaIntake(prev => ({ ...prev, specialCircumstances: e.target.value }))}
+                  placeholder="Any previous visa rejections, dual nationality, criminal record questions, urgent timelines, or other relevant details…"
+                  rows={3}
+                  data-testid="textarea-visa-circumstances"
+                />
+              </div>
+
+              <Button
+                onClick={() => setCurrentStep('review')}
+                disabled={!visaIntake.passportNationality || !visaIntake.destinationCountry}
+                className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+                data-testid="button-visa-continue"
+              >
+                Continue to Review
+              </Button>
+            </div>
+          )}
+
+          {/* ── Review Step ── */}
           {currentStep === 'review' && (
             <div className="space-y-6">
+              {/* Visa summary pill if applicable */}
+              {hasVisaService && visaIntake.passportNationality && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
+                  <Globe className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                  <div className="text-sm text-blue-800">
+                    <span className="font-medium">Visa details:</span> {visaIntake.passportNationality} → {visaIntake.destinationCountry} · {VISA_TYPES.find(t => t.value === visaIntake.visaType)?.label}
+                  </div>
+                  <button
+                    className="ml-auto text-xs text-blue-600 underline hover:text-blue-800"
+                    onClick={() => setCurrentStep('visa_intake')}
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
+
               {/* Cart Items */}
               <div className="space-y-4">
                 {cartItems.map((item) => (
@@ -275,40 +413,30 @@ export default function BookingFlowModal({
                 </div>
                 <div className="pt-4 border-t border-gray-300 flex justify-between items-center">
                   <span className="text-lg font-semibold text-gray-900">Total</span>
-                  <span className="text-2xl font-bold text-purple-600">
-                    ${total.toFixed(2)}
-                  </span>
+                  <span className="text-2xl font-bold text-purple-600">${total.toFixed(2)}</span>
                 </div>
               </div>
 
-              {/* Error Display */}
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
                   {error}
                 </div>
               )}
 
-              {/* Continue Button */}
               <button
                 onClick={handleProceedToPayment}
                 disabled={isLoading || cartItems.length === 0}
-                className={`
-                  w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
-                  ${isLoading || cartItems.length === 0
+                className={`w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2 ${
+                  isLoading || cartItems.length === 0
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-purple-600 text-white hover:bg-purple-700 shadow-lg hover:shadow-xl'
-                  }
-                `}
+                }`}
+                data-testid="button-proceed-to-payment"
               >
                 {isLoading ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Processing...
-                  </>
+                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />Processing...</>
                 ) : (
-                  <>
-                    Proceed to Payment
-                  </>
+                  'Proceed to Payment'
                 )}
               </button>
             </div>

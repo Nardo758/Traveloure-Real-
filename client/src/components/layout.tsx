@@ -118,6 +118,7 @@ const navItems = [
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
           { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
+          { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },
       {
