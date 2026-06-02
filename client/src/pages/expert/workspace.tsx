@@ -234,7 +234,9 @@ function AddItemModal({ dayNumber, tripId, onClose }: { dayNumber: number; tripI
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] });
+      apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+        .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }));
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       onClose();
     },
@@ -316,12 +318,15 @@ interface AnchorImpact { type: string; message: string; severity: 'warning' | 'c
 interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
 interface EnergyRecord { dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; }
 interface DayBoundaryRecord { id: string; dayNumber: number; latestActivityEnd?: string | null; earliestActivityStart?: string | null; mustReturnToHotel: boolean; reasonForConstraint?: string | null; }
+interface BoundaryViolation { dayNumber: number; violation: string; severity: 'warning' | 'critical'; }
 interface WorkspaceConstraints {
   anchors: Array<{ id: string; anchorType: string; anchorDatetime: string; bufferBefore: number; bufferAfter: number; isImmovable: boolean; description?: string | null }>;
   dayBoundaries: DayBoundaryRecord[];
   energyTracking: EnergyRecord[];
   anchorConflicts: AnchorConflict[];
+  boundaryViolations: BoundaryViolation[];
   optimizerScores: Record<string, number> | null;
+  tripExperienceType: string | null;
 }
 
 const formatCost = (c?: string | null) => {
@@ -398,10 +403,27 @@ export default function ExpertWorkspace() {
     staleTime: 30 * 1000,
   });
 
+  const energyCalcRef = useRef(false);
   useEffect(() => {
-    if (!tripId) return;
+    if (!tripId || energyCalcRef.current) return;
+    energyCalcRef.current = true;
     apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {}).catch(() => {});
   }, [tripId]);
+
+  const presetsAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!tripId || presetsAppliedRef.current) return;
+    if (!workspaceConstraints) return;
+    if (workspaceConstraints.anchors.length > 0) { presetsAppliedRef.current = true; return; }
+    const slug = workspaceConstraints.tripExperienceType;
+    if (!slug) { presetsAppliedRef.current = true; return; }
+    presetsAppliedRef.current = true;
+    const startDate = trip?.start_date;
+    if (!startDate) return;
+    apiRequest("POST", `/api/trips/${tripId}/generate-presets`, { templateSlug: slug, eventDate: startDate })
+      .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+      .catch(() => {});
+  }, [tripId, workspaceConstraints, trip]);
 
   useEffect(() => {
     if (expertNotesData !== undefined && !noteInitialized.current) {
@@ -454,7 +476,9 @@ export default function ExpertWorkspace() {
     onSuccess: (_, result) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] });
+      apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+        .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }));
       toast({ title: "Added to itinerary", description: `${result.name} → Day ${addToDay}` });
       setSelectedPin(null);
     },
@@ -555,8 +579,9 @@ export default function ExpertWorkspace() {
   const anchorConflicts = workspaceConstraints?.anchorConflicts || [];
   const dayBoundaries = workspaceConstraints?.dayBoundaries || [];
   const energyTracking = workspaceConstraints?.energyTracking || [];
+  const boundaryViolations = workspaceConstraints?.boundaryViolations || [];
   const optimizerScores = workspaceConstraints?.optimizerScores || null;
-  const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length;
+  const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
 
   const isLoading = tripsLoading || assignmentLoading;
 
@@ -959,19 +984,35 @@ export default function ExpertWorkspace() {
                   <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: G[400] }}>No day boundaries set</div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {dayBoundaries.map(b => (
-                      <div key={b.id} data-testid={`day-boundary-${b.dayNumber}`} style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "7px 10px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-                          <Bdg c="blue">Day {b.dayNumber}</Bdg>
-                          {b.mustReturnToHotel && <Bdg c="violet">Must return to hotel</Bdg>}
+                    {dayBoundaries.map(b => {
+                      const violations = boundaryViolations.filter(v => v.dayNumber === b.dayNumber);
+                      return (
+                        <div key={b.id} data-testid={`day-boundary-${b.dayNumber}`} style={{ background: violations.length > 0 ? "#FFFBEB" : G[50], border: `1px solid ${violations.length > 0 ? "#FDE68A" : G[200]}`, borderRadius: 8, padding: "7px 10px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                            <Bdg c="blue">Day {b.dayNumber}</Bdg>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {b.mustReturnToHotel && <Bdg c="violet">Must return to hotel</Bdg>}
+                              {violations.length > 0 && <Bdg c="amber">{violations.length} violation{violations.length > 1 ? "s" : ""}</Bdg>}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: G[600] }}>
+                            {b.earliestActivityStart && <span>From {b.earliestActivityStart} </span>}
+                            {b.latestActivityEnd && <span>until {b.latestActivityEnd}</span>}
+                            {b.reasonForConstraint && <div style={{ marginTop: 2, fontSize: 10, color: G[400] }}>{b.reasonForConstraint}</div>}
+                          </div>
+                          {violations.length > 0 && (
+                            <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 3 }}>
+                              {violations.map((v, idx) => (
+                                <div key={idx} data-testid={`boundary-violation-day${b.dayNumber}-${idx}`} style={{ display: "flex", gap: 5 }}>
+                                  <span style={{ fontSize: 10, color: "#D97706", marginTop: 2, flexShrink: 0 }}>⚠</span>
+                                  <span style={{ fontSize: 11, color: "#B45309" }}>{v.violation}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                        <div style={{ fontSize: 11, color: G[600] }}>
-                          {b.earliestActivityStart && <span>From {b.earliestActivityStart} </span>}
-                          {b.latestActivityEnd && <span>until {b.latestActivityEnd}</span>}
-                          {b.reasonForConstraint && <div style={{ marginTop: 2, fontSize: 10, color: G[400] }}>{b.reasonForConstraint}</div>}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

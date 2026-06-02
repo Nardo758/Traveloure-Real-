@@ -13983,20 +13983,32 @@ export async function registerDiscoveryRoutes(app: Express) {
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const trip = await storage.getTrip(req.params.tripId);
-      if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
+
+      // Assignment-scoped authorization: owner, admin, or an expert assigned to this specific trip
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) {
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(401).json({ message: "Not authenticated" });
+        if (user.role === "admin") {
+          // admins pass through
+        } else {
+          const assigned = await storage.isExpertAssignedToTrip(tripId, userId);
+          if (!assigned) return res.status(403).json({ message: "Access denied" });
+        }
       }
 
-      const [anchors, boundaries, energyRecords] = await Promise.all([
-        storage.getTemporalAnchors(req.params.tripId),
-        storage.getDayBoundaries(req.params.tripId),
-        storage.getEnergyTracking(req.params.tripId),
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const [anchors, boundaries, energyRecords, items] = await Promise.all([
+        storage.getTemporalAnchors(tripId),
+        storage.getDayBoundaries(tripId),
+        storage.getEnergyTracking(tripId),
+        storage.getItineraryItems(tripId),
       ]);
 
+      // Detect anchor conflicts using the logistics service
       const { detectAnchorImpacts } = await import('./services/logistics-presets.service');
       const anchorConflicts: Array<{
         anchorId: string;
@@ -14005,7 +14017,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         impacts: Array<{ type: string; message: string; severity: 'warning' | 'critical' }>;
       }> = [];
       for (const anchor of anchors) {
-        const impacts = await detectAnchorImpacts(req.params.tripId, anchor.id);
+        const impacts = await detectAnchorImpacts(tripId, anchor.id);
         if (impacts.length > 0) {
           anchorConflicts.push({
             anchorId: anchor.id,
@@ -14016,11 +14028,57 @@ export async function registerDiscoveryRoutes(app: Express) {
         }
       }
 
+      // Evaluate day-boundary violations against current itinerary items
+      const itemsByDay = new Map<number, typeof items>();
+      for (const item of items) {
+        if (!itemsByDay.has(item.dayNumber)) itemsByDay.set(item.dayNumber, []);
+        itemsByDay.get(item.dayNumber)!.push(item);
+      }
+
+      const boundaryViolations: Array<{
+        dayNumber: number;
+        violation: string;
+        severity: 'warning' | 'critical';
+      }> = [];
+
+      for (const boundary of boundaries) {
+        const dayItems = itemsByDay.get(boundary.dayNumber) || [];
+
+        if (boundary.latestActivityEnd && dayItems.length > 0) {
+          // Find the latest end time or start time among day's items
+          for (const item of dayItems) {
+            const itemTime = item.endTime || item.startTime;
+            if (itemTime && itemTime > boundary.latestActivityEnd) {
+              boundaryViolations.push({
+                dayNumber: boundary.dayNumber,
+                violation: `Item "${item.title}" ends at ${itemTime}, past the Day ${boundary.dayNumber} limit of ${boundary.latestActivityEnd}`,
+                severity: 'warning',
+              });
+            }
+          }
+        }
+
+        if (boundary.mustReturnToHotel && dayItems.length > 0) {
+          const hasHotel = dayItems.some(i => {
+            const t = (i.itemType || '').toLowerCase();
+            return t === 'hotel' || t === 'accommodation' || t === 'lodging';
+          });
+          if (!hasHotel) {
+            boundaryViolations.push({
+              dayNumber: boundary.dayNumber,
+              violation: `Day ${boundary.dayNumber} requires return to hotel but no accommodation item is scheduled`,
+              severity: 'warning',
+            });
+          }
+        }
+      }
+
+      // Fetch optimizer scores from the most recent variant for this trip
       let optimizerScores: Record<string, number> | null = null;
       const comparisons = await db
         .select({ id: itineraryComparisons.id })
         .from(itineraryComparisons)
-        .where(eq(itineraryComparisons.tripId, req.params.tripId))
+        .where(eq(itineraryComparisons.tripId, tripId))
         .orderBy(desc(itineraryComparisons.createdAt))
         .limit(1);
 
@@ -14056,7 +14114,9 @@ export async function registerDiscoveryRoutes(app: Express) {
         dayBoundaries: boundaries,
         energyTracking: energyRecords,
         anchorConflicts,
+        boundaryViolations,
         optimizerScores,
+        tripExperienceType: trip.experienceType || null,
       });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to fetch workspace constraints", error: error.message });
