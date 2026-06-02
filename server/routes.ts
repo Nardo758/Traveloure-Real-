@@ -56,6 +56,7 @@ import { generateGpx } from "./services/gpx-generator";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "./infrastructure";
 import instagramRoutes from "./routes/instagram";
 import identityRoutes from "./routes/identity.routes";
+import webhooksRoutes from "./routes/webhooks.routes";
 import bookingsRoutes from "./routes/bookings";
 import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
@@ -268,7 +269,8 @@ export async function registerRoutes(
 
   // Identity verification routes (Stripe Identity + Persona KYB)
   app.use("/api/identity", identityRoutes);
-  app.use("/api/webhooks", identityRoutes);
+  // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
+  app.use("/api/webhooks", webhooksRoutes);
 
   // Trips Routes
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
