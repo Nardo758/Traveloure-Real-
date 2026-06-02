@@ -4723,6 +4723,30 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     }
   });
 
+  // Update visa application status on a service booking (expert/provider action)
+  app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const VALID_VISA_STATUSES = ["pending", "submitted", "in_review", "approved", "rejected"];
+      const { visaApplicationStatus, notes } = req.body;
+      if (!VALID_VISA_STATUSES.includes(visaApplicationStatus)) {
+        return res.status(400).json({ message: "Invalid visa application status" });
+      }
+      const metadata: Record<string, any> = { visaApplicationStatus };
+      if (notes !== undefined) metadata.visaStatusNotes = notes;
+      metadata.visaStatusUpdatedAt = new Date().toISOString();
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+      res.json(updated);
+    } catch (err) {
+      console.error("Visa status update error:", err);
+      res.status(500).json({ message: "Failed to update visa status" });
+    }
+  });
+
   // Cancel booking (traveler action)
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
