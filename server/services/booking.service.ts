@@ -288,7 +288,7 @@ class BookingService {
           : item.price;
 
         // Calculate fees
-        const feeBreakdown = pricingService.calculatePlatformFees(
+        const feeBreakdown = await pricingService.calculatePlatformFees(
           finalPrice,
           item.itemType
         );
