@@ -36,6 +36,9 @@ import {
   Wrench,
   MapPin,
   Truck,
+  PartyPopper,
+  Award,
+  Compass,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
