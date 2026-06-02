@@ -81,20 +81,19 @@ const vibeTagColors: Record<string, string> = {
 };
 
 function getCrowdLevelColor(level: string) {
-  switch (level) {
-    case "quiet": return "text-green-500";
-    case "moderate": return "text-yellow-500";
-    case "busy": return "text-orange-500";
-    case "packed": return "text-red-500";
-    default: return "text-muted-foreground";
+  switch ((level || "").toLowerCase()) {
+    case "quiet": return "text-green-500 dark:text-green-400 bg-green-50 dark:bg-green-900/20";
+    case "moderate": return "text-yellow-500 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20";
+    case "busy": return "text-orange-500 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20";
+    case "packed": return "text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20";
+    default: return "text-muted-foreground bg-muted";
   }
 }
 
-function getPulseGradient(score: number) {
-  if (score >= 90) return "from-rose-500 to-orange-500";
-  if (score >= 80) return "from-orange-500 to-amber-500";
-  if (score >= 70) return "from-amber-500 to-yellow-500";
-  return "from-yellow-500 to-lime-500";
+function getPulseColor(score: number) {
+  if (score >= 90) return "text-[#FF385C]";
+  if (score >= 80) return "text-orange-500 dark:text-orange-400";
+  return "text-amber-500 dark:text-amber-400";
 }
 
 function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => void }) {
@@ -143,6 +142,9 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
     }
   };
 
+  const isHot = city.trendingScore > 70;
+  const citySlug = city.cityName.toLowerCase().replace(/\s+/g, "-");
+
   return (
     <motion.div
       layoutId={`city-${city.id}`}
@@ -151,100 +153,146 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
       exit={{ opacity: 0, y: -20 }}
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
+      className="group"
     >
-      <Card
-        className="overflow-hidden cursor-pointer hover-elevate group"
+      <div
+        className="bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-card-hover transition-all duration-500 cursor-pointer border border-border"
         onClick={onClick}
-        data-testid={`card-city-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+        data-testid={`card-city-${citySlug}`}
       >
-        <div className="relative h-40 overflow-hidden">
+        {/* ── Photo ── */}
+        <div className="relative h-48 overflow-hidden">
           {city.imageUrl ? (
             <img
               src={city.imageUrl}
               alt={city.cityName}
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
               <MapPin className="h-12 w-12 text-primary/30" />
             </div>
           )}
-          
+
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-          
-          <div className="absolute top-3 left-3 flex gap-2">
-            <Badge 
-              className={cn(
-                "bg-gradient-to-r text-white border-0 font-bold",
-                getPulseGradient(city.pulseScore)
-              )}
-              data-testid={`pulse-score-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
-            >
-              <Zap className="h-3 w-3 mr-1" />
+
+          {/* Pulse score — white pill, top-right (matches landing page) */}
+          <div
+            className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
+            data-testid={`pulse-score-${citySlug}`}
+          >
+            <span className={cn("text-lg font-bold", getPulseColor(city.pulseScore))}>
               {city.pulseScore}
-            </Badge>
+            </span>
+          </div>
+
+          {/* Hot / Trending badge + travelers + alerts — top-left */}
+          <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
+            {isHot ? (
+              <span
+                className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                data-testid={`badge-hot-${citySlug}`}
+              >
+                <Zap className="w-3 h-3 fill-white" />
+                Hot
+              </span>
+            ) : (
+              <span
+                className="px-2.5 py-1 rounded-lg bg-amber-500 dark:bg-amber-600 text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                data-testid={`badge-trending-${citySlug}`}
+              >
+                <TrendingUp className="w-3 h-3" />
+                Trending
+              </span>
+            )}
+            {city.activeTravelers > 0 && (
+              <span
+                className="px-2 py-1 rounded-lg bg-white/90 dark:bg-white/80 text-gray-700 text-xs font-medium flex items-center gap-1 shadow-sm"
+                data-testid={`badge-travelers-${citySlug}`}
+              >
+                <Users className="w-3 h-3" />
+                {city.activeTravelers.toLocaleString()}
+              </span>
+            )}
             {city.totalAlerts > 0 && (
-              <Badge variant="destructive" className="text-xs" data-testid={`alert-count-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}>
-                <Bell className="h-3 w-3 mr-1" />
+              <span
+                className="px-2 py-1 rounded-lg bg-red-500 text-white text-xs font-medium flex items-center gap-1 shadow-sm"
+                data-testid={`alert-count-${citySlug}`}
+              >
+                <Bell className="w-3 h-3" />
                 {city.totalAlerts}
-              </Badge>
+              </span>
             )}
           </div>
 
+          {/* In-trip indicator — top-right (only when pulse badge shifts it) */}
           {inQueue && (
-            <div className="absolute top-3 right-3">
-              <Badge className="bg-green-500 text-white border-0">
-                <Check className="h-3 w-3 mr-1" />
+            <div className="absolute bottom-3 right-3">
+              <span className="px-2.5 py-1 rounded-lg bg-green-500 text-white text-xs font-bold flex items-center gap-1 shadow-lg">
+                <Check className="w-3 h-3" />
                 In Trip
-              </Badge>
+              </span>
             </div>
           )}
 
-          <div className="absolute bottom-3 left-3 right-3">
-            <h3 className="text-xl font-bold text-white mb-1" data-testid={`city-name-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}>{city.cityName}</h3>
+          {/* City name overlay */}
+          <div className="absolute bottom-3 left-3 right-14">
+            <h3
+              className="text-2xl font-bold text-white"
+              data-testid={`city-name-${citySlug}`}
+            >
+              {city.cityName}
+            </h3>
             <div className="flex items-center gap-2 text-white/80 text-sm">
               <MapPin className="h-3 w-3" />
               <span>{city.country}</span>
-              <span className="text-white/50">•</span>
-              <Users className="h-3 w-3" />
-              <span>{city.activeTravelers.toLocaleString()} travelers</span>
             </div>
           </div>
         </div>
 
-        <CardContent className="p-4 space-y-3">
+        {/* ── Card body ── */}
+        <div className="p-4">
+          {/* Current highlight */}
           {city.currentHighlight && (
-            <div className="flex items-center gap-2 text-sm">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="font-medium text-primary">{city.currentHighlight}</span>
+            <div className="flex items-start gap-2 mb-3">
+              <Sparkles className="h-4 w-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
+              <span className="text-sm font-semibold text-[#FF385C] line-clamp-2">
+                {city.currentHighlight}
+              </span>
             </div>
           )}
 
-          <div className="flex flex-wrap gap-1">
+          {/* Vibe tags */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {vibeTags.slice(0, 3).map((tag) => (
-              <Badge
+              <span
                 key={tag}
-                variant="secondary"
-                className={cn("text-xs capitalize", vibeTagColors[tag] || "")}
+                className={cn(
+                  "px-2.5 py-1 rounded-full text-xs font-medium capitalize",
+                  vibeTagColors[tag] || "bg-muted text-muted-foreground"
+                )}
               >
                 {tag}
-              </Badge>
+              </span>
             ))}
             {vibeTags.length > 3 && (
-              <Badge variant="outline" className="text-xs">
+              <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
                 +{vibeTags.length - 3}
-              </Badge>
+              </span>
             )}
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t">
-            <div className="flex items-center gap-1 text-sm">
-              <DollarSign className="h-3 w-3 text-muted-foreground" />
-              <span className="font-medium">${city.avgHotelPrice || "N/A"}</span>
+          {/* Price + crowd level */}
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-lg font-bold text-foreground">
+                ${city.avgHotelPrice || "N/A"}
+              </span>
               {priceChange !== 0 && (
                 <span className={cn(
-                  "flex items-center text-xs",
-                  priceChange < 0 ? "text-green-500" : "text-red-500"
+                  "text-xs flex items-center gap-0.5",
+                  priceChange < 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-500"
                 )}>
                   {priceChange < 0 ? (
                     <TrendingDown className="h-3 w-3" />
@@ -255,37 +303,50 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className={cn("capitalize", getCrowdLevelColor(city.crowdLevel))}>
-                {city.crowdLevel}
-              </span>
-            </div>
+            <span className={cn(
+              "text-xs font-medium px-2 py-0.5 rounded-full capitalize",
+              getCrowdLevelColor(city.crowdLevel)
+            )}>
+              {city.crowdLevel || "Unknown"}
+            </span>
           </div>
 
+          {/* Deal alert */}
           {city.dealAlert && (
-            <div className="flex items-center gap-2 p-2 rounded-md bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-xs" data-testid={`deal-alert-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}>
-              <DollarSign className="h-3 w-3" />
-              <span className="font-medium">{city.dealAlert}</span>
+            <div
+              className="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 mb-3"
+              data-testid={`deal-alert-${citySlug}`}
+            >
+              <DollarSign className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+              <span className="text-xs text-emerald-700 dark:text-emerald-300 font-medium line-clamp-2">
+                {city.dealAlert}
+              </span>
             </div>
           )}
 
-          <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+          {/* Footer stats — 3-col matching landing page */}
+          <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-border">
             <div className="flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
-              <span>{city.totalTrendingSpots} trending (7d)</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              Pulse {city.pulseScore}
             </div>
             <div className="flex items-center gap-1">
-              <Gem className="h-3 w-3" />
-              <span>{city.totalHiddenGems} gems</span>
+              <TrendingUp className="h-3 w-3" />
+              {city.totalTrendingSpots} trending (7d)
+            </div>
+            <div className="flex items-center gap-1">
+              <Gem className="h-3 w-3 text-purple-500 dark:text-purple-400" />
+              {city.totalHiddenGems} gems
             </div>
           </div>
 
+          {/* Take me Here CTA */}
           <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
             <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <Button 
-                className="w-full mt-2" 
+              <Button
+                className="w-full mt-3"
                 size="sm"
-                data-testid={`button-take-me-here-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+                data-testid={`button-take-me-here-${citySlug}`}
               >
                 <Plane className="h-4 w-4 mr-2" />
                 Take me Here
@@ -295,22 +356,22 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
               <div className="space-y-2">
                 <h4 className="font-medium text-sm">Plan your trip to {city.cityName}</h4>
                 <div className="space-y-2">
-                  <Button 
-                    variant="default" 
-                    className="w-full justify-start" 
+                  <Button
+                    variant="default"
+                    className="w-full justify-start"
                     size="sm"
                     onClick={handlePlanNow}
-                    data-testid={`button-plan-now-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+                    data-testid={`button-plan-now-${citySlug}`}
                   >
                     <Wand2 className="h-4 w-4 mr-2" />
                     Plan Now with AI
                   </Button>
-                  <Button 
-                    variant={inQueue ? "secondary" : "outline"} 
-                    className="w-full justify-start" 
+                  <Button
+                    variant={inQueue ? "secondary" : "outline"}
+                    className="w-full justify-start"
                     size="sm"
                     onClick={handleAddToTrip}
-                    data-testid={`button-add-to-trip-${city.cityName.toLowerCase().replace(/\s+/g, "-")}`}
+                    data-testid={`button-add-to-trip-${citySlug}`}
                   >
                     {inQueue ? (
                       <>
@@ -326,15 +387,15 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  {inQueue 
-                    ? "This city is in your trip queue" 
+                  {inQueue
+                    ? "This city is in your trip queue"
                     : "Add multiple cities and plan them together"}
                 </p>
               </div>
             </PopoverContent>
           </Popover>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -343,21 +404,23 @@ function CityGridSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {[...Array(8)].map((_, i) => (
-        <Card key={i} className="overflow-hidden">
-          <Skeleton className="h-40 w-full" />
-          <CardContent className="p-4 space-y-3">
-            <Skeleton className="h-5 w-3/4" />
-            <div className="flex gap-1">
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="h-5 w-16" />
-              <Skeleton className="h-5 w-16" />
+        <div key={i} className="bg-card rounded-2xl overflow-hidden border border-border shadow-card">
+          <Skeleton className="h-48 w-full" />
+          <div className="p-4 space-y-3">
+            <Skeleton className="h-4 w-3/4" />
+            <div className="flex gap-1.5">
+              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-6 w-16 rounded-full" />
+              <Skeleton className="h-6 w-16 rounded-full" />
             </div>
-            <div className="flex justify-between pt-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-4 w-16" />
+            <div className="flex justify-between items-center pt-2 border-t border-border">
+              <Skeleton className="h-6 w-20" />
+              <Skeleton className="h-5 w-16 rounded-full" />
             </div>
-          </CardContent>
-        </Card>
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-8 w-full rounded-md" />
+          </div>
+        </div>
       ))}
     </div>
   );
