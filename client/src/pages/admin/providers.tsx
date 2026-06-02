@@ -514,11 +514,21 @@ export default function AdminProviders() {
                             onClick={() => {
                               const idStatus = (app as any).identityVerificationStatus;
                               const bizStatus = (app as any).businessVerificationStatus;
+                              let overrideNote: string | undefined;
                               if (idStatus !== "verified" || bizStatus !== "verified") {
                                 const details = [`ID: ${idStatus || "not started"}`, `Business: ${bizStatus || "not started"}`].join(", ");
-                                if (!window.confirm(`Verifications incomplete (${details}). Approve anyway?`)) return;
+                                const note = window.prompt(
+                                  `Verifications incomplete (${details}).\n\nEnter an override reason to approve anyway (required):`,
+                                  ""
+                                );
+                                if (note === null) return;
+                                if (!note.trim()) {
+                                  alert("An override reason is required when approving without completed verification.");
+                                  return;
+                                }
+                                overrideNote = `[Admin override] ${note.trim()}`;
                               }
-                              updateStatusMutation.mutate({ id: app.id, status: "approved" });
+                              updateStatusMutation.mutate({ id: app.id, status: "approved", rejectionMessage: overrideNote });
                             }}
                             disabled={updateStatusMutation.isPending}
                             data-testid={`button-approve-${app.id}`}

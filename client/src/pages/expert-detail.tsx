@@ -23,7 +23,8 @@ import {
   Verified,
   TrendingUp,
   Globe,
-  Briefcase
+  Briefcase,
+  ShieldCheck,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -144,6 +145,7 @@ export default function ExpertDetailPage() {
   const bio = expert.expertForm?.bio || "Experienced local expert ready to help plan your perfect trip.";
   const superExpert = expert.superExpert || false;
   const verified = expert.verified || true;
+  const idVerified = expert.expertForm?.identityVerificationStatus === "verified";
 
   return (
     <Layout>
@@ -180,6 +182,12 @@ export default function ExpertDetailPage() {
                       <h1 className="text-3xl font-bold">{fullName}</h1>
                       {verified && (
                         <CheckCircle className="w-6 h-6 text-primary" title="Verified Expert" />
+                      )}
+                      {idVerified && (
+                        <Badge className="bg-blue-600 text-white" title="Identity verified via Stripe Identity">
+                          <ShieldCheck className="w-3 h-3 mr-1" />
+                          ID Verified
+                        </Badge>
                       )}
                       {superExpert && (
                         <Badge className="bg-amber-500">
