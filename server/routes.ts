@@ -2830,6 +2830,40 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     }
   });
 
+  // GET /api/expert/neighborhoods — Return current expert's neighborhoods + locality proof
+  app.get("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const form = await storage.getLocalExpertForm(userId);
+      res.json({
+        neighborhoods: (form?.neighborhoods as string[]) || [],
+        localityProof: form?.localityProof || "",
+      });
+    } catch (err) {
+      console.error("Error fetching expert neighborhoods:", err);
+      res.status(500).json({ message: "Failed to fetch" });
+    }
+  });
+
+  // PATCH /api/expert/neighborhoods — Save expert's neighbourhood coverage
+  app.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { neighborhoods, localityProof } = req.body;
+      if (!Array.isArray(neighborhoods)) {
+        return res.status(400).json({ message: "neighborhoods must be an array" });
+      }
+      if (localityProof !== undefined && typeof localityProof !== "string") {
+        return res.status(400).json({ message: "localityProof must be a string" });
+      }
+      await storage.updateLocalExpertFormNeighborhoods(userId, neighborhoods, localityProof ?? "");
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert neighborhoods:", err);
+      res.status(500).json({ message: "Failed to save" });
+    }
+  });
+
   // PATCH /api/expert/profile-notes — Save expert's notes style description
   app.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
     try {
