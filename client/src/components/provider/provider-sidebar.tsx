@@ -4,12 +4,10 @@ import {
   CalendarCheck,
   Package,
   DollarSign,
-  TrendingUp,
   BarChart3,
   Calendar,
   Building,
   Settings,
-  BookOpen,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -52,11 +50,6 @@ export function ProviderSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const { user, logout } = useAuth();
 
-  const handleLogout = () => {
-    logout();
-  };
-
-  // Get initials for avatar
   const getInitials = () => {
     if (user?.businessName) {
       return user.businessName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -67,26 +60,28 @@ export function ProviderSidebar() {
     return "SP";
   };
 
+  const displayName = user?.businessName || `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() || "Service Provider";
+
   return (
-    <aside 
-      className={`h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
+    <aside
+      className={`h-screen bg-white border-r border-[#E8E8E2] flex flex-col transition-all duration-300 ${
         collapsed ? "w-16" : "w-56"
       }`}
       data-testid="provider-sidebar"
     >
       {/* Header */}
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="p-4 border-b border-[#E8E8E2] flex items-center justify-between">
         {!collapsed && (
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-[#FF385C] rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">SP</span>
             </div>
-            <span className="font-semibold text-gray-900">Provider</span>
+            <span className="font-semibold text-[#1A1A18]">Provider</span>
           </div>
         )}
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           onClick={() => setCollapsed(!collapsed)}
           className={collapsed ? "mx-auto" : ""}
           data-testid="button-toggle-sidebar"
@@ -97,16 +92,14 @@ export function ProviderSidebar() {
 
       {/* Business Info */}
       {!collapsed && (
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-[#E8E8E2]">
           <div className="flex items-center gap-3">
             <Avatar className="h-10 w-10">
               <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C]">{getInitials()}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-900 truncate">
-                {user?.businessName || `${user?.firstName} ${user?.lastName}`.trim() || "Service Provider"}
-              </p>
-              <p className="text-xs text-gray-500">Service Provider</p>
+              <p className="font-medium text-[#1A1A18] truncate">{displayName}</p>
+              <p className="text-xs text-[#7A7A72]">Service Provider</p>
             </div>
           </div>
         </div>
@@ -117,11 +110,11 @@ export function ProviderSidebar() {
         {navGroups.map((group) => (
           <div key={group.label} className="mb-4">
             {!collapsed && (
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide px-3 mb-2">
+              <p className="text-xs font-semibold text-[#AEAEA6] uppercase tracking-wide px-3 mb-2">
                 {group.label}
               </p>
             )}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {group.items.map((item) => {
                 const isActive = location === item.href;
                 return (
@@ -129,8 +122,8 @@ export function ProviderSidebar() {
                     <div
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                         isActive
-                          ? "bg-[#FF385C] text-white"
-                          : "text-gray-700 hover:bg-gray-100"
+                          ? "bg-[#FF385C]/10 text-[#FF385C]"
+                          : "text-[#1A1A18] hover:bg-[#F3F3EE]"
                       } ${collapsed ? "justify-center" : ""}`}
                       data-testid={`nav-${item.label.toLowerCase().replace(" ", "-")}`}
                     >
@@ -145,11 +138,11 @@ export function ProviderSidebar() {
         ))}
       </nav>
 
-      {/* Bottom Navigation */}
-      <div className="p-2 border-t border-gray-200">
+      {/* Bottom */}
+      <div className="p-2 border-t border-[#E8E8E2]">
         <button
-          onClick={handleLogout}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors text-gray-700 hover:bg-gray-100 ${collapsed ? "justify-center" : ""}`}
+          onClick={() => logout()}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors text-[#1A1A18] hover:bg-[#F3F3EE] ${collapsed ? "justify-center" : ""}`}
           data-testid="button-logout"
         >
           <LogOut className="w-5 h-5 flex-shrink-0" />

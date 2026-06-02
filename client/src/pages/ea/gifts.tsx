@@ -16,53 +16,9 @@ import {
 } from "lucide-react";
 
 export default function EAGifts() {
-  const upcomingOccasions = [
-    { id: 1, executive: "Michael Torres", occasion: "10th Anniversary", date: "This Friday", giftNeeded: true },
-    { id: 2, executive: "James Anderson", occasion: "Spouse Birthday", date: "Apr 22", giftNeeded: false },
-    { id: 3, executive: "Lisa Parker", occasion: "Work Anniversary", date: "Apr 28", giftNeeded: true },
-  ];
-
-  const aiSuggestions = [
-    {
-      id: 1,
-      for: "Michael Torres - Anniversary",
-      options: [
-        { name: "Cartier Love Bracelet", price: "$6,900", matchScore: 95 },
-        { name: "Weekend at The Ritz-Carlton", price: "$3,500", matchScore: 92 },
-        { name: "Tiffany & Co. Necklace", price: "$4,200", matchScore: 88 },
-      ],
-    },
-  ];
-
-  const giftHistory = [
-    {
-      id: 1,
-      executive: "James Anderson",
-      occasion: "Anniversary 2024",
-      gift: "Weekend at Napa Valley resort",
-      amount: "$2,500",
-      date: "Jun 15, 2024",
-      rating: 5,
-    },
-    {
-      id: 2,
-      executive: "James Anderson",
-      occasion: "Birthday 2024",
-      gift: "Luxury watch",
-      amount: "$1,200",
-      date: "Mar 8, 2024",
-      rating: 5,
-    },
-    {
-      id: 3,
-      executive: "Sarah Chen",
-      occasion: "Promotion",
-      gift: "Spa Day Package",
-      amount: "$800",
-      date: "Feb 14, 2024",
-      rating: 4,
-    },
-  ];
+  const upcomingOccasions: Array<{ id: number; executive: string; occasion: string; date: string; giftNeeded: boolean }> = [];
+  const aiSuggestions: Array<{ id: number; for: string; options: Array<{ name: string; price: string; matchScore: number }> }> = [];
+  const giftHistory: Array<{ id: number; executive: string; occasion: string; gift: string; amount: string; date: string; rating: number }> = [];
 
   return (
     <EALayout title="Gifts">
@@ -123,6 +79,12 @@ export default function EAGifts() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                {upcomingOccasions.length === 0 && (
+                  <div className="text-center py-6">
+                    <Calendar className="w-8 h-8 text-[#AEAEA6] mx-auto mb-2" />
+                    <p className="text-[#7A7A72] text-sm">No upcoming occasions</p>
+                  </div>
+                )}
                 {upcomingOccasions.map((occasion) => (
                   <div 
                     key={occasion.id} 
@@ -167,6 +129,13 @@ export default function EAGifts() {
                 </div>
               </CardHeader>
               <CardContent>
+                {aiSuggestions.length === 0 && (
+                  <div className="text-center py-6">
+                    <Bot className="w-8 h-8 text-[#AEAEA6] mx-auto mb-2" />
+                    <p className="text-[#7A7A72] text-sm">No AI suggestions yet</p>
+                    <p className="text-xs text-[#AEAEA6] mt-1">Add occasions to get gift recommendations</p>
+                  </div>
+                )}
                 {aiSuggestions.map((suggestion) => (
                   <div key={suggestion.id} data-testid={`suggestion-${suggestion.id}`}>
                     <p className="font-medium text-gray-900 mb-3">{suggestion.for}</p>
@@ -201,6 +170,12 @@ export default function EAGifts() {
               <CardTitle className="text-lg">Recent Gift History</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {giftHistory.length === 0 && (
+                <div className="text-center py-6">
+                  <Gift className="w-8 h-8 text-[#AEAEA6] mx-auto mb-2" />
+                  <p className="text-[#7A7A72] text-sm">No gift history yet</p>
+                </div>
+              )}
               {giftHistory.map((gift) => (
                 <div 
                   key={gift.id} 

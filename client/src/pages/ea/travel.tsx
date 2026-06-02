@@ -15,39 +15,13 @@ import {
 } from "lucide-react";
 
 export default function EATravel() {
-  const activeTrips = [
-    {
-      id: 1,
-      executive: "Sarah Chen",
-      title: "COO",
-      route: "London → Tokyo → Singapore",
-      dates: "Mar 15-25, 2024",
-      status: "pending_approval",
-      segments: [
-        { city: "London", dates: "Mar 15-17", hotel: "The Savoy", hotelStatus: "confirmed", flight: "BA 107", flightStatus: "confirmed" },
-        { city: "Tokyo", dates: "Mar 17-22", hotel: "Park Hyatt Tokyo", hotelStatus: "pending", flight: "JL 042", flightStatus: "confirmed" },
-        { city: "Singapore", dates: "Mar 22-25", hotel: "Marina Bay Sands", hotelStatus: "pending", flight: "SQ 632", flightStatus: "confirmed" },
-      ],
-      issue: "Hotel approvals needed for Tokyo & Singapore",
-    },
-    {
-      id: 2,
-      executive: "James Anderson",
-      title: "CEO",
-      route: "Paris Round Trip",
-      dates: "This Weekend",
-      status: "confirmed",
-      segments: [
-        { city: "Paris", dates: "Fri-Sun", hotel: "Four Seasons", hotelStatus: "confirmed", flight: "AF 023", flightStatus: "confirmed" },
-      ],
-    },
-  ];
+  const activeTrips: Array<{
+    id: number; executive: string; title: string; route: string; dates: string;
+    status: string; segments: Array<{ city: string; dates: string; hotel: string; hotelStatus: string; flight: string; flightStatus: string }>;
+    issue?: string;
+  }> = [];
 
-  const upcomingTravel = [
-    { executive: "Michael Torres", destination: "Chicago", dates: "Mar 28", status: "confirmed" },
-    { executive: "Lisa Parker", destination: "Los Angeles", dates: "Apr 2-4", status: "planning" },
-    { executive: "Robert Kim", destination: "Boston", dates: "Apr 10", status: "confirmed" },
-  ];
+  const upcomingTravel: Array<{ executive: string; destination: string; dates: string; status: string }> = [];
 
   return (
     <EALayout title="Travel Coordination">
@@ -66,28 +40,32 @@ export default function EATravel() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="border border-gray-200" data-testid="stat-active-trips">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-active-trips">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">5</p>
-              <p className="text-sm text-gray-600">Active Trips</p>
+              <p className="text-3xl font-bold text-[#1A1A18]">{activeTrips.length}</p>
+              <p className="text-sm text-[#7A7A72]">Active Trips</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200" data-testid="stat-pending">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-pending">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-yellow-600">2</p>
-              <p className="text-sm text-gray-600">Pending Approval</p>
+              <p className="text-3xl font-bold text-amber-600">
+                {activeTrips.filter(t => t.status === "pending_approval").length}
+              </p>
+              <p className="text-sm text-[#7A7A72]">Pending Approval</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200" data-testid="stat-this-month">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-upcoming">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">8</p>
-              <p className="text-sm text-gray-600">This Month</p>
+              <p className="text-3xl font-bold text-[#1A1A18]">{upcomingTravel.length}</p>
+              <p className="text-sm text-[#7A7A72]">Upcoming</p>
             </CardContent>
           </Card>
-          <Card className="border border-gray-200" data-testid="stat-countries">
+          <Card className="border border-[#E8E8E2]" data-testid="stat-confirmed">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">12</p>
-              <p className="text-sm text-gray-600">Countries</p>
+              <p className="text-3xl font-bold text-[#1A1A18]">
+                {activeTrips.filter(t => t.status === "confirmed").length}
+              </p>
+              <p className="text-sm text-[#7A7A72]">Confirmed</p>
             </CardContent>
           </Card>
         </div>
@@ -101,6 +79,13 @@ export default function EATravel() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {activeTrips.length === 0 && (
+              <div className="text-center py-8">
+                <Plane className="w-10 h-10 text-[#AEAEA6] mx-auto mb-3" />
+                <p className="font-medium text-[#1A1A18]">No active trips</p>
+                <p className="text-sm text-[#7A7A72] mt-1">Trip arrangements will appear here</p>
+              </div>
+            )}
             {activeTrips.map((trip) => (
               <div 
                 key={trip.id} 
@@ -191,6 +176,12 @@ export default function EATravel() {
               <CardTitle className="text-lg">Upcoming Travel</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {upcomingTravel.length === 0 && (
+                <div className="text-center py-6">
+                  <Calendar className="w-8 h-8 text-[#AEAEA6] mx-auto mb-2" />
+                  <p className="text-[#7A7A72] text-sm">No upcoming travel</p>
+                </div>
+              )}
               {upcomingTravel.map((travel, idx) => (
                 <div 
                   key={idx} 

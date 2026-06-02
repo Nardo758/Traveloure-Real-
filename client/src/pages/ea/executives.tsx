@@ -23,79 +23,15 @@ import { useState } from "react";
 export default function EAExecutives() {
   const [expandedId, setExpandedId] = useState<number | null>(1);
 
-  const executives = [
-    {
-      id: 1,
-      name: "James Anderson",
-      title: "CEO",
-      status: "active",
-      email: "james.anderson@company.com",
-      phone: "+1 (555) 001-0001",
-      activeEvents: 4,
-      upcoming: 7,
-      preferences: {
-        travelClass: "First/Business only",
-        hotelBrands: "Four Seasons, Ritz-Carlton preferred",
-        dietary: "No red meat, prefers seafood",
-        seating: "Aisle seat, front of plane",
-        notes: "Allergic to shellfish, needs extra legroom",
-      },
-      family: {
-        spouse: "Jennifer Anderson",
-        anniversary: "June 15",
-        children: "2 (Emma, 12 & Jack, 9)",
-        importantDates: [
-          { label: "Birthday", date: "March 8" },
-          { label: "Jennifer's Birthday", date: "April 22" },
-          { label: "Emma's Birthday", date: "July 10" },
-          { label: "Jack's Birthday", date: "November 3" },
-        ],
-      },
-      giftHistory: [
-        { event: "Anniversary 2024", gift: "Weekend at Napa Valley resort", amount: "$2,500" },
-        { event: "Birthday 2024", gift: "Luxury watch", amount: "$1,200" },
-        { event: "Christmas 2023", gift: "Family ski trip", amount: "$8,000" },
-      ],
-      activeEventsList: [
-        { event: "Paris client dinner", status: "URGENT", date: "Tonight" },
-        { event: "Board meeting", date: "Next Thursday" },
-        { event: "Weekend getaway", date: "This Friday-Sunday" },
-        { event: "Q2 investor presentation", date: "April 15" },
-      ],
-    },
-    {
-      id: 2,
-      name: "Sarah Chen",
-      title: "COO",
-      status: "active",
-      email: "sarah.chen@company.com",
-      phone: "+1 (555) 001-0002",
-      activeEvents: 3,
-      upcoming: 5,
-      currentTrip: "International business trip (London-Tokyo-Singapore)",
-      attention: "Hotel approvals needed for Tokyo & Singapore",
-    },
-    {
-      id: 3,
-      name: "Michael Torres",
-      title: "VP Sales",
-      status: "active",
-      email: "michael.torres@company.com",
-      phone: "+1 (555) 001-0003",
-      activeEvents: 2,
-      upcoming: 4,
-    },
-    {
-      id: 4,
-      name: "Lisa Parker",
-      title: "VP Marketing",
-      status: "active",
-      email: "lisa.parker@company.com",
-      phone: "+1 (555) 001-0004",
-      activeEvents: 3,
-      upcoming: 3,
-    },
-  ];
+  const executives: Array<{
+    id: number; name: string; title: string; status: string;
+    email: string; phone: string; activeEvents: number; upcoming: number;
+    preferences?: Record<string, string>;
+    family?: { spouse?: string; anniversary?: string; children?: string; importantDates?: Array<{ label: string; date: string }> };
+    giftHistory?: Array<{ event: string; gift: string; amount: string }>;
+    activeEventsList?: Array<{ event: string; status?: string; date: string }>;
+    currentTrip?: string; attention?: string;
+  }> = [];
 
   return (
     <EALayout title="Executive Management">
@@ -132,6 +68,15 @@ export default function EAExecutives() {
 
         {/* Executives List */}
         <div className="space-y-4">
+          {executives.length === 0 && (
+            <Card className="border border-[#E8E8E2]">
+              <CardContent className="p-12 text-center">
+                <User className="w-12 h-12 text-[#AEAEA6] mx-auto mb-3" />
+                <p className="font-medium text-[#1A1A18]">No executives added yet</p>
+                <p className="text-sm text-[#7A7A72] mt-1">Add executives to manage their preferences and events</p>
+              </CardContent>
+            </Card>
+          )}
           {executives.map((exec) => (
             <Card key={exec.id} className="border border-gray-200" data-testid={`executive-${exec.id}`}>
               <CardHeader 
