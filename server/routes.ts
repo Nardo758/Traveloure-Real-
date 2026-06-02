@@ -2866,7 +2866,30 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       if (localityProof !== undefined && typeof localityProof !== "string") {
         return res.status(400).json({ message: "localityProof must be a string" });
       }
-      await storage.updateLocalExpertFormNeighborhoods(userId, neighborhoods, localityProof ?? "");
+
+      // Normalise: trim whitespace, drop empty strings, deduplicate case-insensitively
+      // (first occurrence wins — preserves the casing the user typed first)
+      const seen = new Set<string>();
+      const cleaned: string[] = [];
+      for (const raw of neighborhoods) {
+        if (typeof raw !== "string") continue;
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          cleaned.push(trimmed);
+        }
+      }
+
+      const MAX_NEIGHBORHOODS = 20;
+      if (cleaned.length > MAX_NEIGHBORHOODS) {
+        return res.status(400).json({
+          message: `You can add at most ${MAX_NEIGHBORHOODS} neighbourhoods. Please remove some before saving.`,
+        });
+      }
+
+      await storage.updateLocalExpertFormNeighborhoods(userId, cleaned, localityProof ?? "");
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert neighborhoods:", err);
