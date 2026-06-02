@@ -5660,7 +5660,12 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        const serviceRate = parseFloat(item.service.revenueShareRate ?? "0.30");
+        // safeParseRate: returns fallback (0.75) when value is missing, non-numeric, or outside [0,1]
+        const safeParseRate = (value: any, fallback: number): number => {
+          const n = parseFloat(value);
+          return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+        };
+        const serviceRate = safeParseRate(item.service.revenueShareRate, 0.75);
         const fee = price * serviceRate;
         
         // Create contract for this booking
@@ -17845,11 +17850,18 @@ export async function registerDiscoveryRoutes(app: Express) {
         item.bookingStatus !== "cancelled"
       );
 
-      const DEFAULT_RATE = 0.30;
-      // Derive expert's revenue share rate from their active services (fallback 0.30)
+      // Expert-favorable split policy: 75% floor, 85% ceiling. Do NOT lower DEFAULT_RATE
+      // without a product decision — it inverts the split in experts' disfavor.
+      const DEFAULT_RATE = 0.75;
+      // safeParseRate: returns fallback when value is missing, non-numeric, NaN, Infinity, or outside [0,1]
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+      // Derive expert's revenue share rate from their active services (fallback DEFAULT_RATE)
       const expertServices = await storage.getProviderServicesByStatus(userId, "active");
       const expertRate = expertServices.length > 0
-        ? expertServices.reduce((sum: number, svc: any) => sum + parseFloat(svc.revenueShareRate ?? "0.30"), 0) / expertServices.length
+        ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, DEFAULT_RATE), 0) / expertServices.length
         : DEFAULT_RATE;
 
       let totalGross = 0;
@@ -17882,7 +17894,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         totalGross: totalGross.toFixed(2),
         expertShare: expertShare.toFixed(2),
         platformFee: platformFee.toFixed(2),
-        revenueShareRate: DEFAULT_RATE,
+        revenueShareRate: parseFloat(expertRate.toFixed(4)),
         itemCount: items.length,
         itemBreakdown: itemBreakdown.map(b => ({
           ...b,
