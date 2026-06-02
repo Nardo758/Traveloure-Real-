@@ -775,7 +775,7 @@ export class DatabaseStorage implements IStorage {
       ownerId: newService.userId,
       title: newService.serviceName,
       status: newService.status === 'draft' ? 'draft' : 'published',
-      metadata: { serviceType: newService.serviceType, categoryId: newService.categoryId },
+      metadata: { serviceType: newService.serviceType, categoryId: newService.categoryId, subcategoryId: newService.subcategoryId ?? null },
     });
     
     return newService;
