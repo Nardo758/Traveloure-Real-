@@ -101,7 +101,10 @@ export default function ExpertStatusPage() {
   });
 
   const startVerificationMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/identity/create-session", { formType: "expert" }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/identity/create-session", { formType: "expert" });
+      return res.json();
+    },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] });
       if (data.verificationUrl) {
