@@ -17745,27 +17745,31 @@ export async function registerDiscoveryRoutes(app: Express) {
       const row = queueResult.rows?.[0] as any;
       if (!row) return res.status(404).json({ error: "Routing request not found" });
       if (!row.assigned_expert_id) return res.status(400).json({ error: "No expert assigned to this request" });
-      if (row.status === "confirmed") {
+      if (row.status === "assigned" || row.status === "confirmed") {
         return res.status(200).json({ alreadyConfirmed: true, message: "Assignment was already confirmed — no change made." });
       }
       if (!row.trip_id) return res.status(400).json({ error: "Request has no associated trip" });
 
       const alreadyExists = await storage.isExpertAssignedToTrip(row.trip_id, row.assigned_expert_id);
       if (alreadyExists) {
-        await db.execute(sql`
-          UPDATE expert_requests SET status = 'confirmed' WHERE id = ${requestId}
-        `);
         return res.status(200).json({ message: "Expert already assigned to this trip (no-op)", alreadyExists: true });
       }
 
-      const advisor = await storage.createTripExpertAdvisor({
-        tripId: row.trip_id,
-        localExpertId: row.assigned_expert_id,
-      });
+      const advisor = await db.transaction(async (tx) => {
+        const [created] = await tx.insert(tripExpertAdvisors).values({
+          tripId: row.trip_id,
+          localExpertId: row.assigned_expert_id,
+          status: "assigned",
+          workspaceStatus: "draft",
+          assignedAt: new Date(),
+        }).returning();
 
-      await db.execute(sql`
-        UPDATE expert_requests SET status = 'confirmed', assigned_at = NOW() WHERE id = ${requestId}
-      `);
+        await tx.execute(sql`
+          UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}
+        `);
+
+        return created;
+      });
 
       res.json({ success: true, advisor });
     } catch (error: any) {
