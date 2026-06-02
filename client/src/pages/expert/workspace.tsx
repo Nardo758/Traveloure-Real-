@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -227,16 +227,14 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
   );
 }
 
-function AddItemModal({ dayNumber, tripId, onClose }: { dayNumber: number; tripId: string; onClose: () => void }) {
+function AddItemModal({ dayNumber, tripId, onClose, onItemAdded }: { dayNumber: number; tripId: string; onClose: () => void; onItemAdded: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-      apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
-        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
-        .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }));
+      onItemAdded();
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       onClose();
     },
@@ -404,6 +402,16 @@ export default function ExpertWorkspace() {
   });
 
   const energyCalcRef = useRef(false);
+  const energyRecalcInFlight = useRef(false);
+  const triggerEnergyRecalc = useCallback(() => {
+    if (!tripId || energyRecalcInFlight.current) return;
+    energyRecalcInFlight.current = true;
+    apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
+      .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+      .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
+      .finally(() => { energyRecalcInFlight.current = false; });
+  }, [tripId]);
+
   useEffect(() => {
     if (!tripId || energyCalcRef.current) return;
     energyCalcRef.current = true;
@@ -483,9 +491,7 @@ export default function ExpertWorkspace() {
     onSuccess: (_, result) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
-      apiRequest("POST", `/api/trips/${tripId}/calculate-energy`, {})
-        .then(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }))
-        .catch(() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/workspace-constraints`] }));
+      triggerEnergyRecalc();
       toast({ title: "Added to itinerary", description: `${result.name} → Day ${addToDay}` });
       setSelectedPin(null);
     },
@@ -621,7 +627,7 @@ export default function ExpertWorkspace() {
         <BookingBriefModal provider={bookingBrief.provider} bookingUrl={bookingBrief.bookingUrl} tripId={tripId} onClose={() => setBookingBrief(null)} />
       )}
       {addingItemDay !== null && tripId && (
-        <AddItemModal dayNumber={addingItemDay} tripId={tripId} onClose={() => setAddingItemDay(null)} />
+        <AddItemModal dayNumber={addingItemDay} tripId={tripId} onClose={() => setAddingItemDay(null)} onItemAdded={triggerEnergyRecalc} />
       )}
 
       {/* ── Header ── */}
