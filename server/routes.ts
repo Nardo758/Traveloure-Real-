@@ -18524,7 +18524,7 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
     }
   });
 
-  // GET /api/visa/experts — returns visa-assistance services for the visa-help page
+  // GET /api/visa/experts — returns visa-assistance services with real provider names
   app.get("/api/visa/experts", async (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string || "6"), 20);
@@ -18535,12 +18535,32 @@ If no visa is required (visa-free or visa-on-arrival), set visa_required to fals
         .limit(1)
         .then((r) => r[0]);
       if (!cat) return res.json({ services: [], total: 0 });
-      const services = await db
-        .select()
+      const rows = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+          description: providerServices.description,
+          price: providerServices.price,
+          averageRating: providerServices.averageRating,
+          reviewCount: providerServices.reviewCount,
+          location: providerServices.location,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          categoryId: providerServices.categoryId,
+          providerFirstName: users.firstName,
+          providerLastName: users.lastName,
+          providerAvatar: users.profileImageUrl,
+        })
         .from(providerServices)
+        .leftJoin(users, eq(providerServices.userId, users.id))
         .where(and(eq(providerServices.categoryId, cat.id), eq(providerServices.status, "active")))
         .orderBy(desc(providerServices.bookingsCount))
         .limit(limit);
+      const services = rows.map((r) => ({
+        ...r,
+        providerName: [r.providerFirstName, r.providerLastName].filter(Boolean).join(" ") || "Visa Specialist",
+      }));
       res.json({ services, total: services.length });
     } catch (err) {
       console.error("[Visa] experts error:", err);

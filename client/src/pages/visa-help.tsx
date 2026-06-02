@@ -77,6 +77,9 @@ type Service = {
   reviewCount: number;
   location: string;
   deliveryMethod: string;
+  serviceImage: string | null;
+  providerName: string;
+  providerAvatar: string | null;
 };
 
 type DiscoverResult = {
@@ -410,28 +413,21 @@ export default function VisaHelpPage() {
 function VisaExpertCard({ service }: { service: Service }) {
   const rating = parseFloat(service.averageRating || "0") || 0;
   const price = parseFloat(service.price || "0") || 0;
-
-  const avatars = [
-    "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&q=80",
-    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80",
-    "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&q=80",
-    "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80",
-    "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80",
-    "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80",
-  ];
-  const hash = service.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const avatar = avatars[hash % avatars.length];
-
-  const firstNames = ["Ana", "Marco", "Priya", "James", "Sofia", "Ahmed"];
-  const lastNames = ["Visas", "Consulting", "Legal", "Immigration", "Services", "Advisory"];
-  const name = `${firstNames[hash % firstNames.length]} ${lastNames[(hash + 1) % lastNames.length]}`;
+  const name = service.providerName || "Visa Specialist";
+  const avatar = service.providerAvatar || service.serviceImage || null;
 
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
       <div className="bg-card rounded-2xl overflow-hidden border border-border shadow-sm hover:shadow-md transition-all h-full flex flex-col" data-testid={`card-visa-expert-${service.id}`}>
         <div className="p-5 flex-1 space-y-3">
           <div className="flex items-center gap-3">
-            <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-[#FF385C]/20" />
+            {avatar ? (
+              <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-[#FF385C]/20" />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-[#FF385C]/10 border-2 border-[#FF385C]/20 flex items-center justify-center text-[#FF385C] font-bold text-lg">
+                {name.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <p className="font-semibold text-gray-900 dark:text-white text-sm">{name}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
