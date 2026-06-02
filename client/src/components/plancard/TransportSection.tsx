@@ -15,12 +15,11 @@ interface TransportSectionProps {
 }
 
 function BookingSourceBadge({ transport }: { transport: PlanCardTransport }) {
-  const isPlatform = transport.bookingSource === "platform" || (!transport.partnerName && !transport.bookingSource);
-  const isAffiliate = transport.partnerName && transport.bookingSource !== "platform";
+  // Default to platform when no explicit booking data — every leg gets a badge
+  const resolvedSource = transport.bookingSource ?? "platform";
+  const resolvedPartner = transport.partnerName;
 
-  if (!transport.partnerName && !transport.bookingSource) return null;
-
-  if (transport.bookingSource === "platform") {
+  if (resolvedSource === "platform" || (!resolvedPartner && resolvedSource !== "affiliate")) {
     return (
       <span
         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800"

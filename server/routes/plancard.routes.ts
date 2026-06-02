@@ -250,7 +250,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
               line: null,
               status: "suggested",
               suggestedBy: "ai",
-              bookingSource: null,
+              bookingSource: "platform",
               partnerName: null,
             })),
           };
