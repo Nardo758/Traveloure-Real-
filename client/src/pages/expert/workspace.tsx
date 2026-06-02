@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useLocation, Link } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -369,6 +369,45 @@ export default function ExpertWorkspace() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
+  // ── beforeunload guard: warn on tab close / refresh while save is pending ──
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (noteSaveStatus === "saving") {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [noteSaveStatus]);
+
+  // ── popstate guard: intercept browser back/forward while save is pending ──
+  useEffect(() => {
+    if (noteSaveStatus !== "saving") return;
+
+    const currentPath = window.location.pathname + window.location.search;
+
+    const handlePopState = () => {
+      const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
+      if (!confirmed) {
+        window.history.pushState(null, "", currentPath);
+        setLocation(currentPath);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [noteSaveStatus]);
+
+  // ── safeNavigate: intercept in-app navigation while save is pending ──
+  const safeNavigate = (path: string) => {
+    if (noteSaveStatus === "saving") {
+      const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
+      if (!confirmed) return;
+    }
+    setLocation(path);
+  };
+
   const workspaceStatus = assignment?.workspaceStatus || "draft";
   const days = itineraryData?.days || [];
   const totalItems = itineraryData?.total || 0;
@@ -399,7 +438,7 @@ export default function ExpertWorkspace() {
       <Users style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
       <div style={{ fontSize: 18, fontWeight: 600, color: G[900], marginBottom: 8 }}>Trip not found</div>
       <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, or it no longer exists.</div>
-      <button onClick={() => setLocation("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
+      <button onClick={() => safeNavigate("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
     </div>
   );
 
@@ -420,7 +459,7 @@ export default function ExpertWorkspace() {
       <header style={{ height: 56, background: "white", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => setCollapsed(!collapsed)} data-testid="button-toggle-sidebar" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: G[500], display: "flex" }}><Menu style={{ width: 20, height: 20 }} /></button>
-          <Link href="/expert/dashboard"><button style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: G[400], fontSize: 13 }}><ArrowLeft style={{ width: 14, height: 14 }} /></button></Link>
+          <button onClick={() => safeNavigate("/expert/dashboard")} data-testid="button-back-dashboard" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: G[400], fontSize: 13 }}><ArrowLeft style={{ width: 14, height: 14 }} /></button>
           <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>Itinerary Workspace</span>
           <ChevronRight style={{ width: 14, height: 14, color: G[400] }} />
           <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", background: G[50], borderRadius: 99, border: `1px solid ${G[200]}` }}>
@@ -577,7 +616,7 @@ export default function ExpertWorkspace() {
                 </div>
               )}
 
-              <button onClick={() => setLocation(`/trip/${tripId}?tab=itinerary`)} data-testid="button-open-full-logistics" style={{ width: "100%", padding: "6px 12px", borderRadius: 8, border: `1px solid ${G[200]}`, background: "white", fontSize: 12, color: G[600], cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontWeight: 500 }}>
+              <button onClick={() => safeNavigate(`/trip/${tripId}?tab=itinerary`)} data-testid="button-open-full-logistics" style={{ width: "100%", padding: "6px 12px", borderRadius: 8, border: `1px solid ${G[200]}`, background: "white", fontSize: 12, color: G[600], cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontWeight: 500 }}>
                 <Navigation style={{ width: 12, height: 12 }} /> Open Full Itinerary <ChevronRight style={{ width: 11, height: 11, color: G[400] }} />
               </button>
             </div>
@@ -593,11 +632,9 @@ export default function ExpertWorkspace() {
               ))}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Link href={`/chat`}>
-                <button data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-                  <MessageSquare style={{ width: 13, height: 13 }} /> Chat
-                </button>
-              </Link>
+              <button onClick={() => safeNavigate("/chat")} data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                <MessageSquare style={{ width: 13, height: 13 }} /> Chat
+              </button>
               <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending || workspaceStatus === "delivered"} data-testid="button-send-edits" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, opacity: workspaceStatus === "delivered" ? 0.5 : 1 }}>
                 <Send style={{ width: 13, height: 13 }} /> Send Edits
               </button>
