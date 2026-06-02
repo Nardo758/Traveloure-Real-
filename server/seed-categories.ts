@@ -18,6 +18,7 @@ const coreCategories = [
   { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 },
   { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 },
   { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 },
+  { name: "Visa Assistance", slug: "visa-assistance", description: "Expert visa guidance, document preparation, application support, and embassy appointment scheduling", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "license", "references"], priceRange: { min: 75, max: 800 }, sortOrder: 16 },
   
   // Experience-specific service bundles
   { name: "Travel Services", slug: "services-travel", description: "Travel insurance, visa assistance, guides, translation, photography for travelers", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 50, max: 500 }, sortOrder: 20 },

@@ -14,7 +14,8 @@ import {
   XCircle,
   Eye,
   Clock,
-  Loader2
+  Loader2,
+  Brain,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 interface ExpertApplication {
   id: string;
   userId: string;
+  expertType?: string;
   firstName?: string;
   lastName?: string;
   email?: string;
@@ -36,6 +38,11 @@ interface ExpertApplication {
   bio?: string;
   status: string;
   createdAt: string;
+  // Local Expert fields
+  neighborhoods?: string[];
+  localityProof?: string;
+  knowledgeProofAnswers?: Array<{ question: string; answer: string }>;
+  localSpecialties?: string[];
 }
 
 export default function AdminExperts() {
@@ -46,6 +53,10 @@ export default function AdminExperts() {
 
   const { data: applications = [], isLoading } = useQuery<ExpertApplication[]>({
     queryKey: ["/api/admin/expert-applications"],
+  });
+
+  const { data: nuggetCounts = {} } = useQuery<Record<string, number>>({
+    queryKey: ["/api/admin/local-experts/nugget-counts"],
   });
 
   const pendingApps = applications.filter(a => a.status === "pending");
@@ -233,7 +244,41 @@ export default function AdminExperts() {
                       </div>
                     </div>
 
-                    {app.bio && (
+                    {app.expertType === "local_expert" && app.localityProof && (
+                      <div className="text-sm">
+                        <span className="text-gray-500 font-medium">How they're local: </span>
+                        <Badge variant="secondary" className="text-xs ml-1">
+                          {{ born_raised: "Born & raised", long_term_10yr: "Long-term resident (10+ yrs)", resident_5yr: "Resident (5+ yrs)", current_resident: "Current resident" }[app.localityProof] ?? app.localityProof}
+                        </Badge>
+                      </div>
+                    )}
+
+                    {app.expertType === "local_expert" && (app.neighborhoods ?? []).length > 0 && (
+                      <div className="text-sm">
+                        <span className="text-gray-500 font-medium">Neighbourhoods: </span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {(app.neighborhoods ?? []).map((n, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{n}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {app.expertType === "local_expert" && (app.knowledgeProofAnswers ?? []).length > 0 && (
+                      <div className="text-sm space-y-2">
+                        <span className="text-gray-500 font-medium block">Knowledge Proof:</span>
+                        {(app.knowledgeProofAnswers ?? []).map((qa, i) => (
+                          qa.answer?.trim() && (
+                            <div key={i} className="p-2 bg-amber-50 border border-amber-100 rounded text-xs">
+                              <p className="font-medium text-amber-800 mb-0.5">Q{i + 1}: {qa.question?.slice(0, 70)}…</p>
+                              <p className="text-gray-700 italic">"{qa.answer.trim().slice(0, 200)}{qa.answer.trim().length > 200 ? "…" : ""}"</p>
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    )}
+
+                    {app.expertType !== "local_expert" && app.bio && (
                       <p className="text-sm text-gray-600 italic">"{app.bio.slice(0, 150)}{app.bio.length > 150 ? "..." : ""}"</p>
                     )}
 
@@ -308,11 +353,15 @@ export default function AdminExperts() {
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Expert</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Location</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Destinations</th>
+                        <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Knowledge Nuggets</th>
                         <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Approved</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredApproved.map((expert) => (
+                      {filteredApproved.map((expert) => {
+                        const nuggetCount = nuggetCounts[expert.userId] ?? 0;
+                        const isLocal = expert.expertType === "local_expert";
+                        return (
                         <tr key={expert.id} className="border-b border-gray-100 last:border-0" data-testid={`row-expert-${expert.id}`}>
                           <td className="py-3 px-2">
                             <div className="flex items-center gap-3">
@@ -342,11 +391,24 @@ export default function AdminExperts() {
                               ))}
                             </div>
                           </td>
+                          <td className="py-3 px-2" data-testid={`cell-nuggets-${expert.id}`}>
+                            {isLocal ? (
+                              <span className="flex items-center gap-1.5 text-sm">
+                                <Brain className="w-3.5 h-3.5 text-purple-500" />
+                                <span className={nuggetCount > 0 ? "font-semibold text-purple-700" : "text-gray-400"}>
+                                  {nuggetCount}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">—</span>
+                            )}
+                          </td>
                           <td className="py-3 px-2 text-sm text-gray-500">
                             {new Date(expert.createdAt).toLocaleDateString()}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

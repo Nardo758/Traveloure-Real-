@@ -31,9 +31,20 @@ import {
   eaCommunications, insertEaCommunicationSchema,
   eaAiTasks, insertEaAiTaskSchema,
   userAndExpertContracts,
+  expertSelectedServices,
+  localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
+  contentPlacementRules,
+  type InsertContentPlacementRule,
 } from "@shared/schema";
+import {
+  TAB_CONTENT_TYPE_MAP,
+  TAB_AFFILIATE_CATEGORIES,
+  SURFACE_DEFAULT_CONTENT_TYPES,
+  SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
+  SURFACE_SLUGS,
+} from "@shared/content-surface-map";
 import { db } from "./db";
-import { eq, and, or, like, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
@@ -47,7 +58,7 @@ import { aiOrchestrator } from "./services/ai-orchestrator";
 import { grokService } from "./services/grok.service";
 import { feverService } from "./services/fever.service";
 import { feverCacheService } from "./services/fever-cache.service";
-import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow } from "@shared/schema";
+import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
 import { budgetService } from "./services/budget.service";
@@ -57,7 +68,7 @@ import { experienceCatalogService } from "./services/experience-catalog.service"
 import { opportunityEngineService } from "./services/opportunity-engine.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
 import { generateKml } from "./services/kml-generator";
@@ -82,6 +93,30 @@ import {
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
 } from "@shared/schema";
+
+// ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
+import {
+  EXPERT_SHARE_RATE,
+  PLATFORM_FEE_RATE,
+  resolveCommissionRates,
+  type CommissionRates,
+} from "./services/commission";
+
+// ─── Service-category → booking_fee_configs category mapping ─────────────────
+// serviceCategories.slug values are detailed provider-category slugs (e.g.
+// "transportation-logistics"). booking_fee_configs.category uses broader domain
+// names ("transportation", "accommodation", …). This helper bridges the two.
+function serviceCategorySlugToFeeCategory(slug: string | null | undefined): string {
+  if (!slug) return "default";
+  if (/transport|logistics|shuttle|transfer/.test(slug)) return "transportation";
+  if (/lodg|accommodation|hotel|hostel|resort/.test(slug)) return "accommodation";
+  if (/dining|food|culinary|restaurant/.test(slug)) return "dining";
+  if (/tour|experience|activit|adventure|outdoor/.test(slug)) return "activities";
+  if (/flight|air|airline/.test(slug)) return "flights";
+  if (/car.?rental|rental|vehicle/.test(slug)) return "car_rental";
+  if (/insurance|safety|security/.test(slug)) return "insurance";
+  return "default";
+}
 
 // Helper function to verify trip ownership
 async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
@@ -161,6 +196,183 @@ export async function registerRoutes(
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work
   }
+
+  // ─── Seed canonical service templates (per-title idempotent) ───────────────
+  // The six templates previously hardcoded in the frontend are promoted to DB
+  // rows so there is a single canonical source. Each template is checked by
+  // title individually so partial/legacy DB state is handled correctly.
+  (async () => {
+    try {
+      const CANONICAL_TEMPLATES = [
+        {
+          title: "Quick Consultation",
+          description: "15-minute video call to answer quick travel questions and provide immediate guidance",
+          serviceType: "consultation",
+          deliveryMethod: "video",
+          deliveryTimeframe: "15 min",
+          suggestedPrice: "29",
+          requirements: JSON.stringify(["Travel question or topic to discuss"]),
+          whatIncluded: JSON.stringify(["15-min video call", "Personalized advice", "Follow-up summary email"]),
+          isActive: true,
+          sortOrder: 1,
+        },
+        {
+          title: "Cart Review & Optimization",
+          description: "Expert review of your travel cart to find savings and better alternatives",
+          serviceType: "review",
+          deliveryMethod: "document",
+          deliveryTimeframe: "24 hours",
+          suggestedPrice: "49",
+          requirements: JSON.stringify(["Cart link or selections", "Budget constraints"]),
+          whatIncluded: JSON.stringify(["Written recommendations", "Alternative suggestions", "Savings estimate"]),
+          isActive: true,
+          sortOrder: 2,
+        },
+        {
+          title: "Full Trip Planning",
+          description: "Comprehensive trip planning from start to finish with personalized itinerary",
+          serviceType: "planning",
+          deliveryMethod: "hybrid",
+          deliveryTimeframe: "3-5 days",
+          suggestedPrice: "249",
+          requirements: JSON.stringify(["Destination", "Dates", "Budget", "Interests", "Travel style"]),
+          whatIncluded: JSON.stringify(["Full itinerary", "Booking links", "Restaurant reservations", "Daily schedule", "Packing list"]),
+          isActive: true,
+          sortOrder: 3,
+        },
+        {
+          title: "Destination Deep Dive",
+          description: "In-depth guide to a specific destination with local insights and hidden gems",
+          serviceType: "custom",
+          deliveryMethod: "document",
+          deliveryTimeframe: "48 hours",
+          suggestedPrice: "79",
+          requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),
+          whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Insider tips", "Safety advice"]),
+          isActive: true,
+          sortOrder: 4,
+        },
+        {
+          title: "Honeymoon Planning Package",
+          description: "Romantic trip planning with special touches and memorable experiences",
+          serviceType: "planning",
+          deliveryMethod: "hybrid",
+          deliveryTimeframe: "5-7 days",
+          suggestedPrice: "399",
+          requirements: JSON.stringify(["Couple preferences", "Budget", "Dates", "Special requests"]),
+          whatIncluded: JSON.stringify(["Custom itinerary", "Romantic experiences", "Special arrangements", "Booking assistance"]),
+          isActive: true,
+          sortOrder: 5,
+        },
+        {
+          title: "Group Trip Coordinator",
+          description: "Organize and coordinate travel for groups with complex logistics",
+          serviceType: "planning",
+          deliveryMethod: "video",
+          deliveryTimeframe: "1 week",
+          suggestedPrice: "349",
+          requirements: JSON.stringify(["Group size", "Budget per person", "Destination preferences", "Special needs"]),
+          whatIncluded: JSON.stringify(["Group logistics", "Shared itinerary", "Booking coordination", "Communication support"]),
+          isActive: true,
+          sortOrder: 6,
+        },
+      ];
+
+      // Check each template by title individually (truly idempotent)
+      const existing = await storage.getServiceTemplates();
+      const existingTitles = new Set(existing.map((t: any) => t.title));
+      let inserted = 0;
+      for (const tpl of CANONICAL_TEMPLATES) {
+        if (!existingTitles.has(tpl.title)) {
+          await storage.createServiceTemplate(tpl as any);
+          inserted++;
+        }
+      }
+      if (inserted > 0) {
+        console.log(`[Seed] Inserted ${inserted} canonical service template(s) into DB.`);
+      }
+    } catch (err) {
+      console.warn("[Seed] Could not seed service templates:", err);
+    }
+  })();
+
+  // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
+  // Ensures the canonical default row (platform 25% / expert 75%) always exists,
+  // and backfills any legacy 70/30 rows that were inserted before the policy change.
+  (async () => {
+    try {
+      // 1. Upsert the 'default' row only if it doesn't already exist
+      await db.execute(sql`
+        INSERT INTO booking_fee_configs
+          (id, category, platform_fee_percent, expert_share_percent, ai_keeps_100, is_active, created_at, updated_at)
+        VALUES
+          (gen_random_uuid(), 'default', 25, 75, true, true, NOW(), NOW())
+        ON CONFLICT (category) DO NOTHING
+      `);
+      // 2. Backfill any rows that still carry the old 70/30 default
+      await db.execute(sql`
+        UPDATE booking_fee_configs
+        SET expert_share_percent = '75.00',
+            platform_fee_percent = '25.00'
+        WHERE CAST(expert_share_percent AS NUMERIC) = 70
+          AND CAST(platform_fee_percent  AS NUMERIC) = 30
+      `);
+    } catch (err) {
+      console.warn("[Seed] Could not seed/backfill booking_fee_configs:", err);
+    }
+  })();
+
+  // ─── Seed 6 canonical templates into expert_service_offerings (per-name idempotent) ──
+  // expert_service_offerings is the canonical template catalog. The 6 service
+  // creation templates are seeded here so the table is no longer disconnected
+  // from the template UI and from-template flow.
+  (async () => {
+    try {
+      // Resolve the category FK by name so this is safe on a clean DB.
+      // If "Itinerary Planning" doesn't exist yet, create it.
+      let categoryRow = await db.select({ id: expertServiceCategories.id })
+        .from(expertServiceCategories)
+        .where(eq(expertServiceCategories.name, "Itinerary Planning"))
+        .then(r => r[0]);
+      if (!categoryRow) {
+        const [inserted] = await db.insert(expertServiceCategories)
+          .values({ name: "Itinerary Planning", isDefault: true, sortOrder: 1 })
+          .returning({ id: expertServiceCategories.id });
+        categoryRow = inserted;
+      }
+      const categoryId = categoryRow.id;
+
+      const CANONICAL_OFFERINGS = [
+        { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
+        { name: "Cart Review & Optimization", description: "Expert review of your travel cart to find savings and better alternatives",                   price: "49.00",  sortOrder: 102 },
+        { name: "Full Trip Planning",         description: "Comprehensive trip planning from start to finish with personalized itinerary",                price: "249.00", sortOrder: 103 },
+        { name: "Destination Deep Dive",      description: "In-depth guide to a specific destination with local insights and hidden gems",                price: "79.00",  sortOrder: 104 },
+        { name: "Honeymoon Planning Package", description: "Romantic trip planning with special touches and memorable experiences",                      price: "399.00", sortOrder: 105 },
+        { name: "Group Trip Coordinator",     description: "Organize and coordinate travel for groups with complex logistics",                           price: "349.00", sortOrder: 106 },
+      ];
+      const existingEso = await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings);
+      const existingEsoNames = new Set(existingEso.map((o: any) => o.name));
+      let esoInserted = 0;
+      for (const offering of CANONICAL_OFFERINGS) {
+        if (!existingEsoNames.has(offering.name)) {
+          await db.insert(expertServiceOfferings).values({
+            categoryId,
+            name: offering.name,
+            description: offering.description,
+            price: offering.price,
+            isDefault: true,
+            sortOrder: offering.sortOrder,
+          });
+          esoInserted++;
+        }
+      }
+      if (esoInserted > 0) {
+        console.log(`[Seed] Inserted ${esoInserted} canonical template(s) into expert_service_offerings.`);
+      }
+    } catch (err) {
+      console.warn("[Seed] Could not seed expert_service_offerings:", err);
+    }
+  })();
 
   // Health check aliases (main health is at /health via health router)
   app.get("/api/health", (_req, res) => {
@@ -531,9 +743,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Request expert booking assistance
   const expertBookingRequestSchema = z.object({
-    tripId: z.string().min(1, "tripId is required"),
+    tripId: z.string().optional(),
     notes: z.string().optional().default(""),
     serviceId: z.string().optional(),
+    bookingMetadata: z.record(z.any()).optional(),
   });
 
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
@@ -545,13 +758,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       
-      const { tripId, notes, serviceId } = validation.data;
+      const { tripId, notes, serviceId, bookingMetadata } = validation.data;
       const userId = (req.user as any).claims.sub;
       
-      // Check if this is a real trip vs demo/mock trip
-      const trip = await storage.getTrip(tripId);
-      if (trip && trip.userId !== userId) {
-        return res.status(401).json({ message: "Unauthorized" });
+      // Only validate trip ownership when a tripId is provided
+      if (tripId) {
+        const trip = await storage.getTrip(tripId);
+        if (trip && trip.userId !== userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
       }
 
       let bookingId: string | undefined;
@@ -566,7 +781,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // Derive provider and pricing server-side — never trust client input
         const providerId = service.userId;
         const totalAmount = Number(service.price ?? 0);
-        const shareRate = Number(service.revenueShareRate ?? 0.30);
+        const shareRate = Number(service.revenueShareRate ?? EXPERT_SHARE_RATE);
         const platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
         const providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
 
@@ -574,13 +789,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           serviceId,
           travelerId: userId,
           providerId,
-          tripId,
+          tripId: tripId || null,
           bookingDetails: { notes },
           status: "pending",
           totalAmount: String(totalAmount),
           platformFee: platformFeeAmt,
           providerEarnings: providerEarningsAmt,
-        });
+          ...(bookingMetadata ? { bookingMetadata } : {}),
+        } as any);
         bookingId = booking.id;
 
         // Notify the expert/provider that a new booking request has arrived
@@ -1137,6 +1353,19 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       // Use the expertType from the form, default to "expert" for backwards compatibility
       const role = (updated as any).expertType || "expert";
       await db.update(users).set({ role }).where(eq(users.id, updated.userId));
+
+      // Auto-populate expert's service catalogue from their application selections
+      const selectedOfferingIds = ((updated as any).selectedServices ?? []) as string[];
+      if (selectedOfferingIds.length > 0) {
+        await db.insert(expertSelectedServices)
+          .values(selectedOfferingIds.map(serviceOfferingId => ({
+            expertId: updated.userId,
+            serviceOfferingId,
+            isActive: true,
+          })))
+          .onConflictDoNothing();
+      }
+
       // Notify the user to complete Stripe Connect setup
       await db.insert(notifications).values({
         userId: updated.userId,
@@ -2459,14 +2688,75 @@ Provide a comprehensive optimization analysis in JSON format with this structure
   // === Service Templates Routes (Admin manages, Experts browse) ===
   
   // Get all active service templates
-  app.get("/api/service-templates", async (req, res) => {
-    const categoryId = req.query.categoryId as string | undefined;
-    const templates = await storage.getServiceTemplates(categoryId);
-    res.json(templates);
+  // expert_service_offerings is the canonical template catalog.
+  // Returns the 6 named templates seeded at startup, mapped to ServiceTemplate shape.
+  app.get("/api/service-templates", async (_req, res) => {
+    const CANONICAL_NAMES = [
+      "Quick Consultation",
+      "Cart Review & Optimization",
+      "Full Trip Planning",
+      "Destination Deep Dive",
+      "Honeymoon Planning Package",
+      "Group Trip Coordinator",
+    ];
+    const rows = await db.select({
+      id:           expertServiceOfferings.id,
+      name:         expertServiceOfferings.name,
+      description:  expertServiceOfferings.description,
+      price:        expertServiceOfferings.price,
+      isDefault:    expertServiceOfferings.isDefault,
+      sortOrder:    expertServiceOfferings.sortOrder,
+      createdAt:    expertServiceOfferings.createdAt,
+      categoryName: expertServiceCategories.name,
+    })
+    .from(expertServiceOfferings)
+    .leftJoin(expertServiceCategories, eq(expertServiceOfferings.categoryId, expertServiceCategories.id))
+    .where(inArray(expertServiceOfferings.name, CANONICAL_NAMES))
+    .orderBy(expertServiceOfferings.sortOrder);
+
+    const esoTemplates = rows.map(o => ({
+      id:               o.id,
+      title:            o.name,
+      description:      o.description,
+      categoryId:       null,   // expertServiceCategories ≠ serviceCategories
+      serviceType:      null,
+      deliveryMethod:   null,
+      deliveryTimeframe: null,
+      suggestedPrice:   o.price,
+      requirements:     null,
+      whatIncluded:     null,
+      isActive:         o.isDefault ?? true,
+      sortOrder:        o.sortOrder,
+      createdAt:        o.createdAt,
+      category:         o.categoryName,
+    }));
+
+    // If expert_service_offerings doesn't yet have all six (partial seed or clean DB),
+    // supplement with service_templates rows so the UI always shows the full set.
+    const missingNames = CANONICAL_NAMES.filter(n => !rows.some(r => r.name === n));
+    if (missingNames.length > 0) {
+      const stRows = await storage.getServiceTemplates();
+      const stFill = stRows
+        .filter((t: any) => missingNames.includes(t.title))
+        .map((t: any) => ({ ...t, suggestedPrice: t.suggestedPrice ?? t.price }));
+      return res.json([...esoTemplates, ...stFill]
+        .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999)));
+    }
+    res.json(esoTemplates);
   });
 
-  // Get single template
+  // Get single template — tries expert_service_offerings first, falls back to service_templates
   app.get("/api/service-templates/:id", async (req, res) => {
+    const esoRow = await db.select().from(expertServiceOfferings)
+      .where(eq(expertServiceOfferings.id, req.params.id)).then(r => r[0]);
+    if (esoRow) {
+      return res.json({
+        id: esoRow.id, title: esoRow.name, description: esoRow.description,
+        categoryId: null, serviceType: null, deliveryMethod: null, deliveryTimeframe: null,
+        suggestedPrice: esoRow.price, requirements: null, whatIncluded: null,
+        isActive: esoRow.isDefault ?? true, sortOrder: esoRow.sortOrder, createdAt: esoRow.createdAt,
+      });
+    }
     const template = await storage.getServiceTemplate(req.params.id);
     if (!template) {
       return res.status(404).json({ message: "Template not found" });
@@ -2737,6 +3027,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     const experienceTypeId = req.query.experienceTypeId as string | undefined;
     const location = req.query.location as string | undefined;
     const experienceType = req.query.experienceType as string | undefined;
+    const neighbourhood = req.query.neighbourhood as string | undefined;
     const experts = await storage.getExpertsWithProfiles(experienceTypeId);
 
     let filtered = experts;
@@ -2753,6 +3044,16 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return destinations.some((d: string) => d.includes(loc) || loc.includes(d)) ||
           city.includes(loc) || loc.includes(city) ||
           country.includes(loc) || loc.includes(country);
+      });
+    }
+
+    // Filter by neighbourhood name (case-insensitive substring match, minimum 3 chars to avoid noise)
+    if (neighbourhood) {
+      const nbh = neighbourhood.toLowerCase().trim();
+      filtered = filtered.filter((expert: any) => {
+        if (nbh.length < 3) return false;
+        const neighborhoods: string[] = Array.isArray(expert.expertForm?.neighborhoods) ? expert.expertForm.neighborhoods : [];
+        return neighborhoods.some((n: string) => n.toLowerCase().includes(nbh));
       });
     }
 
@@ -2802,6 +3103,63 @@ Provide a comprehensive optimization analysis in JSON format with this structure
     } catch (err) {
       console.error("Error fetching expert reviews:", err);
       res.json([]);
+    }
+  });
+
+  // GET /api/expert/neighborhoods — Return current expert's neighborhoods + locality proof
+  app.get("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const form = await storage.getLocalExpertForm(userId);
+      res.json({
+        neighborhoods: (form?.neighborhoods as string[]) || [],
+        localityProof: form?.localityProof || "",
+      });
+    } catch (err) {
+      console.error("Error fetching expert neighborhoods:", err);
+      res.status(500).json({ message: "Failed to fetch" });
+    }
+  });
+
+  // PATCH /api/expert/neighborhoods — Save expert's neighbourhood coverage
+  app.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const { neighborhoods, localityProof } = req.body;
+      if (!Array.isArray(neighborhoods)) {
+        return res.status(400).json({ message: "neighborhoods must be an array" });
+      }
+      if (localityProof !== undefined && typeof localityProof !== "string") {
+        return res.status(400).json({ message: "localityProof must be a string" });
+      }
+
+      // Normalise: trim whitespace, drop empty strings, deduplicate case-insensitively
+      // (first occurrence wins — preserves the casing the user typed first)
+      const seen = new Set<string>();
+      const cleaned: string[] = [];
+      for (const raw of neighborhoods) {
+        if (typeof raw !== "string") continue;
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          cleaned.push(trimmed);
+        }
+      }
+
+      const MAX_NEIGHBORHOODS = 20;
+      if (cleaned.length > MAX_NEIGHBORHOODS) {
+        return res.status(400).json({
+          message: `You can add at most ${MAX_NEIGHBORHOODS} neighbourhoods. Please remove some before saving.`,
+        });
+      }
+
+      await storage.updateLocalExpertFormNeighborhoods(userId, cleaned, localityProof ?? "");
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert neighborhoods:", err);
+      res.status(500).json({ message: "Failed to save" });
     }
   });
 
@@ -3188,10 +3546,11 @@ Provide a comprehensive optimization analysis in JSON format with this structure
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Calculate fees (platform takes 30%)
+      // Resolve commission rates from booking_fee_configs using template category (fallback: PLATFORM_FEE_RATE)
+      const templateRates = await resolveCommissionRates(template.category ?? null);
       const price = parseFloat(template.price as string);
-      const platformFee = price * 0.30;
-      const expertEarnings = price - platformFee;
+      const platformFee = price * templateRates.platformFeeRate;
+      const expertEarnings = price * templateRates.expertShareRate;
 
       // Create purchase record
       const purchase = await storage.createTemplatePurchase({
@@ -3321,7 +3680,7 @@ Provide a comprehensive optimization analysis in JSON format with this structure
 
       const effectiveRate = grossBookingTotal > 0
         ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : 0.30;
+        : EXPERT_SHARE_RATE;
 
       const lastPayout = payouts[0];
 
@@ -3515,9 +3874,9 @@ Provide a comprehensive optimization analysis in JSON format with this structure
       const serviceSplit = revenueSplits.find((s) => s.type === 'service_booking');
       const templateSplit = revenueSplits.find((s) => s.type === 'template_sale');
 
-      // Calculate expert's share percentages
-      const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '85') / 100;
-      const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '80') / 100;
+      // Calculate expert's share percentages — policy: service/template 75%, affiliate 30%
+      const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '75') / 100;
+      const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '75') / 100;
       
       // Calculate real earnings breakdown - using expert's share after platform fees
       const publishedTemplates = templates.filter((t) => t.isPublished);
@@ -4319,26 +4678,56 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims.sub;
-      const template = await storage.getServiceTemplate(req.params.templateId);
-      if (!template) {
-        return res.status(404).json({ message: "Template not found" });
+      const templateId = req.params.templateId;
+
+      // expert_service_offerings is the primary catalog; service_templates is legacy fallback
+      let serviceName: string;
+      let description: string | undefined;
+      let price: string;
+      let serviceType: string | undefined;
+      let deliveryMethod: string | undefined;
+      let deliveryTimeframe: string | undefined;
+      let requirements: string | undefined;
+      let whatIncluded: string | undefined;
+
+      const esoRow = await db.select().from(expertServiceOfferings)
+        .where(eq(expertServiceOfferings.id, templateId)).then(r => r[0]);
+
+      if (esoRow) {
+        // Primary: expert_service_offerings
+        serviceName     = esoRow.name;
+        description     = esoRow.description ?? undefined;
+        price           = esoRow.price;
+      } else {
+        // Fallback: service_templates (legacy / admin-created)
+        const stRow = await storage.getServiceTemplate(templateId);
+        if (!stRow) {
+          return res.status(404).json({ message: "Template not found" });
+        }
+        serviceName     = stRow.title;
+        description     = stRow.description ?? undefined;
+        price           = stRow.suggestedPrice ?? "0";
+        serviceType     = stRow.serviceType ?? undefined;
+        deliveryMethod  = stRow.deliveryMethod ?? undefined;
+        deliveryTimeframe = stRow.deliveryTimeframe ?? undefined;
+        requirements    = stRow.requirements as string | undefined;
+        whatIncluded    = stRow.whatIncluded as string | undefined;
       }
-      
-      // Create service from template
+
       const serviceData = {
         userId,
-        serviceName: template.title,
-        description: template.description,
-        categoryId: template.categoryId,
-        price: template.suggestedPrice || "0",
-        serviceType: template.serviceType,
-        deliveryMethod: template.deliveryMethod,
-        deliveryTimeframe: template.deliveryTimeframe,
-        requirements: template.requirements,
-        whatIncluded: template.whatIncluded,
+        serviceName,
+        description,
+        categoryId: null,
+        price: price || "0",
+        serviceType,
+        deliveryMethod,
+        deliveryTimeframe,
+        requirements,
+        whatIncluded,
         status: "draft",
       };
-      
+
       const service = await storage.createProviderService(serviceData as any);
       res.status(201).json(service);
     } catch (err) {
@@ -4624,6 +5013,95 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
+    }
+  });
+
+  // Update visa application status on a service booking (expert/provider action)
+  app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const VALID_VISA_STATUSES = ["pending", "submitted", "in_review", "approved", "rejected"];
+      const { visaApplicationStatus, notes, documentChecklist } = req.body;
+      if (!VALID_VISA_STATUSES.includes(visaApplicationStatus)) {
+        return res.status(400).json({ message: "Invalid visa application status" });
+      }
+      const metadata: Record<string, any> = { visaApplicationStatus };
+      if (notes !== undefined) metadata.visaStatusNotes = notes;
+      if (documentChecklist !== undefined) {
+        if (!Array.isArray(documentChecklist)) {
+          return res.status(400).json({ message: "documentChecklist must be an array" });
+        }
+        metadata.documentChecklist = documentChecklist.map((item: any) => ({
+          label: String(item.label || ""),
+          checked: Boolean(item.checked),
+        }));
+      }
+      metadata.visaStatusUpdatedAt = new Date().toISOString();
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, metadata);
+
+      // Send notification to the traveler about the visa status change
+      try {
+        const service = await storage.getProviderServiceById(booking.serviceId);
+        const serviceName = service?.title || "your visa application";
+        const statusMessages: Record<string, string> = {
+          pending: `Your visa application for ${serviceName} is being prepared.`,
+          submitted: `Your visa application for ${serviceName} has been submitted to the embassy.`,
+          in_review: `Your visa application for ${serviceName} is currently under review.`,
+          approved: `Great news! Your visa application for ${serviceName} has been approved.`,
+          rejected: `Your visa application for ${serviceName} has been rejected. Please contact your expert for next steps.`,
+        };
+        const statusTitles: Record<string, string> = {
+          pending: "Visa Application: Pending",
+          submitted: "Visa Application: Submitted",
+          in_review: "Visa Application: Under Review",
+          approved: "Visa Application: Approved",
+          rejected: "Visa Application: Rejected",
+        };
+        await storage.createNotification({
+          userId: booking.travelerId,
+          type: "visa_status_update",
+          title: statusTitles[visaApplicationStatus] || "Visa Application Update",
+          message: statusMessages[visaApplicationStatus] || `Your visa application status has been updated to: ${visaApplicationStatus}.`,
+          relatedId: booking.id,
+          relatedType: "booking",
+          data: { bookingId: booking.id, visaApplicationStatus, serviceName: service?.title },
+        });
+      } catch (notifErr) {
+        console.error("Failed to create visa status notification:", notifErr);
+      }
+
+      res.json(updated);
+    } catch (err) {
+      console.error("Visa status update error:", err);
+      res.status(500).json({ message: "Failed to update visa status" });
+    }
+  });
+
+  // Update traveler's document checklist checked state
+  app.patch("/api/service-bookings/:id/document-checklist", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const { documentChecklist } = req.body;
+      if (!Array.isArray(documentChecklist)) {
+        return res.status(400).json({ message: "documentChecklist must be an array" });
+      }
+      const sanitized = documentChecklist.map((item: any) => ({
+        label: String(item.label || ""),
+        checked: Boolean(item.checked),
+      }));
+      const updated = await storage.updateServiceBookingMetadata(req.params.id, { documentChecklist: sanitized });
+      res.json(updated);
+    } catch (err) {
+      console.error("Document checklist update error:", err);
+      res.status(500).json({ message: "Failed to update document checklist" });
     }
   });
 
@@ -5333,21 +5811,42 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
-    
-    // Calculate totals
-    const subtotal = items.reduce((sum, item) => {
-      const price = parseFloat(item.service?.price || "0");
-      return sum + (price * (item.quantity || 1));
-    }, 0);
-    
-    const platformFee = subtotal * 0.30; // 30% platform fee
-    const total = subtotal + platformFee;
-    
+
+    // Per-item commission lookup — matches the logic in /api/checkout so the
+    // quoted fee never diverges from the charged fee.
+    const distinctIds = Array.from(new Set(
+      items.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+    ));
+    const cartCatMap = new Map<string, string>(); // categoryId → fee-config slug
+    if (distinctIds.length > 0) {
+      const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+        .from(serviceCategories)
+        .where(inArray(serviceCategories.id, distinctIds));
+      for (const row of catRows) {
+        cartCatMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+      }
+    }
+
+    const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
+
+    let subtotal = 0;
+    let platformFeeTotal = 0;
+    for (const item of items) {
+      const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
+      const feeCategory = item.service?.categoryId
+        ? (cartCatMap.get(item.service.categoryId) ?? "default")
+        : "default";
+      const rates = await resolveCommissionRates(feeCategory);
+      const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
+      subtotal += price;
+      platformFeeTotal += price * (1 - expertShare);
+    }
+
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
-      platformFee: platformFee.toFixed(2),
-      total: total.toFixed(2),
+      platformFee: platformFeeTotal.toFixed(2),
+      total: (subtotal + platformFeeTotal).toFixed(2),
       itemCount: items.length,
     });
   });
@@ -5461,12 +5960,46 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         return res.status(400).json({ message: "Cart is empty" });
       }
       
-      // Calculate totals
-      const subtotal = cartData.reduce((sum, item) => {
-        const price = parseFloat(item.service?.price || "0");
-        return sum + (price * (item.quantity || 1));
-      }, 0);
-      const platformFee = subtotal * 0.30;
+      // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+
+      // Preload category slugs once to avoid N+1 queries in the item loops below.
+      // Maps serviceCategories.id (UUID) → booking_fee_configs category key.
+      const distinctCatIds = Array.from(new Set(
+        cartData.filter(i => i.service?.categoryId).map(i => i.service!.categoryId as string)
+      ));
+      const catSlugMap = new Map<string, string>(); // categoryId → fee-config slug
+      if (distinctCatIds.length > 0) {
+        const catRows = await db.select({ id: serviceCategories.id, slug: serviceCategories.slug })
+          .from(serviceCategories)
+          .where(inArray(serviceCategories.id, distinctCatIds));
+        for (const row of catRows) {
+          catSlugMap.set(row.id, serviceCategorySlugToFeeCategory(row.slug));
+        }
+      }
+
+      // Calculate totals — resolve per-item rates from booking_fee_configs then sum
+      let checkoutSubtotal = 0;
+      let checkoutPlatformFeeTotal = 0;
+      for (const item of cartData) {
+        if (!item.service) continue;
+        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates = await resolveCommissionRates(feeCategory);
+        // Per-service revenueShareRate is the final override (takes priority over config)
+        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        checkoutSubtotal += itemPrice;
+        checkoutPlatformFeeTotal += itemPrice * (1 - itemExpertShare);
+      }
+      const subtotal = checkoutSubtotal;
+      // For Stripe total, charge subtotal + weighted-average platform fee
+      const platformFee = checkoutPlatformFeeTotal;
       const total = subtotal + platformFee;
       
       // Create bookings for each cart item
@@ -5475,8 +6008,15 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
         if (!item.service) continue;
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
-        const serviceRate = parseFloat(item.service.revenueShareRate ?? "0.30");
-        const fee = price * serviceRate;
+        // Map service category UUID → booking_fee_configs slug → commission rates
+        const feeCategory2 = item.service.categoryId
+          ? (catSlugMap.get(item.service.categoryId) ?? "default")
+          : "default";
+        const itemCategoryRates2 = await resolveCommissionRates(feeCategory2);
+        // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
+        const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
+        const expertEarningsAmt = price * expertShareRate;
+        const platformFeeAmt = price - expertEarningsAmt;
         
         // Create contract for this booking
         const contract = await storage.createContract({
@@ -5499,8 +6039,8 @@ Provide 2-4 category recommendations and up to 5 specific service recommendation
             quantity: item.quantity || 1,
           },
           totalAmount: price.toFixed(2),
-          platformFee: fee.toFixed(2),
-          providerEarnings: (price - fee).toFixed(2),
+          platformFee: platformFeeAmt.toFixed(2),
+          providerEarnings: expertEarningsAmt.toFixed(2),
           status: "pending",
         });
         
@@ -11198,6 +11738,18 @@ export async function seedDatabase() {
 export async function registerDiscoveryRoutes(app: Express) {
   const { grokDiscoveryService } = await import("./services/grok-discovery.service");
 
+  // Local admin guard (mirrors the one in registerRoutes)
+  const requireAdmin = async (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then((r: any[]) => r[0]);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    next();
+  };
+
   // Trigger discovery for a destination
   app.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
     try {
@@ -11477,6 +12029,406 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // Content Hub Discover endpoint — returns curated affiliate + registry items matched to a destination.
+  // When a ?surface= param is provided (e.g. "travelpulse-discover"), explicit content_placement_rules
+  // for that surface + city are fetched first (pinned items float to the top). The normal ILIKE
+  // fallback still runs but excludes sourceIds already covered by explicit rules to avoid duplicates.
+  app.get("/api/content/discover", async (req, res) => {
+    try {
+      const destination = (req.query.destination as string || "").trim();
+      const tabParam = (req.query.tab as string || "").trim();
+      const surfaceParam = (req.query.surface as string || "").trim();
+      // Support both ?content_types=foo,bar (string) and ?content_types[]=foo&content_types[]=bar (array)
+      const rawContentTypes = req.query.content_types;
+      const contentTypesParam: string = Array.isArray(rawContentTypes)
+        ? (rawContentTypes as string[]).join(",")
+        : (rawContentTypes as string || "").trim();
+
+      if (!destination) {
+        return res.json({ items: [], total: 0 });
+      }
+
+      // Extract city and country from destination string "City, Country"
+      const parts = destination.split(",");
+      const city = parts[0].trim();
+      const country = parts.length > 1 ? parts[parts.length - 1].trim() : city;
+
+      // Tab → content type and affiliate category mappings (from shared/content-surface-map.ts)
+      const allowedContentTypes = tabParam && TAB_CONTENT_TYPE_MAP[tabParam]
+        ? TAB_CONTENT_TYPE_MAP[tabParam]
+        : contentTypesParam
+          ? contentTypesParam.split(",").map(t => t.trim()).filter(Boolean)
+          : ["experience", "template", "service", "media", "other"];
+
+      const affiliateCategoryFilter = tabParam && TAB_AFFILIATE_CATEGORIES[tabParam]
+        ? TAB_AFFILIATE_CATEGORIES[tabParam]
+        : null;
+
+      // ── Step 1: Explicit placement rules (when surface is provided) ───────────
+      // Fetch city's current pulse score so we can honour minPulseScore thresholds.
+      let cityPulseScore = 0;
+      if (surfaceParam) {
+        const pulseRow = await db
+          .select({ pulseScore: travelPulseCities.pulseScore })
+          .from(travelPulseCities)
+          .where(ilike(travelPulseCities.cityName, `%${city}%`))
+          .limit(1);
+        cityPulseScore = pulseRow[0]?.pulseScore ?? 0;
+      }
+
+      // Load active placement rules for this surface + city.
+      // A rule matches when isPinned=true OR cityPulseScore >= minPulseScore.
+      const placementRules = surfaceParam
+        ? await storage.getContentPlacementRules({
+            cityName: city,
+            surface: surfaceParam,
+            isActive: true,
+          })
+        : [];
+
+      const eligibleRules = placementRules.filter(
+        r => r.isPinned || (r.minPulseScore ?? 0) <= cityPulseScore
+      );
+
+      // Separate rules by source type and collect sourceIds
+      const pinnedAffiliateIds = eligibleRules
+        .filter(r => r.contentSource === "affiliate_product" && r.isPinned)
+        .map(r => r.sourceId).filter(Boolean) as string[];
+      const pinnedRegistryIds = eligibleRules
+        .filter(r => r.contentSource === "content_registry" && r.isPinned)
+        .map(r => r.sourceId).filter(Boolean) as string[];
+      const eligibleAffiliateIds = eligibleRules
+        .filter(r => r.contentSource === "affiliate_product")
+        .map(r => r.sourceId).filter(Boolean) as string[];
+      const eligibleRegistryIds = eligibleRules
+        .filter(r => r.contentSource === "content_registry")
+        .map(r => r.sourceId).filter(Boolean) as string[];
+
+      // Fetch explicitly-placed affiliate products
+      const placedAffiliate = eligibleAffiliateIds.length
+        ? await db.select().from(affiliateProducts)
+            .where(and(
+              eq(affiliateProducts.isActive, true),
+              inArray(affiliateProducts.id, eligibleAffiliateIds)
+            ))
+        : [];
+
+      // Fetch explicitly-placed registry items
+      const placedRegistry = eligibleRegistryIds.length
+        ? await db.select().from(contentRegistry)
+            .where(and(
+              eq(contentRegistry.status, "published"),
+              inArray(contentRegistry.id, eligibleRegistryIds)
+            ))
+        : [];
+
+      // ── Step 2: ILIKE fallback (excludes items already covered by rules) ─────
+      const affiliateBaseCondition = and(
+        eq(affiliateProducts.isActive, true),
+        or(
+          ilike(affiliateProducts.city, `%${city}%`),
+          ilike(affiliateProducts.country, `%${country}%`),
+          ilike(affiliateProducts.location, `%${city}%`)
+        )
+      );
+      const affiliateCategoryCondition = affiliateCategoryFilter
+        ? and(affiliateBaseCondition, or(
+            ...affiliateCategoryFilter.map(cat => ilike(affiliateProducts.category, `%${cat}%`))
+          ))
+        : affiliateBaseCondition;
+
+      // Use notInArray to safely exclude IDs already covered by placement rules
+      const affiliateItems = await db
+        .select()
+        .from(affiliateProducts)
+        .where(
+          eligibleAffiliateIds.length
+            ? and(affiliateCategoryCondition, sql`${affiliateProducts.id}::text != ALL(ARRAY[${sql.raw(eligibleAffiliateIds.map(id => `'${id.replace(/'/g, "''")}'`).join(','))}]::text[])`)
+            : affiliateCategoryCondition
+        )
+        .limit(20);
+
+      // Query content_registry for published items with location metadata matching destination.
+      // Exclude registry items already loaded via placement rules.
+      const registryItems = await db
+        .select()
+        .from(contentRegistry)
+        .where(
+          and(
+            eq(contentRegistry.status, "published"),
+            sql`(
+              ${contentRegistry.metadata}->>'location' ILIKE ${'%' + city + '%'}
+              OR ${contentRegistry.metadata}->>'city' ILIKE ${'%' + city + '%'}
+              OR ${contentRegistry.metadata}->>'country' ILIKE ${'%' + country + '%'}
+              OR ${contentRegistry.metadata}->>'destination' ILIKE ${'%' + city + '%'}
+            )`,
+            inArray(contentRegistry.contentType, allowedContentTypes as any),
+            ...(eligibleRegistryIds.length
+              ? [sql`${contentRegistry.id}::text != ALL(ARRAY[${sql.raw(eligibleRegistryIds.map(id => `'${id.replace(/'/g, "''")}'`).join(','))}]::text[])`]
+              : [])
+          )
+        )
+        .limit(20);
+
+      // ── Normalizer helpers ────────────────────────────────────────────────────
+      const normalizeAffiliate = (p: any, isPinned = false) => ({
+        id: `affiliate-${p.id}`,
+        sourceId: p.id,
+        type: "affiliate" as const,
+        contentCategory: p.category || "experience",
+        title: p.name,
+        description: p.shortDescription || p.description || "",
+        cover_image: p.imageUrl || null,
+        price: p.price ? String(p.price) : null,
+        price_display: p.price ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}` : null,
+        affiliate_url: p.affiliateUrl || p.productUrl || null,
+        source: "Affiliate Partner",
+        rating: p.rating ? parseFloat(String(p.rating)) : null,
+        city: p.city || null,
+        country: p.country || null,
+        duration: p.duration || null,
+        highlights: p.highlights || [],
+        metadata: p.metadata || {},
+        isPinned,
+        tracking: {
+          productId: p.id,
+          partnerId: null as string | null,
+          isAffiliateTracked: true,
+        },
+      });
+
+      const normalizeRegistry = (r: any, isPinned = false) => {
+        const meta = r.metadata || {};
+        const affiliateUrl = meta.affiliate_url || null;
+        const metaPartnerId: string | null = meta.partnerId || meta.partner_id || null;
+        return {
+          id: `registry-${r.id}`,
+          sourceId: r.id,
+          type: "curated" as const,
+          contentCategory: r.contentType,
+          title: r.title || "Curated Experience",
+          description: r.description || "",
+          cover_image: meta.cover_image || meta.imageUrl || meta.image_url || null,
+          price: meta.price ? String(meta.price) : null,
+          price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
+          affiliate_url: affiliateUrl,
+          source: "Traveloure Curated",
+          rating: meta.rating ? parseFloat(String(meta.rating)) : null,
+          city: meta.city || meta.location || city,
+          country: meta.country || country,
+          duration: meta.duration || null,
+          highlights: meta.highlights || [],
+          metadata: meta,
+          isPinned,
+          tracking: {
+            productId: null as string | null,
+            partnerId: metaPartnerId,
+            isAffiliateTracked: !!(affiliateUrl && metaPartnerId),
+          },
+        };
+      };
+
+      // ── Assemble final list ───────────────────────────────────────────────────
+      // Order: pinned placed items → other placed items → ILIKE fallback items
+      const placedAffiliateCards = placedAffiliate.map(p =>
+        normalizeAffiliate(p, pinnedAffiliateIds.includes(p.id))
+      );
+      const placedRegistryCards = placedRegistry.map(r =>
+        normalizeRegistry(r, pinnedRegistryIds.includes(r.id))
+      );
+
+      const pinnedItems = [
+        ...placedAffiliateCards.filter(c => c.isPinned),
+        ...placedRegistryCards.filter(c => c.isPinned),
+      ];
+      const placedItems = [
+        ...placedAffiliateCards.filter(c => !c.isPinned),
+        ...placedRegistryCards.filter(c => !c.isPinned),
+      ];
+      const fallbackItems = [
+        ...affiliateItems.map(p => normalizeAffiliate(p)),
+        ...registryItems.map(r => normalizeRegistry(r)),
+      ];
+
+      const allItems = [...pinnedItems, ...placedItems, ...fallbackItems];
+
+      res.json({ items: allItems, total: allItems.length });
+    } catch (err: any) {
+      console.error("Content discover error:", err);
+      res.status(500).json({ message: "Failed to fetch curated content", items: [], total: 0 });
+    }
+  });
+
+  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items.
+  // Price, title, and currency are resolved server-side from the DB record; client-supplied
+  // values are ignored to prevent price-tampering attacks.
+  app.post("/api/content/checkout", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const user = await storage.getUser(userId);
+      const userEmail = user?.email || undefined;
+
+      const { itemId, itemType } = req.body;
+      if (!itemId || !itemType) {
+        return res.status(400).json({ message: "itemId and itemType are required" });
+      }
+
+      // --- Server-side item resolution (price is NOT trusted from client) ---
+      let resolvedTitle: string;
+      let resolvedPrice: number;       // in whole currency units, e.g. 49.99
+      let resolvedCurrency: string;
+      let resolvedDestination: string;
+
+      if (itemType === "affiliate") {
+        const [product] = await db
+          .select()
+          .from(affiliateProducts)
+          .where(eq(affiliateProducts.id, itemId))
+          .limit(1);
+        if (!product) return res.status(404).json({ message: "Item not found" });
+        if (!product.price || parseFloat(String(product.price)) <= 0) {
+          return res.status(400).json({ message: "This item is not available for direct purchase" });
+        }
+        resolvedTitle = product.name;
+        resolvedPrice = parseFloat(String(product.price));
+        resolvedCurrency = (product.currency || "USD").toLowerCase();
+        resolvedDestination = product.city || product.country || "";
+      } else {
+        // content_registry
+        const [item] = await db
+          .select()
+          .from(contentRegistry)
+          .where(eq(contentRegistry.id, itemId))
+          .limit(1);
+        if (!item) return res.status(404).json({ message: "Item not found" });
+        const meta = (item.metadata as any) || {};
+        if (!meta.price || parseFloat(String(meta.price)) <= 0) {
+          return res.status(400).json({ message: "This item is not available for direct purchase" });
+        }
+        resolvedTitle = item.title || "Curated Experience";
+        resolvedPrice = parseFloat(String(meta.price));
+        resolvedCurrency = (meta.currency || "USD").toLowerCase();
+        resolvedDestination = meta.city || meta.destination || meta.location || "";
+      }
+
+      const { getBaseUrl } = await import("./services/stripe.service");
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+
+      const baseUrl = getBaseUrl();
+      const amountCents = Math.round(resolvedPrice * 100);
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        mode: 'payment',
+        customer_email: userEmail,
+        line_items: [
+          {
+            price_data: {
+              currency: resolvedCurrency,
+              product_data: {
+                name: resolvedTitle,
+                description: resolvedDestination
+                  ? `Curated experience in ${resolvedDestination}`
+                  : 'Curated Traveloure experience',
+              },
+              unit_amount: amountCents,
+            },
+            quantity: 1,
+          },
+        ],
+        metadata: {
+          type: 'content_hub_purchase',
+          userId,
+          itemId: String(itemId),
+          itemType,
+        },
+        success_url: `${baseUrl}/discover?purchase=success`,
+        cancel_url: `${baseUrl}/discover?purchase=cancelled`,
+      });
+
+      res.json({ sessionId: session.id, url: session.url });
+    } catch (err: any) {
+      console.error("Content checkout error:", err);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+
+  // Content Hub Affiliate Redirect — unified intermediary for ALL affiliate-linked content hub items.
+  // Routes through the established affiliateScraperService.trackClick() path so all content-hub
+  // affiliate clicks share the same tracking flow as other affiliate clicks.
+  // For affiliate_products rows: productId is passed (valid FK).
+  // For content_registry rows: partnerId from metadata is passed when present; otherwise neither
+  //   ID is set (both FK fields are nullable) — the service still inserts the tracking row,
+  //   then throws "not found" (expected); we catch it and return our locally-resolved URL.
+  app.post("/api/content/affiliate-redirect", async (req, res) => {
+    try {
+      const { itemId, itemType } = req.body;
+      if (!itemId || !itemType) {
+        return res.status(400).json({ message: "itemId and itemType are required" });
+      }
+
+      let affiliateUrl: string | null = null;
+      const trackPayload: Record<string, any> = {
+        initiatedBy: "user" as const,
+        referrer: req.headers.referer || undefined,
+        userAgent: req.headers["user-agent"] || undefined,
+        ipAddress: req.ip || undefined,
+      };
+      const authUserId = (req.user as any)?.claims?.sub || null;
+      if (authUserId) trackPayload.userId = authUserId;
+
+      if (itemType === "affiliate") {
+        const [product] = await db
+          .select()
+          .from(affiliateProducts)
+          .where(eq(affiliateProducts.id, itemId))
+          .limit(1);
+        if (!product) return res.status(404).json({ message: "Item not found" });
+        affiliateUrl = product.affiliateUrl || product.productUrl || null;
+        trackPayload.productId = product.id;  // valid FK → affiliate_products.id
+      } else {
+        // content_registry
+        const [item] = await db
+          .select()
+          .from(contentRegistry)
+          .where(eq(contentRegistry.id, itemId))
+          .limit(1);
+        if (!item) return res.status(404).json({ message: "Item not found" });
+        const meta = (item.metadata as any) || {};
+        affiliateUrl = meta.affiliate_url || null;
+        // Pass partnerId when metadata carries a valid affiliate_partners FK value
+        const metaPartnerId = meta.partnerId || meta.partner_id || null;
+        if (metaPartnerId) trackPayload.partnerId = metaPartnerId;
+      }
+
+      if (!affiliateUrl) {
+        return res.status(400).json({ message: "No affiliate URL available for this item" });
+      }
+
+      // Route through established service tracking path.
+      // For registry items without productId/partnerId the service inserts the row (both FK cols are
+      // nullable → null is valid), then throws "Product or partner not found" because it cannot look
+      // up a return URL. We catch that narrow error and use our already-resolved affiliateUrl.
+      const { affiliateScraperService } = await import("./services/affiliate-scraper.service");
+      try {
+        await affiliateScraperService.trackClick(trackPayload as any);
+      } catch (trackErr: any) {
+        if (trackErr?.message && !trackErr.message.includes("not found")) {
+          console.error("Affiliate click tracking error:", trackErr);
+        }
+        // Otherwise: expected for registry items with no partner/product FK — insert already committed
+      }
+
+      res.json({ url: affiliateUrl });
+    } catch (err: any) {
+      console.error("Affiliate redirect error:", err);
+      res.status(500).json({ message: "Failed to process affiliate redirect" });
+    }
+  });
+
   // Track affiliate click
   app.post("/api/affiliate/track-click", async (req, res) => {
     try {
@@ -11503,6 +12455,36 @@ export async function registerDiscoveryRoutes(app: Express) {
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to track click", error: error.message });
+    }
+  });
+
+  // Lightweight iVisa / generic partner affiliate click tracker.
+  // Unlike /api/affiliate/track-click this endpoint does NOT require a DB-stored productId/partnerId.
+  // It inserts directly into affiliate_clicks with those FKs as null and uses `sessionId` to
+  // record the partner name (e.g. "ivisa") so revenue reports can filter by it.
+  app.post("/api/affiliates/track", async (req, res) => {
+    try {
+      const { partner, destination, tripId, itineraryId } = req.body;
+      if (!partner) {
+        return res.status(400).json({ message: "partner is required" });
+      }
+      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      await db.insert(affiliateClicks).values({
+        productId: null,
+        partnerId: null,
+        userId: userId || null,
+        tripId: tripId || itineraryId || null,
+        referrer: req.headers.referer || null,
+        userAgent: (req.headers["user-agent"] as string) || null,
+        ipAddress: req.ip || null,
+        initiatedBy: "user",
+        agentType: null,
+        sessionId: [partner, destination].filter(Boolean).join(":") || partner,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error tracking affiliates click:", error);
+      res.status(500).json({ message: "Failed to track click" });
     }
   });
 
@@ -13342,6 +14324,152 @@ export async function registerDiscoveryRoutes(app: Express) {
       });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to calculate energy", error: error.message });
+    }
+  });
+
+  // === Workspace Constraints Summary ===
+
+  app.get("/api/trips/:tripId/workspace-constraints", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      // Assignment-scoped authorization: owner, admin, or an expert assigned to this specific trip
+      const { tripId } = req.params;
+      const owned = await verifyTripOwnership(tripId, userId);
+      if (!owned) {
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(401).json({ message: "Not authenticated" });
+        if (user.role === "admin") {
+          // admins pass through
+        } else {
+          const assigned = await storage.isExpertAssignedToTrip(tripId, userId);
+          if (!assigned) return res.status(403).json({ message: "Access denied" });
+        }
+      }
+
+      const trip = await storage.getTrip(tripId);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+      const [anchors, boundaries, energyRecords, items] = await Promise.all([
+        storage.getTemporalAnchors(tripId),
+        storage.getDayBoundaries(tripId),
+        storage.getEnergyTracking(tripId),
+        storage.getItineraryItems(tripId),
+      ]);
+
+      // Detect anchor conflicts using the logistics service
+      const { detectAnchorImpacts } = await import('./services/logistics-presets.service');
+      const anchorConflicts: Array<{
+        anchorId: string;
+        anchorType: string;
+        description: string;
+        impacts: Array<{ type: string; message: string; severity: 'warning' | 'critical' }>;
+      }> = [];
+      for (const anchor of anchors) {
+        const impacts = await detectAnchorImpacts(tripId, anchor.id);
+        if (impacts.length > 0) {
+          anchorConflicts.push({
+            anchorId: anchor.id,
+            anchorType: anchor.anchorType,
+            description: anchor.description || anchor.anchorType,
+            impacts,
+          });
+        }
+      }
+
+      // Evaluate day-boundary violations against current itinerary items
+      const itemsByDay = new Map<number, typeof items>();
+      for (const item of items) {
+        if (!itemsByDay.has(item.dayNumber)) itemsByDay.set(item.dayNumber, []);
+        itemsByDay.get(item.dayNumber)!.push(item);
+      }
+
+      const boundaryViolations: Array<{
+        dayNumber: number;
+        violation: string;
+        severity: 'warning' | 'critical';
+      }> = [];
+
+      for (const boundary of boundaries) {
+        const dayItems = itemsByDay.get(boundary.dayNumber) || [];
+
+        if (boundary.latestActivityEnd && dayItems.length > 0) {
+          // Find the latest end time or start time among day's items
+          for (const item of dayItems) {
+            const itemTime = item.endTime || item.startTime;
+            if (itemTime && itemTime > boundary.latestActivityEnd) {
+              boundaryViolations.push({
+                dayNumber: boundary.dayNumber,
+                violation: `Item "${item.title}" ends at ${itemTime}, past the Day ${boundary.dayNumber} limit of ${boundary.latestActivityEnd}`,
+                severity: 'warning',
+              });
+            }
+          }
+        }
+
+        if (boundary.mustReturnToHotel && dayItems.length > 0) {
+          const hasHotel = dayItems.some(i => {
+            const t = (i.itemType || '').toLowerCase();
+            return t === 'hotel' || t === 'accommodation' || t === 'lodging';
+          });
+          if (!hasHotel) {
+            boundaryViolations.push({
+              dayNumber: boundary.dayNumber,
+              violation: `Day ${boundary.dayNumber} requires return to hotel but no accommodation item is scheduled`,
+              severity: 'warning',
+            });
+          }
+        }
+      }
+
+      // Fetch optimizer scores from the most recent variant for this trip
+      let optimizerScores: Record<string, number> | null = null;
+      const comparisons = await db
+        .select({ id: itineraryComparisons.id })
+        .from(itineraryComparisons)
+        .where(eq(itineraryComparisons.tripId, tripId))
+        .orderBy(desc(itineraryComparisons.createdAt))
+        .limit(1);
+
+      if (comparisons.length > 0) {
+        const variants = await db
+          .select({ id: itineraryVariants.id })
+          .from(itineraryVariants)
+          .where(eq(itineraryVariants.comparisonId, comparisons[0].id))
+          .orderBy(desc(itineraryVariants.createdAt))
+          .limit(1);
+
+        if (variants.length > 0) {
+          const scoreMetrics = await db
+            .select()
+            .from(itineraryVariantMetrics)
+            .where(
+              and(
+                eq(itineraryVariantMetrics.variantId, variants[0].id),
+                inArray(itineraryVariantMetrics.metricKey, ['balance_score', 'wellness_score', 'pace_score', 'diversity_score'])
+              )
+            );
+          if (scoreMetrics.length > 0) {
+            optimizerScores = {};
+            for (const m of scoreMetrics) {
+              optimizerScores[m.metricKey] = parseFloat(m.value as string);
+            }
+          }
+        }
+      }
+
+      res.json({
+        anchors,
+        dayBoundaries: boundaries,
+        energyTracking: energyRecords,
+        anchorConflicts,
+        boundaryViolations,
+        optimizerScores,
+        tripExperienceType: trip.experienceType || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to fetch workspace constraints", error: error.message });
     }
   });
 
@@ -16767,7 +17895,7 @@ export async function registerDiscoveryRoutes(app: Express) {
           id, category, platform_fee_percent, expert_share_percent,
           ai_keeps_100, min_fee, max_fee, is_active, updated_by, created_at, updated_at
         ) VALUES (
-          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 70},
+          gen_random_uuid(), ${category}, ${platformFeePercent ?? 12}, ${expertSharePercent ?? 75},
           ${aiKeeps100 ?? true}, ${minFee ?? null}, ${maxFee ?? null}, ${isActive ?? true},
           ${userId}, NOW(), NOW()
         )
@@ -16816,7 +17944,7 @@ export async function registerDiscoveryRoutes(app: Express) {
       };
       res.json({
         platform_fee_percent: defaults[category] ?? 12,
-        expert_share_percent: 70,
+        expert_share_percent: 75,
         ai_keeps_100: true,
         min_fee: null,
         max_fee: null,
@@ -16901,6 +18029,165 @@ export async function registerDiscoveryRoutes(app: Express) {
       `);
 
       res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/admin/routing-queue — routed leads awaiting admin confirmation
+  app.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
+    try {
+      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const result = await db.execute(sql`
+        SELECT
+          er.id,
+          er.trip_id,
+          er.user_id,
+          er.destination_city,
+          er.request_type,
+          er.status,
+          er.assigned_expert_id,
+          er.created_at,
+          er.assigned_at,
+          u.first_name || ' ' || u.last_name AS traveler_name,
+          u.email AS traveler_email,
+          eu.first_name || ' ' || eu.last_name AS expert_name,
+          eu.email AS expert_email,
+          lrl.top_score,
+          lrl.scores_json
+        FROM expert_requests er
+        LEFT JOIN users u ON u.id = er.user_id
+        LEFT JOIN users eu ON eu.id = er.assigned_expert_id
+        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id = er.trip_id
+          AND lrl.assigned_expert_id = er.assigned_expert_id
+        WHERE er.assigned_expert_id IS NOT NULL
+          AND er.status NOT IN ('confirmed', 'completed', 'cancelled')
+          AND NOT EXISTS (
+            SELECT 1 FROM trip_expert_advisors tea
+            WHERE tea.trip_id = er.trip_id
+              AND tea.local_expert_id = er.assigned_expert_id
+          )
+        ORDER BY er.created_at DESC
+        LIMIT 100
+      `);
+      res.json(result.rows);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Shared handler: confirm lead → workspace bridge (used by both route aliases below)
+  async function confirmLeadAssignmentHandler(requestId: string, req: any, res: any) {
+    const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const queueResult = await db.execute(sql`
+      SELECT * FROM expert_requests WHERE id = ${requestId}
+    `);
+    const row = queueResult.rows?.[0] as any;
+    if (!row) return res.status(404).json({ error: "Routing request not found" });
+    if (!row.assigned_expert_id) return res.status(400).json({ error: "No expert assigned to this request" });
+    if (!row.trip_id) return res.status(400).json({ error: "Request has no associated trip" });
+
+    const assignment = await db.transaction(async (tx) => {
+      // Lock the expert_requests row to serialise concurrent confirms
+      await tx.execute(sql`SELECT id FROM expert_requests WHERE id = ${requestId} FOR UPDATE`);
+
+      // Idempotency: return the existing advisor row if one already exists
+      const [existing] = await tx.select().from(tripExpertAdvisors)
+        .where(and(
+          eq(tripExpertAdvisors.tripId, row.trip_id),
+          eq(tripExpertAdvisors.localExpertId, row.assigned_expert_id),
+        ))
+        .limit(1);
+
+      if (existing) return existing;
+
+      // Insert; ON CONFLICT DO NOTHING handles the rare concurrent-insert race
+      const [created] = await tx.insert(tripExpertAdvisors)
+        .values({
+          tripId: row.trip_id,
+          localExpertId: row.assigned_expert_id,
+          status: "assigned",
+          workspaceStatus: "draft",
+          assignedAt: new Date(),
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      // If concurrent insert won the race, fetch the winning row
+      const result = created ?? await tx.select().from(tripExpertAdvisors)
+        .where(and(
+          eq(tripExpertAdvisors.tripId, row.trip_id),
+          eq(tripExpertAdvisors.localExpertId, row.assigned_expert_id),
+        ))
+        .then(r => r[0]);
+
+      // Flip expert_requests status
+      await tx.execute(sql`
+        UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}
+      `);
+
+      return result;
+    });
+
+    return res.json({ assignment });
+  }
+
+  // POST /api/admin/leads/:expertRequestId/confirm — canonical endpoint (task spec)
+  app.post("/api/admin/leads/:expertRequestId/confirm", isAuthenticated, async (req, res) => {
+    try {
+      await confirmLeadAssignmentHandler(req.params.expertRequestId, req, res);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/routing-queue/:requestId/confirm — legacy alias (UI still uses this)
+  app.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, async (req, res) => {
+    try {
+      await confirmLeadAssignmentHandler(req.params.requestId, req, res);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/routing-queue/:requestId/reassign — pick a different expert
+  app.post("/api/admin/routing-queue/:requestId/reassign", isAuthenticated, async (req, res) => {
+    try {
+      const adminUser = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+      if (!adminUser || adminUser.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { requestId } = req.params;
+      const { expertId } = req.body;
+      if (!expertId) return res.status(400).json({ error: "expertId is required" });
+
+      const queueResult = await db.execute(sql`
+        SELECT * FROM expert_requests WHERE id = ${requestId}
+      `);
+      const row = queueResult.rows?.[0] as any;
+      if (!row) return res.status(404).json({ error: "Routing request not found" });
+      if (row.status === "confirmed") return res.status(409).json({ error: "Assignment already confirmed; cannot reassign" });
+
+      await db.execute(sql`
+        UPDATE expert_requests
+        SET assigned_expert_id = ${expertId}, assigned_at = NOW()
+        WHERE id = ${requestId}
+      `);
+
+      const expertResult = await db.execute(sql`
+        SELECT first_name || ' ' || last_name AS expert_name FROM users WHERE id = ${expertId}
+      `);
+      const expertName = (expertResult.rows?.[0] as any)?.expert_name || expertId;
+
+      res.json({ success: true, newExpertId: expertId, expertName });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -17155,6 +18442,50 @@ export async function registerDiscoveryRoutes(app: Express) {
     }
   });
 
+  // === Expert Assigned Trips list (powers Dashboard + Assigned Trips page) ===
+  app.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims.sub;
+      const rows = await db
+        .select({
+          trip_id: tripExpertAdvisors.tripId,
+          trip_title: trips.title,
+          destination: trips.destination,
+          start_date: trips.startDate,
+          end_date: trips.endDate,
+          status: tripExpertAdvisors.status,
+          assigned_at: tripExpertAdvisors.assignedAt,
+          traveler_first: users.firstName,
+          traveler_last: users.lastName,
+          suggestion_count: sql<number>`(
+            SELECT COUNT(*) FROM trip_suggestions
+            WHERE trip_id = ${tripExpertAdvisors.tripId}
+            AND expert_id = ${userId}
+          )`,
+        })
+        .from(tripExpertAdvisors)
+        .innerJoin(trips, eq(tripExpertAdvisors.tripId, trips.id))
+        .leftJoin(users, eq(trips.userId, users.id))
+        .where(eq(tripExpertAdvisors.localExpertId, userId))
+        .orderBy(desc(tripExpertAdvisors.assignedAt));
+
+      res.json(rows.map(r => ({
+        trip_id: r.trip_id,
+        trip_title: r.trip_title || r.destination,
+        destination: r.destination,
+        start_date: r.start_date,
+        end_date: r.end_date,
+        traveler_name: [r.traveler_first, r.traveler_last].filter(Boolean).join(" ") || "Traveler",
+        status: r.status,
+        assigned_at: r.assigned_at,
+        suggestion_count: Number(r.suggestion_count) || 0,
+      })));
+    } catch (err) {
+      console.error("[Expert] assigned-trips error:", err);
+      res.status(500).json({ message: "Failed to fetch assigned trips" });
+    }
+  });
+
   // === Trip Commission ===
   app.get("/api/trips/:tripId/commission", isAuthenticated, async (req, res) => {
     try {
@@ -17174,12 +18505,18 @@ export async function registerDiscoveryRoutes(app: Express) {
         item.bookingStatus !== "cancelled"
       );
 
-      const DEFAULT_RATE = 0.30;
-      // Derive expert's revenue share rate from their active services (fallback 0.30)
+      // Expert-favorable split policy: EXPERT_SHARE_RATE (75%) floor. Do NOT lower
+      // without a product decision — it inverts the split in experts' disfavor.
+      // safeParseRate: returns fallback when value is missing, non-numeric, NaN, Infinity, or outside [0,1]
+      const safeParseRate = (value: any, fallback: number): number => {
+        const n = parseFloat(value);
+        return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+      };
+      // Derive expert's revenue share rate from their active services (fallback DEFAULT_RATE)
       const expertServices = await storage.getProviderServicesByStatus(userId, "active");
       const expertRate = expertServices.length > 0
-        ? expertServices.reduce((sum: number, svc: any) => sum + parseFloat(svc.revenueShareRate ?? "0.30"), 0) / expertServices.length
-        : DEFAULT_RATE;
+        ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, EXPERT_SHARE_RATE), 0) / expertServices.length
+        : EXPERT_SHARE_RATE;
 
       let totalGross = 0;
       let expertShare = 0;
@@ -17211,7 +18548,7 @@ export async function registerDiscoveryRoutes(app: Express) {
         totalGross: totalGross.toFixed(2),
         expertShare: expertShare.toFixed(2),
         platformFee: platformFee.toFixed(2),
-        revenueShareRate: DEFAULT_RATE,
+        revenueShareRate: parseFloat(expertRate.toFixed(4)),
         itemCount: items.length,
         itemBreakdown: itemBreakdown.map(b => ({
           ...b,
@@ -17828,8 +19165,294 @@ export async function registerDiscoveryRoutes(app: Express) {
   });
 
   // ============================================================
+  // LOCAL EXPERT KNOWLEDGE NUGGETS
+  // ============================================================
+
+  // GET /api/expert/knowledge-nuggets — list own nuggets
+  app.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const nuggets = await db
+        .select()
+        .from(localKnowledgeNuggets)
+        .where(eq(localKnowledgeNuggets.expertUserId, expertId))
+        .orderBy(desc(localKnowledgeNuggets.createdAt));
+      res.json(nuggets);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] list error:", err);
+      res.status(500).json({ message: "Failed to fetch knowledge nuggets" });
+    }
+  });
+
+  // POST /api/expert/knowledge-nuggets — create nugget
+  app.post("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const parsed = insertLocalKnowledgeNuggetSchema.safeParse({ ...req.body, expertUserId: expertId });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const [nugget] = await db.insert(localKnowledgeNuggets).values(parsed.data).returning();
+      res.status(201).json(nugget);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] create error:", err);
+      res.status(500).json({ message: "Failed to create knowledge nugget" });
+    }
+  });
+
+  // PATCH /api/expert/knowledge-nuggets/:id — update own nugget
+  app.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { id } = req.params;
+      const existing = await db.select().from(localKnowledgeNuggets)
+        .where(and(eq(localKnowledgeNuggets.id, id), eq(localKnowledgeNuggets.expertUserId, expertId)))
+        .limit(1);
+      if (!existing.length) return res.status(404).json({ message: "Nugget not found" });
+      const allowed = ["nuggetType", "city", "linkedPoi", "linkedNeighbourhood", "insight", "targetAudience", "notFor", "seasonality"] as const;
+      const updates: Record<string, any> = {};
+      for (const key of allowed) {
+        if (key in req.body) updates[key] = req.body[key];
+      }
+      updates.updatedAt = new Date();
+      const [updated] = await db.update(localKnowledgeNuggets)
+        .set(updates)
+        .where(eq(localKnowledgeNuggets.id, id))
+        .returning();
+      res.json(updated);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] update error:", err);
+      res.status(500).json({ message: "Failed to update knowledge nugget" });
+    }
+  });
+
+  // DELETE /api/expert/knowledge-nuggets/:id — delete own nugget
+  app.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const { id } = req.params;
+      const existing = await db.select().from(localKnowledgeNuggets)
+        .where(and(eq(localKnowledgeNuggets.id, id), eq(localKnowledgeNuggets.expertUserId, expertId)))
+        .limit(1);
+      if (!existing.length) return res.status(404).json({ message: "Nugget not found" });
+      await db.delete(localKnowledgeNuggets).where(eq(localKnowledgeNuggets.id, id));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[Knowledge Nuggets] delete error:", err);
+      res.status(500).json({ message: "Failed to delete knowledge nugget" });
+    }
+  });
+
+  // GET /api/admin/local-experts/nugget-counts — nugget count per local expert
+  app.get("/api/admin/local-experts/nugget-counts", isAuthenticated, async (req, res) => {
+    try {
+      const rows = await db
+        .select({ expertUserId: localKnowledgeNuggets.expertUserId, count: count() })
+        .from(localKnowledgeNuggets)
+        .groupBy(localKnowledgeNuggets.expertUserId);
+      const map: Record<string, number> = {};
+      for (const r of rows) map[r.expertUserId] = Number(r.count);
+      res.json(map);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] admin counts error:", err);
+      res.status(500).json({ message: "Failed to fetch nugget counts" });
+    }
+  });
+
+  // GET /api/knowledge-nuggets/city — for AI to pull nuggets by city
+  app.get("/api/knowledge-nuggets/city", isAuthenticated, async (req, res) => {
+    try {
+      const city = (req.query.city as string || "").trim();
+      if (!city) return res.status(400).json({ message: "city query param required" });
+      const nuggets = await db
+        .select()
+        .from(localKnowledgeNuggets)
+        .where(like(localKnowledgeNuggets.city, `%${city}%`))
+        .orderBy(desc(localKnowledgeNuggets.createdAt))
+        .limit(50);
+      res.json(nuggets);
+    } catch (err) {
+      console.error("[Knowledge Nuggets] city search error:", err);
+      res.status(500).json({ message: "Failed to fetch city nuggets" });
+    }
+  });
+
+  // ============================================================
   // EXPERT CONTRACTS
   // ============================================================
+
+  // ============================================================
+  // VISA REQUIREMENTS
+  // ============================================================
+
+  // Simple in-memory rate limiter for visa requirements (max 10 req / IP / minute)
+  const visaRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  function visaRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = visaRateLimitMap.get(ip);
+    if (!entry || now > entry.resetAt) {
+      visaRateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
+      return false;
+    }
+    if (entry.count >= 10) return true;
+    entry.count++;
+    return false;
+  }
+
+  app.post("/api/visa/requirements", async (req, res) => {
+    try {
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
+      if (visaRateLimit(ip)) {
+        return res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
+      }
+      const { passportCountry, destinationCountry } = req.body;
+      if (!passportCountry || !destinationCountry) {
+        return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
+      }
+
+      const { forceRefresh } = req.body;
+
+      // Check cache first (7-day TTL), unless force-refresh requested
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      if (forceRefresh) {
+        // Delete stale cache entry so we re-fetch fresh data
+        await db
+          .delete(visaRequirementsCache)
+          .where(
+            and(
+              eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+              eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+            )
+          );
+      } else {
+        const cached = await db
+          .select()
+          .from(visaRequirementsCache)
+          .where(
+            and(
+              eq(visaRequirementsCache.passportCountry, passportCountry.toLowerCase()),
+              eq(visaRequirementsCache.destinationCountry, destinationCountry.toLowerCase()),
+              sql`${visaRequirementsCache.cachedAt} > ${sevenDaysAgo}`
+            )
+          )
+          .limit(1)
+          .then((r) => r[0]);
+
+        if (cached) {
+          return res.json({
+            visaRequired: cached.visaRequired,
+            visaTypes: cached.visaTypes,
+            requiredDocuments: cached.requiredDocuments,
+            processingTime: cached.processingTime,
+            feeRange: cached.feeRange,
+            disclaimer: cached.disclaimer,
+            fromCache: true,
+            cachedAt: cached.cachedAt,
+          });
+        }
+      }
+
+      // Call Claude to get visa requirements
+      const prompt = `You are a visa information assistant. Provide visa requirements for a ${passportCountry} passport holder traveling to ${destinationCountry}.
+
+Return ONLY valid JSON in this exact structure (no additional text):
+{
+  "visa_required": true or false,
+  "visa_types": ["Tourist Visa", "Business Visa"],
+  "required_documents": ["Valid passport (6+ months validity)", "Completed visa application form", "Passport-sized photos", "Bank statements (last 3 months)", "Travel itinerary", "Hotel bookings"],
+  "processing_time": "5-10 business days",
+  "fee_range": "$50-$160 USD depending on visa type",
+  "disclaimer": "This information is for general guidance only. Requirements may change at any time. Always verify with the official embassy or consulate of ${destinationCountry} before traveling."
+}
+
+If no visa is required (visa-free or visa-on-arrival), set visa_required to false and explain in the disclaimer. Be specific and accurate based on commonly known visa policies.`;
+
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = (completion.content[0] as any).text;
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(500).json({ message: "Failed to parse AI response" });
+      }
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Store in cache
+      const nowTs = new Date();
+      await db.insert(visaRequirementsCache).values({
+        passportCountry: passportCountry.toLowerCase(),
+        destinationCountry: destinationCountry.toLowerCase(),
+        visaRequired: Boolean(parsed.visa_required),
+        visaTypes: parsed.visa_types || [],
+        requiredDocuments: parsed.required_documents || [],
+        processingTime: parsed.processing_time || null,
+        feeRange: parsed.fee_range || null,
+        disclaimer: parsed.disclaimer || null,
+      });
+
+      res.json({
+        visaRequired: parsed.visa_required,
+        visaTypes: parsed.visa_types || [],
+        requiredDocuments: parsed.required_documents || [],
+        processingTime: parsed.processing_time,
+        feeRange: parsed.fee_range,
+        disclaimer: parsed.disclaimer,
+        fromCache: false,
+        cachedAt: nowTs,
+      });
+    } catch (err) {
+      console.error("[Visa] requirements error:", err);
+      res.status(500).json({ message: "Failed to fetch visa requirements" });
+    }
+  });
+
+  // GET /api/visa/experts — returns visa-assistance services with real provider names
+  app.get("/api/visa/experts", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string || "6"), 20);
+      const cat = await db
+        .select({ id: serviceCategories.id })
+        .from(serviceCategories)
+        .where(eq(serviceCategories.slug, "visa-assistance"))
+        .limit(1)
+        .then((r) => r[0]);
+      if (!cat) return res.json({ services: [], total: 0 });
+      const rows = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+          description: providerServices.description,
+          price: providerServices.price,
+          averageRating: providerServices.averageRating,
+          reviewCount: providerServices.reviewCount,
+          location: providerServices.location,
+          deliveryMethod: providerServices.deliveryMethod,
+          serviceImage: providerServices.serviceImage,
+          categoryId: providerServices.categoryId,
+          providerFirstName: users.firstName,
+          providerLastName: users.lastName,
+          providerAvatar: users.profileImageUrl,
+        })
+        .from(providerServices)
+        .leftJoin(users, eq(providerServices.userId, users.id))
+        .where(and(eq(providerServices.categoryId, cat.id), eq(providerServices.status, "active")))
+        .orderBy(desc(providerServices.bookingsCount))
+        .limit(limit);
+      const services = rows.map((r) => ({
+        ...r,
+        providerName: [r.providerFirstName, r.providerLastName].filter(Boolean).join(" ") || "Visa Specialist",
+      }));
+      res.json({ services, total: services.length });
+    } catch (err) {
+      console.error("[Visa] experts error:", err);
+      res.status(500).json({ message: "Failed to fetch visa experts" });
+    }
+  });
 
   app.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {
@@ -17851,6 +19474,188 @@ export async function registerDiscoveryRoutes(app: Express) {
     } catch (err) {
       console.error("[Expert] getContracts error:", err);
       res.status(500).json({ message: "Failed to fetch contracts" });
+    }
+  });
+
+  // ─── Content Placement Rules (Admin) ────────────────────────────────────────
+
+  // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
+  const requireAdminLocal = async (req: any, res: any, next: any) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
+    const user = await db.select({ role: users.role }).from(users)
+      .where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    next();
+  };
+
+  // GET /api/admin/content-placement-rules — list with optional filters
+  app.get("/api/admin/content-placement-rules", requireAdminLocal, async (req, res) => {
+    try {
+      const { cityName, surface, contentSource } = req.query as Record<string, string>;
+      const rules = await storage.getContentPlacementRules({
+        cityName: cityName || undefined,
+        surface: surface || undefined,
+        contentSource: contentSource || undefined,
+        isActive: undefined,
+      });
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to fetch placement rules", error: err.message });
+    }
+  });
+
+  // POST /api/admin/content-placement-rules — create a rule
+  app.post("/api/admin/content-placement-rules", requireAdminLocal, async (req, res) => {
+    try {
+      const rule = await storage.createContentPlacementRule(req.body as InsertContentPlacementRule);
+      res.status(201).json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to create placement rule", error: err.message });
+    }
+  });
+
+  // PATCH /api/admin/content-placement-rules/:id — update a rule
+  app.patch("/api/admin/content-placement-rules/:id", requireAdminLocal, async (req, res) => {
+    try {
+      const rule = await storage.updateContentPlacementRule(req.params.id, req.body);
+      if (!rule) return res.status(404).json({ message: "Rule not found" });
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to update placement rule", error: err.message });
+    }
+  });
+
+  // DELETE /api/admin/content-placement-rules/:id — delete a rule
+  app.delete("/api/admin/content-placement-rules/:id", requireAdminLocal, async (req, res) => {
+    try {
+      await storage.deleteContentPlacementRule(req.params.id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete placement rule", error: err.message });
+    }
+  });
+
+  // POST /api/admin/content-placement-rules/auto-index
+  // Scans affiliate_products and content_registry, matches them to active TravelPulse
+  // cities by city/country name, and upserts placement rules with appropriate surfaces.
+  app.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, async (req, res) => {
+    try {
+      // 1. Load all TravelPulse cities
+      const cities = await db.select({
+        cityName: travelPulseCities.cityName,
+        country: travelPulseCities.country,
+        pulseScore: travelPulseCities.pulseScore,
+      }).from(travelPulseCities).limit(200);
+
+      if (!cities.length) {
+        return res.json({ created: 0, message: "No TravelPulse cities found. Seed city data first." });
+      }
+
+      // Build a fast lookup: lowercase city name → city data
+      const cityLookup = new Map(cities.map(c => [c.cityName.toLowerCase(), c]));
+
+      const rulesToUpsert: InsertContentPlacementRule[] = [];
+
+      // 2. Scan affiliate_products
+      const products = await db.select({
+        id: affiliateProducts.id,
+        name: affiliateProducts.name,
+        city: affiliateProducts.city,
+        country: affiliateProducts.country,
+        category: affiliateProducts.category,
+      }).from(affiliateProducts)
+        .where(eq(affiliateProducts.isActive, true))
+        .limit(2000);
+
+      for (const p of products) {
+        const cityKey = (p.city ?? "").toLowerCase();
+        const cityData = cityLookup.get(cityKey) ||
+          [...cityLookup.values()].find(c =>
+            cityKey.includes(c.cityName.toLowerCase()) ||
+            c.cityName.toLowerCase().includes(cityKey)
+          );
+        if (!cityData) continue;
+
+        // Determine which surfaces this product's category matches
+        const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
+          const cats = SURFACE_DEFAULT_AFFILIATE_CATEGORIES[slug as keyof typeof SURFACE_DEFAULT_AFFILIATE_CATEGORIES] ?? [];
+          const pCat = (p.category ?? "").toLowerCase();
+          return cats.some(c => pCat.includes(c) || c.includes(pCat));
+        });
+        if (!surfaces.length) surfaces.push("travelpulse-discover");
+
+        rulesToUpsert.push({
+          contentSource: "affiliate_product",
+          sourceId: p.id,
+          contentLabel: p.name,
+          cityName: cityData.cityName,
+          country: cityData.country,
+          surfaces,
+          minPulseScore: 0,
+          isPinned: false,
+          isAutoTagged: true,
+          isActive: true,
+          notes: `Auto-indexed from affiliate_products`,
+        });
+      }
+
+      // 3. Scan content_registry (published only, with location metadata)
+      const registryItems = await db.select({
+        id: contentRegistry.id,
+        title: contentRegistry.title,
+        contentType: contentRegistry.contentType,
+        metadata: contentRegistry.metadata,
+      }).from(contentRegistry)
+        .where(eq(contentRegistry.status, "published"))
+        .limit(2000);
+
+      for (const r of registryItems) {
+        const meta = (r.metadata ?? {}) as Record<string, any>;
+        const rawCity: string = meta.city ?? meta.location ?? meta.destination ?? "";
+        if (!rawCity) continue;
+
+        const cityKey = rawCity.toLowerCase().split(",")[0].trim();
+        const cityData = cityLookup.get(cityKey) ||
+          [...cityLookup.values()].find(c =>
+            cityKey.includes(c.cityName.toLowerCase()) ||
+            c.cityName.toLowerCase().includes(cityKey)
+          );
+        if (!cityData) continue;
+
+        // Determine surfaces from content type
+        const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
+          const types = SURFACE_DEFAULT_CONTENT_TYPES[slug as keyof typeof SURFACE_DEFAULT_CONTENT_TYPES] ?? [];
+          return types.includes(r.contentType as any);
+        });
+        if (!surfaces.length) surfaces.push("travelpulse-discover");
+
+        rulesToUpsert.push({
+          contentSource: "content_registry",
+          sourceId: r.id,
+          contentLabel: r.title ?? undefined,
+          cityName: cityData.cityName,
+          country: cityData.country,
+          surfaces,
+          minPulseScore: 0,
+          isPinned: false,
+          isAutoTagged: true,
+          isActive: true,
+          notes: `Auto-indexed from content_registry`,
+        });
+      }
+
+      const created = await storage.bulkUpsertContentPlacementRules(rulesToUpsert);
+      res.json({
+        created,
+        total: rulesToUpsert.length,
+        cities: cities.length,
+        affiliateScanned: products.length,
+        registryScanned: registryItems.length,
+        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities`,
+      });
+    } catch (err: any) {
+      console.error("[ContentMap] auto-index error:", err);
+      res.status(500).json({ message: "Auto-index failed", error: err.message });
     }
   });
 

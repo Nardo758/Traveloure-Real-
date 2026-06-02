@@ -35,6 +35,8 @@ import {
   Percent,
   PlugZap,
   Package,
+  Layers,
+  GitBranch,
 } from "lucide-react";
 
 const menuGroups = [
@@ -53,6 +55,7 @@ const menuGroups = [
       { title: "Users", href: "/admin/users", icon: Users },
       { title: "Experts", href: "/admin/experts", icon: UserCheck },
       { title: "Providers", href: "/admin/providers", icon: Building2 },
+      { title: "Routing Queue", href: "/admin/routing-queue", icon: GitBranch },
     ],
   },
   {
@@ -62,6 +65,7 @@ const menuGroups = [
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
+      { title: "Content Map", href: "/admin/content-mapping", icon: Layers },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
     ],
   },

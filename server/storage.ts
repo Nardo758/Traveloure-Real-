@@ -17,6 +17,8 @@ import {
   revenueSplits, expertTips, expertReferrals, affiliateEarnings, accessAuditLogs,
   providerEarnings, providerPayouts, platformRevenue, dailyRevenueSummary,
   contentRegistry, contentInvoices, contentVersions, contentFlags, contentAnalytics, trackingSequences,
+  contentPlacementRules,
+  type ContentPlacementRule, type InsertContentPlacementRule,
   type ContentRegistry, type InsertContentRegistry,
   type ContentInvoice, type InsertContentInvoice,
   type ContentVersion, type InsertContentVersion,
@@ -142,6 +144,7 @@ export interface IStorage {
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
+  updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
 
   // Service Provider Forms
   getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined>;
@@ -202,6 +205,7 @@ export interface IStorage {
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
   updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined>;
+  updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
   getServiceReviews(serviceId: string): Promise<ServiceReview[]>;
@@ -481,6 +485,7 @@ export interface IStorage {
   addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate>;
   deleteProviderBlackoutDate(id: string): Promise<void>;
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
+  createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any>;
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
   getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]>;
   createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest>;
@@ -716,6 +721,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(localExpertForms.userId, userId));
   }
 
+  async updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void> {
+    await db.update(localExpertForms)
+      .set({ neighborhoods, localityProof })
+      .where(eq(localExpertForms.userId, userId));
+  }
+
   // Service Provider Forms
   async getServiceProviderForm(userId: string): Promise<ServiceProviderForm | undefined> {
     const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId));
@@ -775,7 +786,7 @@ export class DatabaseStorage implements IStorage {
       ownerId: newService.userId,
       title: newService.serviceName,
       status: newService.status === 'draft' ? 'draft' : 'published',
-      metadata: { serviceType: newService.serviceType, categoryId: newService.categoryId },
+      metadata: { serviceType: newService.serviceType, categoryId: newService.categoryId, subcategoryId: newService.subcategoryId ?? null },
     });
     
     return newService;
@@ -1070,6 +1081,17 @@ export class DatabaseStorage implements IStorage {
     return newBooking;
   }
 
+  async updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined> {
+    const prior = await this.getServiceBooking(id);
+    if (!prior) return undefined;
+    const merged = { ...(prior.bookingMetadata as Record<string, any> || {}), ...metadata };
+    const [updated] = await db.update(serviceBookings)
+      .set({ bookingMetadata: merged, updatedAt: new Date() })
+      .where(eq(serviceBookings.id, id))
+      .returning();
+    return updated;
+  }
+
   async updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
@@ -1330,7 +1352,12 @@ export class DatabaseStorage implements IStorage {
             providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || "Provider";
           }
         }
-        return { ...item, isCustomVenue: false, service: service ? { ...service, providerName } : null };
+        let categorySlug: string | null = null;
+        if (service?.categoryId) {
+          const [cat] = await db.select({ slug: serviceCategories.slug }).from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
+          categorySlug = cat?.slug ?? null;
+        }
+        return { ...item, isCustomVenue: false, service: service ? { ...service, providerName, categorySlug } : null };
       }
       return { ...item, service: null };
     }));
@@ -3242,6 +3269,17 @@ export class DatabaseStorage implements IStorage {
     return !!row;
   }
 
+  async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
+    const [created] = await db.insert(tripExpertAdvisors).values({
+      tripId: data.tripId,
+      localExpertId: data.localExpertId,
+      status: data.status ?? "pending",
+      workspaceStatus: "draft",
+      message: data.message,
+    }).returning();
+    return created;
+  }
+
   async getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]> {
     return await db.select().from(providerBookingRequests)
       .where(eq(providerBookingRequests.providerId, providerId))
@@ -3471,6 +3509,65 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tripExpertAdvisors.id, assignmentId))
       .returning();
     return updated;
+  }
+
+  // ─── Content Placement Rules ─────────────────────────────────────────────
+
+  async getContentPlacementRules(filters?: {
+    cityName?: string;
+    surface?: string;
+    contentSource?: string;
+    isActive?: boolean;
+  }): Promise<ContentPlacementRule[]> {
+    const conditions: any[] = [];
+    if (filters?.cityName) conditions.push(ilike(contentPlacementRules.cityName, `%${filters.cityName}%`));
+    if (filters?.surface) conditions.push(sql`${contentPlacementRules.surfaces} @> ${JSON.stringify([filters.surface])}::jsonb`);
+    if (filters?.contentSource) conditions.push(eq(contentPlacementRules.contentSource, filters.contentSource));
+    if (filters?.isActive !== undefined) conditions.push(eq(contentPlacementRules.isActive, filters.isActive));
+    return db.select().from(contentPlacementRules)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(contentPlacementRules.createdAt));
+  }
+
+  async createContentPlacementRule(rule: InsertContentPlacementRule): Promise<ContentPlacementRule> {
+    const [created] = await db.insert(contentPlacementRules).values(rule).returning();
+    return created;
+  }
+
+  async updateContentPlacementRule(id: string, updates: Partial<InsertContentPlacementRule>): Promise<ContentPlacementRule | undefined> {
+    const [updated] = await db.update(contentPlacementRules)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(contentPlacementRules.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteContentPlacementRule(id: string): Promise<void> {
+    await db.delete(contentPlacementRules).where(eq(contentPlacementRules.id, id));
+  }
+
+  async bulkUpsertContentPlacementRules(rules: InsertContentPlacementRule[]): Promise<number> {
+    if (!rules.length) return 0;
+    let upserted = 0;
+    for (const rule of rules) {
+      const existing = await db.select({ id: contentPlacementRules.id })
+        .from(contentPlacementRules)
+        .where(and(
+          eq(contentPlacementRules.contentSource, rule.contentSource),
+          eq(contentPlacementRules.sourceId, rule.sourceId),
+          ilike(contentPlacementRules.cityName, rule.cityName),
+        ))
+        .limit(1);
+      if (existing.length) {
+        await db.update(contentPlacementRules)
+          .set({ surfaces: rule.surfaces, updatedAt: new Date() })
+          .where(eq(contentPlacementRules.id, existing[0].id));
+      } else {
+        await db.insert(contentPlacementRules).values(rule);
+        upserted++;
+      }
+    }
+    return upserted;
   }
 }
 

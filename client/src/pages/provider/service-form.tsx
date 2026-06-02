@@ -31,9 +31,16 @@ interface ServiceCategory {
   description: string | null;
 }
 
+interface ServiceSubcategory {
+  id: string;
+  name: string;
+  sortOrder: number | null;
+}
+
 interface ServiceFormData {
   name: string;
   categoryId: string;
+  subcategoryId: string;
   description: string;
   basePrice: number;
   priceType: "Fixed" | "Range" | "Per-person";
@@ -56,6 +63,7 @@ function buildEmptyForm(): ServiceFormData {
   return {
     name: "",
     categoryId: "",
+    subcategoryId: "",
     description: "",
     basePrice: 0,
     priceType: "Fixed",
@@ -78,6 +86,7 @@ function mapServiceToForm(s: any): ServiceFormData {
   return {
     name: s.serviceName || "",
     categoryId: s.categoryId || "",
+    subcategoryId: s.subcategoryId || "",
     description: s.description || "",
     basePrice: Number(s.price || 0),
     priceType: "Fixed",
@@ -108,12 +117,18 @@ export default function ProviderServiceForm() {
     queryKey: ["/api/service-categories"],
   });
 
+  const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm);
+
+  const { data: subcategories = [] } = useQuery<ServiceSubcategory[]>({
+    queryKey: ["/api/service-categories", formData.categoryId, "subcategories"],
+    enabled: !!formData.categoryId,
+  });
+
   const { data: existingService, isLoading: loadingExisting } = useQuery<any>({
     queryKey: ["/api/provider/services", params?.id],
     enabled: isEditMode,
   });
 
-  const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm);
   const categoryPreSelected = useRef(false);
 
   // Pre-select category from ?category= URL param once categories are loaded
@@ -171,6 +186,7 @@ export default function ProviderServiceForm() {
       const payload: Record<string, any> = {
         serviceName: formData.name,
         categoryId: formData.categoryId || undefined,
+        subcategoryId: formData.subcategoryId || undefined,
         description: formData.description,
         price: String(formData.basePrice),
         priceType: formData.priceType.toLowerCase().replace("-", "_"),
@@ -301,7 +317,12 @@ export default function ProviderServiceForm() {
             {/* Category — live dropdown from DB */}
             <div>
               <Label htmlFor="category">Category *</Label>
-              <Select value={formData.categoryId} onValueChange={(v) => set("categoryId", v)}>
+              <Select
+                value={formData.categoryId}
+                onValueChange={(v) => {
+                  setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "" }));
+                }}
+              >
                 <SelectTrigger id="category" className="mt-2" data-testid="select-category">
                   <SelectValue placeholder="Select a service category…" />
                 </SelectTrigger>
@@ -320,6 +341,35 @@ export default function ProviderServiceForm() {
                 </p>
               )}
             </div>
+
+            {/* Subcategory — loads when category is selected */}
+            {subcategories.length > 0 && (
+              <div>
+                <Label htmlFor="subcategory">Subcategory</Label>
+                <Select
+                  value={formData.subcategoryId}
+                  onValueChange={(v) => set("subcategoryId", v === "__none__" ? "" : v)}
+                >
+                  <SelectTrigger id="subcategory" className="mt-2" data-testid="select-subcategory">
+                    <SelectValue placeholder="Select a subcategory (optional)…" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value="__none__">— None / General —</SelectItem>
+                    {subcategories
+                      .slice()
+                      .sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99))
+                      .map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id} data-testid={`option-subcategory-${sub.id}`}>
+                          {sub.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Narrow your service type within this category for better discoverability.
+                </p>
+              </div>
+            )}
 
             {/* Description */}
             <div>

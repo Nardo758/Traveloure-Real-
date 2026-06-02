@@ -1,0 +1,108 @@
+// playwright/tests/paris-surfacing.spec.ts
+//
+// SMOKE: verifies the Paris provider services (force-approved + category-mapped)
+// actually SURFACE in the UI — not just that the DB rows are correct.
+// Three surfaces, the gap between "data is right" and "UI renders it":
+//   1. Unfiltered browse        (public /discover)            — control
+//   2. Category-filtered browse (/discover + category filter) — the make-or-break
+//   3. TravelPulse recommendations (dashboard, needs login)   — separate code path
+//
+// Run:  npx playwright test paris-surfacing
+//       BASE_URL=https://<your-replit-url> npx playwright test paris-surfacing   (against deployed)
+//
+// SELECTOR NOTES (verify these two against your actual UI; the rest are confirmed):
+//   - SEARCH_INPUT: matches nyc-market.spec.ts convention (input[placeholder*="Search"]).
+//   - CATEGORY_CONTROL: best-guess by visible label — adjust to your real category chip/dropdown
+//     if the test reports it can't find the control (that itself is a UI finding worth knowing).
+
+import { test, expect, Page } from '@playwright/test';
+import { loginAs } from '../utils/auth';
+import { TEST_ACCOUNTS } from '../fixtures/test-accounts';
+
+const DESTINATION = 'Paris';
+const SERVICE_CARD = '[data-testid^="card-service-"]';
+const SEARCH_INPUT = 'input[placeholder*="Search" i]';
+
+// any traveler account works — we're browsing Paris, not their home market
+const traveler =
+  TEST_ACCOUNTS.find((a) => a.role === 'traveler') ?? TEST_ACCOUNTS[0];
+
+async function searchParis(page: Page) {
+  await page.goto('/discover');
+  const search = page.locator(SEARCH_INPUT).first();
+  if (await search.isVisible().catch(() => false)) {
+    await search.fill(DESTINATION);
+    await search.press('Enter');
+  }
+  // results render async; wait for at least one card or a definitive empty state
+  await page.waitForLoadState('networkidle');
+}
+
+test.describe('[PARIS] Service surfacing', () => {
+  test('[PARIS] Unfiltered browse renders services (control)', async ({ page }) => {
+    await searchParis(page);
+    const cards = page.locator(SERVICE_CARD);
+    await expect(
+      cards.first(),
+      'No service cards on unfiltered /discover for Paris — browse path itself is broken',
+    ).toBeVisible({ timeout: 10_000 });
+    expect(await cards.count()).toBeGreaterThan(0);
+  });
+
+  test('[PARIS] Category-filtered browse still renders services', async ({ page }) => {
+    await searchParis(page);
+    const baseline = await page.locator(SERVICE_CARD).count();
+    expect(baseline, 'precondition: unfiltered Paris browse should have results').toBeGreaterThan(0);
+
+    // Apply a category that the Paris rows were mapped into.
+    // Tries common labels from the mapping; adjust CATEGORY_CONTROL if none match.
+    const categoryCandidates = [
+      'Tours & Experiences',
+      'Restaurants & Dining',
+      'Transportation & Logistics',
+      'Lodging & Accommodation',
+    ];
+    let applied = false;
+    for (const label of categoryCandidates) {
+      const control = page.getByRole('button', { name: new RegExp(label, 'i') })
+        .or(page.getByText(new RegExp(`^${label}$`, 'i')));
+      if (await control.first().isVisible().catch(() => false)) {
+        await control.first().click();
+        applied = true;
+        break;
+      }
+    }
+    expect(
+      applied,
+      'Could not find a category filter control — the category UI may key off ids/slugs that do not match the mapped categories (this is the exact mismatch the smoke test exists to catch)',
+    ).toBe(true);
+
+    await page.waitForLoadState('networkidle');
+    const filtered = page.locator(SERVICE_CARD);
+    await expect(
+      filtered.first(),
+      'Category filter returned zero services for Paris — category_id mapping likely does not match the UI filter taxonomy',
+    ).toBeVisible({ timeout: 10_000 });
+    expect(await filtered.count()).toBeGreaterThan(0);
+  });
+
+  test('[PARIS] TravelPulse recommendation surface renders', async ({ page }) => {
+    await loginAs(page, traveler.email, traveler.password);
+    await page.goto('/dashboard');
+
+    // panel or ticker — whichever your dashboard mounts
+    const pulse = page.locator('[data-testid="travelpulse-panel"]')
+      .or(page.locator('[data-testid="travelpulse-ticker"]'));
+    await expect(
+      pulse.first(),
+      'TravelPulse panel/ticker not present on dashboard',
+    ).toBeVisible({ timeout: 10_000 });
+
+    // the point of the fix: Paris should now appear in the recommendation feed.
+    // Soft-checked because the ticker rotates — fails the run if Paris never appears within the window.
+    await expect(
+      page.getByText(/Paris/i).first(),
+      'Paris does not appear in the TravelPulse recommendation surface — services were approved but the recommendation engine is not surfacing them here',
+    ).toBeVisible({ timeout: 15_000 });
+  });
+});

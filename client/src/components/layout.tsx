@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Home,
   Plane,
+  MapPin,
   Heart,
   Gem,
   Sparkles,
@@ -106,29 +107,7 @@ const navItems = [
       },
     ],
   },
-  {
-    name: "Partner With Us",
-    icon: ChevronDown,
-    sections: [
-      {
-        title: "OVERVIEW",
-        items: [
-          { name: "Partner With Us", href: "/partner-with-us", icon: Users, description: "Learn about partnership opportunities" },
-        ],
-      },
-      {
-        title: "BECOME A PARTNER",
-        items: [
-          { name: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane, description: "Share your destination expertise" },
-          { name: "Local Expert", href: "/become-expert?type=local_expert", icon: Globe, description: "Guide travelers in your city" },
-          { name: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar, description: "Plan weddings & celebrations" },
-          { name: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase, description: "Manage high-end clients" },
-          { name: "Service Provider", href: "/become-provider", icon: Building2, description: "Offer venues & services" },
-          { name: "Influencer Program", href: "/become-expert?type=travel_expert&influencer=true", icon: Sparkles, description: "Earn commissions as a creator" },
-        ],
-      },
-    ],
-  },
+  { name: "Partner With Us", href: "/partner-with-us" },
   { name: "Discover", href: "/discover" },
   {
     name: "Planning Tools",
@@ -138,8 +117,8 @@ const navItems = [
         title: "AI & EXPERTS",
         items: [
           { name: "AI Trip Planner", href: "/ai-assistant", icon: Bot, description: "Instant AI-powered itineraries" },
-          { name: "Find Local Service Providers", href: "/vendors", icon: Users, description: "Connect with destination experts" },
-          { name: "Executive Assistant", href: "/executive-assistant", icon: Briefcase, description: "Premium concierge planning" },
+          { name: "Find Service Providers", href: "/vendors", icon: Building2, description: "Browse venues & specialist services" },
+          { name: "Visa Help", href: "/visa-help", icon: FileText, description: "Visa requirements & expert help" },
         ],
       },
       {
@@ -281,7 +260,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm overflow-x-clip">
+      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16">
             <div className="flex items-center flex-1 min-w-0">
@@ -307,11 +286,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-2 flex-shrink-0">
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
-                  <Link href="/become-expert">
-                    <Button variant="outline" size="sm" data-testid="button-become-expert">
-                      Become an Expert
-                    </Button>
-                  </Link>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" data-testid="button-become-expert" className="gap-1">
+                        Join as Partner
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-72 p-2">
+                      {[
+                        { label: "Travel Expert", desc: "Share your destination expertise & guide travellers worldwide", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
+                        { label: "Event Planner", desc: "Plan weddings, proposals & celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
+                        { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
+                      ].map(({ label, desc, href, icon: Icon }) => (
+                        <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
+                          <Link href={href} data-testid={`link-partner-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
+                            <div className="flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-muted w-full cursor-pointer">
+                              <div className="mt-0.5 w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                <Icon className="w-3.5 h-3.5 text-primary" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{label}</p>
+                                <p className="text-xs text-muted-foreground leading-snug mt-0.5">{desc}</p>
+                              </div>
+                            </div>
+                          </Link>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   <Button 
                     size="sm" 
                     onClick={() => openSignInModal()}
@@ -325,7 +329,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {user && (
                 <>
                   <NotificationBell />
-                  <UserMenu />
+                  <div className="hidden lg:block">
+                    <UserMenu />
+                  </div>
                 </>
               )}
 
@@ -420,14 +426,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-3">
-                    <Link href="/become-expert" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Button variant="outline" className="w-full" data-testid="button-mobile-become-expert">
-                        Become an Expert
-                      </Button>
-                    </Link>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Join as a Partner</p>
+                    {[
+                      { label: "Travel Expert", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
+                      { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
+                      { label: "Service Provider", href: "/become-provider", icon: Building2 },
+                    ].map(({ label, href, icon: Icon }) => (
+                      <Link key={label} href={href} onClick={() => setIsMobileMenuOpen(false)}>
+                        <Button variant="outline" className="w-full justify-start gap-2" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
+                          <Icon className="w-4 h-4 text-primary" />
+                          {label}
+                        </Button>
+                      </Link>
+                    ))}
                     <Button 
-                      className="w-full" 
+                      className="w-full mt-1" 
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         openSignInModal();

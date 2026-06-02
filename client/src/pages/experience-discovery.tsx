@@ -15,6 +15,7 @@ import {
   Search, Filter, MapPin, Star, Clock, DollarSign, 
   Building2, Calendar, Ticket, Plane, X, Sparkles, ExternalLink, Plus, ChevronRight
 } from "lucide-react";
+import { CuratedContentSection } from "@/components/curated-content-section";
 
 interface CatalogItem {
   id: string;
@@ -316,6 +317,16 @@ export default function ExperienceDiscovery() {
             </aside>
 
             <main className="flex-1">
+              {/* Curated Experiences — content hub items matched to selected destination */}
+              {destination && (
+                <CuratedContentSection
+                  destination={destination}
+                  surface="experience-discovery"
+                  label="Curated Experiences"
+                  className="mb-6"
+                />
+              )}
+
               <div className="flex items-center justify-between mb-6">
                 <p className="text-sm text-muted-foreground" data-testid="text-results-count">
                   {isLoading ? "Searching..." : `${searchResult?.total || 0} experiences found`}

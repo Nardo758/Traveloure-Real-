@@ -266,7 +266,9 @@ const mockExperts = [
     languages: ["English", "Portuguese", "Spanish"],
     responseTime: "< 1 hour",
     destinations: ["Lisbon", "Porto", "Algarve"],
-    yearsOfExperience: "10+ years"
+    yearsOfExperience: "10+ years",
+    neighborhoods: ["Alfama", "Bairro Alto", "Belém", "LX Factory"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Kenji",
@@ -279,7 +281,9 @@ const mockExperts = [
     languages: ["English", "Japanese"],
     responseTime: "< 2 hours",
     destinations: ["Tokyo", "Kyoto", "Osaka"],
-    yearsOfExperience: "8 years"
+    yearsOfExperience: "8 years",
+    neighborhoods: ["Shimokitazawa", "Nakameguro", "Daikanyama", "Yanaka"],
+    localityProof: "long_term_10yr",
   },
   {
     firstName: "Isabella",
@@ -292,7 +296,9 @@ const mockExperts = [
     languages: ["English", "Italian", "French", "Spanish"],
     responseTime: "< 1 hour",
     destinations: ["Rome", "Tuscany", "Amalfi Coast"],
-    yearsOfExperience: "12 years"
+    yearsOfExperience: "12 years",
+    neighborhoods: ["Trastevere", "Testaccio", "Pigneto", "Prati"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Carlos",
@@ -305,7 +311,9 @@ const mockExperts = [
     languages: ["English", "Spanish"],
     responseTime: "< 3 hours",
     destinations: ["Costa Rica", "Panama", "Nicaragua"],
-    yearsOfExperience: "7 years"
+    yearsOfExperience: "7 years",
+    neighborhoods: ["Escazú", "Santa Ana", "La Sabana", "Barrio Amón"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Sophie",
@@ -318,7 +326,9 @@ const mockExperts = [
     languages: ["English", "French", "German"],
     responseTime: "< 1 hour",
     destinations: ["Paris", "French Riviera", "Provence"],
-    yearsOfExperience: "15 years"
+    yearsOfExperience: "15 years",
+    neighborhoods: ["Montmartre", "Le Marais", "Saint-Germain-des-Prés", "Pigalle"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Ahmed",
@@ -331,7 +341,9 @@ const mockExperts = [
     languages: ["English", "Arabic", "French"],
     responseTime: "< 2 hours",
     destinations: ["Marrakech", "Cairo", "Fez"],
-    yearsOfExperience: "15 years"
+    yearsOfExperience: "15 years",
+    neighborhoods: ["Medina", "Jemaa el-Fna", "Mellah", "Guéliz"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Emma",
@@ -344,7 +356,9 @@ const mockExperts = [
     languages: ["English"],
     responseTime: "< 1 hour",
     destinations: ["London", "Edinburgh", "Dublin"],
-    yearsOfExperience: "9 years"
+    yearsOfExperience: "9 years",
+    neighborhoods: ["Shoreditch", "Notting Hill", "Bermondsey", "Greenwich"],
+    localityProof: "long_term_10yr",
   },
   {
     firstName: "Raj",
@@ -357,7 +371,9 @@ const mockExperts = [
     languages: ["English", "Hindi", "Marathi"],
     responseTime: "< 2 hours",
     destinations: ["Mumbai", "Goa", "Rajasthan"],
-    yearsOfExperience: "11 years"
+    yearsOfExperience: "11 years",
+    neighborhoods: ["Bandra", "Colaba", "Dharavi", "Juhu"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Elena",
@@ -370,7 +386,9 @@ const mockExperts = [
     languages: ["English", "Czech", "Russian"],
     responseTime: "< 3 hours",
     destinations: ["Prague", "Budapest", "Krakow"],
-    yearsOfExperience: "6 years"
+    yearsOfExperience: "6 years",
+    neighborhoods: ["Žižkov", "Vinohrady", "Holešovice", "Malá Strana"],
+    localityProof: "long_term_5yr",
   },
   {
     firstName: "Marcus",
@@ -383,7 +401,9 @@ const mockExperts = [
     languages: ["English", "Mandarin", "Cantonese"],
     responseTime: "< 1 hour",
     destinations: ["Singapore", "Hong Kong", "Bangkok"],
-    yearsOfExperience: "10 years"
+    yearsOfExperience: "10 years",
+    neighborhoods: ["Tiong Bahru", "Kampong Glam", "Little India", "Chinatown"],
+    localityProof: "long_term_10yr",
   },
   {
     firstName: "Yuki",
@@ -396,7 +416,9 @@ const mockExperts = [
     languages: ["English", "Japanese"],
     responseTime: "< 1 hour",
     destinations: ["Kyoto", "Nara", "Osaka"],
-    yearsOfExperience: "14 years"
+    yearsOfExperience: "14 years",
+    neighborhoods: ["Gion", "Higashiyama", "Fushimi"],
+    localityProof: "born_raised",
   },
   {
     firstName: "Takeshi",
@@ -409,7 +431,9 @@ const mockExperts = [
     languages: ["English", "Japanese", "Korean"],
     responseTime: "< 2 hours",
     destinations: ["Kyoto", "Nara", "Kobe", "Lake Biwa"],
-    yearsOfExperience: "9 years"
+    yearsOfExperience: "9 years",
+    neighborhoods: ["Arashiyama", "Nishiki", "Pontocho", "Shimogamo"],
+    localityProof: "long_term_10yr",
   }
 ];
 
@@ -448,9 +472,20 @@ export async function seedMockExperts() {
           responseTime: expert.responseTime,
           yearsOfExperience: expert.yearsOfExperience,
           bio: expert.bio,
+          neighborhoods: (expert as any).neighborhoods || [],
+          localityProof: (expert as any).localityProof || null,
           status: "approved",
         });
         console.log(`  → Created expert form for: ${expert.firstName} ${expert.lastName}`);
+      } else if ((expert as any).neighborhoods?.length > 0) {
+        // Update existing form with neighbourhood data if present in seed config
+        await db.update(localExpertForms)
+          .set({
+            neighborhoods: (expert as any).neighborhoods,
+            localityProof: (expert as any).localityProof || null,
+          })
+          .where(eq(localExpertForms.userId, existingExpert[0].id));
+        console.log(`  → Updated neighbourhoods for: ${expert.firstName} ${expert.lastName}`);
       }
       existed++;
       continue;
@@ -479,6 +514,8 @@ export async function seedMockExperts() {
       responseTime: expert.responseTime,
       yearsOfExperience: expert.yearsOfExperience,
       bio: expert.bio,
+      neighborhoods: (expert as any).neighborhoods || [],
+      localityProof: (expert as any).localityProof || null,
       status: "approved",
     });
     
