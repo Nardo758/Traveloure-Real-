@@ -130,6 +130,13 @@ const categoryIcons: Record<string, any> = {
   "technical-services": Zap,
   "business-professional": Briefcase,
   "restaurants-dining": UtensilsCrossed,
+  // Gap report additions
+  "stationery-paper-goods": Languages,
+  "specialty-effects-activities": Zap,
+  "send-off-post-event": PartyPopper,
+  "unique-specialty-services": Sparkles,
+  "spiritual-wellness": Heart,
+  "local-expertise": Map,
 };
 
 export default function AdminCategories() {

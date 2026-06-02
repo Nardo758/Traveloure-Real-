@@ -117,6 +117,13 @@ const categoryIcons: Record<string, React.ElementType> = {
   "technical-services": Zap,
   "business-professional": Briefcase,
   "restaurants-dining": UtensilsCrossed,
+  // Gap report additions
+  "stationery-paper-goods": Languages,
+  "specialty-effects-activities": Zap,
+  "send-off-post-event": PartyPopper,
+  "unique-specialty-services": Award,
+  "spiritual-wellness": Sparkles,
+  "local-expertise": Compass,
 };
 
 function ServiceCard({ service }: { service: Service }) {
