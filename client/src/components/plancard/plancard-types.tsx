@@ -192,6 +192,7 @@ export interface PlanCardProps {
   index?: number;
   role?: PlanCardRole;
   stage?: PlanCardStage;
+  days?: PlanCardDay[];
 }
 
 export interface PlanCardScore {

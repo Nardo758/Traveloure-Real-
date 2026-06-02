@@ -394,7 +394,7 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full" }: PlanCardProps) {
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp }: PlanCardProps) {
   const [selectedDay, setSelectedDay] = useState(0);
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [showChanges, setShowChanges] = useState(true);
@@ -423,6 +423,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const { data: plancardData } = useQuery<PlanCardData>({
     queryKey: [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
+    enabled: !daysProp,
   });
 
   // Render summary stage (compact dashboard card)
@@ -439,8 +440,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
     );
   }
 
-  // Full stage
-  const days: PlanCardDay[] = plancardData?.days || [];
+  // Full stage – prefer externally-supplied days, then fall back to plancard API
+  const days: PlanCardDay[] = daysProp ?? plancardData?.days ?? [];
   const changeLog: PlanCardChange[] = plancardData?.changeLog || [];
   const metrics = plancardData?.metrics || {};
   const stats = plancardData?.stats || {};

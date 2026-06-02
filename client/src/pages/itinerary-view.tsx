@@ -21,11 +21,11 @@ import {
   TYPE_COLORS, MODE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardTrip,
 } from "@/components/plancard/plancard-types";
+import { PlanCard } from "@/components/plancard/PlanCard";
 import { HeroSection } from "@/components/plancard/HeroSection";
 import { StatsRow, CostIcon, type ExtraStat } from "@/components/plancard/StatsRow";
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
-import { ActivitiesSection } from "@/components/plancard/ActivitiesSection";
 import { TransportSection } from "@/components/plancard/TransportSection";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 
@@ -573,123 +573,117 @@ export default function ItineraryViewPage() {
           </div>
         )}
 
-        <Card className="overflow-hidden border-border bg-card" data-testid="shared-itinerary-card">
-          <HeroSection
-            trip={planCardTrip}
-            traveloureScore={data.variant.optimizationScore}
-            shareToken={token}
-            totalCost={grandTotal > 0 ? `$${grandTotal.toLocaleString()}` : null}
-            perPerson={null}
-            budget={null}
-          />
-
-          <StatsRow
+        {!isExpertView ? (
+          <PlanCard
+            role="viewer"
+            stage="full"
             trip={planCardTrip}
             days={planCardDays}
-            totalActivities={totalActivities}
-            totalLegs={totalLegs}
-            totalMinutes={totalMinutes}
-            templateConfig={templateConfig}
-            extraStats={extraStats}
           />
+        ) : (
+          <>
+            <Card className="overflow-hidden border-border bg-card" data-testid="shared-itinerary-card">
+              <HeroSection
+                trip={planCardTrip}
+                traveloureScore={data.variant.optimizationScore}
+                shareToken={token}
+                totalCost={grandTotal > 0 ? `$${grandTotal.toLocaleString()}` : null}
+                perPerson={null}
+                budget={null}
+              />
 
-          <DaySelector
-            tripId={data.variant.id}
-            days={planCardDays}
-            selectedDay={selectedDay}
-            onSelectDay={setSelectedDay}
-            showActivityCounts
-          />
+              <StatsRow
+                trip={planCardTrip}
+                days={planCardDays}
+                totalActivities={totalActivities}
+                totalLegs={totalLegs}
+                totalMinutes={totalMinutes}
+                templateConfig={templateConfig}
+                extraStats={extraStats}
+              />
 
-          <SectionTabs
-            tripId={data.variant.id}
-            section={section}
-            onSetSection={setSection}
-            showChanges={showChanges}
-            onToggleChanges={() => setShowChanges(!showChanges)}
-            templateConfig={templateConfig}
-            dayActivityCount={currentDay?.activities?.length || 0}
-            dayTransportCount={currentDay?.transports?.length || 0}
-            confirmedActivities={totalBooked}
-            totalActivities={totalActivities}
-            transportLocked={false}
-            changeLogCount={totalDiffs}
-            expertChanges={totalReviewDiffs}
-          />
+              <DaySelector
+                tripId={data.variant.id}
+                days={planCardDays}
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+                showActivityCounts
+              />
 
-          {section === "activities" && !isExpertView && (
-            <ActivitiesSection
-              tripId={data.variant.id}
-              day={currentDay}
-              templateConfig={templateConfig}
-            />
-          )}
+              <SectionTabs
+                tripId={data.variant.id}
+                section={section}
+                onSetSection={setSection}
+                showChanges={showChanges}
+                onToggleChanges={() => setShowChanges(!showChanges)}
+                templateConfig={templateConfig}
+                dayActivityCount={currentDay?.activities?.length || 0}
+                dayTransportCount={currentDay?.transports?.length || 0}
+                confirmedActivities={totalBooked}
+                totalActivities={totalActivities}
+                transportLocked={false}
+                changeLogCount={totalDiffs}
+                expertChanges={totalReviewDiffs}
+              />
 
-          {section === "activities" && isExpertView && currentDay && (
-            <ExpertActivitiesSection
-              tripId={data.variant.id}
-              day={currentDay}
-              rawActivities={data.variant.days[selectedDay]?.activities || []}
-              templateConfig={templateConfig}
-              activityDiffs={activityDiffs}
-              editingActivity={editingActivity}
-              editValues={editValues}
-              onStartEdit={startEditActivity}
-              onConfirmEdit={confirmEditActivity}
-              onCancelEdit={() => setEditingActivity(null)}
-              onEditValuesChange={setEditValues}
-              onClearDiff={(id) => {
-                const newDiffs = { ...activityDiffs };
-                delete newDiffs[id];
-                setActivityDiffs(newDiffs);
-              }}
-            />
-          )}
+              {section === "activities" && currentDay && (
+                <ExpertActivitiesSection
+                  tripId={data.variant.id}
+                  day={currentDay}
+                  rawActivities={data.variant.days[selectedDay]?.activities || []}
+                  templateConfig={templateConfig}
+                  activityDiffs={activityDiffs}
+                  editingActivity={editingActivity}
+                  editValues={editValues}
+                  onStartEdit={startEditActivity}
+                  onConfirmEdit={confirmEditActivity}
+                  onCancelEdit={() => setEditingActivity(null)}
+                  onEditValuesChange={setEditValues}
+                  onClearDiff={(id) => {
+                    const newDiffs = { ...activityDiffs };
+                    delete newDiffs[id];
+                    setActivityDiffs(newDiffs);
+                  }}
+                />
+              )}
 
-          {section === "transport" && !isExpertView && (
-            <TransportSection
-              tripId={data.variant.id}
-              tripDestination={destination}
-              day={currentDay}
-              allowActions={false}
-            />
-          )}
+              {section === "transport" && currentDay && (
+                <ExpertTransportSection
+                  tripId={data.variant.id}
+                  tripDestination={destination}
+                  day={currentDay}
+                  rawTransportLegs={data.variant.days[selectedDay]?.transportLegs || []}
+                  transportDiffs={transportDiffs}
+                  onModeChange={handleTransportModeChange}
+                />
+              )}
+            </Card>
 
-          {section === "transport" && isExpertView && currentDay && (
-            <ExpertTransportSection
-              tripId={data.variant.id}
-              tripDestination={destination}
-              day={currentDay}
-              rawTransportLegs={data.variant.days[selectedDay]?.transportLegs || []}
-              transportDiffs={transportDiffs}
-              onModeChange={handleTransportModeChange}
-            />
-          )}
-        </Card>
+            {GOOGLE_MAPS_AVAILABLE && (
+              <div className="flex items-center justify-end mt-4">
+                <Button
+                  variant={showMap ? "default" : "outline"}
+                  size="sm"
+                  className="gap-2 text-xs"
+                  onClick={() => setShowMap(!showMap)}
+                  data-testid="button-toggle-map"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  {showMap ? "Hide Map" : "Show Map"}
+                </Button>
+              </div>
+            )}
 
-        {GOOGLE_MAPS_AVAILABLE && (
-          <div className="flex items-center justify-end mt-4">
-            <Button
-              variant={showMap ? "default" : "outline"}
-              size="sm"
-              className="gap-2 text-xs"
-              onClick={() => setShowMap(!showMap)}
-              data-testid="button-toggle-map"
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              {showMap ? "Hide Map" : "Show Map"}
-            </Button>
-          </div>
-        )}
-
-        {GOOGLE_MAPS_AVAILABLE && showMap && (
-          <MapControlCenter
-            tripId={data.variant.id}
-            tripDestination={destination}
-            days={planCardDays}
-            selectedDay={selectedDay}
-            onSelectDay={setSelectedDay}
-          />
+            {GOOGLE_MAPS_AVAILABLE && showMap && (
+              <MapControlCenter
+                tripId={data.variant.id}
+                tripDestination={destination}
+                days={planCardDays}
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+              />
+            )}
+          </>
         )}
 
         {isExpertView && (

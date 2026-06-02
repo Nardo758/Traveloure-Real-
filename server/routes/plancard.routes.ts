@@ -6,6 +6,7 @@ import {
   itineraryChanges,
   activityComments,
   transportLegs,
+  transportBookingOptions,
   itineraryComparisons,
   itineraryVariants,
   itineraryVariantItems,
@@ -84,6 +85,24 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       }
     }
 
+    // Build a map from transportLegId → primary booking option for badge display
+    const legBookingMap: Record<string, { bookingSource: "platform" | "affiliate"; partnerName: string | null }> = {};
+    if (variantLegs.length > 0) {
+      const legIds = variantLegs.map((l: any) => l.id).filter(Boolean);
+      if (legIds.length > 0) {
+        const bookingOpts = await db.select().from(transportBookingOptions)
+          .where(sql`${transportBookingOptions.transportLegId} = ANY(ARRAY[${sql.join(legIds.map(id => sql`${id}`), sql`, `)}]::text[])`);
+        for (const opt of bookingOpts) {
+          if (!opt.transportLegId) continue;
+          if (legBookingMap[opt.transportLegId]) continue;
+          legBookingMap[opt.transportLegId] = {
+            bookingSource: opt.bookingType === "platform" ? "platform" : "affiliate",
+            partnerName: opt.source !== "traveloure" ? opt.source : null,
+          };
+        }
+      }
+    }
+
     const changes = await storage.getItineraryChanges(tripId, 20);
     const commentCounts = await storage.getActivityCommentCounts(tripId);
 
@@ -115,6 +134,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           cost: parseFloat(item.estimatedCost?.toString() || "0"),
           latitude: item.latitude ? parseFloat(item.latitude.toString()) : null,
           longitude: item.longitude ? parseFloat(item.longitude.toString()) : null,
+          expertNote: (item as any).notes || null,
           comments: commentCounts[item.id] || 0,
           suggestedBy: item.suggestedBy || null,
           changes: changes
@@ -134,6 +154,8 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           line: null,
           status: leg.userSelectedMode ? "confirmed" : "suggested",
           suggestedBy: leg.userSelectedMode ? null : "ai",
+          bookingSource: legBookingMap[leg.id]?.bookingSource ?? null,
+          partnerName: legBookingMap[leg.id]?.partnerName ?? null,
         })),
       };
     });
